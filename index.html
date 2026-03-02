@@ -2582,19 +2582,24 @@ function renderMaster(){
   document.getElementById('master-period').textContent=periodLabel(m);
   const nin=kpiNI(m); const ninP=p?kpiNI(p):null;
 
+  // Fuel Revenue = Fuelman + R-Check + Rewards Fees
+  const fuelRev=(gv('Monthly Fuelman Revenue',m)||0)+(gv('Monthly R-Check Revenue',m)||0)+(gv('Rewards Fees',m)||0);
+  const fuelRevP=p?((gv('Monthly Fuelman Revenue',p)||0)+(gv('Monthly R-Check Revenue',p)||0)+(gv('Rewards Fees',p)||0)):null;
+  const ym=py(m);
+  const fuelRevY=ym?((gv('Monthly Fuelman Revenue',ym)||0)+(gv('Monthly R-Check Revenue',ym)||0)+(gv('Rewards Fees',ym)||0)):null;
+  const fuelRevYTD=MOS.slice(0,MOS.indexOf(m)+1).filter(mo=>mo.slice(0,4)===m.slice(0,4)).reduce((s,mo)=>s+(gv('Monthly Fuelman Revenue',mo)||0)+(gv('Monthly R-Check Revenue',mo)||0)+(gv('Rewards Fees',mo)||0),0);
+
   document.getElementById('master-kpis').innerHTML=
+    '<div style="grid-column:1/-1;font-size:.7em;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);padding:4px 0 0">Revenue</div>'+
+    kpiKC('Membership',gv('Membership Gross Revenue',m),'$',p?gv('Membership Gross Revenue',p):null,'',false,ytdKpi('Membership Gross Revenue',m),gvy('Membership Gross Revenue',m))+
+    kpiKC('Rewards',gv('Rewards Fees',m),'$',p?gv('Rewards Fees',p):null,'',false,ytdKpi('Rewards Fees',m),gvy('Rewards Fees',m))+
+    kpiKC('Vendor Programs',gv('Monthly Vendor Program Revenue',m),'$',p?gv('Monthly Vendor Program Revenue',p):null,'',false,ytdKpi('Monthly Vendor Program Revenue',m),gvy('Monthly Vendor Program Revenue',m))+
+    kpiKC('Fuel Revenue',fuelRev,'$',fuelRevP,'Fuelman + R-Check + Rewards',false,fuelRevYTD,fuelRevY)+
+    kpiKC('New Members YTD',gv('New Members YTD',m),'',p?gv('New Members YTD',p):null,'',false,null,gvy('New Members YTD',m))+
+    '<div style="grid-column:1/-1;font-size:.7em;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:8px 0 0;border-top:1px solid var(--border);margin-top:4px">Financials</div>'+
     kpiKC('Income',gv('Income',m),'$',p?gv('Income',p):null,'',false,ytdKpi('Income',m),gvy('Income',m))+
     kpiKC('Cost of Goods (COGS)',gv('COGS',m),'$',p?gv('COGS',p):null,'',true,ytdKpi('COGS',m),gvy('COGS',m))+
-    kpiKC('Net Income',nin,'$',ninP,'',false,MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+kpiNI(mo),0))+
-    kpiKC('Total Members',gv('Total Members',m),'',p?gv('Total Members',p):null,'',false,null,gvy('Total Members',m))+
-    kpiKC('Membership Revenue',gv('Membership Gross Revenue',m),'$',p?gv('Membership Gross Revenue',p):null,'',false,ytdKpi('Membership Gross Revenue',m),gvy('Membership Gross Revenue',m))+
-    kpiKC('Vendor Programs',gv('Total number of Participating Programs',m),'',p?gv('Total number of Participating Programs',p):null,'',false,null,gvy('Total number of Participating Programs',m))+
-    kpiKC('Vendor Revenue/Mo',gv('Monthly Vendor Program Revenue',m),'$',p?gv('Monthly Vendor Program Revenue',p):null,'',false,ytdKpi('Monthly Vendor Program Revenue',m),gvy('Monthly Vendor Program Revenue',m))+
-    kpiKC('Rewards Fees',gv('Rewards Fees',m),'$',p?gv('Rewards Fees',p):null,'',false,ytdKpi('Rewards Fees',m),gvy('Rewards Fees',m))+
-    kpiKC('eCred Revenue',gv('eCred Monthly Revenue',m),'$',p?gv('eCred Monthly Revenue',p):null,'',false,ytdKpi('eCred Monthly Revenue',m),gvy('eCred Monthly Revenue',m))+
-    kpiKC('Fuelman Revenue',gv('Monthly Fuelman Revenue',m),'$',p?gv('Monthly Fuelman Revenue',p):null,'',false,ytdKpi('Monthly Fuelman Revenue',m),gvy('Monthly Fuelman Revenue',m))+
-    kpiKC('R-Check Revenue',gv('Monthly R-Check Revenue',m),'$',p?gv('Monthly R-Check Revenue',p):null,'',false,ytdKpi('Monthly R-Check Revenue',m),gvy('Monthly R-Check Revenue',m))+
-    kpiKC('New Members YTD',gv('New Members YTD',m),'',null,'',false,null,gvy('New Members YTD',m));
+    kpiKC('Net Income',nin,'$',ninP,'',false,MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+kpiNI(mo),0));
 
   document.getElementById('master-status').innerHTML=[
     {n:'Truck Stops',k:'Number of Truck Stops / Travel Centers',c:'#00C8FF'},
@@ -2616,7 +2621,7 @@ function renderMaster(){
   mkchart('mk1',{type:'line',data:{labels:LBLS,datasets:[kpiLD('Income','#00D68F','rgba(0,214,143,.15)'),kpiLD('COGS','#FF4757','rgba(255,71,87,.1)')]},options:{...CDO,scales:{x:CDO.scales.x,y:{...CDO.scales.y,ticks:{...CDO.scales.y.ticks,callback:tickK}}}}});
   mkchart('mk2',{type:'bar',data:{labels:LBLS,datasets:[{label:'Net Income',data:nid,backgroundColor:nid.map(v=>v>=0?'rgba(0,214,143,.7)':'rgba(255,71,87,.7)'),borderWidth:0}]},options:{...CDO,plugins:{legend:{display:false}},scales:{x:CDO.scales.x,y:{...CDO.scales.y,ticks:{...CDO.scales.y.ticks,callback:tickK}}}}});
   mkchart('mk3',{type:'line',data:{labels:LBLS,datasets:[kpiLD('Total Members','#00C8FF','rgba(0,200,255,.15)')]},options:{...CDO,plugins:{legend:{display:false}},scales:{x:CDO.scales.x,y:{...CDO.scales.y,beginAtZero:false}}}});
-  mkchart('mk4',{type:'bar',data:{labels:LBLS,datasets:[kpiBD('Membership Gross Revenue','rgba(0,200,255,.6)'),kpiBD('Monthly Vendor Program Revenue','rgba(124,58,237,.6)'),kpiBD('eCred Monthly Revenue','rgba(255,107,53,.6)')]},options:{...CDO,scales:{x:CDO.scales.x,y:{...CDO.scales.y,ticks:{...CDO.scales.y.ticks,callback:tickK}}}}});
+  mkchart('mk4',{type:'bar',data:{labels:LBLS,datasets:[kpiBD('Membership Gross Revenue','rgba(0,200,255,.6)'),kpiBD('Monthly Vendor Program Revenue','rgba(124,58,237,.6)'),{label:'Fuel Revenue',data:MOS.map(mo=>(gv('Monthly Fuelman Revenue',mo)||0)+(gv('Monthly R-Check Revenue',mo)||0)+(gv('Rewards Fees',mo)||0)),backgroundColor:'rgba(255,107,53,.6)',borderColor:'rgba(255,107,53,.6)',borderWidth:1},kpiBD('Rewards Fees','rgba(0,214,143,.6)')]},options:{...CDO,scales:{x:CDO.scales.x,y:{...CDO.scales.y,ticks:{...CDO.scales.y.ticks,callback:tickK}}}}});
 }
 
 function pgFinancial(){
