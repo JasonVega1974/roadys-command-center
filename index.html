@@ -501,6 +501,84 @@ tr.search-hide{display:none!important;}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+/* ═══ IMPLEMENTATION PORTAL ═══ */
+.impl-top-bar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:center;justify-content:space-between;}
+.impl-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.impl-btn{border:none;cursor:pointer;font-weight:600;padding:10px 16px;border-radius:8px;transition:all .2s;display:inline-flex;align-items:center;gap:8px;font-size:.9em;}
+.impl-btn-primary{background:var(--accent);color:#fff;}
+.impl-btn-primary:hover{opacity:.9;}
+.impl-btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border2);}
+.impl-btn-secondary:hover{opacity:.85;}
+.impl-btn-danger{background:#EF4444;color:#fff;}
+.impl-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--card);border:1px solid var(--border2);border-radius:999px;font-size:.85em;font-weight:600;color:var(--muted);}
+.impl-dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
+.impl-metric-card{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.impl-metric-label{font-size:.8em;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:8px;}
+.impl-metric-value{font-size:2.2em;font-weight:800;line-height:1;margin-bottom:4px;color:var(--text);}
+.impl-metric-sub{color:var(--muted);font-size:.85em;font-weight:500;}
+.impl-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:24px;}
+.impl-chart-card{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:20px;}
+.impl-chart-title{font-size:1.05em;font-weight:700;margin-bottom:16px;color:var(--accent);}
+.impl-chart-card canvas{max-height:260px;}
+.impl-tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0;margin-bottom:16px;border-bottom:2px solid var(--border2);}
+.impl-tab{background:transparent;border:none;padding:10px 18px;cursor:pointer;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;font-size:.9em;}
+.impl-tab:hover{color:var(--text);}
+.impl-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.impl-content{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:20px;}
+.impl-tab-content{display:none;}
+.impl-tab-content.active{display:block;}
+.impl-filters{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.impl-filters input,.impl-filters select{padding:10px 14px;border:1px solid var(--border2);border-radius:8px;font-size:.9em;min-width:200px;font-weight:500;background:var(--bg);color:var(--text);}
+.impl-sites-table{width:100%;border-collapse:collapse;font-size:.9em;}
+.impl-sites-table th{text-align:left;background:var(--bg);padding:12px;font-weight:700;color:var(--muted);text-transform:uppercase;font-size:.78em;letter-spacing:.05em;border-bottom:2px solid var(--border2);position:sticky;top:0;}
+.impl-sites-table td{padding:14px 12px;border-bottom:1px solid var(--border2);}
+.impl-sites-table tr:hover{background:rgba(255,255,255,.03);}
+.impl-location-name{font-weight:700;color:var(--accent);margin-bottom:4px;}
+.impl-location-date{color:var(--muted);font-size:.85em;}
+.impl-status-badge{display:inline-block;padding:3px 8px;border-radius:12px;font-weight:600;font-size:.8em;margin:2px;}
+.impl-status-todo{background:rgba(239,68,68,.15);color:#EF4444;}
+.impl-status-progress{background:rgba(245,158,11,.15);color:#F59E0B;}
+.impl-status-done{background:rgba(16,185,129,.15);color:#10B981;}
+.impl-progress{width:100%;height:8px;background:var(--border2);border-radius:999px;overflow:hidden;margin-top:8px;}
+.impl-progress-bar{height:100%;background:linear-gradient(90deg,#10B981,#3B82F6);transition:width .3s;}
+.impl-task-details{background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-top:12px;}
+.impl-task-group{margin-bottom:16px;}
+.impl-task-group:last-child{margin-bottom:0;}
+.impl-assignee-header{font-weight:700;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;}
+.impl-task-item{display:flex;align-items:flex-start;justify-content:space-between;padding:8px 12px;background:var(--card);border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;border-left:4px solid var(--border2);transition:all .2s;gap:12px;}
+.impl-task-item.impl-task-done{border-left-color:#10B981;background:rgba(16,185,129,.05);}
+.impl-task-item.impl-task-progress{border-left-color:#F59E0B;background:rgba(245,158,11,.05);}
+.impl-task-item.impl-task-todo{border-left-color:#EF4444;background:rgba(239,68,68,.05);}
+.impl-task-content{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0;}
+.impl-task-controls{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.impl-task-notes-input{width:100%;padding:6px 8px;border:1px solid var(--border2);border-radius:4px;font-size:.85em;font-family:inherit;resize:vertical;min-height:36px;background:var(--bg);color:var(--text);}
+.impl-task-notes-input:focus{outline:none;border-color:var(--accent);}
+.impl-task-name{font-weight:500;flex:1;color:var(--text);}
+.impl-task-status-select{padding:6px 10px;border:1px solid var(--border2);border-radius:6px;font-weight:600;min-width:120px;background:var(--card);color:var(--text);font-size:.85em;}
+.impl-expand-btn{padding:8px 14px;border:1px solid var(--border2);background:var(--card);color:var(--text);border-radius:6px;cursor:pointer;font-weight:600;font-size:.85em;}
+.impl-expand-btn:hover{opacity:.85;}
+.impl-delete-btn{color:#EF4444;border-color:#EF4444;}
+.impl-notes-icon{cursor:pointer;padding:4px;border-radius:4px;transition:all .2s;font-size:1em;}
+.impl-notes-icon:hover{background:rgba(255,255,255,.1);}
+.impl-notes-icon.impl-has-note{color:var(--accent);}
+.impl-tab-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;}
+.impl-notes-btn{background:var(--card);border:1px solid var(--border2);padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .2s;color:var(--text);font-size:.85em;}
+.impl-notes-btn:hover{border-color:var(--accent);}
+.impl-notes-btn.impl-has-notes{background:var(--accent);color:#fff;border-color:var(--accent);}
+.impl-notes-textarea{width:100%;min-height:200px;padding:12px;border:1px solid var(--border2);border-radius:8px;font-size:1em;font-family:inherit;resize:vertical;background:var(--bg);color:var(--text);}
+.impl-notes-textarea:focus{outline:none;border-color:var(--accent);}
+.impl-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:20px;}
+.impl-modal.active{display:flex;}
+.impl-modal-content{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:24px;max-width:500px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.impl-modal-header{margin-bottom:20px;}
+.impl-modal-header h2{color:var(--accent);margin-bottom:4px;font-size:1.2em;}
+.impl-modal-subtitle{color:var(--muted);font-size:.85em;}
+.impl-form-group{margin-bottom:16px;}
+.impl-form-group label{display:block;margin-bottom:6px;font-weight:600;color:var(--text);}
+.impl-form-group input,.impl-form-group select{width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:1em;font-weight:500;background:var(--bg);color:var(--text);}
+.impl-form-group input:focus,.impl-form-group select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+.impl-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+@media (max-width:768px){.impl-charts{grid-template-columns:1fr;}.impl-dashboard{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -541,6 +619,7 @@ tr.search-hide{display:none!important;}
     <div class="ni" data-nav-id="valprops" onclick="nav('valprops',this)"><span class="ni-icon">💼</span>Value Props</div>
     <div class="ni" data-nav-id="import" onclick="nav('import',this)"><span class="ni-icon">📥</span>Import / Export</div>
     <div class="ni" data-nav-id="service-desk" onclick="nav('service-desk',this)"><span class="ni-icon">🎫</span>Service Desk</div>
+    <div class="ni" data-nav-id="implementation" onclick="nav('implementation',this)"><span class="ni-icon">🚧</span>Implementation</div>
     <div class="ni" data-nav-id="settings" onclick="nav('settings',this)"><span class="ni-icon">⚙️</span>Settings</div>
   </nav>
   <div class="sb-foot">
@@ -1876,6 +1955,73 @@ tr.search-hide{display:none!important;}
       </div>
     </div>
 
+    <!-- ══ IMPLEMENTATION PORTAL ══ -->
+    <div class="page" id="pg-implementation">
+      <div class="sec-hdr"><div class="sec-title">IMPLEMENTATION PORTAL</div><span class="badge ba">Track Onboarding, Offboarding & Conversions</span></div>
+
+      <div class="impl-top-bar">
+        <div class="impl-actions">
+          <button class="impl-btn impl-btn-primary" onclick="implOpenNewSiteModal()">➕ New Site</button>
+          <label class="impl-btn impl-btn-secondary" for="implExcelFile">📥 Import Excel</label>
+          <input id="implExcelFile" type="file" accept=".xlsx,.xls" style="display:none" />
+          <button class="impl-btn impl-btn-secondary" onclick="implExportData()">💾 Export Backup</button>
+          <label class="impl-btn impl-btn-secondary" for="implJsonFile">📂 Load Backup</label>
+          <input id="implJsonFile" type="file" accept=".json" style="display:none" />
+        </div>
+        <span class="impl-pill">Last updated: <span id="implLastUpdate">Never</span></span>
+      </div>
+
+      <!-- KPI Dashboard -->
+      <div class="impl-dashboard" id="implDashboard"></div>
+
+      <!-- Charts -->
+      <div class="impl-charts">
+        <div class="impl-chart-card"><div class="impl-chart-title">Completion by Project Type</div><canvas id="implProjectChart"></canvas></div>
+        <div class="impl-chart-card"><div class="impl-chart-title">Team Workload Distribution</div><canvas id="implTeamChart"></canvas></div>
+      </div>
+
+      <!-- Project Tabs -->
+      <div class="impl-tabs" id="implTabs"></div>
+
+      <!-- Content -->
+      <div class="impl-content"><div id="implTabsContent"></div></div>
+    </div>
+
+    <!-- Implementation New Site Modal -->
+    <div class="impl-modal" id="implNewSiteModal">
+      <div class="impl-modal-content">
+        <div class="impl-modal-header"><h2>Create New Site</h2><p class="impl-modal-subtitle">All tasks will be auto-populated based on project type</p></div>
+        <div class="impl-form-group"><label>Location *</label><input type="text" id="implNewLocation" required placeholder="e.g., R03970 : Stinker 122 Fargo" /></div>
+        <div class="impl-form-group"><label>Project Type *</label>
+          <select id="implNewProjectType" required>
+            <option value="">Select project type...</option>
+            <option value="Onboarding">Onboarding</option>
+            <option value="Offboarding">Offboarding</option>
+            <option value="Change of Ownership">Change of Ownership</option>
+            <option value="Roady's Lite">Roady's Lite</option>
+            <option value="PTP to Roady's">PTP to Roady's Conversion</option>
+          </select>
+        </div>
+        <div class="impl-form-group"><label>Start Date *</label><input type="date" id="implNewStartDate" required /></div>
+        <div class="impl-modal-actions">
+          <button type="button" class="impl-btn impl-btn-secondary" onclick="implCloseNewSiteModal()">Cancel</button>
+          <button type="button" class="impl-btn impl-btn-primary" onclick="implHandleNewSite()">Create Site</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Implementation Notes Modal -->
+    <div class="impl-modal" id="implNotesModal">
+      <div class="impl-modal-content">
+        <div class="impl-modal-header"><h2>📝 Notes: <span id="implNotesProjectType"></span></h2><p class="impl-modal-subtitle">Add notes, reminders, or important information</p></div>
+        <div class="impl-form-group"><textarea id="implNotesTextarea" class="impl-notes-textarea" placeholder="Enter your notes here..."></textarea></div>
+        <div class="impl-modal-actions">
+          <button type="button" class="impl-btn impl-btn-secondary" onclick="implCloseNotesModal()">Cancel</button>
+          <button type="button" class="impl-btn impl-btn-primary" onclick="implSaveNotes()">💾 Save Notes</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ SETTINGS ══ -->
     <div class="page" id="pg-settings">
       <div class="sec-hdr"><div class="sec-title">SETTINGS</div><span class="badge ba">Dashboard Configuration</span></div>
@@ -1967,23 +2113,23 @@ let LAST_IMPORT = null;
 // Territory managers (sample - can be updated via import)
 // Territory manager assignments — editable via data entry
 let MANAGER_MAP = {
-  'WI':'Stefanie Ritter','MN':'Stefanie Ritter',
-  'MT':'Steph Leslie','ND':'Steph Leslie','SD':'Steph Leslie','WY':'Steph Leslie','CO':'Steph Leslie','NE':'Steph Leslie','KS':'Steph Leslie','OK':'Steph Leslie','TX':'Steph Leslie','NM':'Steph Leslie','IA':'Steph Leslie','MO':'Steph Leslie','AR':'Steph Leslie',
-  'WA':'Maria Coleman','OR':'Maria Coleman','CA':'Maria Coleman','NV':'Maria Coleman','ID':'Maria Coleman','UT':'Maria Coleman','AZ':'Maria Coleman',
-  'ME':'Angie Buck','VT':'Angie Buck','NY':'Angie Buck','MA':'Angie Buck','RI':'Angie Buck','CT':'Angie Buck','NJ':'Angie Buck','PA':'Angie Buck','DE':'Angie Buck','MD':'Angie Buck','VA':'Angie Buck','WV':'Angie Buck','OH':'Angie Buck','MI':'Angie Buck','IN':'Angie Buck','NH':'Angie Buck',
-  'GA':'Shannon Bumbalough','AL':'Shannon Bumbalough','FL':'Shannon Bumbalough','TN':'Shannon Bumbalough','KY':'Shannon Bumbalough','IL':'Shannon Bumbalough','MS':'Shannon Bumbalough','NC':'Shannon Bumbalough','SC':'Shannon Bumbalough',
+  'CT':'Angie Buck','DE':'Angie Buck','IA':'Angie Buck','ME':'Angie Buck','MD':'Angie Buck','MA':'Angie Buck','MI':'Angie Buck','MN':'Angie Buck','NH':'Angie Buck','NJ':'Angie Buck','NY':'Angie Buck','OH':'Angie Buck','PA':'Angie Buck','RI':'Angie Buck','VT':'Angie Buck','VA':'Angie Buck','WV':'Angie Buck',
   'LA':'Burt Newman',
+  'AZ':'Maria Coleman','CA':'Maria Coleman','NV':'Maria Coleman','NM':'Maria Coleman','OR':'Maria Coleman','UT':'Maria Coleman','WA':'Maria Coleman',
+  'AL':'Shannon Bumbalough','AR':'Shannon Bumbalough','FL':'Shannon Bumbalough','GA':'Shannon Bumbalough','IL':'Shannon Bumbalough','KY':'Shannon Bumbalough','MS':'Shannon Bumbalough','MO':'Shannon Bumbalough','NC':'Shannon Bumbalough','SC':'Shannon Bumbalough','TN':'Shannon Bumbalough',
+  'WI':'Stefanie Ritter',
+  'CO':'Steph Leslie','ID':'Steph Leslie','KS':'Steph Leslie','MT':'Steph Leslie','NE':'Steph Leslie','ND':'Steph Leslie','OK':'Steph Leslie','SD':'Steph Leslie','TX':'Steph Leslie','WY':'Steph Leslie',
   'default':'Unassigned'
 };
 
 // Region definitions (manager → states)
 const REGIONS = {
-  'Stefanie Ritter':     {states:['WI','MN'], color:'#7C3AED', label:'Upper Midwest'},
-  'Steph Leslie':        {states:['MT','ND','SD','WY','CO','NE','KS','OK','TX','NM','IA','MO','AR'], color:'#00C8FF', label:'Central'},
-  'Maria Coleman':       {states:['WA','OR','CA','NV','ID','UT','AZ'], color:'#00D68F', label:'West'},
-  'Angie Buck':          {states:['ME','VT','NY','MA','RI','CT','NJ','PA','DE','MD','VA','WV','OH','MI','IN','NH'], color:'#FFD60A', label:'Northeast'},
-  'Shannon Bumbalough':  {states:['GA','AL','FL','TN','KY','IL','MS','NC','SC'], color:'#FF4757', label:'Southeast'},
-  'Burt Newman':         {states:['LA'], color:'#FF6B35', label:'Louisiana'}
+  'Angie Buck':          {states:['CT','DE','IA','ME','MD','MA','MI','MN','NH','NJ','NY','OH','PA','RI','VT','VA','WV'], color:'#FFD60A', label:'Northeast'},
+  'Burt Newman':         {states:['LA'], color:'#FF6B35', label:'Louisiana'},
+  'Maria Coleman':       {states:['AZ','CA','NV','NM','OR','UT','WA'], color:'#00D68F', label:'West'},
+  'Shannon Bumbalough':  {states:['AL','AR','FL','GA','IL','KY','MS','MO','NC','SC','TN'], color:'#FF4757', label:'Southeast'},
+  'Stefanie Ritter':     {states:['WI'], color:'#7C3AED', label:'Upper Midwest'},
+  'Steph Leslie':        {states:['CO','ID','KS','MT','NE','ND','OK','SD','TX','WY'], color:'#00C8FF', label:'Central'}
 };
 
 function getManager(state){ return MANAGER_MAP[state] || MANAGER_MAP['default']; }
@@ -2124,7 +2270,7 @@ function toast(msg,type='tok'){
 // ═══════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════
-const TITLES={master:'Executive Summary','mss-metrics':'MSS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk'};
+const TITLES={master:'Executive Summary','mss-metrics':'MSS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal'};
 function nav(id,el){
   // Check if page is locked
   if(SETTINGS.locked[id]&&SETTINGS.pin&&!pinUnlocked[id]){
@@ -2191,6 +2337,7 @@ function renderPage(id){
   else if(id==='mem-locations') renderMemLocations();
   else if(id==='mem-onboarding') renderMemOnboarding();
   else if(id==='service-desk') renderServiceDesk();
+  else if(id==='implementation') implInit();
 }
 
 // ═══════════════════════════════════════════════
@@ -6636,6 +6783,423 @@ function exportSDTickets(){
 }
 
 loadTheme();
+
+// ═══════════════════════════════════════════════
+// IMPLEMENTATION PORTAL
+// ═══════════════════════════════════════════════
+const IMPL_STORAGE_KEY = "truckStopPortal_v3";
+const IMPL_PROJECT_TYPES = [
+  { key: "Onboarding", label: "Onboarding" },
+  { key: "Offboarding", label: "Offboarding" },
+  { key: "Change of Ownership", label: "Change of Ownership" },
+  { key: "Roady's Lite", label: "Roady's Lite" },
+  { key: "PTP to Roady's", label: "PTP to Roady's" }
+];
+const IMPL_TEAM = ["Accounting","Angel","Angie","Burt","Gene","Jack","Jason","Kaden","Maria","Regional Manager","Robert","Shannon","Stefanie","Steph","Surgey","Trisha"];
+
+const IMPL_TEMPLATES = {
+  "Onboarding": {
+    "Accounting":["Add Company Contact: Name, Title, Email, & Phone","Add Location Page","Add To Commission Summary GSheet","Add customer in Xero","Annual Billing Xero","Banking Information in Interstate","Billing Section in Interstate","Fuelman IDs in Roady's Fuelman Weekly Remittances","Monthly Billing Xero","Notify Team of New Site via Slack W/Start Date","Received V-check or Bank Letter","Record \"Active\"","Record Location ID in Jira Task","Setup Fee","Upload Contract/W9","Verify Stop Mailing Address"],
+    "Angel":["Add Important Notes In Description Field","Add POS into the Device Manager","Add Stop to the Operations Sheet","Add location email to master list","Advise Stop of Training Contact email / Rewards / Scheduled?","Calendar Locations \"Active\"","Completed Implementation Letter Sent","Completed/Transferred Location Amenities","Competitor Report Email Address","EFS Merchant Manager Reporting Info Sent","FC Merchant IDs","Fuel Department Introduction / Call scheduled?","Fuel Lanes Set in Interstate","Fuelman Conversion or New App Sent to Site","Initial intro Call / What to Expect from Roady's","Location Fuel Introductory Call Completed","Location Status \"Public\" when active","Multipliers – Videos & POP Materials","Multiplier Info sent","Post in Implementation Stop is \"Live Date\"","Schedule \"Start Date\" (Complete Billing Section)","Select Contacts Receiving Reporting","Send ALL Programs One-Sheet","Send Branding / Signage information","Send Merchant Console Link / Toggle Off Old Owner","Send Stop Copy of the Co-Signed Agreement","Send Stop Info to AOM","Verify/Obtain Interstate Contacts"],
+    "Burt":["Comdata ID Associated","Comdata ID Seen In Gallon Reports","Comdata Price File Fee","EFS Merchant Manager Reporting Received?","FCCs - Completed In Interstate","Fuelman Setup Submitted to Fuelman","Inquired T2 Aggregators","Promiles ID In Interstate","QA Cost PLUS Pricing in Interstate Price File","Site Seen in Partner Apps"],
+    "Jack":["Equipment Setup","System Configuration","Network Setup"],
+    "Jason":["Project Documentation","Quality Assurance Review","System Integration Check"],
+    "Kaden":["Aggregator Discounts Created","Confirm Location is on Roady's Website Map","Fleet Discounts Created","Fuel Toggle \"On\" in Interstate","Rack & Freight Approved","Retail Price Added in Interstate","Rewards - Create Device (Kiosk) in Device Manager","Rewards - Location Trained with Rewards","Rewards - Schedule Rewards Training with Location","Rewards - Send Welcome Kit to Location","Rewards - Submit Comdata Integration for POS","Rewards - Submit Welcome Email to Location","Rewards - Toggle on Has Rewards Kiosk in Interstate","Verify Location on the Roady's Map"],
+    "Regional Manager":["Regional Compliance Check","Territory Review","Local Partnership Development"],
+    "Robert":["Contact Information","Email V-check or Bank Letter to Accounting","Upload Member Agreement"],
+    "Surgey":["Fuel System Setup","Equipment Installation","Safety Compliance"],
+    "Trisha":["HR Documentation","Training Coordination","Employee Setup"],
+    "Shannon":["Customer Service Setup","Communication Templates","Support Systems"],
+    "Angie":["Legal Documentation","Contract Review","Compliance Verification"],
+    "Stefanie":["Inventory Setup","Supply Chain Coordination","Vendor Management"],
+    "Steph":["Training Development","Certification Tracking","Knowledge Base"],
+    "Gene":["Facilities Management","Building Systems","Maintenance Planning"],
+    "Maria":["Administrative Setup","Document Organization","Office Coordination"]
+  },
+  "Offboarding": {
+    "Accounting":["Confirm FuelMan Cancelled / Not seen in the FM Reports.","Confirm Fuelman Cancelled & Not Seen In Reports","Remove Annual Billing XERO","Remove Monthly Billing XERO"],
+    "Angel":["Cancellation Notice uploaded to Interstate","Complete the Billing Section (Interstate)","Notify Team of Cancellation / Implementation Channel","Record the CXL. Effective date in JIRA","Record the Location ID in the JIRA task","Remove Programs","Remove Rewards Multipliers","Remove email recipients from Comp Report","Remove from Contacts","Remove from Ops Sheet","Send Roadys Cancellation Letter to Member","Set Calendar Task for Inactive Date","Set Interstate Status to \"Off Boarding\""],
+    "Burt":["Confirm Comdata \"Off R-Check\"","Confirm Comdata Off R-Check (wait 2 weeks)","Disassociate Comdata & QuikQ Merchant ID","Disassociate Comdata Merchant ID from Roadys","Disassociate Quick-Q Merchant ID from Roadys","Notify FuelMan of Cancellation","Notify Site of Cancel, Fuelman Change + Forms","Notify site of Cancel, FuelMan Change + Forms","Remove Comdata Price File Fee","Notify Fuelman of Cancel"],
+    "Jack":["Equipment Retrieval","Asset Documentation","Final Inventory"],
+    "Jason":["Rewards - Disenroll Device(s) in Hexnode","Rewards - Lenovo Kiosk Tablet Received","Rewards - Monitor Rewards Redemption Rate","Rewards - Turn Off Rewards Toggle in Interstate","Roadys.com (Removal Confirmed)"],
+    "Regional Manager":["Territory Transition","Local Stakeholder Communication","Market Analysis Update"],
+    "Robert":["Final Documentation","Archive Process","Records Transfer"],
+    "Surgey":["Equipment Decommission","Safety Final Check","System Shutdown"],
+    "Trisha":["Employee Offboarding","Benefits Termination","HR Records Closure"],
+    "Shannon":["Customer Notification","Service Transition","Feedback Collection"],
+    "Angie":["Contract Termination","Legal Clearance","Final Audit"],
+    "Stefanie":["Inventory Reconciliation","Vendor Notification","Supply Closure"],
+    "Steph":["Access Revocation","System Deactivation","Training Records Archive"],
+    "Gene":["Facility Handover","Utilities Transfer","Final Inspection"],
+    "Maria":["Administrative Closure","File Archiving","Final Reports"]
+  },
+  "Change of Ownership": {
+    "Accounting":["Record Ownership Change in Systems","Transfer Billing to New Owner","Update Banking Information","Update Company Contact Information"],
+    "Angel":["Ownership Transfer Training","Schedule Ownership Transfer Date","Send Merchant Console to New Owner","Transfer Location Amenities","Update Interstate Contacts"],
+    "Robert":["Email Documentation to Accounting","Update Contact Information","Upload New Owner Agreement"]
+  },
+  "Roady's Lite": {
+    "Accounting":["Add Company Contact: Name, Title, Email, & Phone","Add Location Page","Add To Commission Summary GSheet","Add customer in Xero","Annual Billing Xero","Banking Information in Interstate","Billing Section in Interstate","Monthly Billing Xero","Notify Team of New Site via Slack W Start Date","Received V-check or Bank Letter","Record \"Active\"","Record Location ID in Jira Task","Setup Fee","Upload Contract/W9","Verify Stop Mailing Address"],
+    "Angel":["Add Important Notes In Description Field","Add POS into the Device Manager","Advise Stop of Training Contact email / Rewards / Scheduled?","Calendar Locations \"Active\"","Completed Implementation Letter Sent","Completed/Transferred Location Amenities","Confirm Location is on Roady's Website Map","FC Merchant IDs","Fuelman Conversion or New App Sent to Site","Initial intro Call / What to Expect from Roady's","Location Status \"Public\" when active","Multipliers – Videos & POP Materials","Multiplier Info sent","Post in Implementation Stop is \"Live Date\"","Rewards - Create Device (Kiosk) in Device Manager","Schedule \"Start Date\"","Select Contacts Receiving Reporting","Send Merchant Console Link / Toggle Off Old Owner","Send Stop Copy of the Co-Signed Agreement","Verify/Obtain Interstate Contacts"],
+    "Burt":["Comdata Price File Fee"],
+    "Kaden":["Aggregator Discounts Created","Fuel Toggle \"On\" in Interstate","Retail Price Added in Interstate","Rewards - Location Trained with Rewards","Rewards - Schedule Rewards Training with Location","Rewards - Send Welcome Kit to Location","Rewards - Submit Comdata Integration for POS","Rewards - Submit Welcome Email to Location","Verify Location on the Roady's Map"],
+    "Robert":["Contact Information","Email V-check or Bank Letter to Accounting","Upload Member Agreement"]
+  },
+  "PTP to Roady's": {
+    "Accounting":["Coordinate Billing Transfer","Review PTP Contract","Setup Conversion Timeline"],
+    "Angel":["Convert to Roadys Systems","Initial Conversion Call","Migration Planning","PTP System Assessment","Training on New Systems"]
+  }
+};
+
+let implSites = [];
+let implCharts = {};
+let implProjectNotes = {};
+let implInitialized = false;
+
+function implSaveSites(){
+  localStorage.setItem(IMPL_STORAGE_KEY, JSON.stringify({sites:implSites, projectNotes:implProjectNotes, lastUpdate:new Date().toLocaleString()}));
+  const el=document.getElementById('implLastUpdate');
+  if(el) el.textContent=new Date().toLocaleString();
+}
+function implLoadSites(){
+  const raw=localStorage.getItem(IMPL_STORAGE_KEY);
+  if(!raw) return false;
+  try{
+    const data=JSON.parse(raw);
+    implSites=data.sites||[];
+    implProjectNotes=data.projectNotes||{};
+    const el=document.getElementById('implLastUpdate');
+    if(el && data.lastUpdate) el.textContent=data.lastUpdate;
+    return true;
+  }catch(e){return false;}
+}
+function implParseDate(val){
+  if(!val) return null;
+  if(val instanceof Date && !isNaN(val)) return val;
+  const str=String(val).trim();
+  if(!str||/^tbd$/i.test(str)) return null;
+  const num=parseFloat(str);
+  if(!isNaN(num)&&num>1000){const ep=new Date(1899,11,30);return new Date(ep.getTime()+num*86400000);}
+  const d=new Date(str);
+  return isNaN(d)?null:d;
+}
+function implFormatDate(ds){const d=implParseDate(ds);return d?d.toLocaleDateString():'TBD';}
+function implNormStatus(val){const s=String(val||'').trim();if(!s||/^select$/i.test(s))return'To Do';if(/^done$/i.test(s))return'Done';if(/^in\s*progress$/i.test(s))return'In Progress';if(/^to\s*do$/i.test(s))return'To Do';return s;}
+function implEsc(t){const d=document.createElement('div');d.textContent=t??'';return d.innerHTML;}
+
+function implCalcMetrics(){
+  const all=implSites.flatMap(s=>s.tasks).filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task));
+  const total=all.length,done=all.filter(t=>t.status==='Done').length,ip=all.filter(t=>t.status==='In Progress').length;
+  return{totalSites:implSites.length,totalTasks:total,doneTasks:done,inProgressTasks:ip,todoTasks:total-done-ip,completionRate:total?Math.round(done/total*100):0};
+}
+function implGetProjectMetrics(){
+  return IMPL_PROJECT_TYPES.map(pt=>{
+    const ps=implSites.filter(s=>s.projectType===pt.key);
+    const tasks=ps.flatMap(s=>s.tasks).filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task));
+    const total=tasks.length,done=tasks.filter(t=>t.status==='Done').length;
+    return{type:pt.label,sites:ps.length,total,done,completion:total?Math.round(done/total*100):0};
+  }).filter(m=>m.sites>0);
+}
+function implGetTeamMetrics(){
+  return IMPL_TEAM.map(member=>{
+    const tasks=implSites.flatMap(s=>s.tasks).filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task)&&t.assignedTo===member);
+    return{member,total:tasks.length,done:tasks.filter(t=>t.status==='Done').length,inProgress:tasks.filter(t=>t.status==='In Progress').length,todo:tasks.filter(t=>t.status==='To Do').length};
+  }).filter(m=>m.total>0);
+}
+
+function implRenderDashboard(){
+  const m=implCalcMetrics();
+  document.getElementById('implDashboard').innerHTML=`
+    <div class="impl-metric-card"><div class="impl-metric-label">Total Sites</div><div class="impl-metric-value">${m.totalSites}</div><div class="impl-metric-sub">All projects</div></div>
+    <div class="impl-metric-card"><div class="impl-metric-label">Overall Completion</div><div class="impl-metric-value" style="color:#10B981">${m.completionRate}%</div><div class="impl-metric-sub">${m.doneTasks} of ${m.totalTasks} tasks complete</div></div>
+    <div class="impl-metric-card"><div class="impl-metric-label">In Progress</div><div class="impl-metric-value" style="color:#F59E0B">${m.inProgressTasks}</div><div class="impl-metric-sub">Active tasks</div></div>
+    <div class="impl-metric-card"><div class="impl-metric-label">To Do</div><div class="impl-metric-value" style="color:#EF4444">${m.todoTasks}</div><div class="impl-metric-sub">Pending tasks</div></div>`;
+}
+
+function implRenderCharts(){
+  const pm=implGetProjectMetrics();
+  if(implCharts.project) implCharts.project.destroy();
+  const isDark=!document.body.classList.contains('day-mode');
+  const gridColor=isDark?'rgba(255,255,255,.1)':'rgba(0,0,0,.1)';
+  const txtColor=isDark?'#94A3B8':'#64748B';
+  const pCtx=document.getElementById('implProjectChart');
+  if(pCtx){
+    implCharts.project=new Chart(pCtx.getContext('2d'),{
+      type:'bar',data:{labels:pm.map(m=>m.type),datasets:[{label:'Completion %',data:pm.map(m=>m.completion),backgroundColor:'rgba(16,185,129,.8)',borderColor:'#10B981',borderWidth:2}]},
+      options:{responsive:true,maintainAspectRatio:true,scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%',color:txtColor},grid:{color:gridColor}},x:{ticks:{color:txtColor},grid:{color:gridColor}}},plugins:{legend:{display:false}}}
+    });
+  }
+  const tm=implGetTeamMetrics().sort((a,b)=>b.total-a.total).slice(0,10);
+  if(implCharts.team) implCharts.team.destroy();
+  const tCtx=document.getElementById('implTeamChart');
+  if(tCtx){
+    implCharts.team=new Chart(tCtx.getContext('2d'),{
+      type:'bar',data:{labels:tm.map(m=>m.member),datasets:[
+        {label:'Done',data:tm.map(m=>m.done),backgroundColor:'rgba(16,185,129,.8)'},
+        {label:'In Progress',data:tm.map(m=>m.inProgress),backgroundColor:'rgba(245,158,11,.8)'},
+        {label:'To Do',data:tm.map(m=>m.todo),backgroundColor:'rgba(239,68,68,.8)'}
+      ]},
+      options:{responsive:true,maintainAspectRatio:true,scales:{x:{stacked:true,ticks:{color:txtColor},grid:{color:gridColor}},y:{stacked:true,beginAtZero:true,ticks:{color:txtColor},grid:{color:gridColor}}},plugins:{legend:{labels:{color:txtColor}}}}
+    });
+  }
+}
+
+function implSafeAttr(s){return s.replace(/'/g,"\\'");}
+function implSafeId(s){return s.replace(/['\s]+/g,'-');}
+function implRenderTabs(){
+  document.getElementById('implTabs').innerHTML=IMPL_PROJECT_TYPES.map((pt,i)=>{
+    const count=implSites.filter(s=>s.projectType===pt.key).length;
+    return `<button class="impl-tab${i===0?' active':''}" onclick="implSwitchTab('${implSafeAttr(pt.key)}')">${pt.label} (${count})</button>`;
+  }).join('');
+  document.getElementById('implTabsContent').innerHTML=IMPL_PROJECT_TYPES.map((pt,i)=>
+    `<div class="impl-tab-content${i===0?' active':''}" id="impl-tab-${implSafeId(pt.key)}">${implRenderProjectView(pt.key)}</div>`
+  ).join('');
+}
+function implSwitchTab(key){
+  document.querySelectorAll('.impl-tab').forEach(t=>{t.classList.toggle('active',t.textContent.includes(IMPL_PROJECT_TYPES.find(p=>p.key===key)?.label));});
+  document.querySelectorAll('.impl-tab-content').forEach(c=>{c.classList.toggle('active',c.id===`impl-tab-${implSafeId(key)}`);});
+}
+
+function implRenderProjectView(pt){
+  const safePt=implSafeAttr(pt),safeIdPt=implSafeId(pt);
+  const ps=implSites.filter(s=>s.projectType===pt).sort((a,b)=>{const da=implParseDate(a.startDate),db=implParseDate(b.startDate);if(!da&&!db)return 0;if(!da)return 1;if(!db)return -1;return db-da;});
+  const hasNotes=implProjectNotes[pt]&&implProjectNotes[pt].trim();
+  if(ps.length===0) return `<div class="impl-tab-header"><h3 style="color:var(--muted);margin:0">No sites for this project type yet.</h3><div style="display:flex;gap:8px;align-items:center"><label class="impl-btn impl-btn-secondary" style="font-size:.85em;padding:8px 12px;cursor:pointer">📥 Import CSV<input type="file" accept=".csv" style="display:none" onchange="implImportCSV(this,'${safePt}')"/></label><button class="impl-notes-btn${hasNotes?' impl-has-notes':''}" onclick="implOpenNotesModal('${safePt}')">📝 ${hasNotes?'View Notes':'Add Notes'}</button></div></div>`;
+  const rows=ps.map(site=>{
+    const at=site.tasks.filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task));
+    const total=at.length,done=at.filter(t=>t.status==='Done').length,ip=at.filter(t=>t.status==='In Progress').length,pct=total?Math.round(done/total*100):0;
+    return `<tr><td><div class="impl-location-name">${implEsc(site.location)}</div><div class="impl-location-date">Start: ${implFormatDate(site.startDate)}</div></td>
+      <td><div style="font-weight:700;margin-bottom:8px">${pct}%</div><div class="impl-progress"><div class="impl-progress-bar" style="width:${pct}%"></div></div></td>
+      <td><span class="impl-status-badge impl-status-done">${done} Done</span> <span class="impl-status-badge impl-status-progress">${ip} Active</span> <span class="impl-status-badge impl-status-todo">${total-done-ip} Pending</span></td>
+      <td style="text-align:right"><button class="impl-expand-btn" onclick="implToggleTasks('${site.id}')">📋 Tasks</button> <button class="impl-expand-btn impl-delete-btn" onclick="implDeleteSite('${site.id}')">🗑️</button></td></tr>
+      <tr id="impl-tasks-${site.id}" style="display:none"><td colspan="4" style="padding:0 12px 12px">${implRenderTaskDetails(site)}</td></tr>`;
+  }).join('');
+  return `<div class="impl-tab-header"><div class="impl-filters"><input type="text" placeholder="🔍 Search locations..." oninput="implFilterSites(this.value,'${safePt}')" /></div><div style="display:flex;gap:8px;align-items:center"><label class="impl-btn impl-btn-secondary" style="font-size:.85em;padding:8px 12px;cursor:pointer">📥 Import CSV<input type="file" accept=".csv" style="display:none" onchange="implImportCSV(this,'${safePt}')"/></label><button class="impl-notes-btn${hasNotes?' impl-has-notes':''}" onclick="implOpenNotesModal('${safePt}')">📝 ${hasNotes?'View Notes':'Add Notes'}</button></div></div>
+    <div style="overflow-x:auto"><table class="impl-sites-table"><thead><tr><th>Location</th><th style="width:15%">Progress</th><th>Status</th><th style="width:20%;text-align:right">Actions</th></tr></thead><tbody id="impl-tbody-${safeIdPt}">${rows}</tbody></table></div>`;
+}
+
+function implRenderTaskDetails(site){
+  const grouped={};
+  site.tasks.forEach((t,idx)=>{if(/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task))return;const a=t.assignedTo||'Unassigned';if(!grouped[a])grouped[a]=[];grouped[a].push({...t,idx});});
+  return `<div class="impl-task-details">${Object.keys(grouped).sort().map(assignee=>{
+    const tasks=grouped[assignee],done=tasks.filter(t=>t.status==='Done').length;
+    return `<div class="impl-task-group"><div class="impl-assignee-header"><span>${implEsc(assignee)}</span><span style="color:var(--muted);font-size:.85em">${done}/${tasks.length} complete</span></div>
+      ${tasks.map(t=>{
+        const sc=t.status==='Done'?'impl-task-done':t.status==='In Progress'?'impl-task-progress':'impl-task-todo';
+        const hn=t.note&&t.note.trim();
+        const nid=`impl-note-${site.id}-${t.idx}`;
+        return `<div class="impl-task-item ${sc}"><div class="impl-task-content"><span class="impl-task-name">${implEsc(t.task)}</span>
+          <textarea id="${nid}" class="impl-task-notes-input" placeholder="💭 Add notes..." style="display:none" onchange="implUpdateTaskNote('${site.id}',${t.idx},this.value)">${implEsc(t.note||'')}</textarea></div>
+          <div class="impl-task-controls"><span class="impl-notes-icon${hn?' impl-has-note':''}" onclick="implToggleTaskNote('${nid}')">${hn?'📝':'📄'}</span>
+          <select class="impl-task-status-select" onchange="implUpdateStatus('${site.id}',${t.idx},this.value)">
+            <option value="To Do"${t.status==='To Do'?' selected':''}>To Do</option>
+            <option value="In Progress"${t.status==='In Progress'?' selected':''}>In Progress</option>
+            <option value="Done"${t.status==='Done'?' selected':''}>✓ Done</option>
+          </select></div></div>`;
+      }).join('')}</div>`;
+  }).join('')}</div>`;
+}
+
+function implToggleTasks(id){const r=document.getElementById('impl-tasks-'+id);if(r)r.style.display=r.style.display==='none'?'':'none';}
+function implToggleTaskNote(nid){const f=document.getElementById(nid);if(f){const h=f.style.display==='none';f.style.display=h?'block':'none';if(h)f.focus();}}
+function implUpdateStatus(sid,idx,val){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].status=implNormStatus(val);implSaveSites();implRenderAll();}}
+function implUpdateTaskNote(sid,idx,note){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].note=note;implSaveSites();}}
+function implDeleteSite(sid){if(!confirm('Delete this site and all its tasks?'))return;implSites=implSites.filter(s=>s.id!==sid);implSaveSites();implRenderAll();}
+function implFilterSites(q,pt){
+  const tb=document.getElementById(`impl-tbody-${implSafeId(pt)}`);if(!tb)return;
+  const rows=tb.querySelectorAll('tr'),ql=q.toLowerCase();
+  for(let i=0;i<rows.length;i+=2){const lc=rows[i].querySelector('.impl-location-name');if(lc){const m=lc.textContent.toLowerCase().includes(ql);rows[i].style.display=m?'':'none';if(rows[i+1])rows[i+1].style.display='none';}}
+}
+
+function implRenderAll(){implRenderDashboard();implRenderCharts();implRenderTabs();}
+
+// ==================== PER-TAB CSV IMPORT ====================
+function implImportCSV(input, projectType){
+  const file=input.files?.[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const text=e.target.result;
+      const rows=implParseCSVRows(text);
+      if(rows.length<3){alert('CSV must have at least a header row, a location/date row, and task rows.');return;}
+      // Row 0: headers — look for "Location", "Location.1", etc.
+      const hr=rows[0], lcs=[];
+      for(let c=0;c<hr.length;c++){if(/^location(\.\d+)?$/i.test(hr[c].trim()))lcs.push(c);}
+      // If no "Location" columns found, try alternate: assume col 0 = tasks, then pairs of (location, status) starting at col 1
+      if(lcs.length===0){
+        // Fallback: first row has location names starting from col 1 (every other col)
+        // Or: treat as simple format: Location, Start Date, Task, Assigned To, Status
+        const imported=implParseCSVSimple(rows, projectType);
+        if(imported.length>0){
+          const m2=new Map();
+          implSites.forEach(s=>m2.set(`${s.projectType}||${s.location}`,s));
+          imported.forEach(s=>m2.set(`${s.projectType}||${s.location}`,s));
+          implSites=Array.from(m2.values());
+          implSaveSites();implRenderAll();
+          alert(`✓ Imported ${imported.length} sites into ${projectType}!`);
+        }else{alert('Could not parse CSV. See expected formats in console.');console.log('CSV Import expects either:\\n1) Excel-style: Row 1 has Location/Location.1 headers, Row 2 has location names & dates, Row 5+ has tasks\\n2) Simple format: columns Location, Start Date, Task, Assigned To, Status');}
+        return;
+      }
+      // Excel-style format with Location columns
+      const imported=[];
+      lcs.forEach(li=>{
+        const si=li+1, loc=(rows[1]?.[li]||'').trim();if(!loc)return;
+        let sd='TBD';const sr=(rows[1]?.[si]||'').trim();
+        if(sr&&!/^tbd$/i.test(sr)&&sr!=='0'){const d=new Date(sr);sd=isNaN(d)?sr:d.toISOString().split('T')[0];}
+        const tasks=[];
+        for(let r=4;r<rows.length;r++){
+          const tn=(rows[r]?.[0]||'').trim();if(!tn)continue;
+          if(/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(tn))continue;
+          const at=(rows[r]?.[li]||'').trim(),st=implNormStatus(rows[r]?.[si]||'');
+          if(!at&&st==='To Do')continue;
+          tasks.push({task:tn,assignedTo:at||'Unassigned',status:st,note:''});
+        }
+        imported.push({id:`site-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,location:loc,startDate:sd,projectType,tasks});
+      });
+      // Filter test sites
+      const filtered=imported.filter(s=>!String(s.location||'').includes('R1234')&&!String(s.location||'').toLowerCase().includes('test truck stop'));
+      if(filtered.length===0){alert('No valid sites found in CSV.');return;}
+      // Merge
+      const m2=new Map();
+      implSites.forEach(s=>m2.set(`${s.projectType}||${s.location}`,s));
+      filtered.forEach(s=>m2.set(`${s.projectType}||${s.location}`,s));
+      implSites=Array.from(m2.values());
+      implSaveSites();implRenderAll();
+      alert(`✓ Imported ${filtered.length} sites into ${projectType}!`);
+    }catch(err){console.error(err);alert('CSV import failed: '+err.message);}
+    finally{input.value='';}
+  };
+  reader.readAsText(file);
+}
+
+// Simple CSV format: Location, Start Date, Task, Assigned To, Status
+function implParseCSVSimple(rows, projectType){
+  const hr=rows[0].map(h=>h.trim().toLowerCase());
+  const ci={loc:hr.indexOf('location'),sd:hr.indexOf('start date'),task:hr.indexOf('task'),assign:hr.indexOf('assigned to'),status:hr.indexOf('status')};
+  if(ci.loc===-1||ci.task===-1){return[];}
+  // Group by location
+  const siteMap=new Map();
+  for(let r=1;r<rows.length;r++){
+    const loc=(rows[r][ci.loc]||'').trim();if(!loc)continue;
+    const task=(rows[r][ci.task]||'').trim();if(!task)continue;
+    if(!siteMap.has(loc)){
+      const sd=ci.sd>=0?(rows[r][ci.sd]||'').trim():'TBD';
+      siteMap.set(loc,{id:`site-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,location:loc,startDate:sd,projectType,tasks:[]});
+    }
+    const site=siteMap.get(loc);
+    site.tasks.push({
+      task:task,
+      assignedTo:ci.assign>=0?(rows[r][ci.assign]||'').trim()||'Unassigned':'Unassigned',
+      status:ci.status>=0?implNormStatus(rows[r][ci.status]||''):'To Do',
+      note:''
+    });
+  }
+  return Array.from(siteMap.values());
+}
+
+// Robust CSV row parser (handles quoted fields with commas/newlines)
+function implParseCSVRows(text){
+  const rows=[]; let row=[]; let field=''; let inQuote=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQuote){
+      if(c==='"'){if(text[i+1]==='"'){field+='"';i++;}else{inQuote=false;}}
+      else{field+=c;}
+    }else{
+      if(c==='"'){inQuote=true;}
+      else if(c===','){row.push(field);field='';}
+      else if(c==='\r'){/* skip */}
+      else if(c==='\n'){row.push(field);field='';rows.push(row);row=[];}
+      else{field+=c;}
+    }
+  }
+  if(field||row.length>0){row.push(field);rows.push(row);}
+  return rows;
+}
+
+// Excel import
+document.getElementById('implExcelFile').addEventListener('change',async evt=>{
+  const file=evt.target.files?.[0];if(!file)return;
+  try{
+    const data=await file.arrayBuffer();const wb=XLSX.read(data,{type:'array'});
+    const map=[{sheet:"Master Sheet Onboarding",type:"Onboarding"},{sheet:"Master Sheet Offboarding",type:"Offboarding"},{sheet:"Master Sheet COO",type:"Change of Ownership"},{sheet:"Master Sheet Roadys Lite",type:"Roady's Lite"},{sheet:"PTP to Roadys Conversion",type:"PTP to Roady's"}];
+    const imported=[];
+    map.forEach(sm=>{if(!wb.Sheets[sm.sheet])return;imported.push(...implParseSheet(wb.Sheets[sm.sheet],sm.type));});
+    const filtered=imported.filter(s=>!String(s.location||'').includes('R1234')&&!String(s.location||'').toLowerCase().includes('test truck stop'));
+    const m2=new Map();filtered.forEach(s=>m2.set(`${s.projectType}||${s.location}`,s));
+    implSites.forEach(s=>{const k=`${s.projectType}||${s.location}`;if(!m2.has(k))m2.set(k,s);});
+    implSites=Array.from(m2.values());implSaveSites();implRenderAll();
+    alert(`✓ Imported ${filtered.length} sites successfully!`);
+  }catch(err){console.error(err);alert('Import failed. Check the file format.');}
+  finally{evt.target.value='';}
+});
+
+function implParseSheet(sheet,projectType){
+  const rows=XLSX.utils.sheet_to_json(sheet,{header:1,blankrows:false,defval:null});
+  if(!rows||rows.length<6)return[];
+  const hr=rows[0]||[],lcs=[];
+  for(let c=0;c<hr.length;c++){if(/^location(\.\d+)?$/i.test(String(hr[c]||'').trim()))lcs.push(c);}
+  const result=[];
+  lcs.forEach(li=>{
+    const si=li+1,loc=String(rows[1]?.[li]||'').trim();if(!loc)return;
+    let sd='TBD';const sr=rows[1]?.[si];
+    if(sr instanceof Date&&!isNaN(sr)){sd=sr.toISOString().split('T')[0];}else{const s=String(sr||'').trim();if(s&&!/^tbd$/i.test(s)&&s!=='0'){const d=new Date(s);sd=isNaN(d)?s:d.toISOString().split('T')[0];}}
+    const tasks=[];
+    for(let r=4;r<rows.length;r++){
+      const tn=String(rows[r]?.[0]||'').trim();if(!tn)continue;
+      if(/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(tn))continue;
+      const at=String(rows[r]?.[li]||'').trim(),st=implNormStatus(rows[r]?.[si]);
+      if(!at&&st==='To Do')continue;
+      tasks.push({task:tn,assignedTo:at||'Unassigned',status:st,note:''});
+    }
+    result.push({id:`site-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,location:loc,startDate:sd,projectType,tasks});
+  });
+  return result;
+}
+
+function implExportData(){
+  const blob=new Blob([JSON.stringify({sites:implSites,projectNotes:implProjectNotes},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`implementation-backup-${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(url);
+}
+
+// JSON import
+document.getElementById('implJsonFile').addEventListener('change',async evt=>{
+  const file=evt.target.files?.[0];if(!file)return;
+  try{
+    const text=await file.text();const data=JSON.parse(text);
+    if(data.sites){implSites=data.sites;implProjectNotes=data.projectNotes||{};implSaveSites();implRenderAll();alert(`✓ Loaded ${implSites.length} sites from backup!`);}
+    else{alert('Invalid backup file.');}
+  }catch(err){console.error(err);alert('Failed to load backup.');}
+  finally{evt.target.value='';}
+});
+
+function implOpenNewSiteModal(){document.getElementById('implNewSiteModal').classList.add('active');document.getElementById('implNewLocation').value='';document.getElementById('implNewProjectType').value='';document.getElementById('implNewStartDate').valueAsDate=new Date();}
+function implCloseNewSiteModal(){document.getElementById('implNewSiteModal').classList.remove('active');}
+function implHandleNewSite(){
+  const loc=document.getElementById('implNewLocation').value.trim(),pt=document.getElementById('implNewProjectType').value,sd=document.getElementById('implNewStartDate').value;
+  if(!loc||!pt||!sd){alert('Please fill in all required fields');return;}
+  const tmpl=IMPL_TEMPLATES[pt]||{},tasks=[];
+  Object.keys(tmpl).forEach(a=>{tmpl[a].forEach(tn=>{tasks.push({task:tn,assignedTo:a,status:'To Do',note:''});});});
+  implSites.push({id:`site-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,location:loc,projectType:pt,startDate:sd,tasks});
+  implSaveSites();implRenderAll();implCloseNewSiteModal();
+  alert(`✓ Created "${loc}" with ${tasks.length} tasks!`);
+}
+
+let implCurrentNotesType=null;
+function implOpenNotesModal(pt){implCurrentNotesType=pt;document.getElementById('implNotesModal').classList.add('active');document.getElementById('implNotesProjectType').textContent=pt;document.getElementById('implNotesTextarea').value=implProjectNotes[pt]||'';document.getElementById('implNotesTextarea').focus();}
+function implCloseNotesModal(){document.getElementById('implNotesModal').classList.remove('active');implCurrentNotesType=null;}
+function implSaveNotes(){if(!implCurrentNotesType)return;implProjectNotes[implCurrentNotesType]=document.getElementById('implNotesTextarea').value.trim();implSaveSites();implRenderAll();implCloseNotesModal();}
+
+document.addEventListener('click',e=>{if(e.target===document.getElementById('implNewSiteModal'))implCloseNewSiteModal();if(e.target===document.getElementById('implNotesModal'))implCloseNotesModal();});
+
+function implInit(){
+  if(implInitialized)return;
+  implLoadSites();
+  implRenderAll();
+  implInitialized=true;
+}
+
+// Hook into nav to initialize when page is shown
 
 </script>
 </body>
