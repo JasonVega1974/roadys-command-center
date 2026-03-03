@@ -1406,16 +1406,47 @@ tr.search-hide{display:none!important;}
 
     <!-- ══ FLEETS ══ -->
     <div class="page" id="pg-fleets">
-      <div class="sec-hdr"><div class="sec-title">FLEETS</div></div>
-      <div class="search-bar">
-        <input class="search-input" type="text" id="fleet-search" placeholder="Search fleets..." oninput="renderFleetList()"/>
-        <select class="filter-sel" id="fleet-proc" onchange="renderFleetList()">
+      <div class="sec-hdr"><div class="sec-title">FUEL — BY FLEET</div><span class="badge ba" id="fleet-period">—</span></div>
+      
+      <!-- Top KPI Cards -->
+      <div class="kpi-grid" id="fleet-kpis"></div>
+      
+      <!-- Top 25 Fleet Cards -->
+      <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin:20px 0 12px">TOP 25 FLEET TOTALS</div>
+      <div class="kpi-grid" id="fleet-cards" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))"></div>
+      
+      <!-- Charts -->
+      <div class="cg2" id="fleet-charts" style="margin-top:20px"></div>
+      
+      <!-- Breakdown: Fleet → Truck Stops with Discounts -->
+      <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin:20px 0 12px">FLEET / TRUCK STOP BREAKDOWN</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <select id="fleet-filter" onchange="renderFleetBreakdown()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;min-width:200px">
+          <option value="all">All Fleets</option>
+        </select>
+        <select id="fleet-proc" onchange="renderFleetBreakdown()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em">
           <option value="">All Processors</option>
           <option>Comdata</option><option>TCH</option>
         </select>
+        <input class="search-input" type="text" id="fleet-search" placeholder="Search truck stops or fleets..." oninput="renderFleetBreakdown()" style="min-width:200px;max-width:300px"/>
+        <button class="btn" onclick="exportFleetBreakdownCSV()">📥 Export CSV</button>
       </div>
-      <div class="kpi-grid" id="fleet-kpis"></div>
-      <div class="tw"><table class="dt" id="fleet-tbl"></table></div>
+      <div class="tw" style="max-height:600px;overflow-y:auto"><table class="dt" id="fleet-tbl"></table></div>
+      
+      <!-- CSV Import -->
+      <div style="margin-top:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+        <div style="font-weight:700;font-size:.85em;margin-bottom:4px">📥 Import Fleet Data (CSV)</div>
+        <div style="font-size:.72em;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Upload a CSV with columns: <code style="color:var(--accent)">Truck Stop ID, Fleet, Processor, Company ID, Cost Plus, Retail Minus, Gallons, Period (YYYY-MM)</code><br>
+          This will populate fleet discounts for each truck stop.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="file" id="fleet-csv-file" accept=".csv" style="font-size:.78em"/>
+          <button class="btn btn-accent" onclick="importFleetCSV()">Import</button>
+          <button class="btn" onclick="downloadFleetTemplate()">📋 Download Template</button>
+        </div>
+        <div id="fleet-csv-status" style="font-size:.75em;margin-top:8px;color:var(--muted)"></div>
+      </div>
     </div>
 
     <!-- ══ FUELMAN ══ -->
@@ -4074,38 +4105,227 @@ function downloadAggTemplate(){
 // ═══════════════════════════════════════════════
 function renderFleetList(){
   const m=getM(), p=pm(m);
-  const q=(document.getElementById('fleet-search')?.value||'').toLowerCase();
-  const proc=document.getElementById('fleet-proc')?.value||'';
   const fleets=allFleets();
-  const total=fleets.reduce((s,n)=>s+totalFleetGallons(n,m),0);
-  const totalP=p?fleets.reduce((s,n)=>s+totalFleetGallons(n,p),0):null;
+  
+  // Total gallons
+  const totalFleetG=fleets.reduce((s,n)=>s+totalFleetGallons(n,m),0);
+  const totalFleetGP=p?fleets.reduce((s,n)=>s+totalFleetGallons(n,p),0):null;
+  const ytdFleetG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>fleets.reduce((ss,n)=>ss+totalFleetGallons(n,mo),0)+s,0);
+  const activeFleets=fleets.filter(n=>totalFleetGallons(n,m)>0).length;
+  
+  document.getElementById('fleet-period').textContent=periodLabel(m);
+  
+  // Top KPI cards
   document.getElementById('fleet-kpis').innerHTML=
-    kc('Total Fleets',fleets.length,null,'g')+
-    kc('Fleet Gallons',total,totalP)+
-    kc('Avg Gallons/Fleet',fleets.length?Math.round(total/fleets.length):0,null);
-
-  const rows=fleets.filter(n=>{
-    if(q&&!n.toLowerCase().includes(q)) return false;
-    if(proc){const e=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.fleets||[])).find(f=>f.name===n);if(e?.processor!==proc)return false;}
-    return true;
-  }).map(n=>{
-    const entry=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.fleets||[])).find(f=>f.name===n)||{};
-    const g=totalFleetGallons(n,m), gp=p?totalFleetGallons(n,p):null;
-    const c=cls(g,gp); const pv=gp?pct(g,gp):null;
+    kc('Total Fleet Gallons',totalFleetG,totalFleetGP,'g',`${fleets.length} fleets`,ytdFleetG)+
+    kc('Active Fleets',activeFleets,null,'g',`${fleets.length-activeFleets} with no data`)+
+    kc('Avg Gallons / Fleet',activeFleets?Math.round(totalFleetG/activeFleets):0,null,'g');
+  
+  // Build fleet data sorted by gallons, top 25
+  const fleetData=fleets.map(n=>{
+    const g=totalFleetGallons(n,m);
+    const gp=p?totalFleetGallons(n,p):null;
     const stopsActive=Object.keys(GD).filter(sid=>GD[sid]?.[m]?.fleets?.find(f=>f.name===n)).length;
-    const noGalAlert=g===0&&Object.values(GD).some(sd=>Object.values(sd).some(pd=>pd.fleets?.find(f=>f.name===n)&&f.gallons>0));
-    const hist=MOS.map(mo=>fmtG(totalFleetGallons(n,mo))).join(' | ');
+    const entry=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.fleets||[])).find(f=>f.name===n)||{};
+    return {name:n,gallons:g,gallonsP:gp,stops:stopsActive,processor:entry.processor||'—'};
+  }).sort((a,b)=>b.gallons-a.gallons);
+  
+  const top25=fleetData.slice(0,25);
+  
+  // Top 25 fleet cards
+  document.getElementById('fleet-cards').innerHTML=top25.map(f=>{
+    const c=cls(f.gallons,f.gallonsP);
+    const statusClass=f.gallons>0?'up':'';
+    return `<div class="kc ${statusClass}" style="cursor:pointer" onclick="document.getElementById('fleet-filter').value='${f.name.replace(/'/g,"\\'")}';renderFleetBreakdown();document.getElementById('fleet-tbl').scrollIntoView({behavior:'smooth'})">
+      <div style="font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${f.name}">${f.name}</div>
+      <div style="font-size:1.3em;font-weight:800;margin-top:4px" class="${c}">${fmtG(f.gallons)}</div>
+      <div style="font-size:.65em;color:var(--muted);margin-top:2px">${f.stops} stop${f.stops!==1?'s':''} · ${f.processor}</div>
+    </div>`;
+  }).join('')+(fleetData.length>25?`<div class="kc" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.82em">+${fleetData.length-25} more fleets</div>`:'');
+  
+  // Populate fleet filter dropdown (all fleets)
+  const fleetFilter=document.getElementById('fleet-filter');
+  fleetFilter.innerHTML='<option value="all">All Fleets ('+fleets.length+')</option>'+fleetData.map(f=>`<option value="${f.name}">${f.name} (${fmtG(f.gallons)})</option>`).join('');
+  
+  // Charts
+  const chartWrap=document.getElementById('fleet-charts');
+  if(chartWrap){
+    chartWrap.innerHTML=`
+      <div class="cc"><div class="cc-lbl">Top 5 Fleet Gallons by Month</div><div class="cw"><canvas id="fc1"></canvas></div></div>
+      <div class="cc"><div class="cc-lbl">Fleet Share ${lbl(m)}</div><div class="cw"><canvas id="fc2"></canvas></div></div>
+    `;
+    const top5=fleetData.filter(f=>f.gallons>0).slice(0,5);
+    const colors5=['#00C8FF','#00D68F','#FF6B35','#FFD60A','#7C3AED'];
+    const datasets=top5.map((f,i)=>ld(f.name.split(' ').slice(0,2).join(' '),MOS.map(mo=>totalFleetGallons(f.name,mo)),colors5[i],'transparent'));
+    mkchart('fc1',{type:'line',data:{labels:LBLS,datasets},options:CDO});
+    const top6=fleetData.filter(f=>f.gallons>0).slice(0,6);
+    mkchart('fc2',{type:'doughnut',data:{labels:top6.map(f=>f.name.split(' ')[0]),datasets:[{data:top6.map(f=>f.gallons),backgroundColor:['rgba(0,200,255,.8)','rgba(0,214,143,.8)','rgba(255,107,53,.8)','rgba(255,214,10,.8)','rgba(124,58,237,.8)','rgba(8,145,178,.8)'],borderColor:'transparent'}]},options:{...CDO,scales:{}}});
+  }
+  
+  // Render breakdown table
+  renderFleetBreakdown();
+}
+
+function renderFleetBreakdown(){
+  const m=getM(), p=pm(m);
+  const filterFleet=document.getElementById('fleet-filter')?.value||'all';
+  const filterProc=document.getElementById('fleet-proc')?.value||'';
+  const q=(document.getElementById('fleet-search')?.value||'').toLowerCase();
+  
+  // Build rows: each row = fleet + truck stop combo
+  const rows=[];
+  Object.keys(GD).forEach(sid=>{
+    const pd=GD[sid]?.[m];
+    if(!pd||!pd.fleets) return;
+    const mb=MEMBERS.find(m2=>m2.id===sid);
+    if(!mb) return;
+    pd.fleets.forEach(fl=>{
+      if(filterFleet!=='all'&&fl.name!==filterFleet) return;
+      if(filterProc&&(fl.processor||'Comdata')!==filterProc) return;
+      if(q&&!fl.name.toLowerCase().includes(q)&&!mb.name.toLowerCase().includes(q)&&!sid.toLowerCase().includes(q)&&!mb.city.toLowerCase().includes(q)&&!mb.state.toLowerCase().includes(q)) return;
+      const gp=p?((GD[sid]?.[p]?.fleets||[]).find(f=>f.name===fl.name)?.gallons||0):null;
+      rows.push({
+        fleetName:fl.name,
+        processor:fl.processor||'Comdata',
+        companyId:fl.id||'—',
+        costPlus:fl.cost_plus,
+        retailMinus:fl.retail_minus,
+        gallons:fl.gallons||0,
+        gallonsP:gp,
+        sid:sid,
+        stopName:mb.name,
+        location:`${mb.city}, ${mb.state}`,
+        group:mb.group
+      });
+    });
+  });
+  
+  rows.sort((a,b)=>a.fleetName.localeCompare(b.fleetName)||b.gallons-a.gallons);
+  
+  const html=rows.map(r=>{
+    const c=cls(r.gallons,r.gallonsP);
+    const cpStr=r.costPlus>0?`+$${r.costPlus.toFixed(4)}`:'—';
+    const rmStr=r.retailMinus<0?`$${r.retailMinus.toFixed(4)}`:r.retailMinus===0?'—':`+$${(r.retailMinus||0).toFixed(4)}`;
     return `<tr>
-      <td><b>${n}</b>${noGalAlert?` <span class="tag tag-red">⚠ No Gallons</span>`:''}</td>
-      <td><span class="tag tag-blue">${entry.id||'—'}</span></td>
-      <td><span class="tag tag-orange">${entry.processor||'Comdata'}</span></td>
-      <td class="${c}" style="font-weight:700">${fmtG(g)}</td>
-      <td class="${c}">${pv!==null?`${arrow(c)} ${Math.abs(pv).toFixed(1)}%`:'—'}</td>
-      <td>${stopsActive}</td>
-      <td style="font-size:.72em;color:var(--muted)">${hist}</td>
+      <td style="font-weight:700">${r.fleetName}</td>
+      <td><span class="tag tag-orange">${r.processor}</span></td>
+      <td>${r.companyId}</td>
+      <td><span class="tag tag-blue">${r.sid}</span></td>
+      <td><b>${r.stopName}</b></td>
+      <td>${r.location}</td>
+      <td>${cpStr}</td>
+      <td>${rmStr}</td>
+      <td class="${c}" style="font-weight:700;text-align:right">${fmtG(r.gallons)}</td>
+      <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${r.sid}')">View →</button></td>
     </tr>`;
   }).join('');
-  document.getElementById('fleet-tbl').innerHTML=`<thead><tr><th>Fleet Name</th><th>Company ID</th><th>Processor</th><th>Gallons ${lbl(m)}</th><th>Change</th><th>Active Stops</th><th>6-Month History</th></tr></thead><tbody>${rows}</tbody>`;
+  
+  const noData=rows.length===0?`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px">No fleet data found for this period. Import data via CSV below.</td></tr>`:'';
+  
+  document.getElementById('fleet-tbl').innerHTML=`<thead><tr>
+    <th>Fleet</th><th>Processor</th><th>Co. ID</th>
+    <th>Stop ID</th><th>Truck Stop</th><th>Location</th>
+    <th>Cost Plus</th><th>Retail Minus</th><th>Gallons ${lbl(m)}</th><th></th>
+  </tr></thead><tbody>${html||noData}</tbody>`;
+}
+
+function exportFleetBreakdownCSV(){
+  const tbl=document.getElementById('fleet-tbl');
+  if(!tbl) return;
+  const rows=[];
+  tbl.querySelectorAll('tr').forEach(tr=>{
+    const cells=[...tr.querySelectorAll('th,td')].map(c=>c.textContent.trim().replace(/View →/g,''));
+    rows.push(cells.join(','));
+  });
+  const csv=rows.join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='fleet_breakdown.csv';a.click();URL.revokeObjectURL(url);
+}
+
+function importFleetCSV(){
+  const fileInput=document.getElementById('fleet-csv-file');
+  const status=document.getElementById('fleet-csv-status');
+  if(!fileInput.files.length){status.innerHTML='<span style="color:var(--red)">Please select a CSV file.</span>';return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const lines=e.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
+      if(lines.length<2){status.innerHTML='<span style="color:var(--red)">CSV must have a header row + data rows.</span>';return;}
+      const header=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/[^a-z0-9_\s]/g,''));
+      const idxSid=header.findIndex(h=>h.includes('truck')&&h.includes('id')||h==='stop id'||h==='sid'||h==='id');
+      const idxFleet=header.findIndex(h=>h.includes('fleet')||h.includes('fleet name'));
+      const idxProc=header.findIndex(h=>h.includes('processor')||h.includes('proc'));
+      const idxCoId=header.findIndex(h=>h.includes('company')&&h.includes('id')||h==='co id'||h.includes('companyid'));
+      const idxCP=header.findIndex(h=>h.includes('cost')&&h.includes('plus')||h==='costplus');
+      const idxRM=header.findIndex(h=>h.includes('retail')&&h.includes('minus')||h==='retailminus');
+      const idxGal=header.findIndex(h=>h.includes('gallon'));
+      const idxPeriod=header.findIndex(h=>h.includes('period')||h.includes('month')||h.includes('date'));
+      
+      if(idxSid<0||idxFleet<0){
+        status.innerHTML='<span style="color:var(--red)">CSV must have "Truck Stop ID" and "Fleet" columns.</span>';
+        return;
+      }
+      
+      let imported=0;
+      for(let i=1;i<lines.length;i++){
+        const cols=lines[i].split(',').map(c=>c.trim());
+        const sid=cols[idxSid]||'';
+        const fleetName=cols[idxFleet]||'';
+        if(!sid||!fleetName) continue;
+        
+        const processor=idxProc>=0?cols[idxProc]:'Comdata';
+        const companyId=idxCoId>=0?cols[idxCoId]:'';
+        const costPlus=idxCP>=0?parseFloat(cols[idxCP])||0:0;
+        const retailMinus=idxRM>=0?parseFloat(cols[idxRM])||0:0;
+        const gallons=idxGal>=0?parseFloat(cols[idxGal])||0:0;
+        const period=idxPeriod>=0?cols[idxPeriod]||getM():getM();
+        
+        if(!GD[sid]) GD[sid]={};
+        if(!GD[sid][period]) GD[sid][period]={aggregators:[],fleets:[]};
+        if(!GD[sid][period].fleets) GD[sid][period].fleets=[];
+        
+        const existing=GD[sid][period].fleets.find(f=>f.name===fleetName);
+        if(existing){
+          existing.gallons=gallons;
+          existing.processor=processor;
+          existing.id=companyId;
+          existing.cost_plus=costPlus;
+          existing.retail_minus=retailMinus;
+        } else {
+          GD[sid][period].fleets.push({
+            name:fleetName,
+            processor:processor,
+            id:companyId,
+            cost_plus:costPlus,
+            retail_minus:retailMinus,
+            gallons:gallons
+          });
+        }
+        imported++;
+      }
+      
+      saveData();
+      renderFleetList();
+      status.innerHTML=`<span style="color:var(--green)">✓ Imported ${imported} fleet records.</span>`;
+    }catch(err){
+      status.innerHTML=`<span style="color:var(--red)">Error: ${err.message}</span>`;
+    }
+  };
+  reader.readAsText(fileInput.files[0]);
+}
+
+function downloadFleetTemplate(){
+  const header='Truck Stop ID,Fleet,Processor,Company ID,Cost Plus,Retail Minus,Gallons,Period';
+  const sampleSid=MEMBERS.length>0?MEMBERS[0].id:'R01437';
+  const sampleFleets=['Sample Fleet 1','Sample Fleet 2','Sample Fleet 3'];
+  const rows=sampleFleets.map(n=>
+    `${sampleSid},${n},Comdata,,0.0000,0.0000,0,${getM()}`
+  );
+  const csv=[header,...rows].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='fleet_template.csv';a.click();URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════
