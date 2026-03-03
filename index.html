@@ -1365,10 +1365,43 @@ tr.search-hide{display:none!important;}
 
     <!-- ══ AGGREGATORS ══ -->
     <div class="page" id="pg-aggregators">
-      <div class="sec-hdr"><div class="sec-title">AGGREGATORS</div></div>
+      <div class="sec-hdr"><div class="sec-title">FUEL — BY AGGREGATOR</div><span class="badge ba" id="agg-period">—</span></div>
+      
+      <!-- Top KPI Cards -->
       <div class="kpi-grid" id="agg-kpis"></div>
-      <div class="cg2" id="agg-charts"></div>
-      <div class="tw"><table class="dt" id="agg-tbl"></table></div>
+      
+      <!-- Aggregator Cards (each aggregator with total gallons) -->
+      <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin:20px 0 12px">AGGREGATOR TOTALS</div>
+      <div class="kpi-grid" id="agg-cards" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))"></div>
+      
+      <!-- Charts -->
+      <div class="cg2" id="agg-charts" style="margin-top:20px"></div>
+      
+      <!-- Breakdown: Aggregator → Truck Stops with Discounts -->
+      <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin:20px 0 12px">AGGREGATOR / TRUCK STOP BREAKDOWN</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <select id="agg-filter" onchange="renderAggBreakdown()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;min-width:200px">
+          <option value="all">All Aggregators</option>
+        </select>
+        <input class="search-input" type="text" id="agg-search" placeholder="Search truck stops..." oninput="renderAggBreakdown()" style="min-width:200px;max-width:300px"/>
+        <button class="btn" onclick="exportAggBreakdownCSV()">📥 Export CSV</button>
+      </div>
+      <div class="tw" style="max-height:600px;overflow-y:auto"><table class="dt" id="agg-tbl"></table></div>
+      
+      <!-- CSV Import -->
+      <div style="margin-top:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+        <div style="font-weight:700;font-size:.85em;margin-bottom:4px">📥 Import Aggregator Data (CSV)</div>
+        <div style="font-size:.72em;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Upload a CSV with columns: <code style="color:var(--accent)">Truck Stop ID, Aggregator, Processor, Company ID, Cost Plus, Retail Minus, Gallons, Period (YYYY-MM)</code><br>
+          This will populate aggregator discounts for each truck stop.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="file" id="agg-csv-file" accept=".csv" style="font-size:.78em"/>
+          <button class="btn btn-accent" onclick="importAggCSV()">Import</button>
+          <button class="btn" onclick="downloadAggTemplate()">📋 Download Template</button>
+        </div>
+        <div id="agg-csv-status" style="font-size:.75em;margin-top:8px;color:var(--muted)"></div>
+      </div>
     </div>
 
     <!-- ══ FLEETS ══ -->
@@ -3807,37 +3840,233 @@ function saveTSNote(){
 // ═══════════════════════════════════════════════
 function renderAggregators(){
   const m=getM(), p=pm(m);
-  const aggs=allAggregators();
+  
+  // Master aggregator list
+  const MASTER_AGGS=['QPN','TCS / Apex','Edge','TAFS','OOIDA','TSD / Open Roads','XPO/RXO','OTP Capital','Prime Advantage','Motive','Haul Pay','Fleet Tech','Fleet One Edge','OTR Capital','Amazon','Haulers United','Greenlane','Load Connex','TOA Service','Onramp','WEX','AMBEST','Cloud Trucks','A to B','Bridgehaul'];
+  
+  // Get all aggregators from data (may include ones not in master list)
+  const dataAggs=allAggregators();
+  const allAggs=[...new Set([...MASTER_AGGS,...dataAggs])];
+  
+  // Total gallons
+  const totalAggG=allAggs.reduce((s,n)=>s+totalAggGallons(n,m),0);
+  const totalAggGP=p?allAggs.reduce((s,n)=>s+totalAggGallons(n,p),0):null;
+  const ytdAggG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>allAggs.reduce((ss,n)=>ss+totalAggGallons(n,mo),0)+s,0);
+  const activeAggs=allAggs.filter(n=>totalAggGallons(n,m)>0).length;
+  
+  // Period label
+  document.getElementById('agg-period').textContent=periodLabel(m);
+  
+  // Top KPI cards - Total Aggregator Gallons + active count + YTD
   document.getElementById('agg-kpis').innerHTML=
-    kc('Total Aggregators',aggs.length,null,'g')+
-    kc('Aggregator Gallons',aggs.reduce((s,n)=>s+totalAggGallons(n,m),0),p?aggs.reduce((s,n)=>s+totalAggGallons(n,p),0):null)+
-    kc('Comdata Aggs',aggs.filter(n=>{const e=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.aggregators||[])).find(a=>a.name===n);return e?.processor==='Comdata';}),null,'g')+
-    kc('TCH Aggs',aggs.filter(n=>{const e=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.aggregators||[])).find(a=>a.name===n);return e?.processor==='TCH';}),null,'g');
-
+    kc('Total Aggregator Gallons',totalAggG,totalAggGP,'g',`${allAggs.length} aggregators`,ytdAggG)+
+    kc('Active Aggregators',activeAggs,null,'g',`${allAggs.length-activeAggs} with no data`)+
+    kc('Avg Gallons / Aggregator',activeAggs?Math.round(totalAggG/activeAggs):0,null,'g');
+  
+  // Individual aggregator cards sorted by gallons
+  const aggData=allAggs.map(n=>{
+    const g=totalAggGallons(n,m);
+    const gp=p?totalAggGallons(n,p):null;
+    const stopsActive=Object.keys(GD).filter(sid=>GD[sid]?.[m]?.aggregators?.find(a=>a.name===n)).length;
+    return {name:n,gallons:g,gallonsP:gp,stops:stopsActive};
+  }).sort((a,b)=>b.gallons-a.gallons);
+  
+  document.getElementById('agg-cards').innerHTML=aggData.map(a=>{
+    const c=cls(a.gallons,a.gallonsP);
+    const statusClass=a.gallons>0?'up':'';
+    return `<div class="kc ${statusClass}" style="cursor:pointer" onclick="document.getElementById('agg-filter').value='${a.name.replace(/'/g,"\\'")}';renderAggBreakdown();document.getElementById('agg-tbl').scrollIntoView({behavior:'smooth'})">
+      <div style="font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.name}">${a.name}</div>
+      <div style="font-size:1.3em;font-weight:800;margin-top:4px" class="${c}">${fmtG(a.gallons)}</div>
+      <div style="font-size:.65em;color:var(--muted);margin-top:2px">${a.stops} stop${a.stops!==1?'s':''}</div>
+    </div>`;
+  }).join('');
+  
+  // Populate aggregator filter dropdown
+  const aggFilter=document.getElementById('agg-filter');
+  aggFilter.innerHTML='<option value="all">All Aggregators</option>'+allAggs.sort().map(n=>`<option value="${n}">${n}</option>`).join('');
+  
+  // Charts
   document.getElementById('agg-charts').innerHTML=`
     <div class="cc"><div class="cc-lbl">Aggregator Gallons by Month</div><div class="cw"><canvas id="ac1"></canvas></div></div>
     <div class="cc"><div class="cc-lbl">Aggregator Share ${lbl(m)}</div><div class="cw"><canvas id="ac2"></canvas></div></div>
   `;
-  const datasets=aggs.slice(0,5).map((n,i)=>{
-    const colors=['#00C8FF','#00D68F','#FF6B35','#FFD60A','#7C3AED'];
-    return ld(n.split(' ').slice(0,2).join(' '),MOS.map(mo=>totalAggGallons(n,mo)),colors[i],'transparent');
-  });
+  const top5=aggData.filter(a=>a.gallons>0).slice(0,5);
+  const colors5=['#00C8FF','#00D68F','#FF6B35','#FFD60A','#7C3AED'];
+  const datasets=top5.map((a,i)=>ld(a.name.split(' ').slice(0,2).join(' '),MOS.map(mo=>totalAggGallons(a.name,mo)),colors5[i],'transparent'));
   mkchart('ac1',{type:'line',data:{labels:LBLS,datasets},options:CDO});
-  const top=aggs.map(n=>({n,g:totalAggGallons(n,m)})).sort((a,b)=>b.g-a.g).slice(0,6);
-  mkchart('ac2',{type:'doughnut',data:{labels:top.map(a=>a.n.split(' ')[0]),datasets:[{data:top.map(a=>a.g),backgroundColor:['rgba(0,200,255,.8)','rgba(0,214,143,.8)','rgba(255,107,53,.8)','rgba(255,214,10,.8)','rgba(124,58,237,.8)','rgba(8,145,178,.8)'],borderColor:'transparent'}]},options:{...CDO,scales:{}}});
+  const top6=aggData.filter(a=>a.gallons>0).slice(0,6);
+  mkchart('ac2',{type:'doughnut',data:{labels:top6.map(a=>a.name.split(' ')[0]),datasets:[{data:top6.map(a=>a.gallons),backgroundColor:['rgba(0,200,255,.8)','rgba(0,214,143,.8)','rgba(255,107,53,.8)','rgba(255,214,10,.8)','rgba(124,58,237,.8)','rgba(8,145,178,.8)'],borderColor:'transparent'}]},options:{...CDO,scales:{}}});
+  
+  // Render breakdown table
+  renderAggBreakdown();
+}
 
-  const rows=aggs.map(n=>{
-    const allEntries=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.aggregators||[])).filter(a=>a.name===n);
-    const entry=allEntries[0]||{};
-    const g=totalAggGallons(n,m), gp=p?totalAggGallons(n,p):null;
-    const c=cls(g,gp); const pv=gp?pct(g,gp):null;
-    const hist=MOS.map(mo=>fmtG(totalAggGallons(n,mo))).join(' | ');
-    const stopsActive=Object.keys(GD).filter(sid=>GD[sid]?.[m]?.aggregators?.find(a=>a.name===n)).length;
-    const cpStr=entry.cost_plus>0?`+$${entry.cost_plus.toFixed(4)}`:'—';
-    const rmStr=entry.retail_minus<0?`$${entry.retail_minus.toFixed(4)}`:entry.retail_minus===0?'—':`+$${(entry.retail_minus||0).toFixed(4)}`;
-    return `<tr><td><b>${n}</b></td><td><span class="tag tag-blue">${entry.processor||'—'}</span></td><td>${entry.id||'—'}</td><td>${cpStr}</td><td>${rmStr}</td><td class="${c}" style="font-weight:700">${fmtG(g)}</td><td class="${c}">${pv!==null?`${arrow(c)} ${Math.abs(pv).toFixed(1)}%`:'—'}</td><td>${stopsActive}</td><td style="font-size:.72em;color:var(--muted)">${hist}</td></tr>`;
+function renderAggBreakdown(){
+  const m=getM(), p=pm(m);
+  const filterAgg=document.getElementById('agg-filter')?.value||'all';
+  const q=(document.getElementById('agg-search')?.value||'').toLowerCase();
+  
+  // Build rows: each row = aggregator + truck stop combo
+  const rows=[];
+  Object.keys(GD).forEach(sid=>{
+    const pd=GD[sid]?.[m];
+    if(!pd||!pd.aggregators) return;
+    const mb=MEMBERS.find(m2=>m2.id===sid);
+    if(!mb) return;
+    if(q&&!mb.name.toLowerCase().includes(q)&&!sid.toLowerCase().includes(q)&&!mb.city.toLowerCase().includes(q)&&!mb.state.toLowerCase().includes(q)) return;
+    pd.aggregators.forEach(agg=>{
+      if(filterAgg!=='all'&&agg.name!==filterAgg) return;
+      const gp=p?((GD[sid]?.[p]?.aggregators||[]).find(a=>a.name===agg.name)?.gallons||0):null;
+      rows.push({
+        aggName:agg.name,
+        processor:agg.processor||'—',
+        companyId:agg.id||'—',
+        costPlus:agg.cost_plus,
+        retailMinus:agg.retail_minus,
+        gallons:agg.gallons||0,
+        gallonsP:gp,
+        sid:sid,
+        stopName:mb.name,
+        location:`${mb.city}, ${mb.state}`,
+        group:mb.group
+      });
+    });
+  });
+  
+  // Also add master list aggregators with 0 gallons if filtering "all"
+  if(filterAgg!=='all'&&rows.length===0){
+    // Show empty state for this specific aggregator
+  }
+  
+  rows.sort((a,b)=>a.aggName.localeCompare(b.aggName)||b.gallons-a.gallons);
+  
+  const html=rows.map(r=>{
+    const c=cls(r.gallons,r.gallonsP);
+    const cpStr=r.costPlus>0?`+$${r.costPlus.toFixed(4)}`:'—';
+    const rmStr=r.retailMinus<0?`$${r.retailMinus.toFixed(4)}`:r.retailMinus===0?'—':`+$${(r.retailMinus||0).toFixed(4)}`;
+    return `<tr>
+      <td style="font-weight:700">${r.aggName}</td>
+      <td><span class="tag tag-blue">${r.processor}</span></td>
+      <td>${r.companyId}</td>
+      <td><span class="tag tag-blue">${r.sid}</span></td>
+      <td><b>${r.stopName}</b></td>
+      <td>${r.location}</td>
+      <td>${cpStr}</td>
+      <td>${rmStr}</td>
+      <td class="${c}" style="font-weight:700;text-align:right">${fmtG(r.gallons)}</td>
+      <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${r.sid}')">View →</button></td>
+    </tr>`;
   }).join('');
-  document.getElementById('agg-tbl').innerHTML=`<thead><tr><th>Name</th><th>Processor</th><th>Co. ID</th><th>Cost Plus</th><th>Retail Minus</th><th>Gallons ${lbl(m)}</th><th>Change</th><th>Active Stops</th><th>6-Month History</th></tr></thead><tbody>${rows}</tbody>`;
+  
+  const noData=rows.length===0?`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px">No aggregator data found for this period. Import data via CSV below.</td></tr>`:'';
+  
+  document.getElementById('agg-tbl').innerHTML=`<thead><tr>
+    <th>Aggregator</th><th>Processor</th><th>Co. ID</th>
+    <th>Stop ID</th><th>Truck Stop</th><th>Location</th>
+    <th>Cost Plus</th><th>Retail Minus</th><th>Gallons ${lbl(m)}</th><th></th>
+  </tr></thead><tbody>${html||noData}</tbody>`;
+}
+
+function exportAggBreakdownCSV(){
+  const tbl=document.getElementById('agg-tbl');
+  if(!tbl) return;
+  const rows=[];
+  tbl.querySelectorAll('tr').forEach(tr=>{
+    const cells=[...tr.querySelectorAll('th,td')].map(c=>c.textContent.trim().replace(/View →/g,''));
+    rows.push(cells.join(','));
+  });
+  const csv=rows.join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='aggregator_breakdown.csv';a.click();URL.revokeObjectURL(url);
+}
+
+function importAggCSV(){
+  const fileInput=document.getElementById('agg-csv-file');
+  const status=document.getElementById('agg-csv-status');
+  if(!fileInput.files.length){status.innerHTML='<span style="color:var(--red)">Please select a CSV file.</span>';return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const lines=e.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
+      if(lines.length<2){status.innerHTML='<span style="color:var(--red)">CSV must have a header row + data rows.</span>';return;}
+      const header=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/[^a-z0-9_\s]/g,''));
+      // Expected: truck stop id, aggregator, processor, company id, cost plus, retail minus, gallons, period
+      const idxSid=header.findIndex(h=>h.includes('truck')&&h.includes('id')||h==='stop id'||h==='sid'||h==='id');
+      const idxAgg=header.findIndex(h=>h.includes('aggregator')||h.includes('agg name'));
+      const idxProc=header.findIndex(h=>h.includes('processor')||h.includes('proc'));
+      const idxCoId=header.findIndex(h=>h.includes('company')&&h.includes('id')||h==='co id'||h.includes('companyid'));
+      const idxCP=header.findIndex(h=>h.includes('cost')&&h.includes('plus')||h==='costplus');
+      const idxRM=header.findIndex(h=>h.includes('retail')&&h.includes('minus')||h==='retailminus');
+      const idxGal=header.findIndex(h=>h.includes('gallon'));
+      const idxPeriod=header.findIndex(h=>h.includes('period')||h.includes('month')||h.includes('date'));
+      
+      if(idxSid<0||idxAgg<0){
+        status.innerHTML='<span style="color:var(--red)">CSV must have "Truck Stop ID" and "Aggregator" columns.</span>';
+        return;
+      }
+      
+      let imported=0;
+      for(let i=1;i<lines.length;i++){
+        const cols=lines[i].split(',').map(c=>c.trim());
+        const sid=cols[idxSid]||'';
+        const aggName=cols[idxAgg]||'';
+        if(!sid||!aggName) continue;
+        
+        const processor=idxProc>=0?cols[idxProc]:'Comdata';
+        const companyId=idxCoId>=0?cols[idxCoId]:'';
+        const costPlus=idxCP>=0?parseFloat(cols[idxCP])||0:0;
+        const retailMinus=idxRM>=0?parseFloat(cols[idxRM])||0:0;
+        const gallons=idxGal>=0?parseFloat(cols[idxGal])||0:0;
+        const period=idxPeriod>=0?cols[idxPeriod]||getM():getM();
+        
+        // Ensure GD structure exists
+        if(!GD[sid]) GD[sid]={};
+        if(!GD[sid][period]) GD[sid][period]={aggregators:[],fleets:[]};
+        if(!GD[sid][period].aggregators) GD[sid][period].aggregators=[];
+        
+        // Check if this aggregator already exists for this stop/period
+        const existing=GD[sid][period].aggregators.find(a=>a.name===aggName);
+        if(existing){
+          existing.gallons=gallons;
+          existing.processor=processor;
+          existing.id=companyId;
+          existing.cost_plus=costPlus;
+          existing.retail_minus=retailMinus;
+        } else {
+          GD[sid][period].aggregators.push({
+            name:aggName,
+            processor:processor,
+            id:companyId,
+            cost_plus:costPlus,
+            retail_minus:retailMinus,
+            gallons:gallons
+          });
+        }
+        imported++;
+      }
+      
+      saveData();
+      renderAggregators();
+      status.innerHTML=`<span style="color:var(--green)">✓ Imported ${imported} aggregator records.</span>`;
+    }catch(err){
+      status.innerHTML=`<span style="color:var(--red)">Error: ${err.message}</span>`;
+    }
+  };
+  reader.readAsText(fileInput.files[0]);
+}
+
+function downloadAggTemplate(){
+  const MASTER_AGGS=['QPN','TCS / Apex','Edge','TAFS','OOIDA','TSD / Open Roads','XPO/RXO','OTP Capital','Prime Advantage','Motive','Haul Pay','Fleet Tech','Fleet One Edge','OTR Capital','Amazon','Haulers United','Greenlane','Load Connex','TOA Service','Onramp','WEX','AMBEST','Cloud Trucks','A to B','Bridgehaul'];
+  const header='Truck Stop ID,Aggregator,Processor,Company ID,Cost Plus,Retail Minus,Gallons,Period';
+  const sampleSid=MEMBERS.length>0?MEMBERS[0].id:'R01437';
+  const rows=MASTER_AGGS.map(n=>
+    `${sampleSid},${n},Comdata,,0.0000,0.0000,0,${getM()}`
+  );
+  const csv=[header,...rows].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='aggregator_template.csv';a.click();URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════
