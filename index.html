@@ -2188,8 +2188,13 @@ function estProfit(gallons, rack){
 // SAMPLE DATA - Morehead Shell + generated network
 // ═══════════════════════════════════════════════
 function loadSample(){
-  // Morehead Shell real data from PDF
-  GD['R01437'] = {
+  // Deep-merge helper: hardcoded sample data wins per-period, but user data for other periods is preserved
+  function mergeSample(sid, data){
+    if(!GD[sid]) GD[sid]={};
+    Object.keys(data).forEach(mo=>{ GD[sid][mo]=data[mo]; });
+  }
+  // Morehead Shell real data from PDF + CSV gallon report
+  mergeSample('R01437', {
     '2025-08':{gallons:1850.2,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1100},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:50}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:180},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:90},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:79}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
     '2025-09':{gallons:1980.5,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1180},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:30}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:195},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:79}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
     '2025-10':{gallons:2100.3,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1280},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:30}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:203},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:79}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
@@ -2197,14 +2202,14 @@ function loadSample(){
     '2025-12':{gallons:15226.3,aggregators:[{name:'(QPN) Quality Plus Fuel Network',id:'3633',processor:'TCH',cost_plus:0.08,retail_minus:0,gallons:11373},{name:'Load Connex',id:'7167',processor:'TCH',cost_plus:0,retail_minus:0,gallons:38.54},{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:2873},{name:'TransConnect Services (TCS Fuel)',id:'841',processor:'TCH',cost_plus:0.08,retail_minus:-0.12,gallons:402.1}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:65.44},{name:'APEX CAPITAL CORPORATION',id:'1008',processor:'Comdata',gallons:30.48},{name:'QUALITY LEASE AND RENTAL',id:'7584',processor:'Comdata',gallons:228.68},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100.68},{name:'IBERIA EXPRESS COMPANY',id:'8649',processor:'Comdata',gallons:100},{name:'STEVENS TRANSPORT CO',id:'',processor:'Comdata',gallons:14.38}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
     '2026-01':{gallons:17405.875,aggregators:[{name:'(QPN) Quality Plus Fuel Network',id:'3633',processor:'TCH',cost_plus:0.08,retail_minus:0,gallons:11921},{name:'AtoB',id:'3823',processor:'Mastercard',cost_plus:0.1,retail_minus:-0.1,gallons:1.645},{name:'Fleet Tech',id:'3484',processor:'TCH',cost_plus:0,retail_minus:0,gallons:96.31},{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:4659},{name:'TransConnect Services (TCS Fuel)',id:'841',processor:'TCH',cost_plus:0.08,retail_minus:-0.12,gallons:170.81}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:35.87},{name:'ROGER WARD-SAN ANTONIO IN',id:'7822',processor:'Comdata',gallons:85.74},{name:'US XPRESS ENTERPRISES INC',id:'9705',processor:'Comdata',gallons:35.84},{name:'USA TRUCK INC',id:'1102',processor:'Comdata',gallons:10.01},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:28.61},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:78.41},{name:'V AND S TRUCKING',id:'8972',processor:'Comdata',gallons:168.46},{name:'ASPLUNDH BRUSH CNTR 187D',id:'10161',processor:'Comdata',gallons:63.5},{name:'LIBERTY TRANSPORTATION',id:'8896',processor:'Comdata',gallons:50.67}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
     '2026-02':{gallons:13823.996,aggregators:[{name:'(QPN) Quality Plus Fuel Network',id:'3633',processor:'TCH',cost_plus:0.08,retail_minus:0,gallons:12057},{name:'AtoB',id:'3823',processor:'Mastercard',cost_plus:0.1,retail_minus:-0.1,gallons:646.186},{name:'Fleet Tech',id:'3484',processor:'TCH',cost_plus:0,retail_minus:0,gallons:11.81},{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1109}],fleets:[],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}}
-  };
+  });
 
   // Generate sample data for other truck stops (subset for demo)
   const sampleStops = ['R03650','R00315','R03693','R02592','R01186','R00930','R00782','R00931','R00932','R03922'];
   const aggPool = [{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0},{name:'EFS Transport',id:'4210',processor:'TCH',cost_plus:0.05,retail_minus:-0.05}];
   const fleetPool = ['LANDSTAR SAVINGS PLUS','SWIFT TRANSPORTATION CO','WERNER ENTERPRISES','JB HUNT TRANSPORT','SCHNEIDER NATIONAL','COVENANT TRANSPORT','HEARTLAND EXPRESS'];
   sampleStops.forEach((sid,idx) => {
-    GD[sid] = {};
+    if(!GD[sid]) GD[sid] = {};
     MOS.forEach((mo,mi) => {
       const base = 800 + (idx*120) + (mi*30) + (Math.sin(idx+mi)*100);
       const naggs = Math.floor(Math.random()*2)+1;
@@ -4285,7 +4290,7 @@ function saveData(){try{localStorage.setItem('roadys_fuel',JSON.stringify({GD,NO
 function loadData(){
   try{
     const s=localStorage.getItem('roadys_fuel');
-    if(s){const p=JSON.parse(s);if(p.GD)Object.assign(GD,p.GD);if(p.NOTES)Object.assign(NOTES,p.NOTES);if(p.DOCS)Object.assign(DOCS,p.DOCS);}
+    if(s){const p=JSON.parse(s);if(p.GD){Object.keys(p.GD).forEach(function(sid){if(!GD[sid])GD[sid]={};Object.assign(GD[sid],p.GD[sid]);});}if(p.NOTES)Object.assign(NOTES,p.NOTES);if(p.DOCS)Object.assign(DOCS,p.DOCS);}
     const k=localStorage.getItem('roadys_kpi');
     if(k){const p=JSON.parse(k);if(p.KD)Object.assign(KD,p.KD);if(p.VD)Object.assign(VD,p.VD);}
     loadProgramEnroll();
@@ -4551,6 +4556,7 @@ function populateStopSelect(){
     kpiInit();
     kpiLoadSample();
     loadData();
+    loadSample();
     kpiLoadSample();
     saveData();
     loadSettings();
