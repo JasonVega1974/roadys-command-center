@@ -594,7 +594,7 @@ tr.search-hide{display:none!important;}
     <div class="nav-lbl">Command Center</div>
     <div class="ni active" data-nav-id="master" onclick="nav('master',this)"><span class="ni-icon">📊</span>Executive Summary</div>
     <div class="nav-lbl nav-grp" data-nav-grp="performance">Performance</div>
-    <div class="ni" data-nav-id="mss-metrics" onclick="nav('mss-metrics',this)"><span class="ni-icon">🗺️</span>MSS Metrics</div>
+    <div class="ni" data-nav-id="gs-metrics" onclick="nav('gs-metrics',this)"><span class="ni-icon">🗺️</span>GS Metrics</div>
     <div class="ni" data-nav-id="kpi-financial" onclick="nav('kpi-financial',this)"><span class="ni-icon">💰</span>Financials</div>
     <div class="ni" data-nav-id="kpi-membership" onclick="nav('kpi-membership',this)"><span class="ni-icon">🏪</span>Membership</div>
     <div class="ni" data-nav-id="kpi-bizdev" onclick="nav('kpi-bizdev',this)"><span class="ni-icon">📈</span>Business Dev</div>
@@ -698,13 +698,13 @@ tr.search-hide{display:none!important;}
       <div class="cg2" id="master-charts"></div>
     </div>
 
-    <!-- ══ MSS METRICS ══ -->
+    <!-- ══ GS METRICS ══ -->
     <div class="page" id="pg-mss-metrics">
-      <div class="sec-hdr"><div class="sec-title">MSS PERFORMANCE METRICS</div><span class="badge ba" id="mss-period">—</span></div>
-      <div id="mss-summary-cards" style="margin-bottom:16px"></div>
-      <div id="mss-ranking-section" style="margin-bottom:20px"></div>
-      <div class="cg2" id="mss-charts" style="margin-bottom:20px"></div>
-      <div class="tw"><table class="dt" id="mss-tbl"></table></div>
+      <div class="sec-hdr"><div class="sec-title">GS PERFORMANCE METRICS</div><span class="badge ba" id="gs-period">—</span></div>
+      <div id="gs-summary-cards" style="margin-bottom:16px"></div>
+      <div id="gs-ranking-section" style="margin-bottom:20px"></div>
+      <div class="cg2" id="gs-charts" style="margin-bottom:20px"></div>
+      <div class="tw"><table class="dt" id="gs-tbl"></table></div>
     </div>
 
     <!-- ══ KPI: FINANCIALS ══ -->
@@ -893,7 +893,7 @@ tr.search-hide{display:none!important;}
           <input id="crm-f-followup" type="date" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.88em"></div>
           <div><label style="font-size:.75em;color:var(--muted);display:block;margin-bottom:3px">Source</label>
           <select id="crm-f-source" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.88em">
-            <option>Referral</option><option>Conference</option><option>Cold Call</option><option>Website</option><option>Trade Show</option><option>MSS Lead</option><option>Other</option>
+            <option>Referral</option><option>Conference</option><option>Cold Call</option><option>Website</option><option>Trade Show</option><option>GS Lead</option><option>Other</option>
           </select></div>
         </div>
         <div style="margin-bottom:14px">
@@ -951,10 +951,23 @@ tr.search-hide{display:none!important;}
 
       </div>
       <div id="ov-alerts"></div>
+      
+      <div style="margin:16px 0;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+        <div style="font-weight:700;font-size:.85em;margin-bottom:8px">📥 Import Gallon Report CSV</div>
+        <div style="font-size:.72em;color:var(--muted);margin-bottom:10px">Upload a gallon report CSV (columns: Name, Company ID, Proc, Cost Plus, Retail Minus, then YYYY-MM period columns). Select the stop ID to assign data to.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="csv-stop-select" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;min-width:200px">
+            <option value="">Select Truck Stop...</option>
+          </select>
+          <input type="file" id="csv-gallon-file" accept=".csv" style="font-size:.78em"/>
+          <button class="btn btn-accent" onclick="importGallonCSV()">Import</button>
+        </div>
+        <div id="csv-import-status" style="font-size:.75em;margin-top:8px;color:var(--muted)"></div>
+      </div>
       <div class="kpi-grid" id="ov-kpis"></div>
       <div class="tabs">
         <button class="tab active" onclick="ovTab('gallons',this)">📊 Gallons Trend</button>
-        <button class="tab" onclick="ovTab('territory',this)">🗺️ By MSS</button>
+        <button class="tab" onclick="ovTab('territory',this)">🗺️ By GS</button>
         <button class="tab" onclick="ovTab('byts',this)">🏪 By Truck Stop</button>
         <button class="tab" onclick="ovTab('byagg',this)">🔗 By Aggregator</button>
         <button class="tab" onclick="ovTab('byfleet',this)">🚛 By Fleet</button>
@@ -981,7 +994,7 @@ tr.search-hide{display:none!important;}
           </svg>
           <div class="map-tooltip" id="map-tooltip" style="display:none">
             <div class="map-tooltip-state" id="tt-state"></div>
-            <div class="map-tooltip-row"><span>MSS</span><span class="map-tooltip-val" id="tt-mgr"></span></div>
+            <div class="map-tooltip-row"><span>GS</span><span class="map-tooltip-val" id="tt-mgr"></span></div>
             <div class="map-tooltip-row"><span>Stops</span><span class="map-tooltip-val" id="tt-stops"></span></div>
             <div class="map-tooltip-row"><span>Gallons</span><span class="map-tooltip-val" id="tt-gallons"></span></div>
             <div class="map-tooltip-row"><span>Est. Revenue</span><span class="map-tooltip-val" id="tt-rev"></span></div>
@@ -992,7 +1005,7 @@ tr.search-hide{display:none!important;}
         <div id="map-drill-panel">
           <div class="drill-hdr">
             <div>
-              <div class="drill-title" id="drill-title">MSS Region</div>
+              <div class="drill-title" id="drill-title">GS Region</div>
               <div style="font-size:.78em;color:var(--muted);margin-top:2px" id="drill-subtitle"></div>
             </div>
             <button class="btn" onclick="document.getElementById('map-drill-panel').style.display='none'">✕ Close</button>
@@ -1002,23 +1015,23 @@ tr.search-hide{display:none!important;}
           <div class="tw" style="margin-top:12px"><table class="dt" id="drill-tbl"></table></div>
         </div>
 
-        <!-- MSS Cards -->
+        <!-- GS Cards -->
         <div class="territory-grid" id="ter-ov-cards"></div>
         <div class="tw"><table class="dt" id="ter-ov-tbl"></table></div>
 
-        <!-- MSS Assignment Editor -->
+        <!-- GS Assignment Editor -->
         <div class="mgr-editor" style="margin-top:20px">
-          <h3>👥 MSS Territory Management</h3>
+          <h3>👥 GS Territory Management</h3>
           <p style="font-size:.78em;color:var(--muted);margin-bottom:14px">Add, edit, and assign Member Support Strategists to states. Changes update the map and all reports in real-time.</p>
 
-          <!-- Add New MSS -->
+          <!-- Add New GS -->
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
-            <div style="font-size:.78em;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">➕ Add / Assign MSS</div>
+            <div style="font-size:.78em;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">➕ Add / Assign GS</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
               <div>
-                <label style="display:block;font-size:.68em;color:var(--muted);margin-bottom:3px;text-transform:uppercase">Existing MSS</label>
+                <label style="display:block;font-size:.68em;color:var(--muted);margin-bottom:3px;text-transform:uppercase">Existing GS</label>
                 <select id="new-mgr-name" class="search-input" style="width:180px">
-                  <option value="">— Select MSS —</option>
+                  <option value="">— Select GS —</option>
                 </select>
               </div>
               <div>
@@ -1051,14 +1064,14 @@ tr.search-hide{display:none!important;}
             </div>
           </div>
 
-          <!-- Current MSS Cards -->
-          <div style="font-size:.78em;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Current MSS Assignments</div>
+          <!-- Current GS Cards -->
+          <div style="font-size:.78em;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Current GS Assignments</div>
           <div class="mgr-list" id="mgr-person-list"></div>
 
           <!-- Import / Export -->
           <div style="margin-top:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">
             <div style="font-size:.78em;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">📥 Import / Export Territories</div>
-            <p style="font-size:.75em;color:var(--muted);margin-bottom:10px;line-height:1.6">Import from <b style="color:var(--text)">JSON</b> (exported config) or <b style="color:var(--text)">CSV</b> with columns: <code style="color:var(--accent);font-size:.9em">State, MSS Name, Region Label, Color</code></p>
+            <p style="font-size:.75em;color:var(--muted);margin-bottom:10px;line-height:1.6">Import from <b style="color:var(--text)">JSON</b> (exported config) or <b style="color:var(--text)">CSV</b> with columns: <code style="color:var(--accent);font-size:.9em">State, GS Name, Region Label, Color</code></p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn btn-green" onclick="mgrSave()" style="font-size:.78em">💾 Save Assignments</button>
               <button class="btn" onclick="mgrExport()" style="font-size:.78em">📤 Export JSON</button>
@@ -1098,7 +1111,7 @@ tr.search-hide{display:none!important;}
       <div class="sec-hdr"><div class="sec-title">TRUCK STOPS</div></div>
       <div class="ts-tabs">
         <button class="ts-tab active" onclick="tsTab('list',this)">📋 All Stops</button>
-        <button class="ts-tab" onclick="tsTab('territory',this)">🗺️ By MSS</button>
+        <button class="ts-tab" onclick="tsTab('territory',this)">🗺️ By GS</button>
         <button class="ts-tab" onclick="tsTab('dataentry',this)">✏️ Data Entry</button>
       </div>
 
@@ -1636,7 +1649,7 @@ tr.search-hide{display:none!important;}
           <p style="font-size:.8em;color:var(--muted);line-height:1.7;margin-bottom:10px">Each territory manager can have their own login that <b style="color:var(--text)">filters the dashboard to their stops only</b>. Here's the access model:</p>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
             <div style="background:var(--bg);border-radius:7px;padding:10px 12px;border-left:3px solid var(--accent)"><div style="font-weight:800;font-size:.82em;margin-bottom:4px">Admin</div><div style="font-size:.72em;color:var(--muted);line-height:1.5">Full access. Assign managers, view all stops, export all data, manage API keys.</div></div>
-            <div style="background:var(--bg);border-radius:7px;padding:10px 12px;border-left:3px solid var(--green)"><div style="font-weight:800;font-size:.82em;margin-bottom:4px">MSS (Member Support Strategist)</div><div style="font-size:.72em;color:var(--muted);line-height:1.5">Sees only their assigned states. Can add gallon data, notes, and value props for their stops.</div></div>
+            <div style="background:var(--bg);border-radius:7px;padding:10px 12px;border-left:3px solid var(--green)"><div style="font-weight:800;font-size:.82em;margin-bottom:4px">GS (Growth Strategist)</div><div style="font-size:.72em;color:var(--muted);line-height:1.5">Sees only their assigned states. Can add gallon data, notes, and value props for their stops.</div></div>
             <div style="background:var(--bg);border-radius:7px;padding:10px 12px;border-left:3px solid var(--yellow)"><div style="font-weight:800;font-size:.82em;margin-bottom:4px">Stop Owner</div><div style="font-size:.72em;color:var(--muted);line-height:1.5">Can view and update their single location. Submits gallon data via web form.</div></div>
             <div style="background:var(--bg);border-radius:7px;padding:10px 12px;border-left:3px solid var(--muted)"><div style="font-weight:800;font-size:.82em;margin-bottom:4px">Read Only</div><div style="font-size:.72em;color:var(--muted);line-height:1.5">View-only access to network summary and territory reports. No edits.</div></div>
           </div>
@@ -1647,7 +1660,7 @@ tr.search-hide{display:none!important;}
       <div class="imp-panel" id="imp-panel-managestops">
         <div class="detail-card" style="border-color:rgba(0,200,255,.3);margin-bottom:16px">
           <h3 style="color:var(--accent);font-family:var(--ff);font-size:.88em;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">🏪 Add / Remove Truck Stops</h3>
-          <p style="font-size:.82em;color:var(--muted);line-height:1.6;margin-bottom:16px">Add new locations or offboard existing ones. Changes reflect across all pages including territory maps, MSS assignments, Fuelman/R-Check enrollment, and all metrics.</p>
+          <p style="font-size:.82em;color:var(--muted);line-height:1.6;margin-bottom:16px">Add new locations or offboard existing ones. Changes reflect across all pages including territory maps, GS assignments, Fuelman/R-Check enrollment, and all metrics.</p>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
             <!-- ADD STOP -->
@@ -2181,8 +2194,9 @@ function loadSample(){
     '2025-09':{gallons:1980.5,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1180},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:30}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:195},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:79}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
     '2025-10':{gallons:2100.3,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1280},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:30}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:203},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:79}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
     '2025-11':{gallons:2206.76,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1376},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:30.35}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:203.26},{name:'APEX CAPITAL CORPORATION',id:'1008',processor:'Comdata',gallons:30.48},{name:'MOVIN IRON INC',id:'26099',processor:'Comdata',gallons:169.52},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100.68},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:79.01},{name:'BUCK SPOT INC',id:'28479',processor:'Comdata',gallons:84.23},{name:'GP TRANSCO CD',id:'8955',processor:'Comdata',gallons:50.02},{name:'CHANCER LLC',id:'10163',processor:'Comdata',gallons:78.68},{name:'J AND A GRIFFIN FARMS LLC',id:'',processor:'Comdata',gallons:104.67},{name:'RISINGER BROS TRANSFER INC',id:'1524',processor:'Comdata',gallons:31.02}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
-    '2025-12':{gallons:1371.66,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:832},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:0}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:65.44},{name:'APEX CAPITAL CORPORATION',id:'1008',processor:'Comdata',gallons:30.48},{name:'QUALITY LEASE AND RENTAL',id:'7584',processor:'Comdata',gallons:228.68},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100.68},{name:'IBERIA EXPRESS COMPANY',id:'8649',processor:'Comdata',gallons:100},{name:'STEVENS TRANSPORT CO',id:'',processor:'Comdata',gallons:14.38}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
-    '2026-01':{gallons:1286.11,aggregators:[{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:729},{name:'Amazon Transportation Services (ATS)',id:'3645',processor:'Comdata',cost_plus:0,retail_minus:0,gallons:0}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:35.87},{name:'ROGER WARD-SAN ANTONIO IN',id:'7822',processor:'Comdata',gallons:85.74},{name:'US XPRESS ENTERPRISES INC',id:'9705',processor:'Comdata',gallons:35.84},{name:'USA TRUCK INC',id:'1102',processor:'Comdata',gallons:10.01},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:28.61},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:78.41},{name:'V AND S TRUCKING',id:'8972',processor:'Comdata',gallons:168.46},{name:'ASPLUNDH BRUSH CNTR 187D',id:'10161',processor:'Comdata',gallons:63.5},{name:'LIBERTY TRANSPORTATION',id:'8896',processor:'Comdata',gallons:50.67}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}}
+    '2025-12':{gallons:15226.3,aggregators:[{name:'(QPN) Quality Plus Fuel Network',id:'3633',processor:'TCH',cost_plus:0.08,retail_minus:0,gallons:11373},{name:'Load Connex',id:'7167',processor:'TCH',cost_plus:0,retail_minus:0,gallons:38.54},{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:2873},{name:'TransConnect Services (TCS Fuel)',id:'841',processor:'TCH',cost_plus:0.08,retail_minus:-0.12,gallons:402.1}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:65.44},{name:'APEX CAPITAL CORPORATION',id:'1008',processor:'Comdata',gallons:30.48},{name:'QUALITY LEASE AND RENTAL',id:'7584',processor:'Comdata',gallons:228.68},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:100.68},{name:'IBERIA EXPRESS COMPANY',id:'8649',processor:'Comdata',gallons:100},{name:'STEVENS TRANSPORT CO',id:'',processor:'Comdata',gallons:14.38}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
+    '2026-01':{gallons:17405.875,aggregators:[{name:'(QPN) Quality Plus Fuel Network',id:'3633',processor:'TCH',cost_plus:0.08,retail_minus:0,gallons:11921},{name:'AtoB',id:'3823',processor:'Mastercard',cost_plus:0.1,retail_minus:-0.1,gallons:1.645},{name:'Fleet Tech',id:'3484',processor:'TCH',cost_plus:0,retail_minus:0,gallons:96.31},{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:4659},{name:'TransConnect Services (TCS Fuel)',id:'841',processor:'TCH',cost_plus:0.08,retail_minus:-0.12,gallons:170.81}],fleets:[{name:'LANDSTAR SAVINGS PLUS',id:'8921',processor:'Comdata',gallons:35.87},{name:'ROGER WARD-SAN ANTONIO IN',id:'7822',processor:'Comdata',gallons:85.74},{name:'US XPRESS ENTERPRISES INC',id:'9705',processor:'Comdata',gallons:35.84},{name:'USA TRUCK INC',id:'1102',processor:'Comdata',gallons:10.01},{name:'SWIFT TRANSPORTATION CO OF ARIZONA LLC',id:'2022',processor:'Comdata',gallons:28.61},{name:'PENSKE TRUCK LEASING CO LP',id:'1326',processor:'Comdata',gallons:78.41},{name:'V AND S TRUCKING',id:'8972',processor:'Comdata',gallons:168.46},{name:'ASPLUNDH BRUSH CNTR 187D',id:'10161',processor:'Comdata',gallons:63.5},{name:'LIBERTY TRANSPORTATION',id:'8896',processor:'Comdata',gallons:50.67}],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}},
+    '2026-02':{gallons:13823.996,aggregators:[{name:'(QPN) Quality Plus Fuel Network',id:'3633',processor:'TCH',cost_plus:0.08,retail_minus:0,gallons:12057},{name:'AtoB',id:'3823',processor:'Mastercard',cost_plus:0.1,retail_minus:-0.1,gallons:646.186},{name:'Fleet Tech',id:'3484',processor:'TCH',cost_plus:0,retail_minus:0,gallons:11.81},{name:'RTS Carrier Services',id:'3630',processor:'TCH',cost_plus:0.08,retail_minus:-0.08,gallons:1109}],fleets:[],rack:{rack_index:'Ashland, KY',opis_id:'1437',index_type:'Opis Contract Average',freight:0.0675,federal_tax:0.2502,state_excise:0.234,state_sales_tax:0,misc_tax:0}}
   };
 
   // Generate sample data for other truck stops (subset for demo)
@@ -2303,7 +2317,7 @@ function toast(msg,type='tok'){
 // ═══════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════
-const TITLES={master:'Executive Summary','mss-metrics':'MSS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal'};
+const TITLES={master:'Executive Summary','mss-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal'};
 function nav(id,el){
   // Check if page is locked
   if(SETTINGS.locked[id]&&SETTINGS.pin&&!pinUnlocked[id]){
@@ -2347,7 +2361,7 @@ function currentPage(){ return document.querySelector('.page.active')?.id?.repla
 
 function renderPage(id){
   if(id==='master') renderMaster();
-  else if(id==='mss-metrics') renderMSSMetrics();
+  else if(id==='mss-metrics') renderGSMetrics();
   else if(id==='overview') renderOverview();
   else if(id==='truckstops'){ renderTSList(); dePopulateStopSel(); }
   else if(id==='aggregators') renderAggregators();
@@ -3013,7 +3027,7 @@ function renderTerritoryOverview(){
   const topGrowth = stats[0];
   const totalRev = stats.reduce((s,t)=>s+t.rev,0);
   document.getElementById('ter-ov-kpis').innerHTML =
-    kc('MSS Regions',stats.length,null,'g') +
+    kc('GS Regions',stats.length,null,'g') +
     kc('Top Growth',topGrowth?Math.round(topGrowth.g):0,null,'g',topGrowth?topGrowth.mgr.split(' ')[0]:'')+
     kc('Est. Network Revenue',totalRev,null,'$')+
     kc('Avg Growth %', stats.filter(s=>s.growth!==null).reduce((s,t)=>s+(t.growth||0),0) / Math.max(1,stats.filter(s=>s.growth!==null).length), null,'g');
@@ -3061,7 +3075,7 @@ function renderTerritoryOverview(){
       <td style="color:var(--muted);font-size:.72em">${hist}</td>
     </tr>`;
   }).join('');
-  document.getElementById('ter-ov-tbl').innerHTML = `<thead><tr><th>Rank</th><th>MSS</th><th>Region</th><th>Stops</th><th>Active</th><th>Gallons ${lbl(m)}</th><th>Growth</th><th>Est. Revenue</th><th>6-Month History</th></tr></thead><tbody>${rows}</tbody>`;
+  document.getElementById('ter-ov-tbl').innerHTML = `<thead><tr><th>Rank</th><th>GS</th><th>Region</th><th>Stops</th><th>Active</th><th>Gallons ${lbl(m)}</th><th>Growth</th><th>Est. Revenue</th><th>6-Month History</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -3080,10 +3094,10 @@ function renderTerritoryPage(){
     const totalGP = p ? stats.reduce((s,t)=>s+(t.gp||0),0) : null;
     const totalRev = stats.reduce((s,t)=>s+t.rev,0);
     kpisEl.innerHTML =
-      kc('MSS Regions',stats.length,null,'g')+
+      kc('GS Regions',stats.length,null,'g')+
       kc('Total Gallons',totalG,totalGP)+
       kc('Est. Revenue',totalRev,null,'$')+
-      kc('MSS Growing',stats.filter(s=>s.growth>0).length,null,'g',`of ${stats.length}`);
+      kc('GS Growing',stats.filter(s=>s.growth>0).length,null,'g',`of ${stats.length}`);
   }
 
   const cardsEl = document.getElementById('ter-cards');
@@ -3202,7 +3216,7 @@ function renderTSList(){
     </tr>`;
   }).join('');
 
-  document.getElementById('ts-list-tbl').innerHTML=`<thead><tr><th>Rank</th><th>ID</th><th>Name / Company</th><th>Location</th><th>MSS</th><th>Group</th><th>Type</th><th>Gallons ${lbl(m)}</th><th>Agg Gal</th><th>Fleet Gal</th><th>Alerts</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+  document.getElementById('ts-list-tbl').innerHTML=`<thead><tr><th>Rank</th><th>ID</th><th>Name / Company</th><th>Location</th><th>GS</th><th>Group</th><th>Type</th><th>Gallons ${lbl(m)}</th><th>Agg Gal</th><th>Fleet Gal</th><th>Alerts</th><th></th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -3228,7 +3242,7 @@ function showTSDetail(sid){
   // Manager
   const mgr=getManager(mb.state);
   const mgrBar=document.getElementById('tsd-mgr-bar');
-  mgrBar.innerHTML=`🗺️ MSS: <b style="color:var(--accent);margin-left:4px">${mgr}</b> &nbsp;|&nbsp; Region: ${mb.state||'—'}`;
+  mgrBar.innerHTML=`🗺️ GS: <b style="color:var(--accent);margin-left:4px">${mgr}</b> &nbsp;|&nbsp; Region: ${mb.state||'—'}`;
   mgrBar.style.display='flex';
 
   // Alerts
@@ -3563,7 +3577,7 @@ function renderFuelman(){
       return `<tr style="opacity:.7"><td style="text-align:center"><label class="tog-sm"><input type="checkbox" onchange="toggleProgram('${mb.id}','fuelman',this.checked)"><span class="slider"></span></label></td><td>${mb.id}</td><td>${mb.name}</td><td>${mb.city||'—'}, ${mb.state||'—'}</td><td style="font-size:.75em"><span style="color:${mgrColor};font-weight:600">${mgr}</span></td><td style="color:var(--muted)">N/A</td><td style="color:var(--muted)">N/A</td><td style="color:var(--muted)">N/A</td></tr>`;
     }
   }).join('');
-  document.getElementById('fuelman-tbl').innerHTML=`<thead><tr><th style="width:44px;text-align:center">On</th><th>ID</th><th>Truck Stop</th><th>Location</th><th>MSS</th><th>Fuelman Gal ${lbl(m)}</th><th>Prior</th><th>Change</th></tr></thead><tbody>${rows}</tbody>`;
+  document.getElementById('fuelman-tbl').innerHTML=`<thead><tr><th style="width:44px;text-align:center">On</th><th>ID</th><th>Truck Stop</th><th>Location</th><th>GS</th><th>Fuelman Gal ${lbl(m)}</th><th>Prior</th><th>Change</th></tr></thead><tbody>${rows}</tbody>`;
 }
 function toggleProgram(sid,program,val){
   setEnrolled(sid,program,val);
@@ -3634,7 +3648,7 @@ function renderRCheck(){
       return `<tr style="opacity:.7"><td style="text-align:center"><label class="tog-sm"><input type="checkbox" onchange="toggleProgram('${mb.id}','rcheck',this.checked)"><span class="slider"></span></label></td><td>${mb.id}</td><td>${mb.name}</td><td>${mb.city||'—'}, ${mb.state||'—'}</td><td style="font-size:.75em"><span style="color:${mgrColor};font-weight:600">${mgr}</span></td><td style="color:var(--muted)">N/A</td><td style="color:var(--muted)">N/A</td><td style="color:var(--muted)">N/A</td></tr>`;
     }
   }).join('');
-  document.getElementById('rcheck-tbl').innerHTML=`<thead><tr><th style="width:44px;text-align:center">On</th><th>ID</th><th>Truck Stop</th><th>Location</th><th>MSS</th><th>R-Check Gal ${lbl(m)}</th><th>Prior</th><th>Change</th></tr></thead><tbody>${rows}</tbody>`;
+  document.getElementById('rcheck-tbl').innerHTML=`<thead><tr><th style="width:44px;text-align:center">On</th><th>ID</th><th>Truck Stop</th><th>Location</th><th>GS</th><th>R-Check Gal ${lbl(m)}</th><th>Prior</th><th>Change</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 function renderDiscounts(){
@@ -4458,6 +4472,76 @@ function showPinModal(targetId,navEl){
   setTimeout(()=>input.focus(),50);
 }
 
+
+function importGallonCSV(){
+  const fileInput=document.getElementById('csv-gallon-file');
+  const stopSel=document.getElementById('csv-stop-select');
+  const status=document.getElementById('csv-import-status');
+  const sid=stopSel.value;
+  if(!sid){status.innerHTML='<span style="color:var(--red)">Please select a truck stop</span>';return;}
+  if(!fileInput.files[0]){status.innerHTML='<span style="color:var(--red)">Please select a CSV file</span>';return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const lines=e.target.result.replace(/\r/g,'').split('\n').filter(l=>l.trim());
+      const headers=lines[0].split(',').map(h=>h.replace(/"/g,'').trim());
+      // Find period columns (YYYY-MM format)
+      const periodCols=[];
+      headers.forEach((h,i)=>{if(/^\d{4}-\d{2}$/.test(h))periodCols.push({idx:i,period:h});});
+      if(!periodCols.length){status.innerHTML='<span style="color:var(--red)">No period columns (YYYY-MM) found</span>';return;}
+      // Parse rows
+      const rows=[];
+      for(let r=1;r<lines.length;r++){
+        const cols=lines[r].match(/("([^"]*)"|[^,]*)/g)||[];
+        const clean=cols.map(c=>c.replace(/^"|"$/g,'').trim());
+        if(!clean[0])continue;
+        rows.push({
+          name:clean[0]||'',
+          id:clean[1]||'',
+          processor:clean[2]||'TCH',
+          cost_plus:parseFloat((clean[3]||'0').replace(/[$,]/g,''))||0,
+          retail_minus:parseFloat((clean[4]||'0').replace(/[$,]/g,''))||0,
+          periods:{}
+        });
+        periodCols.forEach(pc=>{
+          const gal=parseFloat((clean[pc.idx]||'0').replace(/[,]/g,''))||0;
+          rows[rows.length-1].periods[pc.period]=gal;
+        });
+      }
+      if(!GD[sid])GD[sid]={};
+      let imported=0;
+      periodCols.forEach(pc=>{
+        const mo=pc.period;
+        const aggs=rows.filter(r=>r.periods[mo]>0).map(r=>({
+          name:r.name,id:r.id,processor:r.processor,
+          cost_plus:r.cost_plus,retail_minus:r.retail_minus,
+          gallons:r.periods[mo]
+        }));
+        const totalGal=aggs.reduce((s,a)=>s+a.gallons,0);
+        if(totalGal>0){
+          if(!GD[sid][mo])GD[sid][mo]={gallons:0,aggregators:[],fleets:[],rack:GD[sid]?.['2026-01']?.rack||GD[sid]?.['2025-12']?.rack||{}};
+          GD[sid][mo].gallons=totalGal;
+          GD[sid][mo].aggregators=aggs;
+          imported++;
+        }
+      });
+      saveData();
+      updateAll();
+      status.innerHTML=`<span style="color:var(--green)">✓ Imported ${rows.length} aggregators across ${imported} periods for ${sid}</span>`;
+    }catch(err){
+      status.innerHTML=`<span style="color:var(--red)">Error: ${err.message}</span>`;
+    }
+  };
+  reader.readAsText(fileInput.files[0]);
+}
+
+function populateStopSelect(){
+  const sel=document.getElementById('csv-stop-select');
+  if(!sel)return;
+  const stops=MEMBERS.filter(m=>m.status==='active'&&m.id).sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML='<option value="">Select Truck Stop...</option>'+stops.map(s=>`<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
+}
+
 // ═══════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════
@@ -4474,6 +4558,7 @@ function showPinModal(targetId,navEl){
     mgrLoadSaved();
     vpLoadFromStorage();
     renderMaster();
+    populateStopSelect();
   }catch(e){
     console.error('Init error:',e);
     document.getElementById('master-kpis').innerHTML='<div style="color:red;padding:20px">Init error: '+e.message+'</div>';
@@ -5221,7 +5306,7 @@ function renderMgrCards(){
           <select class="mgr-edit-input" id="mgraddst-${eid}" style="width:130px">
             <option value="">— Add —</option>
             ${unassigned.map(st=>`<option value="${st}">${st} — ${STATE_NAMES[st]||st}</option>`).join('')}
-            <optgroup label="Reassign from other MSS">
+            <optgroup label="Reassign from other GS">
               ${ALL_STATES.filter(st=>MANAGER_MAP[st]&&MANAGER_MAP[st]!=='Unassigned'&&MANAGER_MAP[st]!==mgr).map(st=>`<option value="${st}">${st} (${MANAGER_MAP[st]})</option>`).join('')}
             </optgroup>
           </select>
@@ -5244,7 +5329,7 @@ function renderMgrCards(){
   }).join('');
 }
 
-// Toggle edit mode for an MSS card
+// Toggle edit mode for a GS card
 function mgrToggleEdit(eid, mgr){
   const card=document.getElementById('mgrcard-'+eid);
   if(!card) return;
@@ -5261,7 +5346,7 @@ function mgrToggleEdit(eid, mgr){
   }
 }
 
-// Remove a state from an MSS inline
+// Remove a state from a GS inline
 function mgrRemoveState(mgr, st, eid){
   if(!confirm(`Remove ${st} (${STATE_NAMES[st]||st}) from ${mgr}?`)) return;
   MANAGER_MAP[st]='Unassigned';
@@ -5272,7 +5357,7 @@ function mgrRemoveState(mgr, st, eid){
   toast(`${st} removed from ${mgr}`);
 }
 
-// Add a state to an MSS from the inline dropdown
+// Add a state to a GS from the inline dropdown
 function mgrAddStateTo(mgr, eid){
   const sel=document.getElementById('mgraddst-'+eid);
   const st=sel?.value;
@@ -5290,7 +5375,7 @@ function mgrAddStateTo(mgr, eid){
   toast(`${st} → ${mgr}`);
 }
 
-// Save color + label changes for an MSS card
+// Save color + label changes for a GS card
 function mgrSaveCard(mgr, eid){
   const newLabel=document.getElementById('mgrlabel-'+eid)?.value.trim();
   const newColor=document.getElementById('mgrcolor-'+eid)?.value;
@@ -5392,7 +5477,7 @@ function mgrAssignEnhanced(){
   const nameFromSel=document.getElementById('new-mgr-name').value;
   const nameFromInput=document.getElementById('new-mgr-input').value.trim();
   const mgr=nameFromInput||nameFromSel;
-  if(!mgr){toast('Enter or select an MSS name','terr');return;}
+  if(!mgr){toast('Enter or select a GS name','terr');return;}
 
   // Gather states from single select or multi-state input
   const singleSt=document.getElementById('new-mgr-state').value;
@@ -5429,7 +5514,7 @@ function mgrAssignEnhanced(){
 
 // CSV Export
 function mgrExportCSV(){
-  const rows=[['State','State Name','MSS Name','Region Label','Color']];
+  const rows=[['State','State Name','GS Name','Region Label','Color']];
   ALL_STATES.forEach(st=>{
     const mgr=MANAGER_MAP[st]||'Unassigned';
     const region=REGIONS[mgr]?.label||'';
@@ -5458,7 +5543,7 @@ function mgrImportCSV(input){
       const mgrCol=hdr.findIndex(h=>h.includes('mss')||h.includes('manager')||h.includes('name'));
       const labelCol=hdr.findIndex(h=>h.includes('region')||h.includes('label')||h.includes('territory'));
       const colorCol=hdr.findIndex(h=>h.includes('color')||h.includes('colour'));
-      if(stateCol===-1||mgrCol===-1){toast('CSV must have State and MSS Name columns','terr');return;}
+      if(stateCol===-1||mgrCol===-1){toast('CSV must have State and GS Name columns','terr');return;}
 
       let count=0;
       for(let i=1;i<lines.length;i++){
@@ -5492,7 +5577,7 @@ function mgrImportCSV(input){
 
 // CSV Template Download
 function mgrDownloadTemplate(){
-  const rows=[['State','State Name','MSS Name','Region Label','Color']];
+  const rows=[['State','State Name','GS Name','Region Label','Color']];
   ALL_STATES.forEach(st=>{
     const mgr=MANAGER_MAP[st]||'Unassigned';
     rows.push([st,STATE_NAMES[st]||st,mgr,REGIONS[mgr]?.label||'',REGIONS[mgr]?.color||'']);
@@ -5501,7 +5586,7 @@ function mgrDownloadTemplate(){
   const b=new Blob([csv],{type:'text/csv'});
   const u=URL.createObjectURL(b);
   const a=document.createElement('a'); a.href=u; a.download='roadys_mss_template.csv'; a.click();
-  URL.revokeObjectURL(u); toast('Template downloaded — fill in MSS Name, Region Label, Color and re-import');
+  URL.revokeObjectURL(u); toast('Template downloaded — fill in GS Name, Region Label, Color and re-import');
 }
 // ═══════════════════════════════════════════════
 // SORTABLE TABLES — event delegation (survives re-renders)
@@ -5616,20 +5701,20 @@ if(_origNav){
 setTimeout(attachSortableAll,500);
 
 // ═══════════════════════════════════════════════
-// MSS PERFORMANCE METRICS
+// GS PERFORMANCE METRICS
 // ═══════════════════════════════════════════════
-function renderMSSMetrics(){
+function renderGSMetrics(){
   const m=getM(), p=pm(m);
   const mi=MOS.indexOf(m);
   const ytdMos=MOS.slice(0,mi+1);
   const ytdLen=ytdMos.length||1;
-  document.getElementById('mss-period').textContent=periodLabel(m);
+  document.getElementById('gs-period').textContent=periodLabel(m);
 
   const mssNames=Object.keys(REGIONS).filter(n=>n!=='Unassigned');
   const allMembers=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
   const totalStopCount=allMembers.length||1;
 
-  // Build per-MSS data — everything normalized to per-stop YTD averages
+  // Build per-GS data — everything normalized to per-stop YTD averages
   const mssData=mssNames.map(name=>{
     const reg=REGIONS[name]||{};
     const states=reg.states||[];
@@ -5715,7 +5800,7 @@ function renderMSSMetrics(){
   const totFuel=mssData.reduce((s,d)=>s+d.fuelCur,0);
   const totFuelP=p?mssData.reduce((s,d)=>s+(d.fuelPri||0),0):null;
   const totFuelYTD=mssData.reduce((s,d)=>s+d.fuelYTD,0);
-  document.getElementById('mss-summary-cards').innerHTML=
+  document.getElementById('gs-summary-cards').innerHTML=
     `<div class="kpi-grid">`+
     kc('Network Fuel Gallons',totFuel,totFuelP,'g','All territories',totFuelYTD)+
     kc('Fuelman Locations',mssData.reduce((s,d)=>s+d.fmCount,0),null,'g','Enrolled in Fuelman')+
@@ -5732,7 +5817,7 @@ function renderMSSMetrics(){
     return `<div style="display:flex;align-items:center;gap:6px;margin-top:3px"><div style="flex:1;height:6px;border-radius:3px;background:var(--bg);overflow:hidden"><div style="width:${w}%;height:100%;border-radius:3px;background:${color}"></div></div><span style="font-weight:700;font-size:.8em;min-width:28px;text-align:right">${score}</span></div>`;
   }
 
-  // ── Ranked MSS cards ──
+  // ── Ranked GS cards ──
   const sorted=[...mssData].sort((a,b)=>b.score-a.score);
   const cardHTML=sorted.map((d,i)=>{
     const medal=i<3?['🥇','🥈','🥉'][i]:'#'+(i+1);
@@ -5775,16 +5860,16 @@ function renderMSSMetrics(){
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">${metricCards}</div>
     </div>`;
   }).join('');
-  document.getElementById('mss-ranking-section').innerHTML=`<div style="display:grid;gap:12px">${cardHTML}</div>`;
+  document.getElementById('gs-ranking-section').innerHTML=`<div style="display:grid;gap:12px">${cardHTML}</div>`;
 
   // ── Charts ──
   const cLabels=sorted.map(d=>d.name.split(' ')[0]);
   const cColors=sorted.map(d=>d.color);
-  document.getElementById('mss-charts').innerHTML=`
-    <div class="cc"><div class="cc-lbl">Score out of 100</div><div class="cw"><canvas id="mss-c1"></canvas></div></div>
-    <div class="cc"><div class="cc-lbl">Fuel Gallons Avg/Stop YTD</div><div class="cw"><canvas id="mss-c2"></canvas></div></div>
-    <div class="cc"><div class="cc-lbl">Program Enrollment %</div><div class="cw"><canvas id="mss-c3"></canvas></div></div>
-    <div class="cc"><div class="cc-lbl">Rewards Adds vs Redeems (Avg/Stop)</div><div class="cw"><canvas id="mss-c4"></canvas></div></div>
+  document.getElementById('gs-charts').innerHTML=`
+    <div class="cc"><div class="cc-lbl">Score out of 100</div><div class="cw"><canvas id="gs-c1"></canvas></div></div>
+    <div class="cc"><div class="cc-lbl">Fuel Gallons Avg/Stop YTD</div><div class="cw"><canvas id="gs-c2"></canvas></div></div>
+    <div class="cc"><div class="cc-lbl">Program Enrollment %</div><div class="cw"><canvas id="gs-c3"></canvas></div></div>
+    <div class="cc"><div class="cc-lbl">Rewards Adds vs Redeems (Avg/Stop)</div><div class="cw"><canvas id="gs-c4"></canvas></div></div>
   `;
   mkchart('mss-c1',{type:'bar',data:{labels:cLabels,datasets:[{label:'Score',data:sorted.map(d=>d.score),backgroundColor:cColors.map(c=>c+'BB'),borderColor:cColors,borderWidth:1}]},options:{...CDO,scales:{...CDO.scales,y:{...CDO.scales.y,max:100}},plugins:{...CDO.plugins,legend:{display:false}}}});
   mkchart('mss-c2',{type:'bar',data:{labels:cLabels,datasets:[{label:'Avg Gal/Stop',data:sorted.map(d=>Math.round(d.fuelAvg)),backgroundColor:cColors.map(c=>c+'BB'),borderColor:cColors,borderWidth:1}]},options:{...CDO,plugins:{...CDO.plugins,legend:{display:false}}}});
@@ -5822,8 +5907,8 @@ function renderMSSMetrics(){
       <td style="color:${d.offYTD>0?'var(--red)':'var(--green)'};font-weight:600">${d.offYTD}</td>
     </tr>`;
   }).join('');
-  document.getElementById('mss-tbl').innerHTML=`<thead><tr>
-    <th>Rank</th><th>MSS</th><th>Score</th><th>Stops</th>
+  document.getElementById('gs-tbl').innerHTML=`<thead><tr>
+    <th>Rank</th><th>GS</th><th>Score</th><th>Stops</th>
     <th>Fuel Avg/Stop</th><th>Fuel Δ</th>
     <th>Fuelman Loc</th><th>R-Check Loc</th>
     <th>Adds Avg/Stop</th><th>Redeems Avg/Stop</th>
@@ -5861,7 +5946,7 @@ function addTruckStop(){
   saveMembersList();
   saveData();
 
-  msg.innerHTML=`<span style="color:var(--green)">✅ Added <b>${name}</b> (${id}) — MSS: <b>${getManager(state)}</b></span>`;
+  msg.innerHTML=`<span style="color:var(--green)">✅ Added <b>${name}</b> (${id}) — GS: <b>${getManager(state)}</b></span>`;
 
   // Clear fields
   ['ms-add-id','ms-add-name','ms-add-company','ms-add-street','ms-add-city','ms-add-state','ms-add-zip','ms-add-exit','ms-add-phone'].forEach(fid=>document.getElementById(fid).value='');
@@ -5966,7 +6051,7 @@ function renderManageStops(){
     </tr>`;
   }).join('');
   document.getElementById('ms-list-tbl').innerHTML=`<thead><tr>
-    <th>ID</th><th>Name</th><th>Company</th><th>Location</th><th>Status</th><th>MSS</th><th>FM</th><th>RC</th><th>Group</th><th>Type</th>
+    <th>ID</th><th>Name</th><th>Company</th><th>Location</th><th>Status</th><th>GS</th><th>FM</th><th>RC</th><th>Group</th><th>Type</th>
   </tr></thead><tbody>${rows}</tbody>`;
 }
 
