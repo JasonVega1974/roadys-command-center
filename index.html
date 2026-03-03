@@ -3870,57 +3870,52 @@ function saveTSNote(){
 // AGGREGATORS PAGE
 // ═══════════════════════════════════════════════
 function renderAggregators(){
-  const m=getM(), p=pm(m);
+  const m=getM(), p=pm(m), y=py(m);
   
-  // Master aggregator list
   const MASTER_AGGS=['QPN','TCS / Apex','Edge','TAFS','OOIDA','TSD / Open Roads','XPO/RXO','OTP Capital','Prime Advantage','Motive','Haul Pay','Fleet Tech','Fleet One Edge','OTR Capital','Amazon','Haulers United','Greenlane','Load Connex','TOA Service','Onramp','WEX','AMBEST','Cloud Trucks','A to B','Bridgehaul'];
   
-  // Get all aggregators from data (may include ones not in master list)
   const dataAggs=allAggregators();
   const allAggs=[...new Set([...MASTER_AGGS,...dataAggs])];
   
-  // Total gallons
+  // Totals: current, prior month, prior year, YTD
   const totalAggG=allAggs.reduce((s,n)=>s+totalAggGallons(n,m),0);
   const totalAggGP=p?allAggs.reduce((s,n)=>s+totalAggGallons(n,p),0):null;
+  const totalAggGY=y?allAggs.reduce((s,n)=>s+totalAggGallons(n,y),0):null;
   const ytdAggG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>allAggs.reduce((ss,n)=>ss+totalAggGallons(n,mo),0)+s,0);
   const activeAggs=allAggs.filter(n=>totalAggGallons(n,m)>0).length;
+  const activeAggsP=p?allAggs.filter(n=>totalAggGallons(n,p)>0).length:null;
+  const avgPerAgg=activeAggs?Math.round(totalAggG/activeAggs):0;
+  const avgPerAggP=(p&&activeAggsP)?Math.round((totalAggGP||0)/activeAggsP):null;
   
-  // Period label
   document.getElementById('agg-period').textContent=periodLabel(m);
   
-  // Top KPI cards - Total Aggregator Gallons + active count + YTD
+  // Top KPI cards with full comparisons (vs prior month, vs prior year, YTD)
   document.getElementById('agg-kpis').innerHTML=
-    kc('Total Aggregator Gallons',totalAggG,totalAggGP,'g',`${allAggs.length} aggregators`,ytdAggG)+
-    kc('Active Aggregators',activeAggs,null,'g',`${allAggs.length-activeAggs} with no data`)+
-    kc('Avg Gallons / Aggregator',activeAggs?Math.round(totalAggG/activeAggs):0,null,'g');
+    kc('Total Aggregator Gallons',totalAggG,totalAggGP,'g',allAggs.length+' aggregators',ytdAggG,totalAggGY)+
+    kc('Active Aggregators',activeAggs,activeAggsP,'g',(allAggs.length-activeAggs)+' with no data')+
+    kc('Avg Gallons / Aggregator',avgPerAgg,avgPerAggP,'g');
   
-  // Individual aggregator cards sorted by gallons
+  // Individual aggregator cards with full comparison data
   const aggData=allAggs.map(n=>{
     const g=totalAggGallons(n,m);
     const gp=p?totalAggGallons(n,p):null;
+    const gy=y?totalAggGallons(n,y):null;
+    const ytd=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+totalAggGallons(n,mo),0);
     const stopsActive=Object.keys(GD).filter(sid=>GD[sid]?.[m]?.aggregators?.find(a=>a.name===n)).length;
-    return {name:n,gallons:g,gallonsP:gp,stops:stopsActive};
+    return {name:n,gallons:g,gallonsP:gp,gallonsY:gy,ytd:ytd,stops:stopsActive};
   }).sort((a,b)=>b.gallons-a.gallons);
   
+  // Each card uses kc() for consistent % vs prior month, % vs prior year, gallon diffs, YTD
   document.getElementById('agg-cards').innerHTML=aggData.map(a=>{
-    const c=cls(a.gallons,a.gallonsP);
-    const statusClass=a.gallons>0?'up':'';
-    return `<div class="kc ${statusClass}" style="cursor:pointer" onclick="document.getElementById('agg-filter').value='${a.name.replace(/'/g,"\\'")}';renderAggBreakdown();document.getElementById('agg-tbl').scrollIntoView({behavior:'smooth'})">
-      <div style="font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.name}">${a.name}</div>
-      <div style="font-size:1.3em;font-weight:800;margin-top:4px" class="${c}">${fmtG(a.gallons)}</div>
-      <div style="font-size:.65em;color:var(--muted);margin-top:2px">${a.stops} stop${a.stops!==1?'s':''}</div>
-    </div>`;
+    return '<div style="cursor:pointer" onclick="document.getElementById(\'agg-filter\').value=\''+a.name.replace(/'/g,"\\'")+'\';renderAggBreakdown();document.getElementById(\'agg-tbl\').scrollIntoView({behavior:\'smooth\'})">'+kc(a.name,a.gallons,a.gallonsP,'g',a.stops+' stop'+(a.stops!==1?'s':''),a.ytd,a.gallonsY)+'</div>';
   }).join('');
   
   // Populate aggregator filter dropdown
   const aggFilter=document.getElementById('agg-filter');
-  aggFilter.innerHTML='<option value="all">All Aggregators</option>'+allAggs.sort().map(n=>`<option value="${n}">${n}</option>`).join('');
+  aggFilter.innerHTML='<option value="all">All Aggregators</option>'+allAggs.sort().map(n=>'<option value="'+n+'">'+n+'</option>').join('');
   
   // Charts
-  document.getElementById('agg-charts').innerHTML=`
-    <div class="cc"><div class="cc-lbl">Aggregator Gallons by Month</div><div class="cw"><canvas id="ac1"></canvas></div></div>
-    <div class="cc"><div class="cc-lbl">Aggregator Share ${lbl(m)}</div><div class="cw"><canvas id="ac2"></canvas></div></div>
-  `;
+  document.getElementById('agg-charts').innerHTML='<div class="cc"><div class="cc-lbl">Aggregator Gallons by Month</div><div class="cw"><canvas id="ac1"></canvas></div></div><div class="cc"><div class="cc-lbl">Aggregator Share '+lbl(m)+'</div><div class="cw"><canvas id="ac2"></canvas></div></div>';
   const top5=aggData.filter(a=>a.gallons>0).slice(0,5);
   const colors5=['#00C8FF','#00D68F','#FF6B35','#FFD60A','#7C3AED'];
   const datasets=top5.map((a,i)=>ld(a.name.split(' ').slice(0,2).join(' '),MOS.map(mo=>totalAggGallons(a.name,mo)),colors5[i],'transparent'));
@@ -3928,7 +3923,6 @@ function renderAggregators(){
   const top6=aggData.filter(a=>a.gallons>0).slice(0,6);
   mkchart('ac2',{type:'doughnut',data:{labels:top6.map(a=>a.name.split(' ')[0]),datasets:[{data:top6.map(a=>a.gallons),backgroundColor:['rgba(0,200,255,.8)','rgba(0,214,143,.8)','rgba(255,107,53,.8)','rgba(255,214,10,.8)','rgba(124,58,237,.8)','rgba(8,145,178,.8)'],borderColor:'transparent'}]},options:{...CDO,scales:{}}});
   
-  // Render breakdown table
   renderAggBreakdown();
 }
 
@@ -4104,56 +4098,53 @@ function downloadAggTemplate(){
 // FLEETS PAGE
 // ═══════════════════════════════════════════════
 function renderFleetList(){
-  const m=getM(), p=pm(m);
+  const m=getM(), p=pm(m), y=py(m);
   const fleets=allFleets();
   
-  // Total gallons
+  // Totals: current, prior month, prior year, YTD
   const totalFleetG=fleets.reduce((s,n)=>s+totalFleetGallons(n,m),0);
   const totalFleetGP=p?fleets.reduce((s,n)=>s+totalFleetGallons(n,p),0):null;
+  const totalFleetGY=y?fleets.reduce((s,n)=>s+totalFleetGallons(n,y),0):null;
   const ytdFleetG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>fleets.reduce((ss,n)=>ss+totalFleetGallons(n,mo),0)+s,0);
   const activeFleets=fleets.filter(n=>totalFleetGallons(n,m)>0).length;
+  const activeFleetsP=p?fleets.filter(n=>totalFleetGallons(n,p)>0).length:null;
+  const avgPerFleet=activeFleets?Math.round(totalFleetG/activeFleets):0;
+  const avgPerFleetP=(p&&activeFleetsP)?Math.round((totalFleetGP||0)/activeFleetsP):null;
   
   document.getElementById('fleet-period').textContent=periodLabel(m);
   
-  // Top KPI cards
+  // Top KPI cards with full comparisons (vs prior month, vs prior year, YTD)
   document.getElementById('fleet-kpis').innerHTML=
-    kc('Total Fleet Gallons',totalFleetG,totalFleetGP,'g',`${fleets.length} fleets`,ytdFleetG)+
-    kc('Active Fleets',activeFleets,null,'g',`${fleets.length-activeFleets} with no data`)+
-    kc('Avg Gallons / Fleet',activeFleets?Math.round(totalFleetG/activeFleets):0,null,'g');
+    kc('Total Fleet Gallons',totalFleetG,totalFleetGP,'g',fleets.length+' fleets',ytdFleetG,totalFleetGY)+
+    kc('Active Fleets',activeFleets,activeFleetsP,'g',(fleets.length-activeFleets)+' with no data')+
+    kc('Avg Gallons / Fleet',avgPerFleet,avgPerFleetP,'g');
   
   // Build fleet data sorted by gallons, top 25
   const fleetData=fleets.map(n=>{
     const g=totalFleetGallons(n,m);
     const gp=p?totalFleetGallons(n,p):null;
+    const gy=y?totalFleetGallons(n,y):null;
+    const ytd=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+totalFleetGallons(n,mo),0);
     const stopsActive=Object.keys(GD).filter(sid=>GD[sid]?.[m]?.fleets?.find(f=>f.name===n)).length;
     const entry=Object.values(GD).flatMap(sd=>Object.values(sd).flatMap(pd=>pd.fleets||[])).find(f=>f.name===n)||{};
-    return {name:n,gallons:g,gallonsP:gp,stops:stopsActive,processor:entry.processor||'—'};
+    return {name:n,gallons:g,gallonsP:gp,gallonsY:gy,ytd:ytd,stops:stopsActive,processor:entry.processor||'—'};
   }).sort((a,b)=>b.gallons-a.gallons);
   
   const top25=fleetData.slice(0,25);
   
-  // Top 25 fleet cards
+  // Top 25 fleet cards using kc() for consistent % vs prior month, vs prior year, YTD
   document.getElementById('fleet-cards').innerHTML=top25.map(f=>{
-    const c=cls(f.gallons,f.gallonsP);
-    const statusClass=f.gallons>0?'up':'';
-    return `<div class="kc ${statusClass}" style="cursor:pointer" onclick="document.getElementById('fleet-filter').value='${f.name.replace(/'/g,"\\'")}';renderFleetBreakdown();document.getElementById('fleet-tbl').scrollIntoView({behavior:'smooth'})">
-      <div style="font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${f.name}">${f.name}</div>
-      <div style="font-size:1.3em;font-weight:800;margin-top:4px" class="${c}">${fmtG(f.gallons)}</div>
-      <div style="font-size:.65em;color:var(--muted);margin-top:2px">${f.stops} stop${f.stops!==1?'s':''} · ${f.processor}</div>
-    </div>`;
-  }).join('')+(fleetData.length>25?`<div class="kc" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.82em">+${fleetData.length-25} more fleets</div>`:'');
+    return '<div style="cursor:pointer" onclick="document.getElementById(\'fleet-filter\').value=\''+f.name.replace(/'/g,"\\'")+'\';renderFleetBreakdown();document.getElementById(\'fleet-tbl\').scrollIntoView({behavior:\'smooth\'})">'+kc(f.name,f.gallons,f.gallonsP,'g',f.stops+' stop'+(f.stops!==1?'s':'')+' · '+f.processor,f.ytd,f.gallonsY)+'</div>';
+  }).join('')+(fleetData.length>25?'<div class="kc" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.82em">+'+(fleetData.length-25)+' more fleets</div>':'');
   
-  // Populate fleet filter dropdown (all fleets)
+  // Populate fleet filter dropdown
   const fleetFilter=document.getElementById('fleet-filter');
-  fleetFilter.innerHTML='<option value="all">All Fleets ('+fleets.length+')</option>'+fleetData.map(f=>`<option value="${f.name}">${f.name} (${fmtG(f.gallons)})</option>`).join('');
+  fleetFilter.innerHTML='<option value="all">All Fleets ('+fleets.length+')</option>'+fleetData.map(f=>'<option value="'+f.name+'">'+f.name+' ('+fmtG(f.gallons)+')</option>').join('');
   
   // Charts
   const chartWrap=document.getElementById('fleet-charts');
   if(chartWrap){
-    chartWrap.innerHTML=`
-      <div class="cc"><div class="cc-lbl">Top 5 Fleet Gallons by Month</div><div class="cw"><canvas id="fc1"></canvas></div></div>
-      <div class="cc"><div class="cc-lbl">Fleet Share ${lbl(m)}</div><div class="cw"><canvas id="fc2"></canvas></div></div>
-    `;
+    chartWrap.innerHTML='<div class="cc"><div class="cc-lbl">Top 5 Fleet Gallons by Month</div><div class="cw"><canvas id="fc1"></canvas></div></div><div class="cc"><div class="cc-lbl">Fleet Share '+lbl(m)+'</div><div class="cw"><canvas id="fc2"></canvas></div></div>';
     const top5=fleetData.filter(f=>f.gallons>0).slice(0,5);
     const colors5=['#00C8FF','#00D68F','#FF6B35','#FFD60A','#7C3AED'];
     const datasets=top5.map((f,i)=>ld(f.name.split(' ').slice(0,2).join(' '),MOS.map(mo=>totalFleetGallons(f.name,mo)),colors5[i],'transparent'));
@@ -4162,7 +4153,6 @@ function renderFleetList(){
     mkchart('fc2',{type:'doughnut',data:{labels:top6.map(f=>f.name.split(' ')[0]),datasets:[{data:top6.map(f=>f.gallons),backgroundColor:['rgba(0,200,255,.8)','rgba(0,214,143,.8)','rgba(255,107,53,.8)','rgba(255,214,10,.8)','rgba(124,58,237,.8)','rgba(8,145,178,.8)'],borderColor:'transparent'}]},options:{...CDO,scales:{}}});
   }
   
-  // Render breakdown table
   renderFleetBreakdown();
 }
 
