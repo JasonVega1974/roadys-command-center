@@ -139,6 +139,19 @@ a{color:var(--accent);text-decoration:none;}
 .vp-pri-low{color:var(--muted);font-weight:600;font-size:.9em;}
 
 
+/* EXPANDABLE NAV */
+.nav-parent{padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:.82em;color:var(--muted);border-left:2px solid transparent;transition:all .15s;user-select:none;}
+.nav-parent:hover{color:var(--text);background:rgba(255,255,255,.03);}
+.nav-parent.active{color:var(--accent);background:rgba(0,200,255,.08);border-left-color:var(--accent);}
+.nav-parent .expand-icon{margin-left:auto;font-size:.7em;transition:transform .2s;opacity:.5;}
+.nav-parent.expanded .expand-icon{transform:rotate(90deg);opacity:.8;}
+.nav-children{display:none;padding-left:12px;}
+.nav-children.expanded{display:block;}
+.nav-children .ni{font-size:.78em;padding:5px 14px 5px 18px;border-left:1px solid var(--border);margin-left:8px;}
+.topbar-period{display:flex;align-items:center;gap:8px;}
+.topbar-period select{background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:.78em;cursor:pointer;}
+.topbar-period .ytd-wrap{display:flex;align-items:center;gap:5px;}
+
 /* PAGES */
 .page{display:none;}.page.active{display:block;}
 
@@ -592,40 +605,76 @@ tr.search-hide{display:none!important;}
   </div>
 <nav class="nav">
     <div class="nav-lbl">Command Center</div>
-    <div class="ni active" data-nav-id="master" onclick="nav('master',this)"><span class="ni-icon">📊</span>Executive Summary</div>
+    <div class="nav-parent" data-nav-grp-toggle="cmd" onclick="toggleNavGrp(this)"><span class="ni-icon">📊</span>Executive Summary<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="cmd">
+      <div class="ni" data-nav-id="master" onclick="nav('master',this)"><span class="ni-icon">📊</span>Dashboard</div>
+      <div class="ni" data-nav-id="kpi-financial" onclick="nav('kpi-financial',this)"><span class="ni-icon">💰</span>Financials</div>
+    </div>
+
     <div class="nav-lbl nav-grp" data-nav-grp="performance">Performance</div>
-    <div class="ni" data-nav-id="gs-metrics" onclick="nav('gs-metrics',this)"><span class="ni-icon">🗺️</span>GS Metrics</div>
-    <div class="ni" data-nav-id="kpi-financial" onclick="nav('kpi-financial',this)"><span class="ni-icon">💰</span>Financials</div>
-    <div class="ni" data-nav-id="kpi-membership" onclick="nav('kpi-membership',this)"><span class="ni-icon">🏪</span>Membership</div>
-    <div class="ni" data-nav-id="kpi-bizdev" onclick="nav('kpi-bizdev',this)"><span class="ni-icon">📈</span>Business Dev</div>
-    <div class="ni" data-nav-id="kpi-ptp" onclick="nav('kpi-ptp',this)"><span class="ni-icon">🤝</span>PTP Conversions</div>
-    <div class="nav-lbl nav-grp" data-nav-grp="fuel">Fuel Program</div>
-    <div class="ni" data-nav-id="overview" onclick="nav('overview',this)"><span class="ni-icon">⛽</span>Network Summary</div>
-    <div class="ni" data-nav-id="aggregators" onclick="nav('aggregators',this)"><span class="ni-icon">🔗</span>Aggregators</div>
-    <div class="ni" data-nav-id="fleets" onclick="nav('fleets',this)"><span class="ni-icon">🚛</span>Fleets</div>
-    <div class="ni" data-nav-id="fuelman" onclick="nav('fuelman',this)"><span class="ni-icon">💳</span>Fuelman</div>
-    <div class="ni" data-nav-id="rcheck" onclick="nav('rcheck',this)"><span class="ni-icon">✅</span>R-Check</div>
-    <div class="nav-lbl nav-grp" data-nav-grp="programs">Programs</div>
-    <div class="ni" data-nav-id="kpi-rewards" onclick="nav('kpi-rewards',this)"><span class="ni-icon">⭐</span>Rewards</div>
-    <div class="ni" data-nav-id="kpi-vendors" onclick="nav('kpi-vendors',this)"><span class="ni-icon">🏢</span>Vendor Programs</div>
-    <div class="ni" data-nav-id="crm" onclick="nav('crm',this)"><span class="ni-icon">📞</span>Business Development</div>
-    <div class="nav-lbl nav-grp" data-nav-grp="members">Member Directory</div>
-    <div class="ni" data-nav-id="mem-contacts" onclick="nav('mem-contacts',this)"><span class="ni-icon">📇</span>Contact List</div>
-    <div class="ni" data-nav-id="mem-locations" onclick="nav('mem-locations',this)"><span class="ni-icon">📍</span>Master Locations</div>
-    <div class="ni" data-nav-id="mem-onboarding" onclick="nav('mem-onboarding',this)"><span class="ni-icon">🚀</span>Onboarding</div>
+
+    <div class="nav-parent" data-nav-grp-toggle="fuel" onclick="navDirect('overview',this,'fuel')"><span class="ni-icon">⛽</span>Fuel<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="fuel">
+      <div class="ni" data-nav-id="aggregators" onclick="nav('aggregators',this)"><span class="ni-icon">🔗</span>By Aggregator</div>
+      <div class="ni" data-nav-id="fleets" onclick="nav('fleets',this)"><span class="ni-icon">🚛</span>By Fleet</div>
+      <div class="ni" data-nav-id="rcheck" onclick="nav('rcheck',this)"><span class="ni-icon">✅</span>By R-Check</div>
+      <div class="ni" data-nav-id="fuelman" onclick="nav('fuelman',this)"><span class="ni-icon">💳</span>By Fuelman</div>
+      <div class="ni" data-nav-id="gs-fuel" onclick="navToTab('overview','territory',this)"><span class="ni-icon">🗺️</span>By Growth Strategist</div>
+      <div class="ni" data-nav-id="fuel-byloc" onclick="navToTab('overview','byts',this)"><span class="ni-icon">📍</span>By Location</div>
+    </div>
+
+    <div class="nav-parent" data-nav-grp-toggle="location" onclick="navDirect('truckstops',this,'location')"><span class="ni-icon">📍</span>Location (Truck Stops)<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="location">
+      <div class="ni" data-nav-id="loc-fuel" onclick="navToTSView('fuel',this)"><span class="ni-icon">⛽</span>By Fuel</div>
+      <div class="ni" data-nav-id="loc-rewards" onclick="navToTSView('rewards',this)"><span class="ni-icon">⭐</span>By Rewards</div>
+      <div class="ni" data-nav-id="loc-vendors" onclick="navToTSView('vendors',this)"><span class="ni-icon">🏢</span>By Vendor Programs</div>
+    </div>
+
+    <div class="nav-parent" data-nav-grp-toggle="rewards" onclick="navDirect('kpi-rewards',this,'rewards')"><span class="ni-icon">⭐</span>Rewards<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="rewards">
+      <div class="ni" data-nav-id="rew-byloc" onclick="navToRewardsView('location',this)"><span class="ni-icon">📍</span>By Location</div>
+      <div class="ni" data-nav-id="rew-bygs" onclick="navToRewardsView('gs',this)"><span class="ni-icon">🗺️</span>By Growth Strategist</div>
+    </div>
+
+    <div class="nav-parent" data-nav-grp-toggle="vendorprog" onclick="navDirect('kpi-vendors',this,'vendorprog')"><span class="ni-icon">🏢</span>Vendor Programs<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="vendorprog">
+      <div class="ni" data-nav-id="vp-byprog" onclick="navToVPView('program',this)"><span class="ni-icon">📋</span>By Program</div>
+      <div class="ni" data-nav-id="vp-bygs" onclick="navToVPView('gs',this)"><span class="ni-icon">🗺️</span>By Growth Strategist</div>
+      <div class="ni" data-nav-id="vp-byloc" onclick="navToVPView('location',this)"><span class="ni-icon">📍</span>By Location</div>
+    </div>
+
+    <div class="nav-parent" data-nav-grp-toggle="membership" onclick="navDirect('kpi-membership',this,'membership')"><span class="ni-icon">🏪</span>Membership<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="membership">
+      <div class="ni" data-nav-id="kpi-ptp" onclick="nav('kpi-ptp',this)"><span class="ni-icon">🤝</span>PTP Conversions</div>
+    </div>
+
+    <div class="nav-parent" data-nav-grp-toggle="gsmetrics" onclick="navDirect('gs-metrics',this,'gsmetrics')"><span class="ni-icon">🗺️</span>Growth Strategist Metrics<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="gsmetrics">
+      <div class="ni" data-nav-id="gs-mgmt" onclick="navToTab('overview','territory',this)"><span class="ni-icon">👥</span>GS Management</div>
+    </div>
+
     <div class="nav-lbl nav-grp" data-nav-grp="tools">Tools</div>
-    <div class="ni" data-nav-id="kpi-entry" onclick="nav('kpi-entry',this)"><span class="ni-icon">✏️</span>KPI Data Entry</div>
-    <div class="ni" data-nav-id="kpi-fulltable" onclick="nav('kpi-fulltable',this)"><span class="ni-icon">📋</span>Full KPI Table</div>
-    <div class="ni" data-nav-id="valprops" onclick="nav('valprops',this)"><span class="ni-icon">💼</span>Value Props</div>
-    <div class="ni" data-nav-id="import" onclick="nav('import',this)"><span class="ni-icon">📥</span>Import / Export</div>
-    <div class="ni" data-nav-id="service-desk" onclick="nav('service-desk',this)"><span class="ni-icon">🎫</span>Service Desk</div>
+    <div class="nav-parent" data-nav-grp-toggle="bizdev" onclick="toggleNavGrp(this)"><span class="ni-icon">📈</span>Business Dev<span class="expand-icon">▶</span></div>
+    <div class="nav-children" data-nav-grp-children="bizdev">
+      <div class="ni" data-nav-id="crm" onclick="nav('crm',this)"><span class="ni-icon">📞</span>Business Development CRM</div>
+    </div>
+    <div class="ni" data-nav-id="kpi-entry" onclick="nav('kpi-entry',this)"><span class="ni-icon">✏️</span>KPI Data Entry + KPI Table</div>
     <div class="ni" data-nav-id="implementation" onclick="nav('implementation',this)"><span class="ni-icon">🚧</span>Implementation</div>
-    <div class="ni" data-nav-id="settings" onclick="nav('settings',this)"><span class="ni-icon">⚙️</span>Settings</div>
+    <div class="ni" data-nav-id="mem-contacts" onclick="nav('mem-contacts',this)"><span class="ni-icon">📇</span>Member Directory / Contact List</div>
+    <div class="ni" data-nav-id="service-desk" onclick="nav('service-desk',this)"><span class="ni-icon">🎫</span>Service Desk</div>
+    <div class="ni" data-nav-id="import" onclick="nav('import',this)"><span class="ni-icon">📥</span>Import / Export</div>
   </nav>
   <div class="sb-foot">
-    <div class="month-sel">
-      <label>Reporting Period</label>
-      <select id="ms" onchange="updateAll()">
+    <div style="font-size:.68em;color:var(--dim);text-align:center;padding:4px 0">Roady's Network v19</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="ptitle">Executive Summary</div>
+    <div class="topbar-period">
+      <select id="ms" onchange="updateAll()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:.78em;cursor:pointer;">
         <option value="2024-01">Jan 2024</option>
         <option value="2024-02">Feb 2024</option>
         <option value="2024-03">Mar 2024</option>
@@ -663,22 +712,16 @@ tr.search-hide{display:none!important;}
         <option value="2026-11">Nov 2026</option>
         <option value="2026-12">Dec 2026</option>
       </select>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <label class="tog" style="width:40px;height:22px">
+      <div class="ytd-wrap">
+        <label class="tog" style="width:36px;height:20px">
           <input type="checkbox" id="ytd-toggle" onchange="updateAll()"/>
-          <span class="slider" style="border-radius:22px"></span>
+          <span class="slider" style="border-radius:20px"></span>
         </label>
-        <span style="font-size:.72em;font-weight:600;color:var(--muted)" id="ytd-label">YTD View</span>
+        <span style="font-size:.7em;font-weight:600;color:var(--muted)" id="ytd-label">YTD</span>
       </div>
     </div>
-  </div>
-</aside>
-
-<!-- MAIN -->
-<div class="main">
-  <div class="topbar">
-    <div class="topbar-title" id="ptitle">Executive Summary</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="nav('settings',null)" title="Settings">⚙️</button>
       <button class="btn" onclick="toggleTheme(!document.body.classList.contains('day-mode'));const t=document.getElementById('theme-toggle');if(t)t.checked=document.body.classList.contains('day-mode');" title="Toggle Day/Night Mode">🌓</button>
       <button class="btn" onclick="expJSON()">📄 JSON</button>
       <button class="btn" onclick="expXL()">📊 Excel</button>
@@ -699,7 +742,7 @@ tr.search-hide{display:none!important;}
     </div>
 
     <!-- ══ GS METRICS ══ -->
-    <div class="page" id="pg-mss-metrics">
+    <div class="page" id="pg-gs-metrics">
       <div class="sec-hdr"><div class="sec-title">GS PERFORMANCE METRICS</div><span class="badge ba" id="gs-period">—</span></div>
       <div id="gs-summary-cards" style="margin-bottom:16px"></div>
       <div id="gs-ranking-section" style="margin-bottom:20px"></div>
@@ -739,6 +782,8 @@ tr.search-hide{display:none!important;}
       <div class="tw"><table class="dt" id="rew-tbl"></table></div>
       <div style="margin-top:20px"><div style="font-size:.88em;font-weight:700;color:var(--accent);margin-bottom:8px">📊 Rewards by Truck Stop</div></div>
       <div class="tw" style="max-height:600px;overflow-y:auto"><table class="dt" id="rew-stops-tbl"></table></div>
+      <div id="rew-gs-section" style="margin-top:20px"><div style="font-size:.88em;font-weight:700;color:var(--accent);margin-bottom:8px">🗺️ Rewards by Growth Strategist</div></div>
+      <div class="tw" style="max-height:600px;overflow-y:auto"><table class="dt" id="rew-gs-tbl"></table></div>
     </div>
 
     <!-- ══ KPI: PTP ══ -->
@@ -813,6 +858,10 @@ tr.search-hide{display:none!important;}
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
         <div style="overflow-x:auto;max-height:600px"><table class="mem-tbl vp-grid-tbl" id="vp-grid-tbl"><thead></thead><tbody></tbody></table></div>
         <div id="vp-grid-pager" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--border);font-size:.75em;color:var(--muted)"></div>
+      </div>
+      <div id="vp-gs-section" style="margin-top:20px">
+        <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">🗺️ VENDOR ENROLLMENT BY GROWTH STRATEGIST</div>
+        <div class="tw" style="max-height:600px;overflow-y:auto"><table class="dt" id="vp-gs-tbl"></table></div>
       </div>
     </div>
 
@@ -1111,6 +1160,9 @@ tr.search-hide{display:none!important;}
       <div class="sec-hdr"><div class="sec-title">TRUCK STOPS</div></div>
       <div class="ts-tabs">
         <button class="ts-tab active" onclick="tsTab('list',this)">📋 All Stops</button>
+        <button class="ts-tab" onclick="tsTab('fuel',this)">⛽ By Fuel</button>
+        <button class="ts-tab" onclick="tsTab('rewardsview',this)">⭐ By Rewards</button>
+        <button class="ts-tab" onclick="tsTab('vpview',this)">🏢 By Vendor Programs</button>
         <button class="ts-tab" onclick="tsTab('territory',this)">🗺️ By GS</button>
         <button class="ts-tab" onclick="tsTab('dataentry',this)">✏️ Data Entry</button>
       </div>
@@ -1128,6 +1180,33 @@ tr.search-hide{display:none!important;}
           </select>
         </div>
         <div class="tw"><table class="dt" id="ts-list-tbl"></table></div>
+      </div>
+
+      <!-- FUEL BY LOCATION TAB -->
+      <div class="ts-panel" id="ts-panel-fuel">
+        <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">⛽ FUEL DATA BY TRUCK STOP</div>
+        <div class="search-bar" style="margin-bottom:12px">
+          <input class="search-input" type="text" id="ts-fuel-search" placeholder="Search stops..." oninput="renderTSFuelView()"/>
+        </div>
+        <div class="tw" style="max-height:700px;overflow-y:auto"><table class="dt" id="ts-fuel-tbl"></table></div>
+      </div>
+
+      <!-- REWARDS BY LOCATION TAB -->
+      <div class="ts-panel" id="ts-panel-rewardsview">
+        <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">⭐ REWARDS DATA BY TRUCK STOP</div>
+        <div class="search-bar" style="margin-bottom:12px">
+          <input class="search-input" type="text" id="ts-rew-search" placeholder="Search stops..." oninput="renderTSRewardsView()"/>
+        </div>
+        <div class="tw" style="max-height:700px;overflow-y:auto"><table class="dt" id="ts-rew-tbl"></table></div>
+      </div>
+
+      <!-- VENDOR PROGRAMS BY LOCATION TAB -->
+      <div class="ts-panel" id="ts-panel-vpview">
+        <div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">🏢 VENDOR ENROLLMENT BY TRUCK STOP</div>
+        <div class="search-bar" style="margin-bottom:12px">
+          <input class="search-input" type="text" id="ts-vp-search" placeholder="Search stops..." oninput="renderTSVPView()"/>
+        </div>
+        <div class="tw" style="max-height:700px;overflow-y:auto"><table class="dt" id="ts-vp-tbl"></table></div>
       </div>
 
       <!-- TERRITORY TAB -->
@@ -2322,7 +2401,7 @@ function toast(msg,type='tok'){
 // ═══════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════
-const TITLES={master:'Executive Summary','mss-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal'};
+const TITLES={master:'Executive Summary','gs-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal'};
 function nav(id,el){
   // Check if page is locked
   if(SETTINGS.locked[id]&&SETTINGS.pin&&!pinUnlocked[id]){
@@ -2330,13 +2409,166 @@ function nav(id,el){
     return;
   }
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('pg-'+id).classList.add('active');
   if(el) el.classList.add('active');
   else document.querySelectorAll('.ni').forEach(n=>{if(n.getAttribute('onclick')?.includes("'"+id+"'"))n.classList.add('active');});
+  // Auto-expand parent group if child is clicked
+  const activeNi=document.querySelector('.ni.active[data-nav-id="'+id+'"]');
+  if(activeNi){
+    const parentChildren=activeNi.closest('.nav-children');
+    if(parentChildren){
+      const grpKey=parentChildren.dataset.navGrpChildren;
+      const parentToggle=document.querySelector('[data-nav-grp-toggle="'+grpKey+'"]');
+      if(parentToggle&&!parentToggle.classList.contains('expanded')){
+        parentToggle.classList.add('expanded');
+        parentChildren.classList.add('expanded');
+      }
+      parentToggle?.classList.add('active');
+    }
+  }
   document.getElementById('ptitle').textContent=(TITLES[id]||id)+' — '+periodLabel(getM());
   if(id==='settings') renderSettings();
   renderPage(id);
+}
+
+function toggleNavGrp(el){
+  const grpKey=el.dataset.navGrpToggle;
+  const children=document.querySelector('[data-nav-grp-children="'+grpKey+'"]');
+  if(!children) return;
+  const isExpanded=el.classList.contains('expanded');
+  if(isExpanded){
+    el.classList.remove('expanded');
+    children.classList.remove('expanded');
+  } else {
+    el.classList.add('expanded');
+    children.classList.add('expanded');
+  }
+}
+
+// Navigate to a page AND toggle the expand group
+function navDirect(pageId,el,grpKey){
+  // Toggle expand/collapse
+  const children=document.querySelector('[data-nav-grp-children="'+grpKey+'"]');
+  if(children){
+    const isExpanded=el.classList.contains('expanded');
+    if(isExpanded){
+      el.classList.remove('expanded');
+      children.classList.remove('expanded');
+    } else {
+      el.classList.add('expanded');
+      children.classList.add('expanded');
+    }
+  }
+  // Navigate to the page
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const pg=document.getElementById('pg-'+pageId);
+  if(pg) pg.classList.add('active');
+  el.classList.add('active');
+  document.getElementById('ptitle').textContent=(TITLES[pageId]||pageId)+' — '+periodLabel(getM());
+  renderPage(pageId);
+}
+
+// Navigate to a page then activate a specific tab within it
+function navToTab(pageId,tabId,el){
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const pg=document.getElementById('pg-'+pageId);
+  if(pg) pg.classList.add('active');
+  if(el) el.classList.add('active');
+  // Highlight parent
+  const parentChildren=el?.closest('.nav-children');
+  if(parentChildren){
+    const grpKey=parentChildren.dataset.navGrpChildren;
+    const parentToggle=document.querySelector('[data-nav-grp-toggle="'+grpKey+'"]');
+    if(parentToggle){parentToggle.classList.add('expanded','active');parentChildren.classList.add('expanded');}
+  }
+  document.getElementById('ptitle').textContent=(TITLES[pageId]||pageId)+' — '+periodLabel(getM());
+  renderPage(pageId);
+  // Activate the tab after rendering
+  setTimeout(()=>{
+    if(pageId==='overview'){
+      const tabBtn=document.querySelector('#pg-overview .tab[onclick*=\"'+tabId+'\"]');
+      if(tabBtn) ovTab(tabId,tabBtn);
+    }
+  },50);
+}
+
+// Navigate to truck stops page with a specific data filter view
+function navToTSView(viewType,el){
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pg-truckstops').classList.add('active');
+  if(el) el.classList.add('active');
+  const parentChildren=el?.closest('.nav-children');
+  if(parentChildren){
+    const grpKey=parentChildren.dataset.navGrpChildren;
+    const parentToggle=document.querySelector('[data-nav-grp-toggle="'+grpKey+'"]');
+    if(parentToggle){parentToggle.classList.add('expanded','active');parentChildren.classList.add('expanded');}
+  }
+  const labels={fuel:'Truck Stops — By Fuel',rewards:'Truck Stops — By Rewards',vendors:'Truck Stops — By Vendor Programs'};
+  document.getElementById('ptitle').textContent=(labels[viewType]||'Truck Stops')+' — '+periodLabel(getM());
+  renderPage('truckstops');
+  // Switch to the correct tab
+  setTimeout(()=>{
+    const tabMap={fuel:'fuel',rewards:'rewardsview',vendors:'vpview'};
+    const tabId=tabMap[viewType]||'list';
+    tsTab(tabId,null);
+  },50);
+}
+
+// Navigate to rewards page with location or GS view
+function navToRewardsView(viewType,el){
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pg-kpi-rewards').classList.add('active');
+  if(el) el.classList.add('active');
+  const parentChildren=el?.closest('.nav-children');
+  if(parentChildren){
+    const grpKey=parentChildren.dataset.navGrpChildren;
+    const parentToggle=document.querySelector('[data-nav-grp-toggle="'+grpKey+'"]');
+    if(parentToggle){parentToggle.classList.add('expanded','active');parentChildren.classList.add('expanded');}
+  }
+  const label=viewType==='location'?'Rewards — By Location':'Rewards — By Growth Strategist';
+  document.getElementById('ptitle').textContent=label+' — '+periodLabel(getM());
+  renderPage('kpi-rewards');
+  // Scroll to the relevant section
+  setTimeout(()=>{
+    const target=viewType==='location'?document.getElementById('rew-stops-tbl'):document.getElementById('rew-gs-section');
+    if(target) target.scrollIntoView({behavior:'smooth',block:'start'});
+  },100);
+}
+
+// Navigate to vendor programs page with program, location or GS view
+function navToVPView(viewType,el){
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pg-kpi-vendors').classList.add('active');
+  if(el) el.classList.add('active');
+  const parentChildren=el?.closest('.nav-children');
+  if(parentChildren){
+    const grpKey=parentChildren.dataset.navGrpChildren;
+    const parentToggle=document.querySelector('[data-nav-grp-toggle="'+grpKey+'"]');
+    if(parentToggle){parentToggle.classList.add('expanded','active');parentChildren.classList.add('expanded');}
+  }
+  const labels={program:'Vendor Programs — By Program',location:'Vendor Programs — By Location',gs:'Vendor Programs — By Growth Strategist'};
+  document.getElementById('ptitle').textContent=(labels[viewType]||'Vendor Programs')+' — '+periodLabel(getM());
+  renderPage('kpi-vendors');
+  // Scroll to relevant section
+  setTimeout(()=>{
+    let target;
+    if(viewType==='program') target=document.getElementById('vp-master-tbl');
+    else if(viewType==='location') target=document.getElementById('vp-grid-tbl');
+    else if(viewType==='gs') target=document.getElementById('vp-gs-section');
+    if(target) target.scrollIntoView({behavior:'smooth',block:'start'});
+  },100);
 }
 function ovTab(id,el){
   document.querySelectorAll('#pg-overview .tab').forEach(t=>t.classList.remove('active'));
@@ -2349,10 +2581,16 @@ function ovTab(id,el){
 function tsTab(id,el){
   document.querySelectorAll('.ts-tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ts-panel').forEach(p=>p.classList.remove('active'));
-  el.classList.add('active');
+  if(el) el.classList.add('active');
+  else {
+    document.querySelectorAll('.ts-tab').forEach(t=>{if(t.getAttribute('onclick')?.includes("'"+id+"'"))t.classList.add('active');});
+  }
   document.getElementById('ts-panel-'+id).classList.add('active');
   if(id==='territory') renderTerritoryPage();
   if(id==='dataentry') dePopulateStopSel();
+  if(id==='fuel') renderTSFuelView();
+  if(id==='rewardsview') renderTSRewardsView();
+  if(id==='vpview') renderTSVPView();
 }
 function discTab(id,el){
   document.querySelectorAll('#pg-discounts .tab').forEach(t=>t.classList.remove('active'));
@@ -2366,7 +2604,7 @@ function currentPage(){ return document.querySelector('.page.active')?.id?.repla
 
 function renderPage(id){
   if(id==='master') renderMaster();
-  else if(id==='mss-metrics') renderGSMetrics();
+  else if(id==='gs-metrics') renderGSMetrics();
   else if(id==='overview') renderOverview();
   else if(id==='truckstops'){ renderTSList(); dePopulateStopSel(); }
   else if(id==='aggregators') renderAggregators();
@@ -2778,6 +3016,33 @@ function pgKpiRewards(){
     <th>Add Transactions</th><th>Redeem Transactions</th>
     <th>Add $</th><th>Redeem $</th><th>Redemption Rate</th>
   </tr></thead><tbody>${stRows}</tbody>`;
+
+  // Rewards by Growth Strategist table
+  const gsNames=Object.keys(REGIONS||{}).filter(n=>n!=='Unassigned');
+  const gsEl=document.getElementById('rew-gs-tbl');
+  if(gsEl&&gsNames.length){
+    const allMembers=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
+    let gsRows='';
+    gsNames.forEach(name=>{
+      const reg=REGIONS[name]||{};
+      const states=reg.states||[];
+      const stops=allMembers.filter(mb=>states.includes(mb.state));
+      let totalAdd=0,totalRedeem=0,totalGal=0;
+      stops.forEach(s=>{
+        const sd=s.fuelData||{};
+        Object.keys(sd).forEach(fl=>{
+          const fd=sd[fl]||{};
+          const v=fd[m]||0;
+          totalGal+=v;
+        });
+      });
+      const rewDrivers=stops.length;
+      gsRows+=`<tr><td style="font-weight:700">${name}</td><td>${(reg.label||'—')}</td><td>${stops.length}</td><td style="text-align:right">${totalGal.toLocaleString()}</td></tr>`;
+    });
+    gsEl.innerHTML=`<thead><tr><th>Growth Strategist</th><th>Region</th><th>Stops</th><th>Total Gallons</th></tr></thead><tbody>${gsRows}</tbody>`;
+  } else if(gsEl){
+    gsEl.innerHTML='<tbody><tr><td style="color:var(--muted);padding:20px">No GS assignments configured. Set up territories in GS Management.</td></tr></tbody>';
+  }
 }
 
 function pgPTP(){
@@ -3222,6 +3487,103 @@ function renderTSList(){
   }).join('');
 
   document.getElementById('ts-list-tbl').innerHTML=`<thead><tr><th>Rank</th><th>ID</th><th>Name / Company</th><th>Location</th><th>GS</th><th>Group</th><th>Type</th><th>Gallons ${lbl(m)}</th><th>Agg Gal</th><th>Fleet Gal</th><th>Alerts</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+// ═══════════════════════════════════════════════
+// TRUCK STOP SUB-VIEWS: Fuel, Rewards, Vendor Programs
+// ═══════════════════════════════════════════════
+function renderTSFuelView(){
+  const q=(document.getElementById('ts-fuel-search')?.value||'').toLowerCase();
+  const m=getM();
+  const ranked=Object.keys(GD).map(sid=>({sid,g:stopGallons(sid,m)})).sort((a,b)=>b.g-a.g);
+  const rankMap={};ranked.forEach((r,i)=>rankMap[r.sid]=i+1);
+
+  const rows=MEMBERS.filter(mb=>{
+    if(!mb.id||mb.status!=='active') return false;
+    if(q&&!mb.name.toLowerCase().includes(q)&&!mb.id.toLowerCase().includes(q)&&!mb.city.toLowerCase().includes(q)&&!mb.state.toLowerCase().includes(q)) return false;
+    return true;
+  }).map(mb=>{
+    const sid=mb.id;
+    const g=stopGallons(sid,m);
+    const aggGal=(GD[sid]?.[m]?.aggregators||[]).reduce((s,a)=>s+(a.gallons||0),0);
+    const fltGal=(GD[sid]?.[m]?.fleets||[]).reduce((s,f)=>s+(f.gallons||0),0);
+    const rank=rankMap[sid]||'—';
+    const rankCls=rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-n';
+    const mgr=getManager(mb.state);
+    const rd=GD[sid]?.[m]?.rack||{};
+    const rackInfo=rd.rackIndex||'—';
+    return `<tr>
+      <td><span class="rank-badge ${rankCls}">${rank}</span></td>
+      <td><span class="tag tag-blue">${sid}</span></td>
+      <td><b>${mb.name}</b></td>
+      <td>${mb.city}, ${mb.state}</td>
+      <td style="font-size:.75em;color:${REGIONS[mgr]?.color||'var(--muted)'}">${mgr}</td>
+      <td style="font-weight:700;text-align:right">${fmtG(g)}</td>
+      <td style="text-align:right">${aggGal>0?fmtG(aggGal):'<span style="color:var(--dim)">0</span>'}</td>
+      <td style="text-align:right">${fltGal>0?fmtG(fltGal):'<span style="color:var(--dim)">0</span>'}</td>
+      <td style="font-size:.78em">${rackInfo}</td>
+      <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${sid}')">View →</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ts-fuel-tbl').innerHTML=`<thead><tr><th>Rank</th><th>ID</th><th>Name</th><th>Location</th><th>GS</th><th>Total Gallons</th><th>Agg Gallons</th><th>Fleet Gallons</th><th>Rack Index</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+function renderTSRewardsView(){
+  const q=(document.getElementById('ts-rew-search')?.value||'').toLowerCase();
+  const m=getM();
+  const rows=MEMBERS.filter(mb=>{
+    if(!mb.id||mb.status!=='active') return false;
+    if(q&&!mb.name.toLowerCase().includes(q)&&!mb.id.toLowerCase().includes(q)&&!mb.city.toLowerCase().includes(q)&&!mb.state.toLowerCase().includes(q)) return false;
+    return true;
+  }).map(mb=>{
+    const sid=mb.id;
+    const g=stopGallons(sid,m);
+    const mgr=getManager(mb.state);
+    // Check rewards data from KPI system
+    const hasSmartDesq=mb.smartdesq||false;
+    const hasSmartAuth=mb.smartauth||false;
+    const rewardsActive=mb.rewardsActive!==false;
+    return `<tr>
+      <td><span class="tag tag-blue">${sid}</span></td>
+      <td><b>${mb.name}</b></td>
+      <td>${mb.city}, ${mb.state}</td>
+      <td style="font-size:.75em;color:${REGIONS[mgr]?.color||'var(--muted)'}">${mgr}</td>
+      <td><span class="tag ${mb.group==="Roady's"?'tag-blue':mb.group==='PTP'?'tag-orange':'tag-gray'}">${mb.group}</span></td>
+      <td style="text-align:center">${rewardsActive?'<span style="color:var(--green);font-weight:700">✓ Active</span>':'<span style="color:var(--red)">✗</span>'}</td>
+      <td style="text-align:right;font-weight:700">${fmtG(g)}</td>
+      <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${sid}')">View →</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ts-rew-tbl').innerHTML=`<thead><tr><th>ID</th><th>Name</th><th>Location</th><th>GS</th><th>Group</th><th>Rewards Status</th><th>Gallons</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+function renderTSVPView(){
+  const q=(document.getElementById('ts-vp-search')?.value||'').toLowerCase();
+  const rows=MEMBERS.filter(mb=>{
+    if(!mb.id||mb.status!=='active') return false;
+    if(q&&!mb.name.toLowerCase().includes(q)&&!mb.id.toLowerCase().includes(q)&&!mb.city.toLowerCase().includes(q)&&!mb.state.toLowerCase().includes(q)) return false;
+    return true;
+  }).map(mb=>{
+    const sid=mb.id;
+    const mgr=getManager(mb.state);
+    const locEnroll=VP_ENROLL[sid]||{};
+    let enrolled=0;
+    VP_TOP10.forEach(vn=>{if(locEnroll[vn]) enrolled++;});
+    const total=VP_TOP10.length||1;
+    const pct=Math.round(enrolled/total*100);
+    const pctCls=pct>=75?'color:var(--green)':pct>=50?'color:var(--yellow)':'color:var(--red)';
+    return `<tr>
+      <td><span class="tag tag-blue">${sid}</span></td>
+      <td><b>${mb.name}</b></td>
+      <td>${mb.city}, ${mb.state}</td>
+      <td style="font-size:.75em;color:${REGIONS[mgr]?.color||'var(--muted)'}">${mgr}</td>
+      <td><span class="tag ${mb.group==="Roady's"?'tag-blue':mb.group==='PTP'?'tag-orange':'tag-gray'}">${mb.group}</span></td>
+      <td style="text-align:center;font-weight:700">${enrolled} / ${total}</td>
+      <td style="text-align:center;font-weight:700;${pctCls}">${pct}%</td>
+      <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${sid}')">View →</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ts-vp-tbl').innerHTML=`<thead><tr><th>ID</th><th>Name</th><th>Location</th><th>GS</th><th>Group</th><th>Vendors Enrolled</th><th>Enrollment %</th><th></th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -4303,28 +4665,27 @@ function loadData(){
 // SETTINGS — Visibility, PIN Lock
 // ═══════════════════════════════════════════════
 const NAV_PAGES=[
-  {grp:'Command Center', items:[{id:'master',icon:'📊',name:'Executive Summary'}]},
+  {grp:'Command Center', items:[{id:'master',icon:'📊',name:'Executive Summary'},{id:'kpi-financial',icon:'💰',name:'Financials'}]},
   {grp:'Performance', items:[
-    {id:'kpi-financial',icon:'💰',name:'Financials'},
-    {id:'kpi-membership',icon:'🏪',name:'Membership'},
-    {id:'kpi-bizdev',icon:'📈',name:'Business Dev'},
-    {id:'kpi-ptp',icon:'🤝',name:'PTP Conversions'},
-  ]},
-  {grp:'Fuel Program', items:[
-    {id:'overview',icon:'⛽',name:'Network Summary'},
-    {id:'aggregators',icon:'🔗',name:'Aggregators'},
-    {id:'fleets',icon:'🚛',name:'Fleets'},
-    {id:'fuelman',icon:'💳',name:'Fuelman'},
-    {id:'rcheck',icon:'✅',name:'R-Check'},
-  ]},
-  {grp:'Programs', items:[
+    {id:'overview',icon:'⛽',name:'Fuel'},
+    {id:'aggregators',icon:'🔗',name:'Fuel — By Aggregator'},
+    {id:'fleets',icon:'🚛',name:'Fuel — By Fleet'},
+    {id:'rcheck',icon:'✅',name:'Fuel — By R-Check'},
+    {id:'fuelman',icon:'💳',name:'Fuel — By Fuelman'},
+    {id:'truckstops',icon:'🏪',name:'Location (Truck Stops)'},
     {id:'kpi-rewards',icon:'⭐',name:'Rewards'},
     {id:'kpi-vendors',icon:'🏢',name:'Vendor Programs'},
+    {id:'kpi-membership',icon:'🏪',name:'Membership'},
+    {id:'kpi-ptp',icon:'🤝',name:'PTP Conversions'},
+    {id:'gs-metrics',icon:'🗺️',name:'Growth Strategist Metrics'},
   ]},
   {grp:'Tools', items:[
-    {id:'kpi-entry',icon:'✏️',name:'KPI Data Entry'},
+    {id:'crm',icon:'📞',name:'Business Dev CRM'},
+    {id:'kpi-entry',icon:'✏️',name:'KPI Data Entry + KPI Table'},
     {id:'kpi-fulltable',icon:'📋',name:'Full KPI Table'},
-    {id:'valprops',icon:'💼',name:'Value Props'},
+    {id:'implementation',icon:'🚧',name:'Implementation'},
+    {id:'mem-contacts',icon:'📇',name:'Member Directory / Contact List'},
+    {id:'service-desk',icon:'🎫',name:'Service Desk'},
     {id:'import',icon:'📥',name:'Import / Export'},
   ]},
 ];
@@ -4561,6 +4922,11 @@ function populateStopSelect(){
     saveData();
     loadSettings();
     applyVisibility();
+    // Auto-expand Command Center group and set initial active
+    const cmdToggle=document.querySelector('[data-nav-grp-toggle="cmd"]');
+    if(cmdToggle){cmdToggle.classList.add('expanded','active');document.querySelector('[data-nav-grp-children="cmd"]').classList.add('expanded');}
+    const masterNi=document.querySelector('.ni[data-nav-id="master"]');
+    if(masterNi) masterNi.classList.add('active');
     mgrLoadSaved();
     vpLoadFromStorage();
     renderMaster();
@@ -6341,10 +6707,40 @@ function pgKpiVendors(){
   renderVendorKPIs();
   renderVendorMaster();
   renderVPGrid();
+  renderVPByGS();
   // Populate group filter
   const groups=[...new Set(MEM_LOCS.map(l=>l.g).filter(Boolean).filter(g=>g!=='nan'))].sort();
   const sel=document.getElementById('vp-ts-group');
   if(sel) sel.innerHTML='<option value="all">All Groups</option>'+groups.map(g=>`<option value="${g}">${g}</option>`).join('');
+}
+
+function renderVPByGS(){
+  const gsNames=Object.keys(REGIONS||{}).filter(n=>n!=='Unassigned');
+  const gsEl=document.getElementById('vp-gs-tbl');
+  if(!gsEl) return;
+  if(!gsNames.length){
+    gsEl.innerHTML='<tbody><tr><td style="color:var(--muted);padding:20px">No GS assignments configured. Set up territories in GS Management.</td></tr></tbody>';
+    return;
+  }
+  const allMembers=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
+  let gsRows='';
+  gsNames.forEach(name=>{
+    const reg=REGIONS[name]||{};
+    const states=reg.states||[];
+    const stops=allMembers.filter(mb=>states.includes(mb.state));
+    const stopIds=stops.map(s=>s.id);
+    let enrollCount=0,totalPossible=0;
+    stopIds.forEach(sid=>{
+      const locEnroll=VP_ENROLL[sid]||{};
+      VP_TOP10.forEach(vn=>{
+        totalPossible++;
+        if(locEnroll[vn]) enrollCount++;
+      });
+    });
+    const pct=totalPossible?Math.round(enrollCount/totalPossible*100):0;
+    gsRows+=`<tr><td style="font-weight:700">${name}</td><td>${(reg.label||'—')}</td><td>${stops.length}</td><td>${enrollCount} / ${totalPossible}</td><td>${pct}%</td></tr>`;
+  });
+  gsEl.innerHTML=`<thead><tr><th>Growth Strategist</th><th>Region</th><th>Stops</th><th>Enrolled / Possible</th><th>Enrollment %</th></tr></thead><tbody>${gsRows}</tbody>`;
 }
 
 function renderVendorKPIs(){
