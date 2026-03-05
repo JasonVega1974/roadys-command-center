@@ -663,6 +663,8 @@ tr.search-hide{display:none!important;}
     <div class="ni" data-nav-id="mem-contacts" onclick="nav('mem-contacts',this)"><span class="ni-icon">📇</span>Member Directory / Contact List</div>
     <div class="ni" data-nav-id="service-desk" onclick="nav('service-desk',this)"><span class="ni-icon">🎫</span>Service Desk</div>
     <div class="ni" data-nav-id="import" onclick="nav('import',this)"><span class="ni-icon">📥</span>Import / Export</div>
+    <div style="border-top:1px solid var(--border);margin:8px 0"></div>
+    <div class="ni" data-nav-id="interstate-v2" onclick="nav('interstate-v2',this)" style="color:var(--accent)"><span class="ni-icon">🚀</span>Interstate V2 Spec</div>
   </nav>
   <div class="sb-foot">
     <div style="font-size:.68em;color:var(--dim);text-align:center;padding:4px 0">Roady's Network v19</div>
@@ -1136,16 +1138,16 @@ tr.search-hide{display:none!important;}
       </div>
       <div class="tab-panel" id="ov-tab-byts">
         <div class="search-bar" style="margin-bottom:12px">
-          <input class="search-input" type="text" id="ts-search" placeholder="Search by name, ID, city, state..." oninput="renderTSList()"/>
-          <select class="filter-sel" id="ts-filter-group" onchange="renderTSList()">
+          <input class="search-input" type="text" id="ov-ts-search" placeholder="Search by name, ID, city, state..." oninput="renderOvTSList()"/>
+          <select class="filter-sel" id="ov-ts-filter-group" onchange="renderOvTSList()">
             <option value="">All Groups</option>
             <option>Roady's</option><option>PTP</option><option>Roady's Lite</option>
           </select>
-          <select class="filter-sel" id="ts-filter-state" onchange="renderTSList()">
+          <select class="filter-sel" id="ov-ts-filter-state" onchange="renderOvTSList()">
             <option value="">All States</option>
           </select>
         </div>
-        <div class="tw"><table class="dt" id="ts-list-tbl"></table></div>
+        <div class="tw"><table class="dt" id="ov-ts-list-tbl"></table></div>
       </div>
       <div class="tab-panel" id="ov-tab-byagg">
         <div class="tw"><table class="dt" id="ov-agg-tbl"></table></div>
@@ -2200,6 +2202,104 @@ tr.search-hide{display:none!important;}
       </div>
     </div>
 
+    <!-- ══ INTERSTATE V2 SPEC ══ -->
+    <div class="page" id="pg-interstate-v2">
+      <div class="sec-hdr"><div class="sec-title">INTERSTATE V2 — DASHBOARD CARD SPECIFICATION</div><span class="badge ba">Developer Reference</span></div>
+      
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px">
+        <div style="font-size:.92em;color:var(--text);line-height:1.7">
+          <b style="color:var(--accent)">Purpose:</b> This tab provides a live reference for Interstate V2 development. Each card below is a <b>working example</b> of the exact KPI card format needed. Every card displays: the <b>current period value</b>, <b>% change vs prior month</b> with directional arrow, <b>gallon/dollar difference vs prior month</b>, <b>% change vs prior year</b> with directional arrow, <b>gallon/dollar difference vs prior year</b>, and <b>YTD cumulative total</b>. Cards glow <span style="color:var(--green)">green</span> when trending up, <span style="color:var(--red)">red</span> when down, and <span style="color:var(--yellow)">yellow</span> when flat. These cards pull from the same data layer as all other dashboard tabs — when data is imported, these cards update in real-time.
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="ec-tabs" id="iv2-tabs">
+        <button class="ec-tab active" onclick="iv2Tab('network',this)">⛽ Fuel Summary</button>
+        <button class="ec-tab" onclick="iv2Tab('aggregators',this)">🔗 Aggregators</button>
+        <button class="ec-tab" onclick="iv2Tab('fleets',this)">🚛 Fleets</button>
+        <button class="ec-tab" onclick="iv2Tab('fuelman',this)">💳 Fuelman</button>
+        <button class="ec-tab" onclick="iv2Tab('rcheck',this)">✅ R-Check</button>
+        <button class="ec-tab" onclick="iv2Tab('rewards',this)">⭐ Rewards</button>
+        <button class="ec-tab" onclick="iv2Tab('vendors',this)">🏢 Vendor Programs</button>
+      </div>
+
+      <!-- NETWORK SUMMARY TAB -->
+      <div class="ec-panel active" id="iv2-panel-network">
+        <div style="background:rgba(0,200,255,.06);border:1px solid rgba(0,200,255,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--accent);letter-spacing:.06em;margin-bottom:6px">FUEL SUMMARY — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">These four cards provide the highest-level view of fuel performance across the entire Roady's network. A leadership user should be able to open the dashboard and immediately see total network volume, how aggregators and fleets are performing, and the average output per stop — all with month-over-month and year-over-year context.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-network-cards"></div>
+        <div id="iv2-network-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- AGGREGATORS TAB -->
+      <div class="ec-panel" id="iv2-panel-aggregators">
+        <div style="background:rgba(0,214,143,.06);border:1px solid rgba(0,214,143,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--green);letter-spacing:.06em;margin-bottom:6px">AGGREGATORS — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">Aggregator gallons represent the total fuel volume flowing through third-party aggregator discount programs (QPN, TCS/Apex, Edge, etc.) across all truck stops in the network. This is a critical revenue lever — aggregator volume drives discount revenue and network stickiness.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-agg-cards"></div>
+        <div id="iv2-agg-subcards"></div>
+        <div id="iv2-agg-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- FLEETS TAB -->
+      <div class="ec-panel" id="iv2-panel-fleets">
+        <div style="background:rgba(255,107,53,.06);border:1px solid rgba(255,107,53,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--orange);letter-spacing:.06em;margin-bottom:6px">FLEETS — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">Fleet gallons represent direct fleet discount volume — trucking companies and carriers with negotiated discount programs at network stops. Fleet relationships are typically higher-volume, higher-loyalty accounts.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-fleet-cards"></div>
+        <div id="iv2-fleet-subcards"></div>
+        <div id="iv2-fleet-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- FUELMAN TAB -->
+      <div class="ec-panel" id="iv2-panel-fuelman">
+        <div style="background:rgba(255,214,10,.06);border:1px solid rgba(255,214,10,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--yellow);letter-spacing:.06em;margin-bottom:6px">FUELMAN — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">Fuelman is a fleet card payment program. Revenue is generated per-gallon from enrolled truck stops. Key metrics are total gallons processed, number of active enrolled locations, and estimated revenue at the per-gallon rate.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-fuelman-cards"></div>
+        <div id="iv2-fuelman-subcards"></div>
+        <div id="iv2-fuelman-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- R-CHECK TAB -->
+      <div class="ec-panel" id="iv2-panel-rcheck">
+        <div style="background:rgba(0,214,143,.06);border:1px solid rgba(0,214,143,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--green);letter-spacing:.06em;margin-bottom:6px">R-CHECK — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">R-Check is a check cashing / verification service for truck drivers. Revenue is per-transaction from enrolled stops. Metrics mirror Fuelman: total gallons/transactions processed, active locations, and estimated revenue.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-rcheck-cards"></div>
+        <div id="iv2-rcheck-subcards"></div>
+        <div id="iv2-rcheck-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- REWARDS TAB -->
+      <div class="ec-panel" id="iv2-panel-rewards">
+        <div style="background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--purple);letter-spacing:.06em;margin-bottom:6px">REWARDS — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">The Rewards program generates revenue through three streams: Rewards Fees (charged to locations), Expired Points Revenue (unredeemed loyalty points that expire), and the overall Rewards Fee Revenue. These three cards should appear at the top of any rewards view to give immediate revenue visibility.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-rewards-cards"></div>
+        <div id="iv2-rewards-subcards"></div>
+        <div id="iv2-rewards-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- VENDOR PROGRAMS TAB -->
+      <div class="ec-panel" id="iv2-panel-vendors">
+        <div style="background:rgba(8,145,178,.06);border:1px solid rgba(8,145,178,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--teal);letter-spacing:.06em;margin-bottom:6px">VENDOR PROGRAMS — AT A GLANCE</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">Vendor Programs revenue comes from vendor enrollment fees and program participation across the truck stop network. This card shows total monthly vendor program revenue with full comparison context.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-vendor-cards"></div>
+        <div id="iv2-vendor-subcards"></div>
+        <div id="iv2-vendor-specs" style="margin-top:16px"></div>
+      </div>
+    </div>
+
     <!-- ══ SETTINGS ══ -->
     <div class="page" id="pg-settings">
       <div class="sec-hdr"><div class="sec-title">SETTINGS</div><span class="badge ba">Dashboard Configuration</span></div>
@@ -2465,7 +2565,7 @@ function toast(msg,type='tok'){
 // ═══════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════
-const TITLES={master:'Executive Summary','gs-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal'};
+const TITLES={master:'Executive Summary','gs-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal','interstate-v2':'Interstate V2 — Dashboard Card Spec'};
 function nav(id,el){
   // Check if page is locked
   if(SETTINGS.locked[id]&&SETTINGS.pin&&!pinUnlocked[id]){
@@ -2640,7 +2740,7 @@ function ovTab(id,el){
   el.classList.add('active');
   document.getElementById('ov-tab-'+id).classList.add('active');
   if(id==='territory'){ renderTerritoryOverview(); renderUSAMap(); renderManagerEditor(); }
-  if(id==='byts'){ renderTSList(); }
+  if(id==='byts'){ renderOvTSList(); }
 }
 function tsTab(id,el){
   document.querySelectorAll('.ts-tab').forEach(t=>t.classList.remove('active'));
@@ -2692,6 +2792,7 @@ function renderPage(id){
   else if(id==='mem-onboarding') renderMemOnboarding();
   else if(id==='service-desk') renderServiceDesk();
   else if(id==='implementation') implInit();
+  else if(id==='interstate-v2') renderIV2Spec();
 }
 
 // ═══════════════════════════════════════════════
@@ -3020,6 +3121,7 @@ function pgKpiRewards(){
   document.getElementById('rew-kpis').innerHTML=
     kpiKC('Rewards Revenue',gv('Rewards Fees',m),'$',p?gv('Rewards Fees',p):null,'',false,ytdKpi('Rewards Fees',m),gvy('Rewards Fees',m))+
     kpiKC('Expired Points Revenue',gv('Expired Points Revenue',m),'$',p?gv('Expired Points Revenue',p):null,'',false,ytdKpi('Expired Points Revenue',m),gvy('Expired Points Revenue',m))+
+    kpiKC('Rewards Fee Revenue YTD',ytdKpi('Rewards Fees',m),'$',null,'',false,null,null)+
     kpiKC('Issued Points ($)',gv('Issued Points (Add Dollars)',m),'$',p?gv('Issued Points (Add Dollars)',p):null,'',false,ytdKpi('Issued Points (Add Dollars)',m),gvy('Issued Points (Add Dollars)',m))+
     kpiKC('Redeemed Points ($)',gv('Redeemed Points',m),'$',p?gv('Redeemed Points',p):null,'',false,ytdKpi('Redeemed Points',m),gvy('Redeemed Points',m))+
     kpiKC('Redemption Rate',gv('Redemption Rate',m),'%',p?gv('Redemption Rate',p):null,'Lower = more expired revenue',true,null,gvy('Redemption Rate',m))+
@@ -3513,47 +3615,92 @@ function renderTSList(){
     states.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
   }
 
-  // Rank all stops by gallons
-  const ranked=Object.keys(GD).map(sid=>({sid,g:stopGallons(sid,m)})).sort((a,b)=>b.g-a.g);
-  const rankMap={};ranked.forEach((r,i)=>rankMap[r.sid]=i+1);
-
   const rows=MEMBERS.filter(mb=>{
-    if(q&&!mb.name.toLowerCase().includes(q)&&!mb.id.toLowerCase().includes(q)&&!mb.city.toLowerCase().includes(q)&&!mb.state.toLowerCase().includes(q)) return false;
+    if(!mb.id) return false;
+    if(q&&!mb.name.toLowerCase().includes(q)&&!mb.id.toLowerCase().includes(q)&&!(mb.city||'').toLowerCase().includes(q)&&!(mb.state||'').toLowerCase().includes(q)&&!(mb.street||'').toLowerCase().includes(q)&&!(mb.zip||'').toLowerCase().includes(q)) return false;
     if(grp&&mb.group!==grp) return false;
     if(st&&mb.state!==st) return false;
     return true;
   }).map(mb=>{
     const sid=mb.id;
-    const g=stopGallons(sid,m), gp=p?stopGallons(sid,p):null;
-    const c=cls(g,gp);
-    const rank=rankMap[sid];
-    const rankCls=rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-n';
-    const hasData=g>0;
+    const g=stopGallons(sid,m);
     const mgr=getManager(mb.state);
-    const aggGal=(GD[sid]?.[m]?.aggregators||[]).reduce((s,a)=>s+(a.gallons||0),0);
-    const fltGal=(GD[sid]?.[m]?.fleets||[]).reduce((s,f)=>s+(f.gallons||0),0);
-    const alertFlag=hasData&&aggGal===0&&fltGal===0?`<span class="tag tag-red">⚠ No Discounts</span>`:'';
-    const noGalFlag=!hasData?`<span class="tag tag-yellow">No Gallons</span>`:'';
+    const mgrColor=REGIONS[mgr]?.color||'var(--muted)';
+    
+    // Fuel Revenue estimate (from rack data if available)
+    const pd=GD[sid]?.[m];
+    const fuelRev=pd?estRevenue(pd.gallons||0,pd.rack):0;
+    
+    // Vendor Programs Revenue (from KPI or estimate based on enrollment)
+    const locEnroll=VP_ENROLL[sid]||{};
+    let vpCount=0;
+    VP_TOP10.forEach(vn=>{if(locEnroll[vn]) vpCount++;});
+    const vpRevEstimate=vpCount*150; // rough estimate per enrolled vendor/month
+    
+    // Rewards Revenue estimate (based on gallons)
+    const rewRevEstimate=g>0?Math.round(g*0.004*100)/100:0; // ~$0.004/gal avg rewards fee
+    
     return `<tr>
-      <td><span class="rank-badge ${rankCls}">${rank||'—'}</span></td>
-      <td><span class="tag tag-blue">${mb.id}</span></td>
-      <td><b>${mb.name}</b><div style="font-size:.72em;color:var(--muted)">${mb.company}</div></td>
-      <td>${mb.city}, ${mb.state}</td>
-      <td style="font-size:.75em;color:${REGIONS[mgr]?.color||'var(--muted)'}">${mgr}</td>
-      <td><span class="tag ${mb.group==="Roady's"?'tag-blue':mb.group==='PTP'?'tag-orange':'tag-gray'}">${mb.group}</span></td>
-      <td><span class="tag ${mb.type.includes('Truck Stop')?'tag-green':'tag-gray'}">${mb.type}</span></td>
-      <td class="${c}" style="font-weight:700">${fmtG(g)}</td>
-      <td>${aggGal>0?fmtG(aggGal):`<span style="color:var(--dim)">0</span>`}</td>
-      <td>${fltGal>0?fmtG(fltGal):`<span style="color:var(--dim)">0</span>`}</td>
-      <td>${alertFlag}${noGalFlag}</td>
+      <td><span class="tag tag-blue" style="font-weight:700">${sid}</span></td>
+      <td><b>${mb.name}</b></td>
+      <td style="font-size:.78em">${mb.street||'—'}</td>
+      <td>${mb.city||'—'}</td>
+      <td>${mb.state||'—'}</td>
+      <td>${mb.zip||'—'}</td>
+      <td style="font-size:.78em;color:${mgrColor};font-weight:600">${mgr}</td>
+      <td style="font-weight:700;text-align:right">${fmtG(g)}</td>
+      <td style="text-align:right">${fuelRev>0?fmtD(fuelRev):'<span style="color:var(--dim)">—</span>'}</td>
+      <td style="text-align:right">${vpRevEstimate>0?fmtD(vpRevEstimate):'<span style="color:var(--dim)">—</span>'}</td>
+      <td style="text-align:right">${rewRevEstimate>0?fmtD(rewRevEstimate):'<span style="color:var(--dim)">—</span>'}</td>
       <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${sid}')">View →</button></td>
     </tr>`;
   }).join('');
 
-  document.getElementById('ts-list-tbl').innerHTML=`<thead><tr><th>Rank</th><th>ID</th><th>Name / Company</th><th>Location</th><th>GS</th><th>Group</th><th>Type</th><th>Gallons ${lbl(m)}</th><th>Agg Gal</th><th>Fleet Gal</th><th>Alerts</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+  document.getElementById('ts-list-tbl').innerHTML=`<thead><tr><th>R#</th><th>Site Name</th><th>Address</th><th>City</th><th>State</th><th>Zip</th><th>Growth Strategist</th><th>Total Gallons</th><th>Fuel Revenue</th><th>VP Revenue</th><th>Rewards Revenue</th><th></th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // ═══════════════════════════════════════════════
+// Overview page truck stop list (separate IDs from main truckstops page)
+function renderOvTSList(){
+  const q=(document.getElementById('ov-ts-search')?.value||'').toLowerCase();
+  const grp=document.getElementById('ov-ts-filter-group')?.value||'';
+  const st=document.getElementById('ov-ts-filter-state')?.value||'';
+  const m=getM(), p=pm(m);
+  const sel=document.getElementById('ov-ts-filter-state');
+  if(sel&&sel.options.length<3){
+    const states=[...new Set(MEMBERS.map(m2=>m2.state).filter(Boolean))].sort();
+    states.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
+  }
+  const ranked=Object.keys(GD).map(sid=>({sid,g:stopGallons(sid,m)})).sort((a,b)=>b.g-a.g);
+  const rankMap={};ranked.forEach((r,i)=>rankMap[r.sid]=i+1);
+  const rows=MEMBERS.filter(mb=>{
+    if(!mb.id) return false;
+    if(q&&!mb.name.toLowerCase().includes(q)&&!mb.id.toLowerCase().includes(q)&&!(mb.city||'').toLowerCase().includes(q)&&!(mb.state||'').toLowerCase().includes(q)) return false;
+    if(grp&&mb.group!==grp) return false;
+    if(st&&mb.state!==st) return false;
+    return true;
+  }).map(mb=>{
+    const sid=mb.id, g=stopGallons(sid,m), gp=p?stopGallons(sid,p):null;
+    const c=cls(g,gp), rank=rankMap[sid];
+    const rankCls=rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-n';
+    const mgr=getManager(mb.state);
+    const aggGal=(GD[sid]?.[m]?.aggregators||[]).reduce((s,a)=>s+(a.gallons||0),0);
+    const fltGal=(GD[sid]?.[m]?.fleets||[]).reduce((s,f)=>s+(f.gallons||0),0);
+    return `<tr>
+      <td><span class="rank-badge ${rankCls}">${rank||'—'}</span></td>
+      <td><span class="tag tag-blue">${sid}</span></td>
+      <td><b>${mb.name}</b></td>
+      <td>${mb.city||'—'}, ${mb.state||'—'}</td>
+      <td style="font-size:.75em;color:${REGIONS[mgr]?.color||'var(--muted)'}">${mgr}</td>
+      <td class="${c}" style="font-weight:700">${fmtG(g)}</td>
+      <td>${aggGal>0?fmtG(aggGal):'<span style="color:var(--dim)">0</span>'}</td>
+      <td>${fltGal>0?fmtG(fltGal):'<span style="color:var(--dim)">0</span>'}</td>
+      <td><button class="btn" style="font-size:.7em;padding:3px 8px" onclick="showTSDetail('${sid}')">View →</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ov-ts-list-tbl').innerHTML=`<thead><tr><th>Rank</th><th>ID</th><th>Name</th><th>Location</th><th>GS</th><th>Gallons ${lbl(m)}</th><th>Agg Gal</th><th>Fleet Gal</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+}
+
 // TRUCK STOP SUB-VIEWS: Fuel, Rewards, Vendor Programs
 // ═══════════════════════════════════════════════
 function renderTSFuelView(){
@@ -5100,6 +5247,263 @@ function loadData(){
   return false;
 }
 
+// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// INTERSTATE V2 SPEC
+// ═══════════════════════════════════════════════
+function iv2Tab(id,el){
+  document.querySelectorAll('#pg-interstate-v2 .ec-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#pg-interstate-v2 .ec-panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('iv2-panel-'+id).classList.add('active');
+  renderIV2Spec();
+}
+
+function iv2Spec(title,calc,variance,source){
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
+    <div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--text);margin-bottom:6px">${title}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.78em;color:var(--muted);line-height:1.6">
+      <div><b style="color:var(--accent)">Calculation:</b> ${calc}</div>
+      <div><b style="color:var(--accent)">Variances Displayed:</b> ${variance}</div>
+    </div>
+    <div style="font-size:.72em;color:var(--dim);margin-top:6px"><b>Data Source:</b> ${source}</div>
+  </div>`;
+}
+
+function renderIV2Spec(){
+  const m=getM(), p=pm(m), y=py(m);
+  const MASTER_AGGS=['QPN','TCS / Apex','Edge','TAFS','OOIDA','TSD / Open Roads','XPO/RXO','OTP Capital','Prime Advantage','Motive','Haul Pay','Fleet Tech','Fleet One Edge','OTR Capital','Amazon','Haulers United','Greenlane','Load Connex','TOA Service','Onramp','WEX','AMBEST','Cloud Trucks','A to B','Bridgehaul'];
+
+  // ── FUEL SUMMARY ──
+  const totalG=totalGallons(m), totalGP=p?totalGallons(p):null, totalGY=y?totalGallons(y):null;
+  const ytdG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+totalGallons(mo),0);
+  const aggNames=allAggregators(), fleetNames=allFleets();
+  const totalAggG=aggNames.reduce((s,n)=>s+totalAggGallons(n,m),0);
+  const totalAggGP=p?aggNames.reduce((s,n)=>s+totalAggGallons(n,p),0):null;
+  const totalAggGY=y?aggNames.reduce((s,n)=>s+totalAggGallons(n,y),0):null;
+  const ytdAggG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>aggNames.reduce((ss,n)=>ss+totalAggGallons(n,mo),0)+s,0);
+  const totalFleetG=fleetNames.reduce((s,n)=>s+totalFleetGallons(n,m),0);
+  const totalFleetGP=p?fleetNames.reduce((s,n)=>s+totalFleetGallons(n,p),0):null;
+  const totalFleetGY=y?fleetNames.reduce((s,n)=>s+totalFleetGallons(n,y),0):null;
+  const ytdFleetG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>fleetNames.reduce((ss,n)=>ss+totalFleetGallons(n,mo),0)+s,0);
+  const totalStops=Object.keys(GD).length||1;
+  const avgStop=Math.round(totalG/totalStops), avgStopP=p?Math.round((totalGP||0)/totalStops):null, avgStopY=y?Math.round((totalGY||0)/totalStops):null;
+  const ytdAvg=Math.round(ytdG/totalStops);
+
+  document.getElementById('iv2-network-cards').innerHTML=
+    kc('Network Gallons',totalG,totalGP,'g','All gallons across all truck stops',ytdG,totalGY)+
+    kc('Aggregator Gallons',totalAggG,totalAggGP,'g',aggNames.length+' aggregators network-wide',ytdAggG,totalAggGY)+
+    kc('Fleet Gallons',totalFleetG,totalFleetGP,'g',fleetNames.length+' fleets network-wide',ytdFleetG,totalFleetGY)+
+    kc('Avg Gallons / Stop',avgStop,avgStopP,'g',totalStops+' total stops',ytdAvg,avgStopY);
+
+  document.getElementById('iv2-network-specs').innerHTML=
+    iv2Spec('Network Gallons','SUM of all gallon data across every truck stop for the selected period.','% vs Prior Month · Gallon Δ vs Prior Month · % vs Prior Year · Gallon Δ vs Prior Year · YTD Cumulative','Gallon Report imports per truck stop per period')+
+    iv2Spec('Aggregator Gallons','SUM of all aggregator discount gallons across all stops and all aggregator programs.','% vs Prior Month · Gallon Δ vs Prior Month · % vs Prior Year · Gallon Δ vs Prior Year · YTD Cumulative','GD[stopId][period].aggregators[].gallons')+
+    iv2Spec('Fleet Gallons','SUM of all fleet discount gallons across all stops and all fleet accounts.','% vs Prior Month · Gallon Δ vs Prior Month · % vs Prior Year · Gallon Δ vs Prior Year · YTD Cumulative','GD[stopId][period].fleets[].gallons')+
+    iv2Spec('Avg Gallons / Stop','Network Gallons ÷ Total Stops. Per-location benchmark.','% vs Prior Month · Gallon Δ vs Prior Month · % vs Prior Year · Gallon Δ vs Prior Year · YTD Avg','Calculated: totalGallons / stopCount');
+
+  // ── AGGREGATORS ──
+  const allAggs=[...new Set([...MASTER_AGGS,...aggNames])];
+  document.getElementById('iv2-agg-cards').innerHTML=
+    kc('Aggregator Gallons',totalAggG,totalAggGP,'g',allAggs.length+' aggregators',ytdAggG,totalAggGY);
+  // Sub-cards: each aggregator
+  var aggSubCards='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">Aggregator Gallons by Aggregator</div><div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">';
+  allAggs.sort().forEach(function(n){
+    var g=totalAggGallons(n,m), gp2=p?totalAggGallons(n,p):null, gy2=y?totalAggGallons(n,y):null;
+    var ytd2=MOS.slice(0,MOS.indexOf(m)+1).reduce(function(s,mo){return s+totalAggGallons(n,mo);},0);
+    aggSubCards+=kc(n,g,gp2,'g','',ytd2,gy2);
+  });
+  aggSubCards+='</div>';
+  document.getElementById('iv2-agg-subcards').innerHTML=aggSubCards;
+
+  document.getElementById('iv2-agg-specs').innerHTML=
+    iv2Spec('Aggregator Gallons (Total)','SUM of gallons across all 25 master aggregators (QPN, TCS/Apex, Edge, TAFS, OOIDA, etc.) at all truck stops.','% vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ · YTD','GD[stopId][period].aggregators[].gallons')+
+    iv2Spec('Aggregator Gallons by Aggregator','Individual card per aggregator showing that aggregator total gallons across all stops. One card per aggregator in the master list (25 total). Each card shows same variance pattern.','Per card: % vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ · YTD','SUM of GD[*][period].aggregators.filter(name===aggregator).gallons');
+
+  // ── FLEETS ──
+  var topFleets=fleetNames.map(function(n){return{name:n,g:totalFleetGallons(n,m)};}).sort(function(a,b){return b.g-a.g;}).slice(0,25);
+  document.getElementById('iv2-fleet-cards').innerHTML=
+    kc('Fleet Gallons',totalFleetG,totalFleetGP,'g',fleetNames.length+' fleets',ytdFleetG,totalFleetGY);
+  var fleetSubCards='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">Fleet Gallons by Fleet (Top 25)</div><div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">';
+  topFleets.forEach(function(f){
+    var gp2=p?totalFleetGallons(f.name,p):null, gy2=y?totalFleetGallons(f.name,y):null;
+    var ytd2=MOS.slice(0,MOS.indexOf(m)+1).reduce(function(s,mo){return s+totalFleetGallons(f.name,mo);},0);
+    fleetSubCards+=kc(f.name,f.g,gp2,'g','',ytd2,gy2);
+  });
+  fleetSubCards+='</div>';
+  document.getElementById('iv2-fleet-subcards').innerHTML=fleetSubCards;
+
+  document.getElementById('iv2-fleet-specs').innerHTML=
+    iv2Spec('Fleet Gallons (Total)','SUM of gallons across all fleet discount programs at all truck stops.','% vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ · YTD','GD[stopId][period].fleets[].gallons')+
+    iv2Spec('Fleet Gallons by Fleet','Individual card per fleet (top 25 by volume). Each card shows that fleet total gallons across all enrolled stops.','Per card: % vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ · YTD','SUM of GD[*][period].fleets.filter(name===fleet).gallons');
+
+  // ── FUELMAN ──
+  var fmStops=MEMBERS.filter(function(mb){return isEnrolled(mb.id,'fuelman');});
+  var fmG=fmStops.reduce(function(s,mb){return s+Math.round(stopGallons(mb.id,m)*0.12*10)/10;},0);
+  var fmGP=p?fmStops.reduce(function(s,mb){return s+Math.round(stopGallons(mb.id,p)*0.12*10)/10;},0):null;
+  var fmGY=y?fmStops.reduce(function(s,mb){return s+Math.round(stopGallons(mb.id,y)*0.12*10)/10;},0):null;
+  var ytdFm=MOS.slice(0,MOS.indexOf(m)+1).reduce(function(s,mo){return s+fmStops.reduce(function(s2,mb){return s2+Math.round(stopGallons(mb.id,mo)*0.12*10)/10;},0);},0);
+  var fmRev=fmG*0.03, fmRevP=fmGP?fmGP*0.03:null, fmRevY=fmGY?fmGY*0.03:null, ytdFmRev=ytdFm*0.03;
+  var fmCount=fmStops.length;
+  var fmAvgRev=fmCount>0?fmRev/fmCount:0, fmAvgRevP=fmCount>0&&fmRevP?fmRevP/fmCount:null;
+
+  document.getElementById('iv2-fuelman-cards').innerHTML=
+    kc('Fuelman Total Gallons',fmG,fmGP,'g',fmCount+' active locations',ytdFm,fmGY)+
+    kc('Active Fuelman Locations',fmCount,null,'g')+
+    kc('Est. Fuelman Revenue',fmRev,fmRevP,'$','$0.03/gal avg',ytdFmRev,fmRevY)+
+    kc('Est. Fuelman Revenue / Location',fmAvgRev,fmAvgRevP,'$','Avg across '+fmCount+' locations');
+
+  // Sub-cards: Fuelman gallons by location
+  var fmLocCards='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">Fuelman Gallons by Location</div><div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">';
+  fmStops.sort(function(a,b){return stopGallons(b.id,m)-stopGallons(a.id,m);}).slice(0,20).forEach(function(mb){
+    var lg=Math.round(stopGallons(mb.id,m)*0.12*10)/10;
+    var lgp=p?Math.round(stopGallons(mb.id,p)*0.12*10)/10:null;
+    var lgy=y?Math.round(stopGallons(mb.id,y)*0.12*10)/10:null;
+    fmLocCards+=kc(mb.name.substring(0,20),lg,lgp,'g',mb.id,null,lgy);
+  });
+  fmLocCards+='</div>';
+  document.getElementById('iv2-fuelman-subcards').innerHTML=fmLocCards;
+
+  document.getElementById('iv2-fuelman-specs').innerHTML=
+    iv2Spec('Fuelman Total Gallons','SUM of Fuelman gallons across all enrolled locations. V2: actual Fuelman transaction data.','% vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ · YTD','Enrollment status + gallon data')+
+    iv2Spec('Active Fuelman Locations','COUNT of truck stops enrolled in Fuelman.','Count change vs prior month','isEnrolled(stopId, "fuelman")')+
+    iv2Spec('Est. Fuelman Revenue','Fuelman Gallons × $0.03/gal avg. V2: actual settlement data.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','Calculated from gallons × rate')+
+    iv2Spec('Est. Fuelman Revenue / Location','Est. Fuelman Revenue ÷ Active Fuelman Locations. Average revenue generated per enrolled stop.','% vs Prior Month · $ Δ','Calculated: totalFuelmanRev / enrolledCount')+
+    iv2Spec('Fuelman Gallons by Location','Individual card per enrolled location showing that location Fuelman gallons. Top 20 by volume displayed.','Per card: % vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ','stopGallons(stopId) × 0.12 (est.) — V2: actual per-location Fuelman data');
+
+  // ── R-CHECK ──
+  var rcStops=MEMBERS.filter(function(mb){return isEnrolled(mb.id,'rcheck');});
+  var rcG=rcStops.reduce(function(s,mb){return s+Math.round(stopGallons(mb.id,m)*0.08*10)/10;},0);
+  var rcGP=p?rcStops.reduce(function(s,mb){return s+Math.round(stopGallons(mb.id,p)*0.08*10)/10;},0):null;
+  var rcGY=y?rcStops.reduce(function(s,mb){return s+Math.round(stopGallons(mb.id,y)*0.08*10)/10;},0):null;
+  var ytdRc=MOS.slice(0,MOS.indexOf(m)+1).reduce(function(s,mo){return s+rcStops.reduce(function(s2,mb){return s2+Math.round(stopGallons(mb.id,mo)*0.08*10)/10;},0);},0);
+  var rcRev=rcG*0.025, rcRevP=rcGP?rcGP*0.025:null, rcRevY=rcGY?rcGY*0.025:null, ytdRcRev=ytdRc*0.025;
+  var rcCount=rcStops.length;
+  var rcAvgRev=rcCount>0?rcRev/rcCount:0, rcAvgRevP=rcCount>0&&rcRevP?rcRevP/rcCount:null;
+
+  document.getElementById('iv2-rcheck-cards').innerHTML=
+    kc('R-Check Total Gallons',rcG,rcGP,'g',rcCount+' active locations',ytdRc,rcGY)+
+    kc('Active R-Check Locations',rcCount,null,'g')+
+    kc('Est. R-Check Revenue',rcRev,rcRevP,'$','$0.025/gal avg',ytdRcRev,rcRevY)+
+    kc('Est. R-Check Revenue / Location',rcAvgRev,rcAvgRevP,'$','Avg across '+rcCount+' locations');
+
+  // Sub-cards: R-Check gallons by location
+  var rcLocCards='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">R-Check Gallons by Location</div><div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">';
+  rcStops.sort(function(a,b){return stopGallons(b.id,m)-stopGallons(a.id,m);}).slice(0,20).forEach(function(mb){
+    var lg=Math.round(stopGallons(mb.id,m)*0.08*10)/10;
+    var lgp=p?Math.round(stopGallons(mb.id,p)*0.08*10)/10:null;
+    var lgy=y?Math.round(stopGallons(mb.id,y)*0.08*10)/10:null;
+    rcLocCards+=kc(mb.name.substring(0,20),lg,lgp,'g',mb.id,null,lgy);
+  });
+  rcLocCards+='</div>';
+  document.getElementById('iv2-rcheck-subcards').innerHTML=rcLocCards;
+
+  document.getElementById('iv2-rcheck-specs').innerHTML=
+    iv2Spec('R-Check Total Gallons','SUM of R-Check gallons across enrolled stops. V2: actual R-Check transaction data.','% vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ · YTD','Enrollment + gallon data')+
+    iv2Spec('Active R-Check Locations','COUNT of stops enrolled in R-Check.','Count change vs prior month','isEnrolled(stopId, "rcheck")')+
+    iv2Spec('Est. R-Check Revenue','R-Check Gallons × $0.025/gal avg. V2: actual settlement.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','Calculated')+
+    iv2Spec('Est. R-Check Revenue / Location','Est. Revenue ÷ Active Locations.','% vs Prior Month · $ Δ','Calculated')+
+    iv2Spec('R-Check Gallons by Location','Per-location R-Check gallons. Top 20 displayed.','Per card: % vs Prior Month · Gallon Δ · % vs Prior Year · Gallon Δ','Per-location R-Check data');
+
+  // ── REWARDS ──
+  var rewRev=gv('Rewards Fees',m)||0, rewRevP=p?gv('Rewards Fees',p):null, rewRevY=gvy('Rewards Fees',m);
+  var ytdRewRev=ytdKpi('Rewards Fees',m);
+  var expRev=gv('Expired Points Revenue',m)||0, expRevP=p?gv('Expired Points Revenue',p):null, expRevY=gvy('Expired Points Revenue',m);
+  var ytdExpRev=ytdKpi('Expired Points Revenue',m);
+  var addPts=gv('Issued Points (Add Dollars)',m)||0, addPtsP=p?gv('Issued Points (Add Dollars)',p):null, addPtsY=gvy('Issued Points (Add Dollars)',m);
+  var ytdAddPts=ytdKpi('Issued Points (Add Dollars)',m);
+  var redPts=gv('Redeemed Points',m)||0, redPtsP=p?gv('Redeemed Points',p):null, redPtsY=gvy('Redeemed Points',m);
+  var ytdRedPts=ytdKpi('Redeemed Points',m);
+  var rewLocs=gv('# of Active Rewards Locations',m)||1;
+  var avgAdds=rewLocs>0?Math.round(addPts/rewLocs):0, avgAddsP=rewLocs>0&&addPtsP?Math.round(addPtsP/rewLocs):null;
+  var avgReds=rewLocs>0?Math.round(redPts/rewLocs):0, avgRedsP=rewLocs>0&&redPtsP?Math.round(redPtsP/rewLocs):null;
+  var avgAddLoc=rewLocs>0?Math.round(addPts/rewLocs):0;
+  var avgRedLoc=rewLocs>0?Math.round(redPts/rewLocs):0;
+
+  document.getElementById('iv2-rewards-cards').innerHTML=
+    kpiKC('Rewards Revenue',rewRev,'$',rewRevP?rewRevP:null,'Fees charged to locations',false,ytdRewRev,rewRevY)+
+    kpiKC('Expired Points Revenue',expRev,'$',expRevP?expRevP:null,'Unredeemed points that expired',false,ytdExpRev,expRevY)+
+    kpiKC('Rewards Fee Revenue',rewRev,'$',rewRevP?rewRevP:null,'Total rewards program fees',false,ytdRewRev,rewRevY);
+
+  // Sub-section: Points network totals + by location
+  var rewSubHTML='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--accent);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">Points — Network Totals</div>';
+  rewSubHTML+='<div class="kpi-grid">'+
+    kpiKC('Add Points (Network)',addPts,'$',addPtsP?addPtsP:null,'Total issued points $',false,ytdAddPts,addPtsY)+
+    kpiKC('Redeem Points (Network)',redPts,'$',redPtsP?redPtsP:null,'Total redeemed points $',false,ytdRedPts,redPtsY)+
+    kpiKC('Avg Adds / Location',avgAdds,'$',avgAddsP,'Network avg per location',false)+
+    kpiKC('Avg Redeems / Location',avgReds,'$',avgRedsP,'Network avg per location',false)+
+    '</div>';
+
+  rewSubHTML+='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">Points — By Location (sample)</div>';
+
+  // Sub-cards: Add/Redeem by location
+  var rewStops=MEMBERS.filter(function(mb){return mb.status==='active'&&mb.id&&stopGallons(mb.id,m)>0;}).slice(0,10);
+  rewSubHTML+='<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">';
+  rewStops.forEach(function(mb){
+    var locG=stopGallons(mb.id,m);
+    var pctOfNet=totalG>0?locG/totalG:0;
+    var locAdd=Math.round(addPts*pctOfNet);
+    var locRed=Math.round(redPts*pctOfNet);
+    rewSubHTML+='<div class="kc"><div class="kc-lbl" style="font-size:.62em">'+mb.name.substring(0,22)+'</div><div style="display:flex;gap:12px;margin-top:6px"><div><div style="font-size:.58em;color:var(--green);font-weight:700">ADDS</div><div style="font-size:1.1em;font-weight:800">$'+locAdd.toLocaleString()+'</div></div><div><div style="font-size:.58em;color:var(--red);font-weight:700">REDEEMS</div><div style="font-size:1.1em;font-weight:800">$'+locRed.toLocaleString()+'</div></div></div><div style="font-size:.6em;color:var(--muted);margin-top:4px">'+mb.id+'</div></div>';
+  });
+  rewSubHTML+='</div>';
+  document.getElementById('iv2-rewards-subcards').innerHTML=rewSubHTML;
+
+  document.getElementById('iv2-rewards-specs').innerHTML=
+    iv2Spec('Rewards Revenue','Total fees charged to truck stops for Rewards program participation.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Rewards Fees"')+
+    iv2Spec('Expired Points Revenue','Revenue from loyalty points that expired unredeemed. Pure margin.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Expired Points Revenue"')+
+    iv2Spec('Rewards Fee Revenue','Total rewards program fee revenue (same source as Rewards Revenue, displayed separately for clarity).','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Rewards Fees"')+
+    iv2Spec('Add Points (Network Total)','Total dollar value of loyalty points ISSUED across the entire network for the period.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Issued Points (Add Dollars)"')+
+    iv2Spec('Redeem Points (Network Total)','Total dollar value of loyalty points REDEEMED across the entire network.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Redeemed Points"')+
+    iv2Spec('Add Points by Location','Per-location add (issued) points. Distributed proportionally by gallon volume. V2: actual per-location transaction data from Comdata.','Per card: Add $ · Redeem $','V2: Comdata per-location transaction reports')+
+    iv2Spec('Redeem Points by Location','Per-location redeem points. Same distribution model as adds.','Per card: Add $ · Redeem $','V2: Comdata per-location transaction reports')+
+    iv2Spec('Avg Adds / Location (Network)','Network Add Points ÷ Active Rewards Locations. Benchmark for per-location loyalty activity.','% vs Prior Month · $ Δ','Calculated: totalAddPts / activeRewardsLocations')+
+    iv2Spec('Avg Redeems / Location (Network)','Network Redeem Points ÷ Active Rewards Locations.','% vs Prior Month · $ Δ','Calculated: totalRedeemPts / activeRewardsLocations');
+
+  // ── VENDOR PROGRAMS ──
+  var vpRev=gv('Monthly Vendor Program Revenue',m)||0, vpRevP=p?gv('Monthly Vendor Program Revenue',p):null, vpRevY=gvy('Monthly Vendor Program Revenue',m);
+  var ytdVpRev=ytdKpi('Monthly Vendor Program Revenue',m);
+  var vpProgCount=gv('Total number of Participating Programs',m)||0, vpProgCountP=p?gv('Total number of Participating Programs',p):null;
+  var activeMembers=MEMBERS.filter(function(mb){return mb.status==='active'&&mb.id;});
+  var totalVPLocs=activeMembers.length||1;
+  // Count enrollments per location
+  var totalEnrollments=0;
+  activeMembers.forEach(function(mb){
+    var le=VP_ENROLL[mb.id]||{};
+    VP_TOP10.forEach(function(vn){if(le[vn]) totalEnrollments++;});
+  });
+  var avgVPPerLoc=totalVPLocs>0?(totalEnrollments/totalVPLocs).toFixed(1):0;
+  var vpRevPerLoc=totalVPLocs>0?vpRev/totalVPLocs:0, vpRevPerLocP=totalVPLocs>0&&vpRevP?vpRevP/totalVPLocs:null;
+  var vpRevPotentialPerLoc=VP_TOP10.length*150; // estimate: if all vendors enrolled
+
+  document.getElementById('iv2-vendor-cards').innerHTML=
+    kpiKC('Vendor Programs Revenue',vpRev,'$',vpRevP?vpRevP:null,'Monthly vendor program fees',false,ytdVpRev,vpRevY)+
+    kc('Total Vendor Programs',vpProgCount,vpProgCountP,'g')+
+    kc('Avg Vendor Programs / Location',parseFloat(avgVPPerLoc),null,'g','of '+VP_TOP10.length+' possible')+
+    kpiKC('VP Revenue / Location',vpRevPerLoc,'$',vpRevPerLocP?vpRevPerLocP:null,'Avg revenue per stop',false)+
+    kpiKC('VP Revenue Potential / Location',vpRevPotentialPerLoc,'$',null,'If all '+VP_TOP10.length+' vendors enrolled',false);
+
+  // Sub-cards: VP count by location and revenue by location
+  var vpLocCards='<div style="font-family:var(--ff);font-size:.82em;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:16px 0 10px;text-transform:uppercase">Vendor Programs by Location (sample)</div><div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">';
+  activeMembers.slice(0,15).forEach(function(mb){
+    var le=VP_ENROLL[mb.id]||{};
+    var enrolled=0;
+    VP_TOP10.forEach(function(vn){if(le[vn]) enrolled++;});
+    var locRev=enrolled*150;
+    vpLocCards+='<div class="kc'+(enrolled>=VP_TOP10.length*0.7?' up':'')+'"><div class="kc-lbl" style="font-size:.62em">'+mb.name.substring(0,22)+'</div><div style="font-size:1.2em;font-weight:800;margin-top:4px">'+enrolled+' / '+VP_TOP10.length+'</div><div style="font-size:.7em;color:var(--muted)">$'+locRev.toLocaleString()+' est. rev</div><div style="font-size:.6em;color:var(--dim);margin-top:2px">'+mb.id+'</div></div>';
+  });
+  vpLocCards+='</div>';
+  document.getElementById('iv2-vendor-subcards').innerHTML=vpLocCards;
+
+  document.getElementById('iv2-vendor-specs').innerHTML=
+    iv2Spec('Vendor Programs Revenue','Total monthly revenue from vendor program participation fees.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Monthly Vendor Program Revenue"')+
+    iv2Spec('Total Vendor Programs','Count of participating vendor programs across the network.','Count change vs prior month','KPI: "Total number of Participating Programs"')+
+    iv2Spec('Number of Vendor Programs by Location','Per-location count of enrolled vendors (out of Top 10 possible). Shows enrollment depth per stop.','Per card: enrolled / possible · est. revenue','VP_ENROLL[stopId] enrollment data')+
+    iv2Spec('Avg Vendor Programs / Location','Total enrollments ÷ Total locations. Network benchmark for vendor penetration.','Value','Calculated: totalEnrollments / totalLocations')+
+    iv2Spec('VP Revenue / Location','Vendor Programs Revenue ÷ Total locations. Average vendor revenue per stop.','% vs Prior Month · $ Δ','Calculated: vpRev / locCount')+
+    iv2Spec('VP Revenue Potential / Location','Theoretical max revenue if every location enrolled in all vendor programs. Highlights gap between actual and potential.','Static reference value','VP_TOP10.length × estimated per-vendor fee')+
+    iv2Spec('VP Revenue by Location','Per-location estimated vendor revenue based on enrollment count × avg fee per vendor.','Per card: enrolled count · est. revenue','VP_ENROLL[stopId] × avg vendor fee');
+}
 // ═══════════════════════════════════════════════
 // SETTINGS — Visibility, PIN Lock
 // ═══════════════════════════════════════════════
