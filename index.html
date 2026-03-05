@@ -2221,6 +2221,8 @@ tr.search-hide{display:none!important;}
         <button class="ec-tab" onclick="iv2Tab('rcheck',this)">✅ R-Check</button>
         <button class="ec-tab" onclick="iv2Tab('rewards',this)">⭐ Rewards</button>
         <button class="ec-tab" onclick="iv2Tab('vendors',this)">🏢 Vendor Programs</button>
+        <button class="ec-tab" onclick="iv2Tab('gs',this)">🗺️ Growth Strategist</button>
+        <button class="ec-tab" onclick="iv2Tab('fullspec',this)">📋 Full GitHub Issue</button>
       </div>
 
       <!-- NETWORK SUMMARY TAB -->
@@ -2297,6 +2299,26 @@ tr.search-hide{display:none!important;}
         <div class="kpi-grid" id="iv2-vendor-cards"></div>
         <div id="iv2-vendor-subcards"></div>
         <div id="iv2-vendor-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- GROWTH STRATEGIST TAB -->
+      <div class="ec-panel" id="iv2-panel-gs">
+        <div style="background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--purple);letter-spacing:.06em;margin-bottom:6px">GROWTH STRATEGIST — BY TERRITORY</div>
+          <div style="font-size:.82em;color:var(--muted);line-height:1.6">Each Growth Strategist manages a territory of truck stops across assigned states. These cards break down key revenue and volume metrics by territory, giving leadership immediate visibility into which regions are performing, growing, or need attention. Every GS territory card shows the same variance pattern: vs prior month, vs prior year, and YTD — enabling direct comparison across territories.</div>
+        </div>
+        <div class="kpi-grid" id="iv2-gs-cards"></div>
+        <div id="iv2-gs-subcards"></div>
+        <div id="iv2-gs-specs" style="margin-top:16px"></div>
+      </div>
+
+      <!-- FULL GITHUB ISSUE SPEC TAB -->
+      <div class="ec-panel" id="iv2-panel-fullspec">
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+          <button class="btn btn-accent" onclick="copyIV2Spec()">📋 Copy to Clipboard</button>
+          <button class="btn" onclick="downloadIV2Spec()">📥 Download .md</button>
+        </div>
+        <div id="iv2-fullspec-content" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;font-size:.85em;line-height:1.8;overflow-x:auto"></div>
       </div>
     </div>
 
@@ -5503,6 +5525,356 @@ function renderIV2Spec(){
     iv2Spec('VP Revenue / Location','Vendor Programs Revenue ÷ Total locations. Average vendor revenue per stop.','% vs Prior Month · $ Δ','Calculated: vpRev / locCount')+
     iv2Spec('VP Revenue Potential / Location','Theoretical max revenue if every location enrolled in all vendor programs. Highlights gap between actual and potential.','Static reference value','VP_TOP10.length × estimated per-vendor fee')+
     iv2Spec('VP Revenue by Location','Per-location estimated vendor revenue based on enrollment count × avg fee per vendor.','Per card: enrolled count · est. revenue','VP_ENROLL[stopId] × avg vendor fee');
+
+  // ── GROWTH STRATEGIST ──
+  var gsNames=Object.keys(REGIONS||{}).filter(function(n){return n!=='Unassigned';});
+  var allActiveMembers=MEMBERS.filter(function(mb){return mb.status==='active'&&mb.id;});
+
+  // Build per-GS territory data
+  var gsData=gsNames.map(function(name){
+    var reg=REGIONS[name]||{};
+    var states=reg.states||[];
+    var color=reg.color||'#3A4A6B';
+    var label=reg.label||name;
+    var stops=allActiveMembers.filter(function(mb){return states.includes(mb.state);});
+    var stopCount=stops.length;
+
+    // Territory Gallons
+    var terG=stops.reduce(function(s,mb){return s+stopGallons(mb.id,m);},0);
+    var terGP=p?stops.reduce(function(s,mb){return s+stopGallons(mb.id,p);},0):null;
+    var terGY=y?stops.reduce(function(s,mb){return s+stopGallons(mb.id,y);},0):null;
+    var ytdTerG=MOS.slice(0,MOS.indexOf(m)+1).reduce(function(s,mo){return s+stops.reduce(function(s2,mb){return s2+stopGallons(mb.id,mo);},0);},0);
+
+    // Territory Fuel Revenue (estimated from rack data)
+    var terFuelRev=stops.reduce(function(s,mb){
+      var pd=GD[mb.id]?.[m];
+      return s+(pd?estRevenue(pd.gallons||0,pd.rack):0);
+    },0);
+    var terFuelRevP=p?stops.reduce(function(s,mb){
+      var pd=GD[mb.id]?.[p];
+      return s+(pd?estRevenue(pd.gallons||0,pd.rack):0);
+    },0):null;
+    var terFuelRevY=y?stops.reduce(function(s,mb){
+      var pd=GD[mb.id]?.[y];
+      return s+(pd?estRevenue(pd.gallons||0,pd.rack):0);
+    },0):null;
+    var ytdTerFuelRev=MOS.slice(0,MOS.indexOf(m)+1).reduce(function(s,mo){
+      return s+stops.reduce(function(s2,mb){var pd=GD[mb.id]?.[mo];return s2+(pd?estRevenue(pd.gallons||0,pd.rack):0);},0);
+    },0);
+
+    // Territory VP Revenue (est from enrollments)
+    var terVPRev=stops.reduce(function(s,mb){
+      var le=VP_ENROLL[mb.id]||{};
+      var cnt=0;
+      VP_TOP10.forEach(function(vn){if(le[vn]) cnt++;});
+      return s+cnt*150;
+    },0);
+
+    // Territory Rewards Revenue (est from gallons)
+    var terRewRev=stops.reduce(function(s,mb){
+      var g2=stopGallons(mb.id,m);
+      return s+(g2>0?Math.round(g2*0.004*100)/100:0);
+    },0);
+    var terRewRevP=p?stops.reduce(function(s,mb){
+      var g2=stopGallons(mb.id,p);
+      return s+(g2>0?Math.round(g2*0.004*100)/100:0);
+    },0):null;
+
+    return {name:name,label:label,color:color,stops:stopCount,states:states,
+      gallons:terG,gallonsP:terGP,gallonsY:terGY,ytdGallons:ytdTerG,
+      fuelRev:terFuelRev,fuelRevP:terFuelRevP,fuelRevY:terFuelRevY,ytdFuelRev:ytdTerFuelRev,
+      vpRev:terVPRev,rewRev:terRewRev,rewRevP:terRewRevP};
+  }).sort(function(a,b){return b.gallons-a.gallons;});
+
+  // Top-level GS summary cards
+  var totalTerG=gsData.reduce(function(s,d){return s+d.gallons;},0);
+  var totalTerGP=p?gsData.reduce(function(s,d){return s+(d.gallonsP||0);},0):null;
+  var totalTerFuelRev=gsData.reduce(function(s,d){return s+d.fuelRev;},0);
+  var totalTerFuelRevP=p?gsData.reduce(function(s,d){return s+(d.fuelRevP||0);},0):null;
+  var totalTerVPRev=gsData.reduce(function(s,d){return s+d.vpRev;},0);
+  var totalTerRewRev=gsData.reduce(function(s,d){return s+d.rewRev;},0);
+  var totalTerRewRevP=p?gsData.reduce(function(s,d){return s+(d.rewRevP||0);},0):null;
+
+  document.getElementById('iv2-gs-cards').innerHTML=
+    kc('Total Territory Gallons',totalTerG,totalTerGP,'g',gsNames.length+' territories')+
+    kc('Total Territory Fuel Revenue',totalTerFuelRev,totalTerFuelRevP,'$')+
+    kc('Total Territory VP Revenue',totalTerVPRev,null,'$')+
+    kc('Total Territory Rewards Revenue',totalTerRewRev,totalTerRewRevP,'$');
+
+  // Per-GS territory cards
+  var gsSubHTML='';
+  gsData.forEach(function(d){
+    gsSubHTML+='<div style="font-family:var(--ff);font-size:.85em;font-weight:700;letter-spacing:.06em;margin:20px 0 10px;color:'+d.color+'">'+d.name+' <span style="font-size:.75em;color:var(--muted);font-weight:400">— '+d.label+' · '+d.stops+' stops · '+d.states.join(', ')+'</span></div>';
+    gsSubHTML+='<div class="kpi-grid">';
+    gsSubHTML+=kc('Territory Gallons',d.gallons,d.gallonsP,'g',d.stops+' stops',d.ytdGallons,d.gallonsY);
+    gsSubHTML+=kc('Territory Fuel Revenue',d.fuelRev,d.fuelRevP,'$','',d.ytdFuelRev,d.fuelRevY);
+    gsSubHTML+=kc('Territory VP Revenue',d.vpRev,null,'$','Est. from enrollments');
+    gsSubHTML+=kc('Territory Rewards Revenue',d.rewRev,d.rewRevP,'$','Est. $0.004/gal');
+    gsSubHTML+='</div>';
+  });
+
+  if(gsNames.length===0){
+    gsSubHTML='<div style="padding:30px;text-align:center;color:var(--muted)">No Growth Strategist territories configured. Set up territories in GS Management to see per-territory breakdowns.</div>';
+  }
+  document.getElementById('iv2-gs-subcards').innerHTML=gsSubHTML;
+
+  document.getElementById('iv2-gs-specs').innerHTML=
+    iv2Spec('Territory Gallons','SUM of all gallons across all truck stops in the GS assigned states for the selected period. Each GS is assigned a set of states, and all stops in those states roll up to that territory.','% vs Prior Month · Gallon Δ vs Prior Month · % vs Prior Year · Gallon Δ vs Prior Year · YTD Cumulative','REGIONS[gsName].states → filter MEMBERS by state → SUM stopGallons()')+
+    iv2Spec('Territory Fuel Revenue','SUM of estimated fuel revenue across all stops in the territory. Calculated from gallon data and rack information (margin per gallon).','% vs Prior Month · $ Δ vs Prior Month · % vs Prior Year · $ Δ vs Prior Year · YTD Cumulative','Per-stop estRevenue(gallons, rack) summed across territory stops')+
+    iv2Spec('Territory Vendor Programs Revenue','SUM of estimated vendor program revenue for all stops in the territory. Based on number of enrolled vendor programs × average per-vendor fee.','$ value','VP_ENROLL[stopId] enrollment count × $150 avg fee, summed across territory')+
+    iv2Spec('Territory Rewards Revenue','SUM of estimated rewards fee revenue for all stops in the territory. Based on gallon volume × average rewards fee rate ($0.004/gal).','% vs Prior Month · $ Δ vs Prior Month','stopGallons × $0.004, summed across territory stops')+
+    iv2Spec('Per-GS Breakdown','One row of 4 cards per Growth Strategist showing that territory gallons, fuel revenue, VP revenue, and rewards revenue. Territories are sorted by gallon volume (highest first). Each card shows the GS name, region label, stop count, assigned states, and full variance data.','Per territory: 4 cards with full variance pattern','REGIONS configuration → per-state stop aggregation');
+
+  // ── FULL SPEC ──
+  renderIV2FullSpec();
+}
+
+function getIV2SpecMarkdown(){
+return `# Feature Request: Interstate V2 — Network Dashboard KPI Cards
+
+## Summary
+
+Build a comprehensive at-a-glance dashboard for Interstate V2 that displays real-time KPI cards across eight core areas: Fuel Summary, Aggregators, Fleets, Fuelman, R-Check, Rewards, Vendor Programs, and Growth Strategist Territories. Each card must display the current period value, % change vs prior month, value difference vs prior month, % change vs prior year, value difference vs prior year, and YTD cumulative total.
+
+---
+
+## Motivation
+
+Leadership needs a single-screen view to assess network health without drilling into reports. Today, fuel gallon data is not surfaced anywhere in Interstate, rewards and revenue data requires navigating to Projected Revenue, and there is no unified view that ties gallons, revenue, and territory performance together. This feature eliminates that gap.
+
+---
+
+## Card Variance Pattern (applies to ALL cards)
+
+Every KPI card follows this display format:
+- **Current Period Value** (bold, large)
+- **% vs Prior Month** with directional arrow (green up / red down)
+- **Value Diff vs Prior Month** (e.g., +12,450 gal or +$2,300)
+- **% vs Prior Year** with directional arrow
+- **Value Diff vs Prior Year**
+- **YTD Cumulative Total**
+- **Sub-label** (contextual info like stop count, aggregator count, etc.)
+
+Cards glow green when trending up, red when down, yellow when flat.
+
+---
+
+## Tab 1: Fuel Summary
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **Network Gallons** | SUM of all gallon data across every truck stop for the selected period | **Not currently in Interstate.** Must pull from database gallon reports table, SUM all gallons grouped by period (YYYY-MM) |
+| **Aggregator Gallons** | SUM of all aggregator discount gallons across all stops | Database: gallon_reports → aggregator_details. SUM aggregator_gallons WHERE period = selected month |
+| **Fleet Gallons** | SUM of all fleet discount gallons across all stops | Database: gallon_reports → fleet_details. SUM fleet_gallons WHERE period = selected month |
+| **Avg Gallons / Stop** | Network Gallons / COUNT of stops with gallon data | Calculated: totalNetworkGallons / COUNT(DISTINCT location_id WHERE gallons > 0) |
+
+**Data Note:** Fuel gallon data is **not currently located anywhere in Interstate UI**. Must be pulled from database gallon report imports. Need queries that pull total gallons, then break down by aggregator, then by fleet.
+
+---
+
+## Tab 2: Aggregators
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **Aggregator Gallons** (Total) | SUM of gallons across all 25 master aggregators at all stops | Database: SUM aggregator_gallons from gallon report aggregator detail rows |
+| **Aggregator Gallons by Aggregator** (25 cards) | Per-aggregator SUM of gallons across all stops | SELECT aggregator_name, SUM(gallons) FROM aggregator_details WHERE period = ? GROUP BY aggregator_name |
+
+**Master List:** QPN, TCS / Apex, Edge, TAFS, OOIDA, TSD / Open Roads, XPO/RXO, OTP Capital, Prime Advantage, Motive, Haul Pay, Fleet Tech, Fleet One Edge, OTR Capital, Amazon, Haulers United, Greenlane, Load Connex, TOA Service, Onramp, WEX, AMBEST, Cloud Trucks, A to B, Bridgehaul
+
+---
+
+## Tab 3: Fleets
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **Fleet Gallons** (Total) | SUM of gallons across all fleet programs at all stops | Database: SUM fleet_gallons from gallon report fleet detail rows |
+| **Fleet Gallons by Fleet** (Top 25 cards) | Per-fleet SUM of gallons, top 25 by volume | SELECT fleet_name, SUM(gallons) GROUP BY fleet_name ORDER BY SUM(gallons) DESC LIMIT 25 |
+
+---
+
+## Tab 4: Fuelman
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **Fuelman Total Gallons** | SUM of Fuelman gallons across enrolled locations | **Interstate → Projected Revenue → Fuelman.** Need formula to pull from database by month and calculate total from previous months data |
+| **Active Fuelman Locations** | COUNT of stops enrolled in Fuelman | Database: locations WHERE fuelman_enrolled = true |
+| **Est. Fuelman Revenue** | Fuelman Gallons × $0.03/gal avg. V2: actual settlement data | **Interstate → Projected Revenue → Fuelman Revenue → by month.** Need formula that finds this in database and calculates total |
+| **Est. Fuelman Revenue / Location** | Est. Revenue / Active Locations | Calculated |
+| **Fuelman Gallons by Location** (Top 20 cards) | Per-location Fuelman gallons | Per-location Fuelman transaction data |
+
+---
+
+## Tab 5: R-Check
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **R-Check Total Gallons** | SUM of R-Check gallons across enrolled locations | **Interstate → Projected Revenue → R-Check.** Same formula pattern as Fuelman |
+| **Active R-Check Locations** | COUNT of stops enrolled in R-Check | Database: locations WHERE rcheck_enrolled = true |
+| **Est. R-Check Revenue** | R-Check Gallons × $0.025/gal avg | **Interstate → Projected Revenue → R-Check Revenue → by month.** Same formula pattern |
+| **Est. R-Check Revenue / Location** | Est. Revenue / Active Locations | Calculated |
+| **R-Check Gallons by Location** (Top 20 cards) | Per-location R-Check gallons | Per-location R-Check transaction data |
+
+---
+
+## Tab 6: Rewards
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **Rewards Revenue** | Total fees charged to stops for Rewards participation | **Interstate → Projected Revenue → Rewards Fee → by month.** Need formula that finds in database and calculates total based on previous months data |
+| **Expired Points Revenue** | Revenue from unredeemed expired loyalty points | **Interstate → Projected Revenue → Expired Points → by month.** Same formula pattern |
+| **Rewards Fee Revenue** | Same as Rewards Revenue, displayed separately | Same source |
+| **Add Points (Network)** | Total $ of points ISSUED network-wide | Rewards transactions: SUM(add_dollars) WHERE transaction_type = 'add' |
+| **Redeem Points (Network)** | Total $ of points REDEEMED network-wide | Rewards transactions: SUM(redeem_dollars) WHERE transaction_type = 'redeem' |
+| **Add Points by Location** | Per-location issued points | GROUP BY location_id |
+| **Redeem Points by Location** | Per-location redeemed points | GROUP BY location_id |
+| **Avg Adds / Location** | Network Add Points / Active Rewards Locations | Calculated |
+| **Avg Redeems / Location** | Network Redeem Points / Active Rewards Locations | Calculated |
+
+**Data Note:** Rewards data is in **Interstate → Projected Revenue → Expired Points** and **Rewards Fee** by month. Need formula/stored procedure that queries by period, calculates YTD (sum Jan through selected month), finds prior year same month, and finds prior month.
+
+---
+
+## Tab 7: Vendor Programs
+
+| Card Title | Calculation | Data Source |
+|---|---|---|
+| **Vendor Programs Revenue** | Total monthly vendor program fees | KPI data: "Monthly Vendor Program Revenue" |
+| **Total Vendor Programs** | Count of participating programs | KPI data: "Total number of Participating Programs" |
+| **Avg Vendor Programs / Location** | Total enrollments / Total locations | Calculated from enrollment data |
+| **VP by Location** (per-stop cards) | Per-location enrolled vendor count | vendor_enrollments GROUP BY location_id |
+| **VP Revenue / Location** | VP Revenue / Total locations | Calculated |
+| **VP Revenue Potential / Location** | Max if all vendors enrolled | COUNT(vendor_programs) × avg_fee |
+| **VP Revenue by Location** | Per-location est. revenue from enrollment | enrollment_count × avg_vendor_fee |
+
+---
+
+## Tab 8: Growth Strategist Territories
+
+**Summary Cards:**
+| Card Title | Calculation |
+|---|---|
+| **Total Territory Gallons** | SUM across all GS territories |
+| **Total Territory Fuel Revenue** | SUM fuel revenue across territories |
+| **Total Territory VP Revenue** | SUM VP revenue across territories |
+| **Total Territory Rewards Revenue** | SUM rewards revenue across territories |
+
+**Per-GS Cards (one row of 4 per Growth Strategist):**
+| Card Title | Calculation |
+|---|---|
+| **Territory Gallons** | SUM gallons for all stops in GS assigned states |
+| **Territory Fuel Revenue** | SUM estRevenue(gallons, rack) across territory stops |
+| **Territory VP Revenue** | SUM enrollment_count × avg_fee across territory |
+| **Territory Rewards Revenue** | SUM gallons × $0.004 across territory |
+
+---
+
+## Database Formula Requirements
+
+### Revenue Calculation Pattern (Rewards, Fuelman, R-Check)
+
+\`\`\`sql
+-- Current period
+SELECT value FROM revenue_data WHERE metric = @metric AND period = @period;
+
+-- Prior month
+SELECT value FROM revenue_data WHERE metric = @metric 
+AND period = DATE_FORMAT(DATE_SUB(STR_TO_DATE(CONCAT(@period,'-01'),'%Y-%m-%d'), INTERVAL 1 MONTH),'%Y-%m');
+
+-- Prior year same month
+SELECT value FROM revenue_data WHERE metric = @metric 
+AND period = DATE_FORMAT(DATE_SUB(STR_TO_DATE(CONCAT(@period,'-01'),'%Y-%m-%d'), INTERVAL 1 YEAR),'%Y-%m');
+
+-- YTD
+SELECT SUM(value) FROM revenue_data WHERE metric = @metric 
+AND period BETWEEN CONCAT(LEFT(@period,4),'-01') AND @period;
+\`\`\`
+
+### Gallon Queries (NEW — not in Interstate)
+
+\`\`\`sql
+-- Network total
+SELECT SUM(total_gallons) FROM gallon_reports WHERE period = @period;
+
+-- By aggregator
+SELECT aggregator_name, SUM(gallons) FROM gallon_report_aggregators WHERE period = @period GROUP BY aggregator_name;
+
+-- By fleet
+SELECT fleet_name, SUM(gallons) FROM gallon_report_fleets WHERE period = @period GROUP BY fleet_name;
+
+-- By location
+SELECT location_id, SUM(total_gallons) FROM gallon_reports WHERE period = @period GROUP BY location_id;
+\`\`\`
+
+---
+
+## Acceptance Criteria
+
+- [ ] All cards display current value, % vs prior month, value diff, % vs prior year, value diff, YTD
+- [ ] Cards change color based on trend (green up, red down, yellow flat)
+- [ ] Fuel Summary: Network Gallons, Aggregator Gallons, Fleet Gallons, Avg/Stop
+- [ ] Aggregators: total + 25 individual aggregator cards
+- [ ] Fleets: total + top 25 fleet cards
+- [ ] Fuelman: Total Gallons, Active Locations, Revenue, Revenue/Location, Gallons by Location
+- [ ] R-Check: mirrors Fuelman structure
+- [ ] Rewards: 3 revenue cards + network add/redeem + per-location + averages
+- [ ] Vendor Programs: revenue, count, per-location enrollment, averages, potential
+- [ ] Growth Strategist: territory totals + per-GS breakdown (4 cards each)
+- [ ] Gallon data pipeline created (not currently in Interstate)
+- [ ] Revenue formulas for Rewards Fees, Expired Points, Fuelman Revenue, R-Check Revenue
+
+## Reference
+
+Working prototype with live sample data: Roady's Network Command Center v20 → Interstate V2 Spec tab.`;
+}
+
+function renderIV2FullSpec(){
+  var md=getIV2SpecMarkdown();
+  // Simple markdown to HTML conversion
+  var html=md
+    .replace(/^### (.*$)/gm,'<h3 style="font-family:var(--ff);color:var(--accent);margin:20px 0 8px;font-size:1em">$1</h3>')
+    .replace(/^## (.*$)/gm,'<h2 style="font-family:var(--ff);color:var(--text);margin:24px 0 12px;font-size:1.1em;border-bottom:1px solid var(--border);padding-bottom:8px">$1</h2>')
+    .replace(/^# (.*$)/gm,'<h1 style="font-family:var(--ff);color:var(--accent);margin:0 0 16px;font-size:1.3em">$1</h1>')
+    .replace(/^---$/gm,'<hr style="border:none;border-top:1px solid var(--border);margin:20px 0">')
+    .replace(/\*\*([^*]+)\*\*/g,'<b style="color:var(--text)">$1</b>')
+    .replace(/`([^`]+)`/g,'<code style="background:var(--bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-size:.9em">$1</code>')
+    .replace(/^- \[ \] (.*$)/gm,'<div style="padding:3px 0;font-size:.88em"><input type="checkbox" disabled style="margin-right:6px"> $1</div>')
+    .replace(/^- (.*$)/gm,'<div style="padding:2px 0 2px 16px;font-size:.88em">• $1</div>')
+    .replace(/\n\n/g,'<br><br>')
+    .replace(/\|([^\n]+)\|/g,function(match){
+      var cells=match.split('|').filter(function(c){return c.trim();});
+      if(cells.every(function(c){return /^[\s-:]+$/.test(c);})) return '';
+      var isHeader=cells.every(function(c){return /\*\*/.test(c)||/Card Title|Calculation|Data Source|Card/.test(c);});
+      var tag=isHeader?'th':'td';
+      var style=isHeader?'background:var(--bg);font-size:.75em;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;text-align:left;font-weight:700':'padding:8px 10px;font-size:.82em;border-bottom:1px solid var(--border)';
+      return '<tr>'+cells.map(function(c){return '<'+tag+' style="'+style+'">'+c.trim()+'</'+tag+'>';}).join('')+'</tr>';
+    });
+  // Wrap table rows
+  html=html.replace(/(<tr>[\s\S]*?<\/tr>)/g,function(m,p1,offset,str){
+    var before=str.substring(Math.max(0,offset-20),offset);
+    if(before.indexOf('<table')>=0||before.indexOf('</tr>')>=0) return m;
+    return '<table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;margin:10px 0">'+m;
+  });
+  // Handle code blocks
+  html=html.replace(/```sql([\s\S]*?)```/g,'<pre style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:.78em;color:var(--accent);overflow-x:auto;white-space:pre-wrap;margin:10px 0">$1</pre>');
+  html=html.replace(/```([\s\S]*?)```/g,'<pre style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:.78em;color:var(--accent);overflow-x:auto;white-space:pre-wrap;margin:10px 0">$1</pre>');
+
+  var el=document.getElementById('iv2-fullspec-content');
+  if(el) el.innerHTML=html;
+}
+
+function copyIV2Spec(){
+  var md=getIV2SpecMarkdown();
+  navigator.clipboard.writeText(md).then(function(){toast('Copied to clipboard!');}).catch(function(){
+    var ta=document.createElement('textarea');ta.value=md;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied to clipboard!');
+  });
+}
+
+function downloadIV2Spec(){
+  var md=getIV2SpecMarkdown();
+  var blob=new Blob([md],{type:'text/markdown'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='Interstate_V2_Dashboard_Cards_GitHub_Issue.md';a.click();URL.revokeObjectURL(url);
+  toast('Downloaded!');
 }
 // ═══════════════════════════════════════════════
 // SETTINGS — Visibility, PIN Lock
