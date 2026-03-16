@@ -9065,6 +9065,12 @@ function renderRewardsPromotions(){
   const cats=[...new Set(RP_PROMOS.map(p=>p.category))].length;
 
   root.innerHTML=`
+  <!-- TAB NAV -->
+  <div class="ec-tabs" style="margin-bottom:20px" id="rp-tabs">
+    <button class="ec-tab active" onclick="rpTab('promos',this)">🎯 Promotions</button>
+    <button class="ec-tab" onclick="rpTab('integration',this)">🔌 App Integration Spec</button>
+  </div>
+  <div id="rp-panel-promos" class="rp-tab-panel">
   <!-- KPI STRIP -->
   <div class="kpi-grid" style="margin-bottom:20px">
     <div class="kc up"><div class="kc-lbl">Total Promotions</div><div class="kc-val">${total}</div><div class="kc-sub">Configured in system</div></div>
@@ -9138,6 +9144,13 @@ function renderRewardsPromotions(){
       </div>`).join('')}
       ${RP_PROMOS.filter(p=>p.featured&&p.active).length===0?'<div style="color:var(--muted);font-size:.82em;padding:20px">No featured promotions active. Mark a promotion as Featured to see it here.</div>':''}
     </div>
+  </div>
+
+  </div><!-- /rp-panel-promos -->
+
+  <!-- INTEGRATION SPEC PANEL -->
+  <div id="rp-panel-integration" class="rp-tab-panel" style="display:none">
+  ${rpRenderIntegrationSpec()}
   </div>
 
   <!-- EDIT / ADD MODAL -->
@@ -9403,6 +9416,347 @@ function rpSaveModal(editId){
   rpCloseModal();
   renderRewardsPromotions();
   toast(editId?'Promotion updated: '+title:'Promotion added: '+title);
+}
+
+
+// ── PROMOTIONS TAB SWITCHER ──
+function rpTab(name, el){
+  document.querySelectorAll('#rp-tabs .ec-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.rp-tab-panel').forEach(p=>p.style.display='none');
+  if(el) el.classList.add('active');
+  document.getElementById('rp-panel-'+name).style.display='block';
+}
+
+// ── INTEGRATION SPEC RENDERER ──
+function rpRenderIntegrationSpec(){
+  return `
+  <!-- HERO BANNER -->
+  <div style="background:linear-gradient(135deg,rgba(0,200,255,.08),rgba(124,58,237,.1),rgba(255,107,53,.08));border:1px solid rgba(0,200,255,.25);border-radius:14px;padding:24px 28px;margin-bottom:24px">
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
+      <div style="font-size:3em;flex-shrink:0">🔌</div>
+      <div>
+        <div style="font-family:var(--ff);font-size:1.3em;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px">Roady's Rewards App — Promotions Integration Spec</div>
+        <div style="font-size:.82em;color:var(--muted);line-height:1.7;max-width:700px">
+          This document outlines the full technical approach to connecting this Command Center's promotion system to the driver-facing Roady's Rewards App — including a Promotions API, location-based push notifications, geofencing triggers, and the in-app location detail screen showing active promos with scannable QR codes.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <span style="background:rgba(0,214,143,.15);color:var(--green);border:1px solid rgba(0,214,143,.3);padding:3px 12px;border-radius:20px;font-size:.72em;font-weight:700">✓ Command Center Ready</span>
+          <span style="background:rgba(255,214,10,.15);color:var(--yellow);border:1px solid rgba(255,214,10,.3);padding:3px 12px;border-radius:20px;font-size:.72em;font-weight:700">⚙ Backend API Needed</span>
+          <span style="background:rgba(124,58,237,.15);color:var(--purple);border:1px solid rgba(124,58,237,.3);padding:3px 12px;border-radius:20px;font-size:.72em;font-weight:700">📱 Mobile SDK Integration</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS — OVERVIEW FLOW -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);margin-bottom:16px">📐 How It All Connects — System Overview</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0;position:relative">
+      ${[
+        {icon:'🖥️', label:'Command Center', sub:'You manage promos here. Toggle active/inactive, set featured, assign QR codes.', color:'var(--accent)'},
+        {icon:'→', label:'', sub:'', color:'var(--dim)', arrow:true},
+        {icon:'☁️', label:'Promotions API', sub:'A simple REST endpoint serves active promos per location_id as JSON.', color:'var(--green)'},
+        {icon:'→', label:'', sub:'', color:'var(--dim)', arrow:true},
+        {icon:'📱', label:"Driver's App", sub:'App fetches promos when a driver views a truck stop location page.', color:'var(--orange)'},
+        {icon:'→', label:'', sub:'', color:'var(--dim)', arrow:true},
+        {icon:'🛒', label:'Cashier Scan', sub:'Driver shows QR code. Cashier scans at POS to apply the discount.', color:'var(--purple)'},
+      ].map(s=>s.arrow
+        ? `<div style="display:flex;align-items:center;justify-content:center;font-size:1.5em;color:var(--dim);padding-top:10px">→</div>`
+        : `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;margin:4px">
+            <div style="font-size:2em;margin-bottom:6px">${s.icon}</div>
+            <div style="font-size:.78em;font-weight:800;color:${s.color};margin-bottom:4px">${s.label}</div>
+            <div style="font-size:.68em;color:var(--muted);line-height:1.4">${s.sub}</div>
+          </div>`
+      ).join('')}
+    </div>
+  </div>
+
+  <!-- SECTION 1: API DESIGN -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:4px">① Promotions API — Backend Endpoint</div>
+    <div style="font-size:.75em;color:var(--muted);margin-bottom:16px">What needs to be built on your server/backend</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="background:var(--bg);border-radius:8px;padding:14px;border:1px solid var(--border)">
+        <div style="font-size:.72em;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">✓ What You Already Have</div>
+        <div style="font-size:.76em;color:var(--text);line-height:1.8">
+          • 30 promotions defined in this dashboard<br>
+          • Active / inactive toggle per promo<br>
+          • Featured flag for carousel<br>
+          • QR code ID per promotion (PROMO-0001 etc.)<br>
+          • Category, price, description, icon, color<br>
+          • Per-location assignment logic (coming)
+        </div>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:14px;border:1px solid rgba(255,214,10,.3)">
+        <div style="font-size:.72em;font-weight:700;color:var(--yellow);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">⚙ What Needs to Be Built</div>
+        <div style="font-size:.76em;color:var(--text);line-height:1.8">
+          • REST API endpoint (Node/Express or Supabase Edge Function)<br>
+          • Database table: <code style="color:var(--accent)">promotions</code> (mirrors this dashboard)<br>
+          • Table: <code style="color:var(--accent)">location_promotions</code> (which promos each stop runs)<br>
+          • "Sync" button here pushes data to that DB<br>
+          • Auth token so only trusted sources can write
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#0A1628;border:1px solid var(--border2);border-radius:8px;padding:16px;font-family:monospace;font-size:.76em;line-height:1.8;overflow-x:auto">
+      <div style="color:var(--dim);margin-bottom:6px">// GET /api/promotions?location_id=R01234&active=true</div>
+      <div style="color:var(--green)">// Returns: array of active promotions for that truck stop</div>
+      <br>
+      <div style="color:var(--muted)">{</div>
+      <div style="color:var(--text);padding-left:20px">  <span style="color:var(--accent)">"location_id"</span>: <span style="color:var(--yellow)">"R01234"</span>,</div>
+      <div style="color:var(--text);padding-left:20px">  <span style="color:var(--accent)">"location_name"</span>: <span style="color:var(--yellow)">"Boise Travel Plaza"</span>,</div>
+      <div style="color:var(--text);padding-left:20px">  <span style="color:var(--accent)">"promotions"</span>: [</div>
+      <div style="color:var(--text);padding-left:40px">{</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"id"</span>: <span style="color:var(--orange)">1</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"title"</span>: <span style="color:var(--yellow)">"Monster Energy 2 for $5"</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"price"</span>: <span style="color:var(--yellow)">"2 for $5"</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"description"</span>: <span style="color:var(--yellow)">"Buy any 2 Monster Energy..."</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"qr_code_id"</span>: <span style="color:var(--yellow)">"PROMO-0001"</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"icon"</span>: <span style="color:var(--yellow)">"⚡"</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"category"</span>: <span style="color:var(--yellow)">"Beverage"</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"featured"</span>: <span style="color:var(--orange)">true</span>,</div>
+      <div style="color:var(--text);padding-left:60px">  <span style="color:var(--accent)">"expires_at"</span>: <span style="color:var(--yellow)">"2026-04-30"</span></div>
+      <div style="color:var(--text);padding-left:40px">}</div>
+      <div style="color:var(--text);padding-left:20px">  ]</div>
+      <div style="color:var(--muted)">}</div>
+    </div>
+
+    <div style="margin-top:12px;background:rgba(0,200,255,.06);border:1px solid rgba(0,200,255,.2);border-radius:8px;padding:12px">
+      <div style="font-size:.74em;color:var(--accent);font-weight:700;margin-bottom:4px">💡 Recommended Stack</div>
+      <div style="font-size:.74em;color:var(--muted);line-height:1.7">Since you're already using <b style="color:var(--text)">Supabase</b> for YourLife CC, this is a natural fit. Create a <code style="color:var(--accent)">promotions</code> table in Supabase, write a Supabase Edge Function as the API endpoint, and the "Push to App" button in this dashboard POSTs to that function. Zero extra infrastructure needed.</div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: LOCATION DETAIL IN APP -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--green);margin-bottom:4px">② In-App Location Detail — Promotions Tab</div>
+    <div style="font-size:.75em;color:var(--muted);margin-bottom:16px">What the driver sees when they tap a truck stop on the map</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div>
+        <div style="font-size:.76em;color:var(--text);line-height:1.8;margin-bottom:12px">
+          When a driver taps a location pin on the Roady's Rewards map, the location detail screen currently shows fuel price, amenities, and rewards balance. <b style="color:var(--green)">Add a "Promotions" tab to this screen</b> that pulls from the API above.
+        </div>
+        <div style="font-size:.74em;color:var(--muted);line-height:1.8">
+          <b style="color:var(--text)">The tab shows:</b><br>
+          • Featured promos in a horizontal scroll carousel at top<br>
+          • All active promos in a vertical card list below<br>
+          • Each card has: icon, title, price, description, and a <b style="color:var(--orange)">"Show QR Code"</b> button<br>
+          • Tapping Show QR expands a large, scannable QR code<br>
+          • Driver walks to register, cashier scans it to apply deal<br><br>
+          <b style="color:var(--text)">Technical:</b><br>
+          • Call GET /api/promotions?location_id=X on tab open<br>
+          • Cache response for 15 minutes to save battery<br>
+          • Show skeleton loaders while fetching<br>
+          • "No promos available" empty state if none active
+        </div>
+      </div>
+
+      <!-- PHONE MOCKUP -->
+      <div style="display:flex;justify-content:center">
+        <div style="width:200px;background:#0A0E1A;border-radius:24px;border:2px solid var(--border2);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.6)">
+          <!-- Phone notch -->
+          <div style="background:#050810;height:28px;display:flex;align-items:center;justify-content:center">
+            <div style="width:60px;height:6px;background:#1E2A45;border-radius:3px"></div>
+          </div>
+          <!-- Screen header -->
+          <div style="background:linear-gradient(180deg,#0D1A2E,#0A0E1A);padding:10px 12px 0">
+            <div style="font-size:.55em;color:var(--muted)">← Back to Map</div>
+            <div style="font-size:.7em;font-weight:800;color:var(--text);margin:3px 0">Boise Travel Plaza</div>
+            <div style="font-size:.5em;color:var(--green)">● Open Now · 2.4 mi away</div>
+            <!-- Tab strip -->
+            <div style="display:flex;gap:0;margin-top:8px;border-bottom:1px solid var(--border)">
+              ${['Fuel','Rewards','Promos','Info'].map((t,i)=>`<div style="flex:1;text-align:center;font-size:.45em;padding:4px 2px;${i===2?'color:var(--orange);border-bottom:2px solid var(--orange);font-weight:700':'color:var(--dim)'}">${t}</div>`).join('')}
+            </div>
+          </div>
+          <!-- Promo cards -->
+          <div style="padding:8px;background:#0A0E1A">
+            <div style="font-size:.45em;color:var(--orange);font-weight:700;margin-bottom:5px">★ FEATURED</div>
+            <!-- Featured scroll -->
+            <div style="display:flex;gap:5px;overflow:hidden;margin-bottom:7px">
+              ${[{icon:'⚡',title:'Monster 2 for $5',color:'#00D68F'},{icon:'☕',title:'Free Coffee',color:'#FF6B35'}].map(p=>`
+              <div style="flex-shrink:0;width:80px;background:#111827;border-radius:8px;border:1px solid ${p.color}44;padding:6px">
+                <div style="font-size:1em;margin-bottom:2px">${p.icon}</div>
+                <div style="font-size:.42em;font-weight:700;color:#E8EDF8;line-height:1.2">${p.title}</div>
+                <div style="margin-top:4px;background:${p.color};color:#000;font-size:.35em;font-weight:800;text-align:center;border-radius:3px;padding:2px">SHOW QR</div>
+              </div>`).join('')}
+            </div>
+            <!-- List items -->
+            ${[{icon:'🥪',title:'Half Price Deli',price:'50% OFF'},{icon:'⭐',title:'2X Points Tuesday',price:'2X Pts'},{icon:'🚿',title:'Shower + Meal',price:'$5 OFF'}].map(p=>`
+            <div style="display:flex;align-items:center;gap:5px;background:#111827;border-radius:6px;padding:5px 6px;margin-bottom:4px">
+              <div style="font-size:.8em">${p.icon}</div>
+              <div style="flex:1"><div style="font-size:.42em;font-weight:700;color:#E8EDF8">${p.title}</div></div>
+              <div style="font-size:.42em;font-weight:800;color:#00C8FF">${p.price}</div>
+            </div>`).join('')}
+          </div>
+          <!-- Bottom bar -->
+          <div style="background:#050810;padding:8px 12px;display:flex;justify-content:space-around">
+            ${['🗺️','⭐','👤'].map(ic=>`<div style="font-size:.9em;opacity:.4">${ic}</div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: GEOFENCING + PUSH NOTIFICATIONS -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--yellow);margin-bottom:4px">③ Geofencing + Push Notifications</div>
+    <div style="font-size:.75em;color:var(--muted);margin-bottom:16px">Automatically alert drivers when they're near a Roady's stop with active promos</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+
+      <div style="background:var(--bg);border-radius:8px;padding:14px;border-left:3px solid var(--yellow)">
+        <div style="font-size:.72em;font-weight:700;color:var(--yellow);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">🌐 Geofencing (Background Trigger)</div>
+        <div style="font-size:.74em;color:var(--muted);line-height:1.8">
+          The app registers a <b style="color:var(--text)">geofence radius</b> (recommended: 3–5 miles) around every active Roady's location. When a driver enters the radius:<br><br>
+          1. OS triggers the app (even if closed)<br>
+          2. App fires a local push notification<br>
+          3. Notification reads: <span style="color:var(--text);font-style:italic">"Roady's Boise is 2 miles ahead — fuel up, earn points, and check today's deals 🎯"</span><br>
+          4. Tap opens directly to that location's promo tab<br><br>
+          <b style="color:var(--text)">iOS:</b> Core Location + UNUserNotificationCenter<br>
+          <b style="color:var(--text)">Android:</b> Google Play Services Geofencing API
+        </div>
+      </div>
+
+      <div style="background:var(--bg);border-radius:8px;padding:14px;border-left:3px solid var(--orange)">
+        <div style="font-size:.72em;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">🔔 Server-Side Push (FCM / APNs)</div>
+        <div style="font-size:.74em;color:var(--muted);line-height:1.8">
+          For campaigns you want to send on a schedule — not just proximity-based:<br><br>
+          1. <b style="color:var(--text)">Firebase Cloud Messaging (FCM)</b> covers both iOS and Android<br>
+          2. From this Command Center, a "Broadcast Promo" button sends a push to all opted-in drivers<br>
+          3. Target by: all drivers, drivers near a region, or drivers who stopped at a location before<br>
+          4. Example: Tuesday morning push — <span style="color:var(--text);font-style:italic">"Today ONLY: 2X Rewards Points at all Roady's locations!"</span><br><br>
+          <b style="color:var(--text)">Requires:</b> Firebase project, driver FCM token stored in Supabase at registration
+        </div>
+      </div>
+
+      <div style="background:var(--bg);border-radius:8px;padding:14px;border-left:3px solid var(--purple)">
+        <div style="font-size:.72em;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📍 Smart Route Alerts</div>
+        <div style="font-size:.74em;color:var(--muted);line-height:1.8">
+          Advanced: if the driver has a route active in the app, proactively surface Roady's stops along their route that have active promotions.<br><br>
+          • Check stops within 5 miles of the route corridor<br>
+          • Filter to only stops with ≥1 active promo<br>
+          • Send one notification per trip max (not spammy)<br>
+          • <span style="color:var(--text);font-style:italic">"2 Roady's stops on your route today have deals — Monster 2 for $5 + Free Coffee"</span>
+        </div>
+      </div>
+
+      <div style="background:var(--bg);border-radius:8px;padding:14px;border-left:3px solid var(--green)">
+        <div style="font-size:.72em;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">⚡ In-App Banner / Pop-up</div>
+        <div style="font-size:.74em;color:var(--muted);line-height:1.8">
+          When a driver opens the app while within 10 miles of a Roady's with active promos, show a dismissible banner at the top of the map view:<br><br>
+          <div style="background:#0D1225;border:1px solid rgba(255,107,53,.4);border-radius:6px;padding:7px 10px;margin-top:6px">
+            <div style="font-size:.72em;color:var(--orange);font-weight:700">🎯 Deals near you!</div>
+            <div style="font-size:.65em;color:var(--muted)">Boise Travel Plaza — 3 promos active</div>
+            <div style="font-size:.62em;color:var(--accent);margin-top:3px">Tap to view →</div>
+          </div>
+          No permission required — works without notification opt-in.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: QR CODE AT REGISTER -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--purple);margin-bottom:4px">④ QR Code Redemption at the Register</div>
+    <div style="font-size:.75em;color:var(--muted);margin-bottom:16px">How the driver redeems and the cashier validates</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+      ${[
+        {step:'1',icon:'📱',title:'Driver Selects Promo',desc:'In the app, driver taps "Show QR Code" on any active promotion at the location they\'re visiting.',color:'var(--accent)'},
+        {step:'2',icon:'🔲',title:'QR Expands Full Screen',desc:'A large, high-contrast QR code fills the screen. Code encodes: PROMO-ID + Location-ID + Timestamp + Driver-ID.',color:'var(--green)'},
+        {step:'3',icon:'🖨️',title:'Cashier Scans at POS',desc:'Cashier uses a barcode scanner or POS camera to scan. Your POS system looks up the promo and applies the discount.',color:'var(--yellow)'},
+        {step:'4',icon:'⭐',title:'Points + Redemption Logged',desc:'Supabase logs the redemption: driver ID, promo ID, location, timestamp. Points auto-credited if applicable.',color:'var(--orange)'},
+      ].map(s=>`
+        <div style="background:var(--bg);border-radius:10px;padding:14px;border:1px solid var(--border);position:relative;overflow:hidden">
+          <div style="position:absolute;top:10px;right:12px;font-family:var(--ff);font-size:2.5em;font-weight:900;color:var(--border2);line-height:1">${s.step}</div>
+          <div style="font-size:1.6em;margin-bottom:6px">${s.icon}</div>
+          <div style="font-size:.78em;font-weight:700;color:${s.color};margin-bottom:5px">${s.title}</div>
+          <div style="font-size:.71em;color:var(--muted);line-height:1.5">${s.desc}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="margin-top:14px;background:#0A1628;border:1px solid var(--border2);border-radius:8px;padding:14px;font-family:monospace;font-size:.75em;line-height:1.8">
+      <div style="color:var(--dim);margin-bottom:4px">// QR Code payload (encoded as JSON string, then base64 or URL-safe)</div>
+      <span style="color:var(--muted)">{</span>
+      <span style="color:var(--accent)"> "p"</span><span style="color:var(--muted)">:</span><span style="color:var(--yellow)">"PROMO-0001"</span><span style="color:var(--muted)">,</span>
+      <span style="color:var(--accent)"> "l"</span><span style="color:var(--muted)">:</span><span style="color:var(--yellow)">"R01234"</span><span style="color:var(--muted)">,</span>
+      <span style="color:var(--accent)"> "d"</span><span style="color:var(--muted)">:</span><span style="color:var(--yellow)">"20260316"</span><span style="color:var(--muted)">,</span>
+      <span style="color:var(--accent)"> "u"</span><span style="color:var(--muted)">:</span><span style="color:var(--yellow)">"DRV-78432"</span>
+      <span style="color:var(--muted)">}</span>
+    </div>
+  </div>
+
+  <!-- SECTION 5: LOCATION-SPECIFIC PROMO ASSIGNMENT -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:4px">⑤ Per-Location Promo Assignment (Future Enhancement)</div>
+    <div style="font-size:.75em;color:var(--muted);margin-bottom:12px">Not every truck stop will run every promo. Here's how to manage that.</div>
+    <div style="font-size:.78em;color:var(--text);line-height:1.8;margin-bottom:12px">
+      Currently, active promotions would apply network-wide. The next step is to let each truck stop <b>opt in</b> to specific promotions — the manager at Boise Travel Plaza agrees to run the Monster Energy deal and the Free Coffee promo, but not the Shower + Meal combo (they don't have showers). This is managed two ways:
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="background:var(--bg);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:.72em;font-weight:700;color:var(--teal);margin-bottom:6px">Option A — Self-Service Portal</div>
+        <div style="font-size:.72em;color:var(--muted);line-height:1.7">Add a "Manage My Promotions" section to each truck stop's Pastor Portal equivalent — their location management login. The operator logs in and checks which promos they want to run. Changes sync to the API within minutes.</div>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:.72em;font-weight:700;color:var(--teal);margin-bottom:6px">Option B — Command Center Control</div>
+        <div style="font-size:.72em;color:var(--muted);line-height:1.7">Add a column to the Truck Stop detail view in this dashboard: a checklist of active promos per location. Your team assigns promos when onboarding a location. Growth Strategists can update during their regular visits.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 6: RECOMMENDED BUILD ORDER -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);margin-bottom:16px">🗺️ Recommended Build Order</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${[
+        {phase:'Phase 1',label:'API Foundation',time:'1–2 weeks',items:['Create promotions table in Supabase (mirrors this dashboard data)','Build GET /api/promotions?location_id=X endpoint','Add "Sync to API" button in Command Center that POSTs active promos','Test with Postman / curl'],color:'var(--green)',status:'Start Here'},
+        {phase:'Phase 2',label:'In-App Location Screen',time:'1–2 weeks',items:['Add Promotions tab to existing location detail screen in the app','Fetch from API on tab open, cache 15 min','Build featured carousel + promo card list','Build QR code expansion screen'],color:'var(--accent)',status:'High Value'},
+        {phase:'Phase 3',label:'In-App Banner',time:'3–5 days',items:['On app open, check for nearby Roady\'s stops (within 10 miles)','If any have active promos → show dismissible top banner','Tap navigates to that location\'s promo tab','No extra permissions needed'],color:'var(--yellow)',status:'Quick Win'},
+        {phase:'Phase 4',label:'Push Notifications + Geofencing',time:'2–3 weeks',items:['Integrate Firebase Cloud Messaging (FCM)','Register geofences for all active Roady\'s locations (5 mile radius)','Trigger local notification when driver enters radius','Add "Broadcast" button in Command Center for manual campaigns'],color:'var(--orange)',status:'Biggest Impact'},
+        {phase:'Phase 5',label:'Per-Location Assignment + Analytics',time:'2–3 weeks',items:['Add location_promotions table (which stops run which promos)','Build assignment UI in Command Center truck stop detail','Track QR scans → redemption analytics per promo per location','Add Promo Performance tab to this dashboard'],color:'var(--purple)',status:'Full System'},
+      ].map(p=>`
+        <div style="background:var(--bg);border-radius:10px;padding:14px;border:1px solid var(--border);display:flex;gap:14px;flex-wrap:wrap">
+          <div style="flex-shrink:0;min-width:110px">
+            <div style="font-family:var(--ff);font-size:.88em;font-weight:800;color:${p.color}">${p.phase}</div>
+            <div style="font-size:.72em;font-weight:700;color:var(--text);margin-top:2px">${p.label}</div>
+            <div style="font-size:.65em;color:var(--muted);margin-top:2px">⏱ ${p.time}</div>
+            <span style="display:inline-block;margin-top:6px;background:${p.color}22;color:${p.color};border:1px solid ${p.color}44;font-size:.6em;font-weight:700;padding:2px 8px;border-radius:10px">${p.status}</span>
+          </div>
+          <div style="flex:1;min-width:180px">
+            ${p.items.map(it=>`<div style="font-size:.72em;color:var(--muted);padding:2px 0;display:flex;gap:7px;align-items:flex-start"><span style="color:${p.color};flex-shrink:0;margin-top:1px">▸</span>${it}</div>`).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <!-- TECH STACK SUMMARY -->
+  <div style="background:linear-gradient(135deg,rgba(0,200,255,.06),rgba(124,58,237,.08));border:1px solid rgba(0,200,255,.2);border-radius:12px;padding:20px">
+    <div style="font-family:var(--ff);font-size:.95em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">🛠 Full Tech Stack Summary</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+      ${[
+        {layer:'Database',tech:'Supabase (PostgreSQL)',note:'promotions + location_promotions + redemptions tables',icon:'🗄️'},
+        {layer:'API',tech:'Supabase Edge Functions',note:'GET /promotions, POST /sync, POST /redeem',icon:'☁️'},
+        {layer:'Auth',tech:'Supabase Auth + JWT',note:'Driver login, location manager login, admin token',icon:'🔐'},
+        {layer:'Push Notifications',tech:'Firebase Cloud Messaging',note:'Cross-platform iOS + Android push',icon:'🔔'},
+        {layer:'Geofencing',tech:'iOS CoreLocation / Google Geofencing API',note:'5-mile radius per active location',icon:'📍'},
+        {layer:'QR Codes',tech:'qrcode.js / native QR lib',note:'Generated client-side, payload signed with JWT',icon:'🔲'},
+        {layer:'Mobile App',tech:'React Native or Flutter',note:'Single codebase for iOS + Android',icon:'📱'},
+        {layer:'This Dashboard',tech:'Plain HTML/JS',note:'"Sync to API" button POSTs to Supabase Edge Function',icon:'🖥️'},
+      ].map(t=>`
+        <div style="background:var(--bg);border-radius:8px;padding:12px;border:1px solid var(--border)">
+          <div style="font-size:1.2em;margin-bottom:4px">${t.icon}</div>
+          <div style="font-size:.65em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">${t.layer}</div>
+          <div style="font-size:.74em;font-weight:700;color:var(--text);margin-top:2px">${t.tech}</div>
+          <div style="font-size:.65em;color:var(--dim);margin-top:3px;line-height:1.4">${t.note}</div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  `;
 }
 
 // Close modal on backdrop click
