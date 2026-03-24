@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roady's — Site Visit Review</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #080C18;
+  --surface: #0D1225;
+  --surface2: #121830;
+  --border: #1E2A45;
+  --border2: #2A3A5C;
+  --text: #E8EDF8;
+  --muted: #6B7A99;
+  --dim: #3A4A6B;
+  --accent: #00C8FF;
+  --green: #00D68F;
+  --red: #FF4757;
+  --yellow: #FFD60A;
+  --orange: #FF6B35;
+  --purple: #7C3AED;
+  --ff: 'Barlow Condensed', sans-serif;
+  --fb: 'Barlow', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--fb);
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--accent), #0072FF);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--ff); font-weight: 800; font-size: 14px; color: #fff;
+  letter-spacing: .05em;
+}
+.logo-t { font-family: var(--ff); font-size: 1.1em; font-weight: 800; letter-spacing: .06em; color: var(--text); }
+.logo-sub { font-family: var(--ff); font-size: .75em; font-weight: 600; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; }
+.topbar-actions { display: flex; gap: 8px; align-items: center; }
+.btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: .75em;
+  font-weight: 600;
+  letter-spacing: .04em;
+  font-family: var(--fb);
+  transition: all .15s;
+  display: flex; align-items: center; gap: 5px;
+}
+.btn:hover { border-color: var(--border2); color: var(--text); }
+.btn-primary {
+  background: rgba(0,200,255,.12);
+  border-color: rgba(0,200,255,.4);
+  color: var(--accent);
+}
+.btn-primary:hover { background: rgba(0,200,255,.2); }
+.btn-green {
+  background: rgba(0,214,143,.12);
+  border-color: rgba(0,214,143,.4);
+  color: var(--green);
+}
+.btn-green:hover { background: rgba(0,214,143,.2); }
+.btn-red {
+  background: rgba(255,71,87,.1);
+  border-color: rgba(255,71,87,.3);
+  color: var(--red);
+}
+.btn-red:hover { background: rgba(255,71,87,.18); }
+
+/* ── VISIT HEADER ── */
+.visit-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+}
+.visit-header h2 {
+  font-family: var(--ff);
+  font-size: 1.05em;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.header-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-group label {
+  font-size: .7em;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.field-group input, .field-group select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: .88em;
+  font-family: var(--fb);
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+.field-group input:focus, .field-group select:focus { border-color: var(--accent); }
+.field-group select option { background: var(--surface); }
+
+/* ── TABS ── */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  overflow-x: auto;
+}
+.tab {
+  padding: 12px 20px;
+  font-family: var(--ff);
+  font-size: .85em;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all .15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── CONTENT ── */
+.content { padding: 24px; max-width: 960px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── SECTION ── */
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.section-hdr {
+  background: rgba(0,200,255,.05);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-hdr h3 {
+  font-family: var(--ff);
+  font-size: .82em;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.section-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* ── CHECKLIST ROW ── */
+.check-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: start;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.check-row:last-of-type { border-bottom: none; }
+.check-row label {
+  font-size: .88em;
+  color: var(--text);
+  line-height: 1.4;
+  padding-top: 1px;
+}
+.check-row label small { display: block; color: var(--muted); font-size: .85em; margin-top: 2px; }
+.yn-group { display: flex; gap: 6px; }
+.yn-btn {
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: .78em;
+  font-weight: 700;
+  font-family: var(--fb);
+  letter-spacing: .04em;
+  transition: all .15s;
+}
+.yn-btn:hover { border-color: var(--accent); color: var(--text); }
+.yn-btn.yes.active { background: rgba(0,214,143,.18); border-color: var(--green); color: var(--green); }
+.yn-btn.no.active  { background: rgba(255,71,87,.15); border-color: var(--red); color: var(--red); }
+
+/* ── DATA ROW (discounts, ratings etc.) ── */
+.data-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, 90px);
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.data-row:last-of-type { border-bottom: none; }
+.data-row label { font-size: .88em; color: var(--text); }
+.data-row .col-hdr {
+  font-size: .7em;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+.data-row input[type=text], .data-row input[type=number] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: .85em;
+  font-family: var(--fb);
+  outline: none;
+  width: 100%;
+  text-align: right;
+  transition: border-color .15s;
+}
+.data-row input:focus { border-color: var(--accent); }
+
+/* ── GALLON ROW ── */
+.gallon-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 120px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.gallon-row:last-of-type { border-bottom: none; }
+.gallon-row label { font-size: .88em; color: var(--text); }
+.gallon-row input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: .85em;
+  font-family: var(--fb);
+  outline: none;
+  width: 100%;
+  text-align: right;
+  transition: border-color .15s;
+}
+.gallon-row input:focus { border-color: var(--accent); }
+
+/* ── COMMENT BOX ── */
+.comment-row { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.comment-row label {
+  font-size: .7em;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: .86em;
+  font-family: var(--fb);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color .15s;
+  width: 100%;
+}
+textarea:focus { border-color: var(--accent); }
+
+/* ── AMENITY GRID ── */
+.amenity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+.amenity-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.amenity-item label { font-size: .88em; color: var(--text); }
+.amenity-item input[type=text] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 7px;
+  font-size: .82em;
+  font-family: var(--fb);
+  outline: none;
+  width: 80px;
+  text-align: right;
+  transition: border-color .15s;
+}
+.amenity-item input:focus { border-color: var(--accent); }
+
+/* ── VENDOR TABLE ── */
+.vendor-table { width: 100%; border-collapse: collapse; }
+.vendor-table th {
+  font-size: .7em;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.vendor-table th:not(:first-child) { text-align: center; width: 100px; }
+.vendor-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: .88em;
+  vertical-align: middle;
+}
+.vendor-table tr:last-child td { border-bottom: none; }
+.vendor-table td input[type=text] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 7px;
+  font-size: .85em;
+  font-family: var(--fb);
+  outline: none;
+  width: 100%;
+  text-align: right;
+  transition: border-color .15s;
+}
+.vendor-table td input:focus { border-color: var(--accent); }
+
+/* ── SECTION DIVIDER LABEL ── */
+.sub-hdr {
+  font-family: var(--ff);
+  font-size: .76em;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--yellow);
+  padding: 4px 0 2px;
+  border-bottom: 1px solid var(--border2);
+  margin-bottom: 4px;
+}
+
+/* ── SAVED VISITS PANEL ── */
+.visits-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.visits-panel-hdr {
+  background: rgba(255,214,10,.05);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.visits-panel-hdr h3 {
+  font-family: var(--ff);
+  font-size: .82em;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--yellow);
+}
+.visit-list { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.visit-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  gap: 10px;
+  transition: border-color .15s;
+}
+.visit-item:hover { border-color: var(--border2); }
+.visit-item-info { flex: 1; }
+.visit-item-name { font-size: .88em; font-weight: 600; color: var(--text); }
+.visit-item-meta { font-size: .75em; color: var(--muted); margin-top: 2px; }
+.visit-item-actions { display: flex; gap: 6px; }
+.no-visits { padding: 16px; text-align: center; color: var(--muted); font-size: .85em; }
+
+/* ── PRINT STYLES ── */
+@media print {
+  body { background: #fff; color: #000; font-size: 11pt; }
+  .topbar, .tab-bar, .topbar-actions, .visit-item-actions,
+  .yn-btn:not(.active), .visits-panel, #saveBtn, #newBtn,
+  .btn-green, .btn-red { display: none !important; }
+  .visit-header { background: #fff; border-bottom: 2px solid #000; padding: 12px 0; }
+  .visit-header h2 { color: #000; font-size: 16pt; }
+  .field-group label { color: #555; }
+  .field-group input, .field-group select { border: 1px solid #ccc; color: #000; background: #fff; }
+  .tab-panel { display: block !important; }
+  .tab-panel:not(:first-child) { page-break-before: always; }
+  .section { background: #fff; border: 1px solid #ccc; margin-bottom: 12px; break-inside: avoid; }
+  .section-hdr { background: #f0f0f0; border-bottom: 1px solid #ccc; }
+  .section-hdr h3 { color: #000; }
+  .sub-hdr { color: #333; border-color: #ccc; }
+  .check-row { border-color: #eee; }
+  .check-row label { color: #000; }
+  .check-row label small { color: #666; }
+  .yn-btn.active { font-weight: 700; }
+  .yn-btn.yes.active { color: #006633; border-color: #006633; background: #e6fff2; }
+  .yn-btn.no.active  { color: #cc0000; border-color: #cc0000; background: #fff0f0; }
+  .data-row { border-color: #eee; }
+  .data-row label { color: #000; }
+  .data-row input, .gallon-row input, .amenity-item input,
+  .vendor-table td input { border: 1px solid #ccc; color: #000; background: #fff; }
+  textarea { border: 1px solid #ccc; color: #000; background: #fff; min-height: 40px; }
+  .comment-row label { color: #555; }
+  .gallon-row { border-color: #eee; }
+  .gallon-row label { color: #000; }
+  .amenity-item { border-color: #eee; }
+  .amenity-item label { color: #000; }
+  .vendor-table th { color: #555; border-color: #ccc; }
+  .vendor-table td { border-color: #eee; color: #000; }
+  .visit-header h2::before { content: "ROADY'S NETWORK — "; font-size: .8em; color: #888; }
+  .print-tab-title {
+    display: block !important;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14pt;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #000;
+    border-bottom: 2px solid #000;
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+}
+@media screen {
+  .print-tab-title { display: none; }
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--green);
+  color: var(--green);
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: .85em;
+  font-weight: 600;
+  z-index: 999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all .25s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">R</div>
+    <div>
+      <div class="logo-t">ROADY'S</div>
+      <div class="logo-sub">Site Visit Review</div>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-red" onclick="confirmNew()">＋ New Visit</button>
+    <button class="btn btn-primary" id="saveBtn" onclick="saveVisit()">💾 Save Visit</button>
+    <button class="btn btn-green" onclick="printVisit()">🖨 Print / PDF</button>
+  </div>
+</div>
+
+<!-- VISIT HEADER -->
+<div class="visit-header">
+  <h2>Visit Information</h2>
+  <div class="header-grid">
+    <div class="field-group">
+      <label>Member Name</label>
+      <input type="text" id="hdr-member" placeholder="e.g. Broadway Travel Center #110" oninput="markDirty()">
+    </div>
+    <div class="field-group">
+      <label>Member ID</label>
+      <input type="text" id="hdr-id" placeholder="e.g. R00112" oninput="markDirty()">
+    </div>
+    <div class="field-group">
+      <label>Date of Visit</label>
+      <input type="date" id="hdr-date" oninput="markDirty()">
+    </div>
+    <div class="field-group">
+      <label>Reviewed With</label>
+      <input type="text" id="hdr-with" placeholder="Manager / Contact name" oninput="markDirty()">
+    </div>
+    <div class="field-group">
+      <label>Reviewed By (GS)</label>
+      <input type="text" id="hdr-by" placeholder="Your name" oninput="markDirty()">
+    </div>
+    <div class="field-group">
+      <label>Address</label>
+      <input type="text" id="hdr-addr" placeholder="Street, City, State, ZIP" oninput="markDirty()">
+    </div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tab-bar">
+  <div class="tab active" onclick="switchTab(0)">⛽ Fuel Gallon Review</div>
+  <div class="tab" onclick="switchTab(1)">📋 Administrative Review</div>
+  <div class="tab" onclick="switchTab(2)">🎁 Rewards Review</div>
+  <div class="tab" onclick="switchTab(3)">🤝 Vendor Programs</div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!-- TAB 0: FUEL GALLON REVIEW                         -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <div class="tab-panel active" id="tab-0">
+    <div class="print-tab-title">Fuel Gallon Review</div>
+
+    <!-- Merchant Console -->
+    <div class="section">
+      <div class="section-hdr"><h3>⚙️ Merchant Console</h3></div>
+      <div class="section-body">
+        <div class="check-row">
+          <label>Set up in Merchant Console</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" data-id="mc-setup" onclick="toggleYN(this,'mc-setup','yes')">Yes</button>
+            <button class="yn-btn no"  data-id="mc-setup" onclick="toggleYN(this,'mc-setup','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>WEX Username on file</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'mc-wex-user','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'mc-wex-user','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>WEX Password on file</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'mc-wex-pass','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'mc-wex-pass','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>PIN set up</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'mc-pin','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'mc-pin','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>WEX form completed / submitted</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'mc-form','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'mc-form','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="mc-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Gallon Report -->
+    <div class="section">
+      <div class="section-hdr"><h3>📊 Gallon Report (3-month lookback)</h3></div>
+      <div class="section-body">
+        <div class="gallon-row">
+          <div class="col-hdr"></div>
+          <div style="font-size:.72em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center">Gallons</div>
+          <div style="font-size:.72em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center">Notes</div>
+        </div>
+        <div class="gallon-row">
+          <label>3-month lookback</label>
+          <input type="number" id="gal-3mo" step="0.01" oninput="markDirty()">
+          <input type="text" id="gal-3mo-note" oninput="markDirty()">
+        </div>
+        <div class="gallon-row">
+          <label>2-month lookback</label>
+          <input type="number" id="gal-2mo" step="0.01" oninput="markDirty()">
+          <input type="text" id="gal-2mo-note" oninput="markDirty()">
+        </div>
+        <div class="gallon-row">
+          <label>1-month lookback</label>
+          <input type="number" id="gal-1mo" step="0.01" oninput="markDirty()">
+          <input type="text" id="gal-1mo-note" oninput="markDirty()">
+        </div>
+        <div class="gallon-row">
+          <label><strong>Avg diesel gallons / month</strong></label>
+          <input type="number" id="gal-avg" step="0.01" oninput="markDirty()">
+          <input type="text" id="gal-avg-note" oninput="markDirty()">
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="gal-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Fleet Discounts -->
+    <div class="section">
+      <div class="section-hdr"><h3>🚛 Fleet Discounts</h3></div>
+      <div class="section-body">
+        <div class="data-row">
+          <span class="col-hdr"></span>
+          <span class="col-hdr">Retail −</span>
+          <span class="col-hdr">Cost +</span>
+          <span class="col-hdr">Better of</span>
+        </div>
+        <div id="fleet-rows">
+          <div class="data-row"><label>Fleet 1 discount</label><input type="text" id="fleet1-r" oninput="markDirty()"><input type="text" id="fleet1-c" oninput="markDirty()"><input type="text" id="fleet1-b" oninput="markDirty()"></div>
+          <div class="data-row"><label>Fleet 2 discount</label><input type="text" id="fleet2-r" oninput="markDirty()"><input type="text" id="fleet2-c" oninput="markDirty()"><input type="text" id="fleet2-b" oninput="markDirty()"></div>
+          <div class="data-row"><label>Fleet 3 discount</label><input type="text" id="fleet3-r" oninput="markDirty()"><input type="text" id="fleet3-c" oninput="markDirty()"><input type="text" id="fleet3-b" oninput="markDirty()"></div>
+          <div class="data-row"><label>Fleet 4 discount</label><input type="text" id="fleet4-r" oninput="markDirty()"><input type="text" id="fleet4-c" oninput="markDirty()"><input type="text" id="fleet4-b" oninput="markDirty()"></div>
+          <div class="data-row"><label>Fleet 5 discount</label><input type="text" id="fleet5-r" oninput="markDirty()"><input type="text" id="fleet5-c" oninput="markDirty()"><input type="text" id="fleet5-b" oninput="markDirty()"></div>
+        </div>
+        <div class="comment-row"><label>Comments / other opportunities (c/w fuel group)</label><textarea id="fleet-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Aggregator Discounts -->
+    <div class="section">
+      <div class="section-hdr"><h3>🔗 Aggregator Discounts</h3></div>
+      <div class="section-body">
+        <div class="data-row">
+          <span class="col-hdr"></span>
+          <span class="col-hdr">Retail −</span>
+          <span class="col-hdr">Cost +</span>
+          <span class="col-hdr">Better of</span>
+        </div>
+        <div id="agg-rows">
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="agg-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Rack / Cost Components -->
+    <div class="section">
+      <div class="section-hdr"><h3>🏗 Rack / Cost Components</h3></div>
+      <div class="section-body">
+        <div class="data-row">
+          <span class="col-hdr"></span>
+          <span class="col-hdr" style="text-align:left">Value</span>
+          <span class="col-hdr"></span>
+          <span class="col-hdr"></span>
+        </div>
+        <div class="data-row"><label>Rack City</label><input type="text" id="rack-city" oninput="markDirty()"><span></span><span></span></div>
+        <div class="data-row"><label>Freight Rate</label><input type="text" id="rack-freight" oninput="markDirty()"><span></span><span></span></div>
+        <div class="data-row"><label>Federal Tax</label><input type="text" id="rack-fed" oninput="markDirty()"><span></span><span></span></div>
+        <div class="data-row"><label>State Excise Tax</label><input type="text" id="rack-state" oninput="markDirty()"><span></span><span></span></div>
+        <div class="data-row"><label>Environmental Tax</label><input type="text" id="rack-env" oninput="markDirty()"><span></span><span></span></div>
+        <div class="data-row"><label>Load Tax</label><input type="text" id="rack-load" oninput="markDirty()"><span></span><span></span></div>
+        <div class="comment-row"><label>Comments</label><textarea id="rack-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!-- TAB 1: ADMINISTRATIVE REVIEW                      -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-1">
+    <div class="print-tab-title">Administrative Review</div>
+
+    <!-- Signage -->
+    <div class="section">
+      <div class="section-hdr"><h3>🪧 Signage</h3></div>
+      <div class="section-body" id="signage-rows">
+      </div>
+    </div>
+
+    <!-- Restrooms -->
+    <div class="section">
+      <div class="section-hdr"><h3>🚻 Restrooms</h3></div>
+      <div class="section-body" id="restroom-rows">
+      </div>
+    </div>
+
+    <!-- Showers -->
+    <div class="section">
+      <div class="section-hdr"><h3>🚿 Showers</h3></div>
+      <div class="section-body" id="shower-rows">
+      </div>
+    </div>
+
+    <!-- Pictures & Social Media -->
+    <div class="section">
+      <div class="section-hdr"><h3>📸 Pictures &amp; Social Media</h3></div>
+      <div class="section-body">
+        <div class="check-row">
+          <label>Photos taken <small>See list and examples from Kelsey</small></label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'pics-done','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'pics-done','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Facebook</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'social-fb','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'social-fb','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Instagram</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'social-ig','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'social-ig','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>TikTok</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'social-tt','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'social-tt','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="pics-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Administrative -->
+    <div class="section">
+      <div class="section-hdr"><h3>📁 Administrative</h3></div>
+      <div class="section-body">
+        <div class="check-row">
+          <label>Set up with ACH <small>If not, initiate request &amp; forward form to accounting</small></label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'admin-ach','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'admin-ach','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Interstate notes reviewed in advance <small>Follow up on any open issues</small></label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'admin-notes','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'admin-notes','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Annual Conference — signed up &amp; attendees identified</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'admin-conf','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'admin-conf','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="admin-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Top 5 Priorities for Drivers -->
+    <div class="section">
+      <div class="section-hdr"><h3>🏆 Top 5 Driver Priorities — Location Assessment</h3></div>
+      <div class="section-body">
+        <p style="font-size:.8em;color:var(--muted);margin-bottom:8px">Rate each priority area based on your visit observations</p>
+        <div class="check-row">
+          <label>Parking — availability &amp; condition</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'p5-parking','yes')">Good</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'p5-parking','no')">Needs Work</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Food — quality &amp; availability</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'p5-food','yes')">Good</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'p5-food','no')">Needs Work</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Fuel Price — competitive positioning</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'p5-fuel','yes')">Good</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'p5-fuel','no')">Needs Work</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Rewards — signage, participation, driver awareness</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'p5-rewards','yes')">Good</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'p5-rewards','no')">Needs Work</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Clean Showers / Bathrooms</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'p5-clean','yes')">Good</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'p5-clean','no')">Needs Work</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="p5-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Online Reviews -->
+    <div class="section">
+      <div class="section-hdr"><h3>⭐ Online Reviews</h3></div>
+      <div class="section-body">
+        <div class="data-row">
+          <span class="col-hdr"></span>
+          <span class="col-hdr">Rating</span>
+          <span class="col-hdr">Review Count</span>
+          <span class="col-hdr">Notes</span>
+        </div>
+        <div class="data-row"><label>TruckerPath</label><input type="text" id="rev-tp" oninput="markDirty()"><input type="text" id="rev-tp-ct" oninput="markDirty()"><input type="text" id="rev-tp-note" oninput="markDirty()"></div>
+        <div class="data-row"><label>Google</label><input type="text" id="rev-gg" oninput="markDirty()"><input type="text" id="rev-gg-ct" oninput="markDirty()"><input type="text" id="rev-gg-note" oninput="markDirty()"></div>
+        <div class="data-row"><label>Yelp</label><input type="text" id="rev-yp" oninput="markDirty()"><input type="text" id="rev-yp-ct" oninput="markDirty()"><input type="text" id="rev-yp-note" oninput="markDirty()"></div>
+        <div class="comment-row"><label>Comments</label><textarea id="rev-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Amenities -->
+    <div class="section">
+      <div class="section-hdr"><h3>🏪 Amenities</h3></div>
+      <div class="section-body">
+        <div class="amenity-grid" id="amenity-rows"></div>
+        <div class="comment-row" style="margin-top:10px"><label>Comments</label><textarea id="amenity-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!-- TAB 2: REWARDS REVIEW                             -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-2">
+    <div class="print-tab-title">Rewards Review</div>
+
+    <!-- Points Activity -->
+    <div class="section">
+      <div class="section-hdr"><h3>📈 Points Activity — YTD Comparison</h3></div>
+      <div class="section-body">
+        <div class="data-row">
+          <span class="col-hdr"></span>
+          <span class="col-hdr">2024</span>
+          <span class="col-hdr">2025</span>
+          <span class="col-hdr">Notes</span>
+        </div>
+        <div class="data-row"><label>Add Points YTD</label><input type="text" id="pts-add-24" oninput="markDirty()"><input type="text" id="pts-add-25" oninput="markDirty()"><input type="text" id="pts-add-note" oninput="markDirty()"></div>
+        <div class="data-row"><label>Total Points (current balance)</label><input type="text" id="pts-total-24" placeholder="N/A" oninput="markDirty()"><input type="text" id="pts-total-25" oninput="markDirty()"><input type="text" id="pts-total-note" oninput="markDirty()"></div>
+        <div class="data-row"><label>Transaction Report</label><input type="text" id="pts-txn-24" oninput="markDirty()"><input type="text" id="pts-txn-25" oninput="markDirty()"><input type="text" id="pts-txn-note" oninput="markDirty()"></div>
+        <div class="data-row"><label>Transaction Gallon Average</label><input type="text" id="pts-gal-24" oninput="markDirty()"><input type="text" id="pts-gal-25" oninput="markDirty()"><input type="text" id="pts-gal-note" oninput="markDirty()"></div>
+        <div class="comment-row"><label>Comments</label><textarea id="pts-add-comments" oninput="markDirty()" rows="2"></textarea></div>
+        <div class="data-row" style="margin-top:8px"><label>Redeemed Points YTD</label><input type="text" id="pts-red-24" oninput="markDirty()"><input type="text" id="pts-red-25" oninput="markDirty()"><input type="text" id="pts-red-note" oninput="markDirty()"></div>
+        <div class="comment-row"><label>Comments</label><textarea id="pts-red-comments" oninput="markDirty()" rows="2"></textarea></div>
+        <div class="data-row" style="margin-top:8px"><label>Redemption Rate <small style="color:var(--muted)">(Network avg: 70–75%)</small></label><input type="text" id="pts-rate-24" oninput="markDirty()"><input type="text" id="pts-rate-25" oninput="markDirty()"><input type="text" id="pts-rate-note" oninput="markDirty()"></div>
+        <div class="comment-row"><label>Comments</label><textarea id="pts-rate-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Marketing -->
+    <div class="section">
+      <div class="section-hdr"><h3>📣 Marketing &amp; Training</h3></div>
+      <div class="section-body">
+        <div class="check-row">
+          <label>Participating in Multipliers <small>Recommend: Tuesdays 2X, Thursdays 3X</small></label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-mult','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-mult','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Signage present</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-sign','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-sign','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Need more rewards cards</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-cards','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-cards','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Issues or need for training</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-train','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-train','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Aware of online training <small>www.roadys.rewards-training</small></label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-online','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-online','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Has Comdata POS (SmartDesq or SmartAuth) for rewards integration</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-pos','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-pos','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>POS system used for diesel transactions</label>
+          <div class="yn-group" style="min-width:200px">
+            <input type="text" id="rw-pos-type" placeholder="Fiscal / GasPOS / NCR / Other" oninput="markDirty()" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:.82em;font-family:var(--fb);outline:none;width:200px">
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Rewards mobile app discussed</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'rw-app','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'rw-app','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="rw-mkt-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Fraud Alerts -->
+    <div class="section">
+      <div class="section-hdr"><h3>⚠️ Fraud Alerts</h3></div>
+      <div class="section-body">
+        <div class="check-row">
+          <label>Fraud alert list reviewed with location <small>Get list from Jason before visit</small></label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'fraud-reviewed','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'fraud-reviewed','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="check-row">
+          <label>Recent fraud alerts discussed</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'fraud-discussed','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'fraud-discussed','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row"><label>Comments</label><textarea id="fraud-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!-- TAB 3: VENDOR PROGRAMS                            -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-3">
+    <div class="print-tab-title">Vendor Program Review</div>
+
+    <!-- Current Programs -->
+    <div class="section">
+      <div class="section-hdr"><h3>✅ Current Participating Vendor Programs</h3></div>
+      <div class="section-body">
+        <table class="vendor-table" id="current-vendors-table">
+          <thead><tr><th>Program</th><th>Active</th><th>Rebate / Terms</th><th>Notes</th></tr></thead>
+          <tbody id="current-vendors-body"></tbody>
+        </table>
+        <div class="comment-row" style="margin-top:10px"><label>Comments</label><textarea id="vp-current-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Programs to Consider -->
+    <div class="section">
+      <div class="section-hdr"><h3>💡 Other Key Vendor Programs to Consider</h3></div>
+      <div class="section-body">
+        <table class="vendor-table" id="consider-vendors-table">
+          <thead><tr><th>Program</th><th>Interested</th><th>Follow-Up Notes</th></tr></thead>
+          <tbody id="consider-vendors-body"></tbody>
+        </table>
+        <div class="comment-row" style="margin-top:10px"><label>Comments</label><textarea id="vp-consider-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
+    <!-- Swag -->
+    <div class="section">
+      <div class="section-hdr"><h3>🎁 Swag &amp; Wrap-Up</h3></div>
+      <div class="section-body">
+        <div class="field-group">
+          <label>Swag given to</label>
+          <input type="text" id="swag-to" placeholder="Name / title" oninput="markDirty()" style="max-width:300px">
+        </div>
+        <div class="check-row" style="margin-top:10px">
+          <label>Visit summary video/audio recorded &amp; uploaded to #site-visits Slack channel</label>
+          <div class="yn-group">
+            <button class="yn-btn yes" onclick="toggleYN(this,'wrap-video','yes')">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'wrap-video','no')">No</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="comment-row" style="margin-top:8px"><label>Visit Summary / Overall Comments</label><textarea id="wrap-comments" oninput="markDirty()" rows="4"></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAVED VISITS -->
+  <div class="visits-panel" id="savedPanel">
+    <div class="visits-panel-hdr">
+      <h3>📂 Saved Visits</h3>
+      <span style="font-size:.75em;color:var(--muted)" id="visit-count"></span>
+    </div>
+    <div class="visit-list" id="visit-list"></div>
+  </div>
+
+</div><!-- /content -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── AGGREGATORS (from dashboard list) ──────────────────
+const AGGREGATORS = ['Fuelman','RTS','QPN','TCS','Edge','TATS','OOIDA','TSD','RXO','OTP Capital',
+  'Prime Advantage','Motive','Haul Pay','Amazon','Haulers United','Greenlane',
+  'Load Connex','TOA Service','Onramp','Cloud Trucks'];
+
+const SIGNAGE_ITEMS = ['Pump Decals','Bathroom mirror rewards decals','Driver entrance door signage','Fuel Desk signage','Other signage'];
+const RESTROOM_ITEMS = ['Was the restroom clean and sanitary?','Functionality and Condition of Fixtures','Accessibility and Safety (ADA compliant, non-slip floors, grab bars, hooks, benches)','Privacy and Security (doors, stalls, locks provide privacy, sufficient lighting)','Ventilation and Odor Control (proper airflow to prevent moisture/odors/humidity)'];
+const SHOWER_ITEMS = ['Was the shower clean and sanitary?','Functionality and Condition of Fixtures','Accessibility and Safety (ADA compliant, non-slip floors, grab bars, hooks, benches)','Privacy and Security (doors, stalls, locks provide privacy, sufficient lighting)','Ventilation and Odor Control (proper airflow to prevent moisture/odors/humidity)'];
+const AMENITY_ITEMS = ['DEF available — how many dispensers','# of gas pumps','Lot surface (paved / gravel)','# of diesel pumps','Branded fuel','Overnight parking','Gas brand','# of parking spaces','Fuel service (self-serve?)','Fast food','Game room','Internet / Wi-Fi','Motel / Hotel','Public copier','Restaurant chains','Restaurant seat count','Propane (bottled)','Public fax'];
+const CURRENT_VENDORS = ['All Over Media','DAS','Ecolab','Entegra','Sysco','Heartland','Lynco','Farmer Brothers','Coca-Cola / CCNA','Global Payments (Heartland)','Iowa Smokehouse','ATM'];
+const CONSIDER_VENDORS = ['Sysco','Heartland','DAS or Lynco','Entegra','Ecolab','Aramark','Coke','ATM','Farmer Bros Coffee','All Over Media','Truck Parking','Other 1','Other 2','Other 3','Other 4','Other 5'];
+
+// ── STATE ──────────────────────────────────────────────
+let ynState = {};
+let dirty = false;
+let currentVisitId = null;
+
+function markDirty(){ dirty = true; }
+
+// ── BUILD DYNAMIC ROWS ─────────────────────────────────
+function buildAggRows(){
+  const c = document.getElementById('agg-rows');
+  c.innerHTML = '';
+  AGGREGATORS.forEach(a => {
+    const id = 'agg-'+a.replace(/\W+/g,'-').toLowerCase();
+    const d = document.createElement('div');
+    d.className = 'data-row';
+    d.innerHTML = `<label>${a}</label>
+      <input type="text" id="${id}-r" oninput="markDirty()">
+      <input type="text" id="${id}-c" oninput="markDirty()">
+      <input type="text" id="${id}-b" oninput="markDirty()">`;
+    c.appendChild(d);
+  });
+}
+
+function buildYNSection(containerId, items, prefix){
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  items.forEach((item, i) => {
+    const id = prefix+'-'+i;
+    const d = document.createElement('div');
+    d.className = 'check-row';
+    d.innerHTML = `<label>${item}</label>
+      <div class="yn-group">
+        <button class="yn-btn yes" onclick="toggleYN(this,'${id}','yes')">Yes</button>
+        <button class="yn-btn no"  onclick="toggleYN(this,'${id}','no')">No</button>
+      </div><div></div>`;
+    c.appendChild(d);
+  });
+  // comment box
+  const cmtId = prefix+'-comments';
+  const cmtDiv = document.createElement('div');
+  cmtDiv.className = 'comment-row';
+  cmtDiv.innerHTML = `<label>Comments</label><textarea id="${cmtId}" oninput="markDirty()" rows="2"></textarea>`;
+  c.appendChild(cmtDiv);
+}
+
+function buildAmenityRows(){
+  const c = document.getElementById('amenity-rows');
+  c.innerHTML = '';
+  AMENITY_ITEMS.forEach((item, i) => {
+    const id = 'amen-'+i;
+    const d = document.createElement('div');
+    d.className = 'amenity-item';
+    d.innerHTML = `<label>${item}</label><input type="text" id="${id}" oninput="markDirty()">`;
+    c.appendChild(d);
+  });
+}
+
+function buildVendorTable(tbodyId, programs, hasRebate){
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = '';
+  programs.forEach((p, i) => {
+    const id = tbodyId+'-'+i;
+    const tr = document.createElement('tr');
+    if(hasRebate){
+      tr.innerHTML = `<td>${p}</td>
+        <td style="text-align:center">
+          <div class="yn-group" style="justify-content:center">
+            <button class="yn-btn yes" onclick="toggleYN(this,'${id}-active','yes')" style="padding:2px 8px">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'${id}-active','no')"  style="padding:2px 8px">No</button>
+          </div>
+        </td>
+        <td><input type="text" id="${id}-rebate" placeholder="rebate/terms" oninput="markDirty()"></td>
+        <td><input type="text" id="${id}-note" oninput="markDirty()"></td>`;
+    } else {
+      tr.innerHTML = `<td>${p}</td>
+        <td style="text-align:center">
+          <div class="yn-group" style="justify-content:center">
+            <button class="yn-btn yes" onclick="toggleYN(this,'${id}-int','yes')" style="padding:2px 8px">Yes</button>
+            <button class="yn-btn no"  onclick="toggleYN(this,'${id}-int','no')"  style="padding:2px 8px">No</button>
+          </div>
+        </td>
+        <td colspan="2"><input type="text" id="${id}-note" oninput="markDirty()"></td>`;
+    }
+    tbody.appendChild(tr);
+  });
+}
+
+// ── YES/NO TOGGLE ───────────────────────────────────────
+function toggleYN(btn, id, val){
+  ynState[id] = val;
+  const parent = btn.closest('.yn-group');
+  parent.querySelectorAll('.yn-btn').forEach(b => { b.classList.remove('active'); });
+  btn.classList.add('active');
+  markDirty();
+}
+
+// ── TAB SWITCHING ───────────────────────────────────────
+function switchTab(idx){
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', i===idx));
+}
+
+// ── COLLECT ALL FORM DATA ───────────────────────────────
+function collectData(){
+  const all = {};
+  // Header
+  ['member','id','date','with','by','addr'].forEach(k => {
+    const el = document.getElementById('hdr-'+k);
+    if(el) all['hdr-'+k] = el.value;
+  });
+  // All inputs and textareas
+  document.querySelectorAll('input[id], textarea[id]').forEach(el => {
+    all[el.id] = el.value;
+  });
+  // YN state
+  all['__yn'] = {...ynState};
+  return all;
+}
+
+// ── RESTORE FORM DATA ───────────────────────────────────
+function restoreData(data){
+  if(!data) return;
+  ynState = data['__yn'] || {};
+  Object.keys(data).forEach(k => {
+    if(k === '__yn') return;
+    const el = document.getElementById(k);
+    if(el) el.value = data[k] || '';
+  });
+  // Restore YN buttons
+  Object.keys(ynState).forEach(id => {
+    const val = ynState[id];
+    document.querySelectorAll(`.yn-btn`).forEach(btn => {
+      const onclick = btn.getAttribute('onclick') || '';
+      if(onclick.includes(`'${id}'`)){
+        btn.classList.remove('active');
+        if(btn.classList.contains(val)) btn.classList.add('active');
+      }
+    });
+  });
+}
+
+// ── SAVE VISIT ──────────────────────────────────────────
+function saveVisit(){
+  const data = collectData();
+  const member = data['hdr-member'] || 'Unnamed Visit';
+  const date = data['hdr-date'] || new Date().toISOString().slice(0,10);
+  const id = currentVisitId || 'visit-'+Date.now();
+  currentVisitId = id;
+  const visits = loadVisits();
+  visits[id] = { id, member, date, data, saved: new Date().toISOString() };
+  localStorage.setItem('roadys_site_visits', JSON.stringify(visits));
+  dirty = false;
+  renderVisitList();
+  toast('Visit saved — ' + member);
+}
+
+function loadVisits(){
+  try { return JSON.parse(localStorage.getItem('roadys_site_visits') || '{}'); }
+  catch(e){ return {}; }
+}
+
+function renderVisitList(){
+  const visits = loadVisits();
+  const list = document.getElementById('visit-list');
+  const ids = Object.keys(visits).sort((a,b) => visits[b].saved.localeCompare(visits[a].saved));
+  document.getElementById('visit-count').textContent = ids.length + ' saved';
+  if(!ids.length){
+    list.innerHTML = '<div class="no-visits">No saved visits yet. Fill out the form and click Save.</div>';
+    return;
+  }
+  list.innerHTML = ids.map(id => {
+    const v = visits[id];
+    const d = v.date ? new Date(v.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    const active = id === currentVisitId ? 'border-color:var(--accent)' : '';
+    return `<div class="visit-item" style="${active}">
+      <div class="visit-item-info">
+        <div class="visit-item-name">${v.member}</div>
+        <div class="visit-item-meta">Visit date: ${d} · Saved: ${new Date(v.saved).toLocaleDateString()}</div>
+      </div>
+      <div class="visit-item-actions">
+        <button class="btn btn-primary" onclick="loadVisit('${id}')">Load</button>
+        <button class="btn btn-red" onclick="deleteVisit('${id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function loadVisit(id){
+  if(dirty && !confirm('You have unsaved changes. Load anyway?')) return;
+  const visits = loadVisits();
+  const v = visits[id];
+  if(!v) return;
+  currentVisitId = id;
+  clearForm();
+  restoreData(v.data);
+  dirty = false;
+  renderVisitList();
+  window.scrollTo(0, 0);
+  toast('Loaded: ' + v.member);
+}
+
+function deleteVisit(id){
+  if(!confirm('Delete this visit? This cannot be undone.')) return;
+  const visits = loadVisits();
+  delete visits[id];
+  localStorage.setItem('roadys_site_visits', JSON.stringify(visits));
+  if(currentVisitId === id){ clearForm(); currentVisitId = null; }
+  renderVisitList();
+  toast('Visit deleted');
+}
+
+function confirmNew(){
+  if(dirty && !confirm('You have unsaved changes. Start a new visit anyway?')) return;
+  clearForm();
+  currentVisitId = null;
+  dirty = false;
+  window.scrollTo(0,0);
+  toast('New visit started');
+}
+
+function clearForm(){
+  ynState = {};
+  document.querySelectorAll('input[id], textarea[id]').forEach(el => { el.value = ''; });
+  document.querySelectorAll('.yn-btn').forEach(b => b.classList.remove('active'));
+  // Set today's date
+  document.getElementById('hdr-date').value = new Date().toISOString().slice(0,10);
+}
+
+// ── PRINT ───────────────────────────────────────────────
+function printVisit(){
+  // Show all panels for print
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'block');
+  window.print();
+  // Restore
+  setTimeout(() => {
+    document.querySelectorAll('.tab-panel').forEach((p,i) => {
+      p.style.display = '';
+      p.classList.toggle('active', i===0);
+    });
+    // Re-apply active tab
+    const activeTab = document.querySelector('.tab.active');
+    const tabIdx = [...document.querySelectorAll('.tab')].indexOf(activeTab);
+    document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', i===tabIdx));
+  }, 500);
+}
+
+// ── TOAST ───────────────────────────────────────────────
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── INIT ────────────────────────────────────────────────
+(function init(){
+  buildAggRows();
+  buildYNSection('signage-rows', SIGNAGE_ITEMS, 'sign');
+  buildYNSection('restroom-rows', RESTROOM_ITEMS, 'rest');
+  buildYNSection('shower-rows', SHOWER_ITEMS, 'shower');
+  buildAmenityRows();
+  buildVendorTable('current-vendors-body', CURRENT_VENDORS, true);
+  buildVendorTable('consider-vendors-body', CONSIDER_VENDORS, false);
+  document.getElementById('hdr-date').value = new Date().toISOString().slice(0,10);
+  renderVisitList();
+})();
+</script>
+</body>
+</html>
