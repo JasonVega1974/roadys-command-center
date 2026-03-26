@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roady's Rewards — Network Performance Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #08090d;
+  --bg2:     #0f1117;
+  --bg3:     #14171f;
+  --card:    #181c27;
+  --card2:   #1d2232;
+  --border:  rgba(255,255,255,.07);
+  --border2: rgba(255,255,255,.12);
+  --tx:      #f0f2f8;
+  --tx2:     #9ba3bc;
+  --tx3:     #5a637a;
+  --gold:    #e8a020;
+  --gold2:   #f5c842;
+  --red:     #e84040;
+  --red2:    #ff6b6b;
+  --green:   #22c55e;
+  --green2:  #4ade80;
+  --yellow:  #f59e0b;
+  --blue:    #3b82f6;
+  --accent:  #e8a020;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--tx);
+  font-family: 'Barlow', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── HEADER ── */
+.dash-header {
+  background: linear-gradient(135deg, #0d0f18 0%, #131825 100%);
+  border-bottom: 1px solid var(--border2);
+  padding: 1.25rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(20px);
+}
+.logo-area { display: flex; align-items: center; gap: .75rem; }
+.logo-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--gold), #c47a10);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+  box-shadow: 0 4px 16px rgba(232,160,32,.3);
+}
+.logo-text { font-family: 'Barlow Condensed', sans-serif; }
+.logo-title { font-size: 1.2rem; font-weight: 800; letter-spacing: .04em; color: var(--tx); }
+.logo-sub { font-size: .68rem; font-weight: 600; color: var(--gold); letter-spacing: .12em; text-transform: uppercase; }
+.header-meta { display: flex; align-items: center; gap: 1rem; }
+.period-badge {
+  background: rgba(232,160,32,.1);
+  border: 1px solid rgba(232,160,32,.25);
+  color: var(--gold);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  padding: .3rem .7rem;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+.nav-tabs {
+  display: flex;
+  gap: .25rem;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .25rem;
+}
+.nav-tab {
+  padding: .4rem .9rem;
+  border-radius: 7px;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--tx3);
+  transition: all .2s;
+  white-space: nowrap;
+  border: none;
+  background: none;
+}
+.nav-tab.active {
+  background: var(--gold);
+  color: #000;
+}
+.nav-tab:hover:not(.active) { color: var(--tx2); background: rgba(255,255,255,.05); }
+
+/* ── LAYOUT ── */
+.main { padding: 1.5rem 2rem; max-width: 1600px; margin: 0 auto; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* ── SECTION HEADER ── */
+.sec-hdr {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 1.25rem; padding-bottom: .75rem;
+  border-bottom: 1px solid var(--border);
+}
+.sec-hdr-left .sec-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.5rem; font-weight: 800;
+  letter-spacing: .03em; color: var(--tx);
+}
+.sec-hdr-left .sec-sub { font-size: .75rem; color: var(--tx3); margin-top: .15rem; }
+.trend-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--tx3);
+}
+
+/* ── KPI CARDS ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+  transition: transform .2s, border-color .2s;
+}
+.kpi-card:hover { transform: translateY(-2px); border-color: var(--border2); }
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--accent-color, var(--gold));
+  opacity: .6;
+}
+.kpi-card.red-accent { --accent-color: var(--red); }
+.kpi-card.green-accent { --accent-color: var(--green); }
+.kpi-card.blue-accent { --accent-color: var(--blue); }
+.kpi-card.yellow-accent { --accent-color: var(--yellow); }
+.kpi-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--tx3); margin-bottom: .5rem;
+  display: flex; align-items: center; gap: .4rem;
+}
+.kpi-value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 2rem; font-weight: 800;
+  color: var(--tx); line-height: 1;
+  margin-bottom: .6rem;
+}
+.kpi-meta { display: flex; flex-direction: column; gap: .25rem; }
+.kpi-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: .7rem; color: var(--tx3);
+}
+.kpi-row span:last-child { font-family: 'JetBrains Mono', monospace; font-size: .68rem; }
+.neg { color: var(--red2); }
+.pos { color: var(--green2); }
+.neutral { color: var(--tx2); }
+.kpi-ytd {
+  margin-top: .5rem; padding-top: .5rem;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between;
+  font-size: .7rem;
+}
+.kpi-ytd-label { color: var(--tx3); font-weight: 600; }
+.kpi-ytd-value { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; color: var(--tx2); }
+
+/* ── CHARTS ── */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.chart-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+.chart-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1rem; font-weight: 700;
+  color: var(--tx); margin-bottom: .3rem;
+}
+.chart-sub { font-size: .7rem; color: var(--tx3); margin-bottom: 1rem; }
+.chart-wrap { position: relative; }
+
+/* ── TABLE ── */
+.table-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+.table-hdr {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem;
+}
+.table-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1rem; font-weight: 700; color: var(--tx);
+}
+.table-sub { font-size: .7rem; color: var(--tx3); }
+.search-box {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .4rem .75rem;
+  color: var(--tx);
+  font-size: .78rem;
+  width: 200px;
+  outline: none;
+  font-family: 'Barlow', sans-serif;
+}
+.search-box::placeholder { color: var(--tx3); }
+.search-box:focus { border-color: var(--gold); }
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: .6rem 1rem;
+  text-align: left;
+  font-size: .65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--tx3);
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+th:hover { color: var(--tx2); }
+td {
+  padding: .55rem 1rem;
+  font-size: .78rem;
+  color: var(--tx2);
+  border-bottom: 1px solid rgba(255,255,255,.03);
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,.02); }
+.mono { font-family: 'JetBrains Mono', monospace; font-size: .72rem; }
+.badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .18rem .55rem;
+  border-radius: 20px;
+  font-size: .65rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-red    { background: rgba(232,64,64,.12);  color: var(--red2);   border: 1px solid rgba(232,64,64,.25); }
+.badge-yellow { background: rgba(245,158,11,.12); color: #fbbf24;       border: 1px solid rgba(245,158,11,.25); }
+.badge-green  { background: rgba(34,197,94,.12);  color: var(--green2); border: 1px solid rgba(34,197,94,.25); }
+
+/* ── RATE BAR ── */
+.rate-bar-wrap { display: flex; align-items: center; gap: .5rem; min-width: 140px; }
+.rate-bar-bg {
+  flex: 1; height: 5px; background: rgba(255,255,255,.08);
+  border-radius: 3px; overflow: hidden;
+}
+.rate-bar-fill { height: 100%; border-radius: 3px; }
+.rate-val { font-family: 'JetBrains Mono', monospace; font-size: .7rem; min-width: 42px; text-align: right; }
+
+/* ── PLAN SECTION ── */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.plan-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+}
+.plan-num {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .75rem; font-weight: 800;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gold); margin-bottom: .35rem;
+}
+.plan-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.1rem; font-weight: 700;
+  color: var(--tx); margin-bottom: .5rem;
+}
+.plan-desc { font-size: .78rem; color: var(--tx2); line-height: 1.55; }
+.plan-icon {
+  font-size: 1.5rem; margin-bottom: .5rem; display: block;
+}
+.plan-steps { list-style: none; margin-top: .5rem; }
+.plan-steps li {
+  font-size: .75rem; color: var(--tx2);
+  padding: .2rem 0;
+  padding-left: 1rem;
+  position: relative;
+  line-height: 1.45;
+}
+.plan-steps li::before {
+  content: '→';
+  position: absolute; left: 0;
+  color: var(--gold); font-size: .65rem;
+}
+
+/* ── SUPPORT CARD ── */
+.support-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.support-card {
+  background: linear-gradient(135deg, rgba(232,160,32,.07), rgba(232,160,32,.02));
+  border: 1px solid rgba(232,160,32,.2);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+}
+.support-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1rem; font-weight: 700; color: var(--gold);
+  margin-bottom: .75rem;
+  display: flex; align-items: center; gap: .5rem;
+}
+.support-item {
+  font-size: .78rem; color: var(--tx2);
+  padding: .3rem 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  display: flex; align-items: flex-start; gap: .5rem;
+  line-height: 1.45;
+}
+.support-item:last-child { border-bottom: none; }
+.support-dot { color: var(--gold); margin-top: .1rem; flex-shrink: 0; }
+
+/* ── ALERT BANNER ── */
+.alert-banner {
+  background: linear-gradient(135deg, rgba(232,64,64,.1), rgba(232,64,64,.05));
+  border: 1px solid rgba(232,64,64,.25);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex; align-items: center; gap: 1rem;
+}
+.alert-icon { font-size: 1.5rem; flex-shrink: 0; }
+.alert-text .alert-title { font-weight: 700; color: var(--red2); font-size: .9rem; }
+.alert-text .alert-sub { font-size: .75rem; color: var(--tx2); margin-top: .15rem; }
+
+/* ── DIVIDER ── */
+.divider {
+  border: none; border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+/* ── THEME CHIPS ── */
+.theme-chips { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.chip {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: .3rem .75rem;
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--tx2);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.chip.gold { background: rgba(232,160,32,.1); border-color: rgba(232,160,32,.3); color: var(--gold); }
+
+/* ── FOOTER ── */
+.dash-footer {
+  border-top: 1px solid var(--border);
+  padding: 1rem 2rem;
+  display: flex; justify-content: space-between; align-items: center;
+  color: var(--tx3); font-size: .68rem;
+  margin-top: 2rem;
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="dash-header">
+  <div class="logo-area">
+    <div class="logo-icon">🚛</div>
+    <div class="logo-text">
+      <div class="logo-title">ROADY'S REWARDS</div>
+      <div class="logo-sub">Network Performance Dashboard</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <span class="period-badge">📅 YTD 2026 · Jan–Mar</span>
+    <nav class="nav-tabs">
+      <button class="nav-tab active" onclick="showTab('overview')">Overview</button>
+      <button class="nav-tab" onclick="showTab('trends')">Trends</button>
+      <button class="nav-tab" onclick="showTab('locations')">Locations</button>
+      <button class="nav-tab" onclick="showTab('plan')">Plan & Action</button>
+    </nav>
+  </div>
+</header>
+
+<main class="main">
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 1: OVERVIEW                           -->
+<!-- ══════════════════════════════════════════ -->
+<section class="section active" id="tab-overview">
+
+  <!-- Alert -->
+  <div class="alert-banner">
+    <div class="alert-icon">📉</div>
+    <div class="alert-text">
+      <div class="alert-title">Network in Decline — Immediate Action Required</div>
+      <div class="alert-sub">YTD Adds down 24.0% · Redeems down 26.5% · Gallons down 21.3% vs same period 2025 · March redemption rate collapsed to 60.25% (from 74.94% in February)</div>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="sec-hdr">
+    <div class="sec-hdr-left">
+      <div class="sec-title">YTD Performance · Jan–Mar 2026</div>
+      <div class="sec-sub">vs same period 2025 (Jan–Mar)</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <!-- Issued Points -->
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">⊕ Rewards Added (Issued)</div>
+      <div class="kpi-value">$138,071</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>% vs Prior Year (YTD)</span><span class="neg">▼ 24.0%</span></div>
+        <div class="kpi-row"><span>$ vs Prior Year (YTD)</span><span class="neg">–$43,562</span></div>
+        <div class="kpi-row"><span>Add Transactions</span><span class="neutral">127,082</span></div>
+      </div>
+      <div class="kpi-ytd">
+        <span class="kpi-ytd-label">2025 YTD Adds</span>
+        <span class="kpi-ytd-value">$181,633</span>
+      </div>
+    </div>
+
+    <!-- Redeemed Points -->
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">🎁 Rewards Redeemed</div>
+      <div class="kpi-value">$96,782</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>% vs Prior Year (YTD)</span><span class="neg">▼ 26.5%</span></div>
+        <div class="kpi-row"><span>$ vs Prior Year (YTD)</span><span class="neg">–$34,943</span></div>
+        <div class="kpi-row"><span>Redeem Transactions</span><span class="neutral">13,730</span></div>
+      </div>
+      <div class="kpi-ytd">
+        <span class="kpi-ytd-label">2025 YTD Redeems</span>
+        <span class="kpi-ytd-value">$131,725</span>
+      </div>
+    </div>
+
+    <!-- Redemption Rate -->
+    <div class="kpi-card yellow-accent">
+      <div class="kpi-label">📊 Redemption Rate (YTD Avg)</div>
+      <div class="kpi-value">70.10%</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>March 2026 Rate</span><span class="neg">60.25%</span></div>
+        <div class="kpi-row"><span>Feb 2026 Rate</span><span class="neutral">74.94%</span></div>
+        <div class="kpi-row"><span>2025 YTD Rate</span><span class="neutral">72.52%</span></div>
+      </div>
+      <div class="kpi-ytd">
+        <span class="kpi-ytd-label">Rate vs LY (YTD)</span>
+        <span class="kpi-ytd-value neg">▼ 2.4pp</span>
+      </div>
+    </div>
+
+    <!-- Delta / Revenue Owed -->
+    <div class="kpi-card green-accent">
+      <div class="kpi-label">💵 Net Delta (Invoiced YTD)</div>
+      <div class="kpi-value">$41,289</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>Jan Delta</span><span class="neutral">$11,726</span></div>
+        <div class="kpi-row"><span>Feb Delta</span><span class="neutral">$11,577</span></div>
+        <div class="kpi-row"><span>Mar Delta</span><span class="neutral">$17,986</span></div>
+      </div>
+      <div class="kpi-ytd">
+        <span class="kpi-ytd-label">Adds minus Redeems</span>
+        <span class="kpi-ytd-value pos">Locations owe Roady's</span>
+      </div>
+    </div>
+
+    <!-- Gallons -->
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">⛽ Loyalty Gallons Captured</div>
+      <div class="kpi-value">12.47M</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>% vs Prior Year (YTD)</span><span class="neg">▼ 21.3%</span></div>
+        <div class="kpi-row"><span>Gallons Lost YoY</span><span class="neg">–3.37M gal</span></div>
+        <div class="kpi-row"><span>2025 Full Year</span><span class="neutral">59.60M gal</span></div>
+      </div>
+      <div class="kpi-ytd">
+        <span class="kpi-ytd-label">2025 YTD Gallons</span>
+        <span class="kpi-ytd-value">15.84M</span>
+      </div>
+    </div>
+
+    <!-- Location Health -->
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">📍 Location Health · March</div>
+      <div class="kpi-value">11 <span style="font-size:1rem;color:var(--tx3);">/ 42</span></div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>Below 50% redemption rate</span><span class="neg">11 locations</span></div>
+        <div class="kpi-row"><span>Zero activity this month</span><span class="neg">7 locations</span></div>
+        <div class="kpi-row"><span>Active locations</span><span class="neutral">42 / 50</span></div>
+      </div>
+      <div class="kpi-ytd">
+        <span class="kpi-ytd-label">Below-50% adds total</span>
+        <span class="kpi-ytd-value neg">$1,517 (March)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">Monthly Adds vs Redeems — 2026 vs 2025</div>
+      <div class="chart-sub">Dollar value comparison by month · 2025 shown as reference line</div>
+      <div class="chart-wrap"><canvas id="chartAddsRedeems" height="240"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Redemption Rate Trend</div>
+      <div class="chart-sub">Monthly rate · 2026 vs 2025 · 50% threshold marked</div>
+      <div class="chart-wrap"><canvas id="chartRate" height="240"></canvas></div>
+    </div>
+  </div>
+
+  <!-- March spotlight -->
+  <div class="sec-hdr">
+    <div class="sec-hdr-left">
+      <div class="sec-title">March 2026 — Month Spotlight</div>
+      <div class="sec-sub">Worst performing month YTD — rate dropped 14.7pp from February</div>
+    </div>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">Mar Adds</div>
+      <div class="kpi-value">$45,248</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>vs Mar 2025</span><span class="neg">▼ 25.8% (–$15,734)</span></div>
+        <div class="kpi-row"><span>Add Transactions</span><span class="neutral">42,591</span></div>
+      </div>
+    </div>
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">Mar Redeems</div>
+      <div class="kpi-value">$27,262</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>vs Mar 2025</span><span class="neg">▼ 34.8% (–$14,543)</span></div>
+        <div class="kpi-row"><span>Redeem Transactions</span><span class="neutral">4,168</span></div>
+      </div>
+    </div>
+    <div class="kpi-card red-accent">
+      <div class="kpi-label">Mar Redemption Rate</div>
+      <div class="kpi-value">60.25%</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>vs Feb 2026</span><span class="neg">▼ 14.7pp</span></div>
+        <div class="kpi-row"><span>vs Mar 2025 (68.55%)</span><span class="neg">▼ 8.3pp</span></div>
+      </div>
+    </div>
+    <div class="kpi-card yellow-accent">
+      <div class="kpi-label">Mar Delta (Owed)</div>
+      <div class="kpi-value">$17,986</div>
+      <div class="kpi-meta">
+        <div class="kpi-row"><span>vs Mar 2025 Delta</span><span class="neutral">$19,178 (▼ 6.2%)</span></div>
+        <div class="kpi-row"><span>Highest delta month YTD</span><span class="neutral">—</span></div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 2: TRENDS                             -->
+<!-- ══════════════════════════════════════════ -->
+<section class="section" id="tab-trends">
+
+  <div class="sec-hdr">
+    <div class="sec-hdr-left">
+      <div class="sec-title">Full Year Trend Analysis</div>
+      <div class="sec-sub">2025 complete · 2026 YTD through March · all dollar values</div>
+    </div>
+  </div>
+
+  <div class="chart-grid-3">
+    <div class="chart-card">
+      <div class="chart-title">Rewards Added ($)</div>
+      <div class="chart-sub">2025 full year vs 2026 YTD</div>
+      <div class="chart-wrap"><canvas id="chartAdds2" height="220"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Rewards Redeemed ($)</div>
+      <div class="chart-sub">2025 full year vs 2026 YTD</div>
+      <div class="chart-wrap"><canvas id="chartRedeems2" height="220"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Redemption Rate (%)</div>
+      <div class="chart-sub">Monthly rate 2025 vs 2026</div>
+      <div class="chart-wrap"><canvas id="chartRate2" height="220"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">Gallons Captured (Millions)</div>
+      <div class="chart-sub">Loyalty gallons trend · 2025 vs 2026</div>
+      <div class="chart-wrap"><canvas id="chartGallons" height="220"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Net Delta (Invoiced) by Month</div>
+      <div class="chart-sub">Adds minus Redeems · amount owed to Roady's</div>
+      <div class="chart-wrap"><canvas id="chartDelta" height="220"></canvas></div>
+    </div>
+  </div>
+
+  <!-- YoY summary table -->
+  <div class="table-card">
+    <div class="table-hdr">
+      <div>
+        <div class="table-title">Month-by-Month YoY Comparison</div>
+        <div class="table-sub">2026 vs same month 2025</div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>2026 Adds</th><th>2025 Adds</th><th>Add YoY</th>
+          <th>2026 Redeems</th><th>2025 Redeems</th><th>Redeem YoY</th>
+          <th>2026 Rate</th><th>2025 Rate</th><th>Rate Δ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:700;color:var(--tx)">January</td>
+          <td class="mono">$46,624</td><td class="mono" style="color:var(--tx3)">$64,829</td><td class="neg mono">▼24.0%</td>
+          <td class="mono">$34,898</td><td class="mono" style="color:var(--tx3)">$50,880</td><td class="neg mono">▼31.4%</td>
+          <td class="mono">74.85%</td><td class="mono" style="color:var(--tx3)">78.48%</td><td class="neg mono">▼3.6pp</td>
+        </tr>
+        <tr>
+          <td style="font-weight:700;color:var(--tx)">February</td>
+          <td class="mono">$46,199</td><td class="mono" style="color:var(--tx3)">$55,822</td><td class="neg mono">▼17.2%</td>
+          <td class="mono">$34,621</td><td class="mono" style="color:var(--tx3)">$39,040</td><td class="neg mono">▼11.3%</td>
+          <td class="mono">74.94%</td><td class="mono" style="color:var(--tx3)">69.94%</td><td class="pos mono">▲5.0pp</td>
+        </tr>
+        <tr style="background:rgba(232,64,64,.05)">
+          <td style="font-weight:700;color:var(--red2)">March ⚠</td>
+          <td class="mono">$45,248</td><td class="mono" style="color:var(--tx3)">$60,982</td><td class="neg mono">▼25.8%</td>
+          <td class="mono">$27,262</td><td class="mono" style="color:var(--tx3)">$41,805</td><td class="neg mono">▼34.8%</td>
+          <td class="mono neg">60.25%</td><td class="mono" style="color:var(--tx3)">68.55%</td><td class="neg mono">▼8.3pp</td>
+        </tr>
+        <tr style="border-top:2px solid var(--border2)">
+          <td style="font-weight:800;color:var(--gold)">YTD Total</td>
+          <td class="mono" style="font-weight:700;color:var(--tx)">$138,071</td><td class="mono" style="color:var(--tx3)">$181,633</td><td class="neg mono" style="font-weight:700">▼24.0%</td>
+          <td class="mono" style="font-weight:700;color:var(--tx)">$96,782</td><td class="mono" style="color:var(--tx3)">$131,725</td><td class="neg mono" style="font-weight:700">▼26.5%</td>
+          <td class="mono" style="font-weight:700;color:var(--tx)">70.10%</td><td class="mono" style="color:var(--tx3)">72.52%</td><td class="neg mono" style="font-weight:700">▼2.4pp</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 3: LOCATIONS                          -->
+<!-- ══════════════════════════════════════════ -->
+<section class="section" id="tab-locations">
+
+  <div class="sec-hdr">
+    <div class="sec-hdr-left">
+      <div class="sec-title">March 2026 — Location Performance</div>
+      <div class="sec-sub">All 50 network locations · sorted by redemption rate · 🔴 below 50% · 🟡 50–69% · 🟢 70%+</div>
+    </div>
+    <input class="search-box" id="locSearch" placeholder="🔍 Search location..." oninput="filterLocations()">
+  </div>
+
+  <!-- Summary chips -->
+  <div class="theme-chips" style="margin-bottom:1rem;">
+    <span class="chip" style="background:rgba(232,64,64,.1);border-color:rgba(232,64,64,.3);color:var(--red2);">🔴 Below 50%: 11 locations</span>
+    <span class="chip" style="background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:#fbbf24;">🟡 50–69%: 6 locations</span>
+    <span class="chip" style="background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.3);color:var(--green2);">🟢 70%+: 25 locations</span>
+    <span class="chip">⬛ No Activity: 7 locations</span>
+    <span class="chip gold">Total Active: 42</span>
+  </div>
+
+  <div class="table-card">
+    <table id="locTable">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th onclick="sortTable(1)">Location ↕</th>
+          <th onclick="sortTable(2)">City</th>
+          <th onclick="sortTable(3)">State</th>
+          <th onclick="sortTable(4)">Add $ ↕</th>
+          <th onclick="sortTable(5)">Redeem $ ↕</th>
+          <th onclick="sortTable(6)">Rate ↕</th>
+          <th>Add Chg</th>
+          <th>Gallons</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="locBody"></tbody>
+    </table>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 4: PLAN & ACTION                      -->
+<!-- ══════════════════════════════════════════ -->
+<section class="section" id="tab-plan">
+
+  <div class="sec-hdr">
+    <div class="sec-hdr-left">
+      <div class="sec-title">Roady's Rewards — Action Plan</div>
+      <div class="sec-sub">Structured around: Fuel Gallon Performance · Member Value & Retention · Operational Efficiency</div>
+    </div>
+    <div class="theme-chips" style="margin:0;">
+      <span class="chip gold">Fuel Gallons</span>
+      <span class="chip gold">Member Retention</span>
+      <span class="chip gold">Operational Efficiency</span>
+    </div>
+  </div>
+
+  <!-- Current State -->
+  <div class="table-card" style="padding:1.25rem;margin-bottom:1rem;">
+    <div class="table-title" style="margin-bottom:.75rem;">📊 1. Current State</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+      <div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;">Fuel Gallons</div>
+        <div style="font-size:.78rem;color:var(--tx2);line-height:1.55;">YTD loyalty gallons down <span class="neg" style="font-weight:700;">21.3%</span> vs 2025 (12.47M vs 15.84M). Fewer gallons captured means less Rewards activity — the program engine is stalling. 7 locations show zero activity this month.</div>
+      </div>
+      <div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;">Member Value & Retention</div>
+        <div style="font-size:.78rem;color:var(--tx2);line-height:1.55;">Redemption rate collapsed to <span class="neg" style="font-weight:700;">60.25%</span> in March (from 74.94% in Feb). 11 locations are below the 50% threshold. When drivers can't or don't redeem, they disengage and stop coming back.</div>
+      </div>
+      <div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;">Operational Efficiency</div>
+        <div style="font-size:.78rem;color:var(--tx2);line-height:1.55;">With <span class="neg" style="font-weight:700;">7 inactive locations</span> and 11 below 50%, significant network capacity is unused. Locations missing signage, trained staff, working tablets, or cards are invisible to drivers. These are fixable operational failures.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Biggest Problem -->
+  <div class="alert-banner" style="margin-bottom:1rem;">
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-text">
+      <div class="alert-title">2. Biggest Problem — March Redemption Collapse + Declining Engagement</div>
+      <div class="alert-sub">The 14.7pp drop in redemption rate from February to March (74.94% → 60.25%) is the single most alarming signal. Combined with adds down 25.8% YoY in March, the program is losing both sides of the equation simultaneously. The root cause: locations are not operationally ready to support the program — no signage, undertrained staff, broken/missing tablets, and no rewards card inventory.</div>
+    </div>
+  </div>
+
+  <!-- Opportunity -->
+  <div class="support-card" style="margin-bottom:1rem;background:linear-gradient(135deg,rgba(34,197,94,.07),rgba(34,197,94,.02));border-color:rgba(34,197,94,.2);">
+    <div class="support-title" style="color:var(--green2);">💰 3. Opportunity Size</div>
+    <div class="support-item"><span class="support-dot">→</span><span>If 2026 YTD Adds matched 2025 pace: <strong style="color:var(--tx);">+$43,562</strong> in additional program volume (24% recovery)</span></div>
+    <div class="support-item"><span class="support-dot">→</span><span>If March redemption rate recovered to 74.94% (Feb level): <strong style="color:var(--tx);">+$13,362</strong> more in redeems, improving driver loyalty metrics</span></div>
+    <div class="support-item"><span class="support-dot">→</span><span>7 inactive locations activated at average network rate: estimated <strong style="color:var(--tx);">+$7,000–$14,000/month</strong> in program adds</span></div>
+    <div class="support-item"><span class="support-dot">→</span><span>11 below-50% locations brought to 70% redemption rate: significant improvement in driver retention and repeat visits</span></div>
+    <div class="support-item"><span class="support-dot">→</span><span>21.3% gallon volume recovery at loyalty pricing: meaningful revenue and fleet loyalty impact across the network</span></div>
+  </div>
+
+  <!-- Plan cards -->
+  <div class="sec-hdr"><div class="sec-hdr-left"><div class="sec-title">4. Plan — 5 Actions</div></div></div>
+
+  <div class="plan-grid">
+    <div class="plan-card">
+      <span class="plan-icon">🪧</span>
+      <div class="plan-num">Action 01 · Operational</div>
+      <div class="plan-title">Signage Audit & Deployment</div>
+      <div class="plan-desc">Every active location must have Roady's Rewards signage posted at the pump, at the register, and at the entrance. Drivers can't enroll in a program they don't know exists.</div>
+      <ul class="plan-steps">
+        <li>Audit all 50 network locations for signage presence and condition</li>
+        <li>Ship signage kits to any location missing materials within 2 weeks</li>
+        <li>Prioritize the 7 zero-activity and 11 below-50% locations first</li>
+        <li>Confirm placement at pump islands, POS counter, and entrance</li>
+      </ul>
+    </div>
+
+    <div class="plan-card">
+      <span class="plan-icon">🎓</span>
+      <div class="plan-num">Action 02 · Operational</div>
+      <div class="plan-title">Full Staff Training Sweep</div>
+      <div class="plan-desc">Undertrained staff = missed enrollments and failed redemptions. Every location must have at least one fully trained staff member per shift who can enroll drivers and process redemptions.</div>
+      <ul class="plan-steps">
+        <li>Complete Roady's Training Academy Rewards module for all location staff</li>
+        <li>Focus on enrollment scripts, POS redemption flow, and dispute handling</li>
+        <li>Prioritize 18 locations below 70% redemption rate — likely a training gap</li>
+        <li>Verify training completion via Training Academy per-user tracking</li>
+      </ul>
+    </div>
+
+    <div class="plan-card">
+      <span class="plan-icon">📱</span>
+      <div class="plan-num">Action 03 · Operational</div>
+      <div class="plan-title">Tablet & POS Integration Check</div>
+      <div class="plan-desc">A location without a working tablet or POS integration cannot process Rewards correctly. This is the fastest way to explain why some locations show zero or near-zero activity.</div>
+      <ul class="plan-steps">
+        <li>Audit every location — confirm tablet is present, charged, and operational</li>
+        <li>Identify which locations are POS-integrated vs tablet-only</li>
+        <li>Escalate broken/offline tablets for immediate replacement or repair</li>
+        <li>Priority: all 7 zero-activity locations — likely a hardware issue</li>
+        <li>Work toward POS integration at high-volume tablet-only locations</li>
+      </ul>
+    </div>
+
+    <div class="plan-card">
+      <span class="plan-icon">💳</span>
+      <div class="plan-num">Action 04 · Member Retention</div>
+      <div class="plan-title">Rewards Card Inventory Replenishment</div>
+      <div class="plan-desc">If a location runs out of physical Rewards cards, they cannot enroll new members. Low card inventory is a silent program killer that directly reduces add transactions.</div>
+      <ul class="plan-steps">
+        <li>Survey all locations for current card inventory levels</li>
+        <li>Establish a minimum stock threshold (e.g. 50 cards per location)</li>
+        <li>Expedite card shipments to locations reporting low or zero inventory</li>
+        <li>Set up auto-replenishment trigger when stock drops below threshold</li>
+      </ul>
+    </div>
+
+    <div class="plan-card">
+      <span class="plan-icon">📈</span>
+      <div class="plan-num">Action 05 · Fuel Gallons · Member Retention</div>
+      <div class="plan-title">Growth Strategist Outreach — Low Performers</div>
+      <div class="plan-desc">Submit data on the 11 below-50% and 7 zero-activity locations to the Growth Strategist for direct outreach. Personal contact with location managers drives accountability and program re-engagement faster than email blasts.</div>
+      <ul class="plan-steps">
+        <li>Export the 18 priority locations (11 below 50% + 7 zero activity) with Add $, Redeem $, Rate, and % change</li>
+        <li>Submit to Growth Strategist with context: gallons trend, missed opportunity estimate</li>
+        <li>Growth Strategist makes direct contact with each location manager</li>
+        <li>Goal: confirm operational readiness (signage, tablet, cards, training) on each call</li>
+        <li>Track outreach outcomes — re-check each location's rate the following month</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Support Needed -->
+  <div class="sec-hdr"><div class="sec-hdr-left"><div class="sec-title">5. What Support We Need</div></div></div>
+
+  <div class="support-grid">
+    <div class="support-card">
+      <div class="support-title">🤝 From Leadership</div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Authorization to expedite signage and card shipments to the 18 priority locations this month</span></div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Growth Strategist capacity allocated for outreach to below-50% and zero-activity locations</span></div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Budget approval for tablet replacements at locations confirmed to have hardware issues</span></div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Mandate that Training Academy completion is tracked and required for all location staff</span></div>
+    </div>
+    <div class="support-card">
+      <div class="support-title">⚙️ From Operations & IT</div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Tablet audit report for all 50 locations — online/offline status, last transaction date</span></div>
+      <div class="support-item"><span class="support-dot">◆</span><span>POS integration status list — which locations are integrated vs tablet-only</span></div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Card inventory report — current stock levels at each location</span></div>
+      <div class="support-item"><span class="support-dot">◆</span><span>Merchant Console access confirmed for all active location managers</span></div>
+    </div>
+  </div>
+
+</section>
+
+</main>
+
+<footer class="dash-footer">
+  <span>Roady's Rewards Network Dashboard · Data: YTD 2026 (Jan–Mar) vs 2025</span>
+  <span>Built for internal review · March 26, 2026</span>
+</footer>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────────────
+const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const months3 = ['Jan','Feb','Mar'];
+
+const adds2025   = [64828.87,55821.58,60982.46,61635.88,59848.90,57726.79,58322.73,54500.58,56584.43,56970.19,48487.60,47575.57];
+const redeems2025= [50880.14,39040.31,41804.86,45162.86,42752.97,45058.91,40055.57,37707.19,38975.63,40969.61,35432.48,38713.89];
+const rates2025  = [78.48,69.94,68.55,73.27,71.43,78.06,68.68,69.19,68.88,71.91,73.08,81.37];
+const gallons2025= [5655460,4848666,5334184,5378325,5185460,4999084,5075229,4740067,4988464,4993138,4247263,4158955];
+const delta2025  = [13948.73,16781.27,19177.60,16473.02,17095.93,12667.88,18267.16,16793.39,17608.80,16000.58,13055.12,8861.68];
+
+const adds2026   = [46624.00,46198.87,45248.40];
+const redeems2026= [34898.36,34621.45,27262.22];
+const rates2026  = [74.85,74.94,60.25];
+const gallons2026= [4167171,4171107,4127422];
+const delta2026  = [11725.64,11577.42,17986.18];
+
+const LOCATIONS = [
+  {name:'Bar T Travel Center',city:'Huntsville',state:'TX',add:1.95,redeem:0.00,rate:0.0,chg:0.0,gallons:0},
+  {name:'Battlefield Fuel Stop',city:'Ringgold',state:'GA',add:4.86,redeem:0.00,rate:0.0,chg:0.0,gallons:0},
+  {name:'Belgium Plaza',city:'Belgium',state:'WI',add:8.66,redeem:0.00,rate:0.0,chg:-47.9,gallons:0},
+  {name:'Blackfoot Stinker Truck Stop #85',city:'Blackfoot',state:'ID',add:6.43,redeem:0.00,rate:0.0,chg:29.1,gallons:0},
+  {name:'Blue Ridge Travel Plaza',city:'Mountain Top',state:'PA',add:2.34,redeem:0.00,rate:0.0,chg:85.7,gallons:0},
+  {name:'Braj Convenience Store',city:'De Pere',state:'WI',add:0.83,redeem:0.00,rate:0.0,chg:0.0,gallons:0},
+  {name:'Carefree Foodmart',city:'Leavenworth',state:'IN',add:0.78,redeem:0.00,rate:0.0,chg:-84.3,gallons:0},
+  {name:'Cenex Zip Trip #60',city:'Buffalo',state:'WY',add:3.92,redeem:0.00,rate:0.0,chg:-42.2,gallons:0},
+  {name:'Cenex Zip Trip #75',city:'Miles City',state:'MT',add:38.55,redeem:0.00,rate:0.0,chg:-27.3,gallons:0},
+  {name:'Circle C Travel Plaza',city:'Walterboro',state:'SC',add:26.49,redeem:0.00,rate:0.0,chg:-55.4,gallons:0},
+  {name:"Donna's Travel Plaza",city:'Marysville',state:'WA',add:49.13,redeem:0.00,rate:0.0,chg:-53.2,gallons:0},
+  {name:'Dancing Eagle Travel Center',city:'Paraje',state:'NM',add:30.92,redeem:4.86,rate:15.7,chg:78.7,gallons:0},
+  {name:"Beck's #26",city:'Geneseo',state:'IL',add:8.37,redeem:2.05,rate:24.5,chg:104.6,gallons:0},
+  {name:"Beck's #27",city:'Mendota',state:'IL',add:193.06,redeem:55.40,rate:28.7,chg:-22.1,gallons:0},
+  {name:'Bliss Stinker Truck Stop #74',city:'Bliss',state:'ID',add:34.62,redeem:10.05,rate:29.0,chg:-28.2,gallons:0},
+  {name:'Allstar',city:'Prescott',state:'KS',add:18.55,redeem:5.60,rate:30.2,chg:19.7,gallons:0},
+  {name:'Cenex Zip Trip #54',city:'Billings',state:'MT',add:56.54,redeem:17.77,rate:31.4,chg:-39.6,gallons:0},
+  {name:'80126-Jamestown Shell',city:'Jamestown',state:'ND',add:34.61,redeem:12.39,rate:35.8,chg:-34.3,gallons:0},
+  {name:'Baker Truck Corral',city:'Baker City',state:'OR',add:74.87,redeem:33.07,rate:44.2,chg:-41.2,gallons:0},
+  {name:'Dilley Truck Stop',city:'Dilley',state:'TX',add:482.95,redeem:225.25,rate:46.6,chg:-17.0,gallons:0},
+  {name:"80213-KJ's Travel Center",city:'Idaho Falls',state:'ID',add:210.99,redeem:98.78,rate:46.8,chg:-41.1,gallons:0},
+  {name:'80254 Mr. Gas Boise #21',city:'Boise',state:'ID',add:371.98,redeem:174.09,rate:46.8,chg:-4.2,gallons:0},
+  {name:'Bristol BP',city:'Bristol',state:'WI',add:91.67,redeem:46.29,rate:50.5,chg:-37.8,gallons:0},
+  {name:'79 One Stop',city:'Saint Croix',state:'IN',add:8.85,redeem:5.21,rate:58.9,chg:-14.3,gallons:0},
+  {name:'Big Daddys Truck Stop',city:'Ottawa Lake',state:'MI',add:338.13,redeem:201.60,rate:59.6,chg:-44.2,gallons:0},
+  {name:'Akal Travel Plaza',city:'Delano',state:'CA',add:107.16,redeem:64.14,rate:59.9,chg:-26.7,gallons:0},
+  {name:'Broad St. Truck Stop',city:'Springfield',state:'MA',add:185.93,redeem:115.45,rate:62.1,chg:-36.5,gallons:0},
+  {name:'Brownsville BP',city:'Brownsville',state:'WI',add:19.57,redeem:12.80,rate:65.4,chg:-1.4,gallons:0},
+  {name:'BP Pleasant Springs Travel Plaza',city:'Cottage Grove',state:'WI',add:384.52,redeem:269.14,rate:70.0,chg:-35.8,gallons:0},
+  {name:'80249 Mr. Gas',city:'Jerome',state:'ID',add:960.46,redeem:702.57,rate:73.1,chg:-39.2,gallons:0},
+  {name:'80232-Elwood Chevron',city:'Elwood',state:'UT',add:19.51,redeem:15.74,rate:80.7,chg:-56.6,gallons:0},
+  {name:'BP Kenosha Travel Plaza',city:'Kenosha',state:'WI',add:683.47,redeem:587.70,rate:86.0,chg:-33.2,gallons:0},
+  {name:'Appleton T/P-CITGO',city:'Appleton',state:'WI',add:40.27,redeem:35.05,rate:87.0,chg:-30.5,gallons:0},
+  {name:'5R Travel Center',city:'Deming',state:'NM',add:397.31,redeem:346.12,rate:87.1,chg:-38.3,gallons:0},
+  {name:"Big's 211",city:'Seguin',state:'TX',add:632.84,redeem:564.84,rate:89.3,chg:-15.0,gallons:0},
+  {name:"Beck's #14",city:'Princeton',state:'IL',add:103.35,redeem:100.43,rate:97.2,chg:-37.9,gallons:0},
+  {name:'80145-SPR #45 Cheyenne TS',city:'Cheyenne',state:'WY',add:2.85,redeem:3.04,rate:106.7,chg:68.6,gallons:0},
+  {name:'Cenex Zip Trip #50',city:'Park City',state:'MT',add:49.82,redeem:61.88,rate:124.2,chg:-35.8,gallons:0},
+  {name:"Crazy Fred's Truck Stop",city:'Golden Valley',state:'AZ',add:48.73,redeem:60.68,rate:124.5,chg:-45.5,gallons:0},
+  {name:"Beck's #22",city:'Lincoln',state:'IL',add:48.64,redeem:68.40,rate:140.6,chg:-29.4,gallons:0},
+  {name:'80188-Flagstaff Travel Center',city:'Flagstaff',state:'AZ',add:32.56,redeem:56.65,rate:174.0,chg:-35.8,gallons:0},
+  {name:'Bear Creek T/P-CITGO',city:'Bear Creek',state:'WI',add:0.81,redeem:24.03,rate:2966.7,chg:58.8,gallons:0},
+  // Zero activity
+  {name:'115 Truck Stop',city:'Marshall',state:'MI',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+  {name:'3456 Truck Stop Demo',city:'—',state:'—',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+  {name:'80244 EZ Stop',city:'—',state:'—',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+  {name:'Becker Travel Center',city:'—',state:'—',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+  {name:'Buckhorn Travel Center',city:'—',state:'—',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+  {name:'CO Travel Center',city:'—',state:'—',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+  {name:'Old Country Market (Coombs)',city:'—',state:'—',add:0,redeem:0,rate:0,chg:-100,gallons:0},
+];
+
+// ── CHART DEFAULTS ────────────────────────────────────────────────────────────
+Chart.defaults.color = '#5a637a';
+Chart.defaults.font.family = 'Barlow, sans-serif';
+Chart.defaults.font.size = 11;
+
+const gridColor = 'rgba(255,255,255,.05)';
+const baseOpts = {
+  responsive: true,
+  plugins: { legend: { labels: { boxWidth: 10, padding: 12 } } },
+  scales: {
+    x: { grid: { color: gridColor }, ticks: { color: '#5a637a' } },
+    y: { grid: { color: gridColor }, ticks: { color: '#5a637a' } }
+  }
+};
+
+// Chart 1: Adds vs Redeems 2026 vs 2025 YTD
+new Chart(document.getElementById('chartAddsRedeems'), {
+  type: 'bar',
+  data: {
+    labels: months3,
+    datasets: [
+      { label: '2026 Adds', data: adds2026, backgroundColor: 'rgba(232,160,32,.75)', borderColor: '#e8a020', borderWidth: 1, borderRadius: 4 },
+      { label: '2026 Redeems', data: redeems2026, backgroundColor: 'rgba(59,130,246,.65)', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 4 },
+      { label: '2025 Adds', data: adds2025.slice(0,3), backgroundColor: 'rgba(232,160,32,.2)', borderColor: 'rgba(232,160,32,.4)', borderWidth: 1, borderDash: [4,2], borderRadius: 4, type: 'line', fill: false, tension: .3 },
+      { label: '2025 Redeems', data: redeems2025.slice(0,3), backgroundColor: 'rgba(59,130,246,.15)', borderColor: 'rgba(59,130,246,.35)', borderWidth: 1, type: 'line', fill: false, tension: .3 },
+    ]
+  },
+  options: { ...baseOpts, plugins: { ...baseOpts.plugins }, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { callback: v => '$'+(v/1000).toFixed(0)+'k', color: '#5a637a' } } } }
+});
+
+// Chart 2: Rate trend
+new Chart(document.getElementById('chartRate'), {
+  type: 'line',
+  data: {
+    labels: months3,
+    datasets: [
+      { label: '2026 Rate', data: rates2026, borderColor: '#e8a020', backgroundColor: 'rgba(232,160,32,.1)', fill: true, tension: .3, pointRadius: 5, pointBackgroundColor: '#e8a020' },
+      { label: '2025 Rate', data: rates2025.slice(0,3), borderColor: 'rgba(255,255,255,.2)', backgroundColor: 'transparent', fill: false, tension: .3, borderDash: [5,3] },
+    ]
+  },
+  options: {
+    ...baseOpts,
+    plugins: { ...baseOpts.plugins, annotation: {} },
+    scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, min: 40, max: 100, ticks: { callback: v => v+'%', color: '#5a637a' } } }
+  }
+});
+
+// Trends charts
+new Chart(document.getElementById('chartAdds2'), {
+  type: 'bar',
+  data: {
+    labels: [...months, ...months3.map(m=>m+" '26")].slice(0,12+3),
+    datasets: [
+      { label: '2025', data: [...adds2025, null, null, null], backgroundColor: 'rgba(255,255,255,.12)', borderRadius: 3 },
+      { label: '2026', data: [...Array(12).fill(null), ...adds2026], backgroundColor: 'rgba(232,160,32,.75)', borderRadius: 3 },
+    ]
+  },
+  options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { callback: v=>'$'+(v/1000).toFixed(0)+'k', color:'#5a637a' } } } }
+});
+
+new Chart(document.getElementById('chartRedeems2'), {
+  type: 'bar',
+  data: {
+    labels: [...months, ...months3.map(m=>m+" '26")].slice(0,12+3),
+    datasets: [
+      { label: '2025', data: [...redeems2025, null, null, null], backgroundColor: 'rgba(255,255,255,.12)', borderRadius: 3 },
+      { label: '2026', data: [...Array(12).fill(null), ...redeems2026], backgroundColor: 'rgba(59,130,246,.7)', borderRadius: 3 },
+    ]
+  },
+  options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { callback: v=>'$'+(v/1000).toFixed(0)+'k', color:'#5a637a' } } } }
+});
+
+new Chart(document.getElementById('chartRate2'), {
+  type: 'line',
+  data: {
+    labels: months,
+    datasets: [
+      { label: '2025', data: rates2025, borderColor: 'rgba(255,255,255,.3)', fill: false, tension: .4, borderDash: [4,2] },
+      { label: '2026', data: [...rates2026, ...Array(9).fill(null)], borderColor: '#e8a020', backgroundColor: 'rgba(232,160,32,.1)', fill: true, tension: .4, pointRadius: 5, pointBackgroundColor: '#e8a020' },
+    ]
+  },
+  options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, min: 55, max: 85, ticks: { callback: v=>v+'%', color:'#5a637a' } } } }
+});
+
+new Chart(document.getElementById('chartGallons'), {
+  type: 'line',
+  data: {
+    labels: months,
+    datasets: [
+      { label: '2025', data: gallons2025.map(v=>v/1e6), borderColor: 'rgba(255,255,255,.25)', fill: false, tension: .4, borderDash: [4,2] },
+      { label: '2026', data: [...gallons2026.map(v=>v/1e6), ...Array(9).fill(null)], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.08)', fill: true, tension: .4, pointRadius: 5, pointBackgroundColor: '#22c55e' },
+    ]
+  },
+  options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { callback: v=>v.toFixed(1)+'M', color:'#5a637a' } } } }
+});
+
+new Chart(document.getElementById('chartDelta'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [
+      { label: '2025 Delta', data: delta2025, backgroundColor: 'rgba(255,255,255,.12)', borderRadius: 3 },
+      { label: '2026 Delta', data: [...delta2026, ...Array(9).fill(null)], backgroundColor: 'rgba(232,160,32,.7)', borderRadius: 3 },
+    ]
+  },
+  options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { callback: v=>'$'+(v/1000).toFixed(0)+'k', color:'#5a637a' } } } }
+});
+
+// ── LOCATIONS TABLE ───────────────────────────────────────────────────────────
+function getStatus(loc) {
+  if (loc.add === 0) return { label: '⬛ None', cls: '', priority: 3 };
+  if (loc.rate === 0) return { label: '🔴 0%', cls: 'badge-red', priority: 0 };
+  if (loc.rate < 50)  return { label: '🔴 Low', cls: 'badge-red', priority: 1 };
+  if (loc.rate < 70)  return { label: '🟡 Mid', cls: 'badge-yellow', priority: 2 };
+  return { label: '🟢 Good', cls: 'badge-green', priority: 4 };
+}
+
+function getAction(loc) {
+  if (loc.add === 0) return '<span style="color:var(--red2);font-size:.7rem;">⚠ Inactive — contact immediately</span>';
+  if (loc.rate < 50) return '<span style="color:var(--red2);font-size:.7rem;">⚠ Submit to Growth Strategist</span>';
+  if (loc.rate < 70) return '<span style="color:#fbbf24;font-size:.7rem;">↗ Monitor — training check</span>';
+  return '<span style="color:var(--green2);font-size:.7rem;">✓ On track</span>';
+}
+
+function getRateBar(rate) {
+  const capped = Math.min(rate, 150);
+  const pct = (capped / 150 * 100).toFixed(1);
+  const color = rate === 0 ? '#444' : rate < 50 ? '#e84040' : rate < 70 ? '#f59e0b' : '#22c55e';
+  const display = rate > 200 ? rate.toFixed(0)+'%' : rate.toFixed(1)+'%';
+  return `<div class="rate-bar-wrap">
+    <div class="rate-bar-bg"><div class="rate-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+    <span class="rate-val" style="color:${color};">${display}</span>
+  </div>`;
+}
+
+function renderLocations(data) {
+  const body = document.getElementById('locBody');
+  body.innerHTML = data.map(loc => {
+    const st = getStatus(loc);
+    const chgColor = loc.chg < 0 ? 'color:var(--red2)' : loc.chg > 0 ? 'color:var(--green2)' : 'color:var(--tx3)';
+    const chgPrefix = loc.chg > 0 ? '+' : '';
+    return `<tr>
+      <td><span class="badge ${st.cls}">${st.label}</span></td>
+      <td style="font-weight:600;color:var(--tx);">${loc.name}</td>
+      <td>${loc.city}</td>
+      <td>${loc.state}</td>
+      <td class="mono">${loc.add > 0 ? '$'+loc.add.toFixed(2) : '<span style="color:var(--tx3)">—</span>'}</td>
+      <td class="mono">${loc.redeem > 0 ? '$'+loc.redeem.toFixed(2) : '<span style="color:var(--tx3)">—</span>'}</td>
+      <td>${getRateBar(loc.rate)}</td>
+      <td class="mono" style="${chgColor}">${loc.add === 0 ? '—' : chgPrefix+loc.chg.toFixed(1)+'%'}</td>
+      <td class="mono" style="color:var(--tx3);">—</td>
+      <td>${getAction(loc)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Sort by rate ascending by default
+const sortedLocs = [...LOCATIONS].sort((a,b) => a.rate - b.rate);
+renderLocations(sortedLocs);
+
+function filterLocations() {
+  const q = document.getElementById('locSearch').value.toLowerCase();
+  const filtered = sortedLocs.filter(l =>
+    l.name.toLowerCase().includes(q) || l.city.toLowerCase().includes(q) || l.state.toLowerCase().includes(q)
+  );
+  renderLocations(filtered);
+}
+
+// ── TAB NAVIGATION ────────────────────────────────────────────────────────────
+function showTab(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+</script>
+</body>
+</html>
