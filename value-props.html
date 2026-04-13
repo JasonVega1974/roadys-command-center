@@ -303,33 +303,73 @@ let sb;
 try { sb = supabase.createClient(SB_URL, SB_KEY); } catch(e){ console.error('Supabase init fail', e); }
 
 async function syncLoad(){
+  // Always load localStorage first as baseline
+  try { VPS = JSON.parse(localStorage.getItem('vp_data_v5')||'[]'); } catch(x){ VPS=[]; }
+  const localCount = VPS.length;
+
+  if(!sb){ setSyncStatus('err','Supabase not initialized'); return; }
+
   try {
     const {data,error} = await sb.from('value_props').select('*').order('name');
-    if(error) throw error;
-    if(data && data.length){
-      VPS = data.map(r => ({
-        id:r.id, name:r.name, city:r.city, state:r.state, address:r.address||'',
-        assigned:r.assigned||'', aggPot:r.agg_potential||0, fleetPot:r.fleet_potential||0,
-        totalPot:r.total_potential||0, winnable:r.winnable||0,
-        fleetMatches:r.fleet_matches||[], fleetCount:r.fleet_count||0,
-        notes:r.notes||'', radius:r.radius||50, status:r.status||'active',
-        created:r.created_at
-      }));
+    if(error){
+      // Table might not exist — show the actual error
+      console.error('Supabase load error:', JSON.stringify(error));
+      setSyncStatus('err','DB Error: '+error.message+' — Did you run the SQL setup?');
+      toast('⚠️ Supabase error: '+error.message);
+      return;
     }
-    // Load geo cache
-    const {data:gd} = await sb.from('geo_cache').select('*');
-    if(gd) gd.forEach(r => { GEO[r.city_state] = [r.lat, r.lng]; });
-    setSyncStatus('ok','Synced — '+VPS.length+' locations');
+
+    const remoteVPs = (data||[]).map(r => ({
+      id:r.id, name:r.name, city:r.city, state:r.state, address:r.address||'',
+      assigned:r.assigned||'', aggPot:r.agg_potential||0, fleetPot:r.fleet_potential||0,
+      totalPot:r.total_potential||0, winnable:r.winnable||0,
+      fleetMatches:r.fleet_matches||[], fleetCount:r.fleet_count||0,
+      notes:r.notes||'', radius:r.radius||50, status:r.status||'active',
+      created:r.created_at
+    }));
+
+    // MERGE: if we have local data that isn't in Supabase, push it up
+    if(localCount > 0 && remoteVPs.length === 0){
+      console.log('Pushing '+localCount+' local VPs to Supabase...');
+      setSyncStatus('loading','Uploading '+localCount+' local records...');
+      for(const vp of VPS){
+        await syncSave(vp, true); // silent=true
+      }
+      setSyncStatus('ok','Synced — uploaded '+localCount+' from local');
+    } else if(remoteVPs.length > 0){
+      // Merge: remote wins, but add any local-only records
+      const remoteIds = new Set(remoteVPs.map(v=>v.id));
+      const localOnly = VPS.filter(v => !remoteIds.has(v.id));
+      VPS = [...remoteVPs, ...localOnly];
+      // Push local-only to Supabase
+      for(const vp of localOnly){
+        await syncSave(vp, true);
+      }
+      setSyncStatus('ok','Synced — '+VPS.length+' locations'+(localOnly.length?' (+'+localOnly.length+' uploaded)':''));
+    } else {
+      // Both empty
+      setSyncStatus('ok','Connected — 0 locations');
+    }
+
+    // Save merged state to localStorage
+    localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
+
+    // Load geo cache from Supabase
+    try {
+      const {data:gd} = await sb.from('geo_cache').select('*');
+      if(gd) gd.forEach(r => { GEO[r.city_state] = [r.lat, r.lng]; });
+      localStorage.setItem('vp_geo5', JSON.stringify(GEO));
+    } catch(ge){ console.warn('Geo cache load:', ge); }
+
   } catch(e){
-    console.warn('Sync load fail:', e);
-    setSyncStatus('err','Offline — using local data');
-    // Fallback to localStorage
-    try { VPS = JSON.parse(localStorage.getItem('vp_data_v5')||'[]'); } catch(x){}
+    console.error('Sync load exception:', e);
+    setSyncStatus('err','Connection failed — using local data');
   }
 }
 
-async function syncSave(vp){
+async function syncSave(vp, silent){
   localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
+  if(!sb) return;
   try {
     const row = {
       id:vp.id, name:vp.name, city:vp.city, state:vp.state, address:vp.address||'',
@@ -340,20 +380,37 @@ async function syncSave(vp){
       updated_at:new Date().toISOString()
     };
     const {error} = await sb.from('value_props').upsert(row);
-    if(error) throw error;
-    setSyncStatus('ok','Saved');
-  } catch(e){ console.warn('Sync save fail:', e); setSyncStatus('err','Save failed'); }
+    if(error){
+      console.error('Supabase save error:', JSON.stringify(error));
+      if(!silent){
+        setSyncStatus('err','Save failed: '+error.message);
+        toast('⚠️ Save failed: '+error.message);
+      }
+      return;
+    }
+    if(!silent) setSyncStatus('ok','Saved to cloud ✓');
+  } catch(e){
+    console.error('Sync save exception:', e);
+    if(!silent) setSyncStatus('err','Save failed — check console');
+  }
 }
 
 async function syncDelete(id){
   localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
+  if(!sb) return;
   try {
-    await sb.from('value_props').delete().eq('id', id);
-    setSyncStatus('ok','Deleted');
+    const {error} = await sb.from('value_props').delete().eq('id', id);
+    if(error){
+      console.error('Supabase delete error:', JSON.stringify(error));
+      setSyncStatus('err','Delete failed: '+error.message);
+      return;
+    }
+    setSyncStatus('ok','Deleted from cloud ✓');
   } catch(e){ console.warn('Sync delete fail:', e); }
 }
 
 async function syncGeo(key, lat, lng){
+  if(!sb) return;
   try { await sb.from('geo_cache').upsert({city_state:key, lat, lng}); } catch(e){}
 }
 
@@ -362,6 +419,20 @@ function setSyncStatus(s, msg){
   const lbl = document.getElementById('sync-label');
   dot.className = 'sync-dot ' + s;
   lbl.textContent = msg;
+  // Show prominent error banner if error
+  let banner = document.getElementById('sync-banner');
+  if(s === 'err'){
+    if(!banner){
+      banner = document.createElement('div');
+      banner.id = 'sync-banner';
+      banner.style.cssText = 'background:rgba(239,68,68,.12);border:1px solid var(--red);color:var(--red);padding:10px 24px;font-size:.82em;display:flex;align-items:center;gap:8px;cursor:pointer';
+      banner.onclick = ()=> banner.remove();
+      document.querySelector('.hdr').after(banner);
+    }
+    banner.innerHTML = '⚠️ <b>Sync Error:</b> '+msg+' <span style="margin-left:auto;opacity:.6;font-size:.8em">Click to dismiss</span>';
+  } else if(banner){
+    banner.remove();
+  }
 }
 
 // ═══════════════════════════════════════════════════════
