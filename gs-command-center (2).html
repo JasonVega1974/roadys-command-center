@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roady's GS Command Center</title>
+<style>
+:root{
+  --bg:#0b0f19;--bg2:#111827;--bg3:#1a2236;--surface:#1e293b;
+  --border:#2a3650;--border2:#334155;
+  --text:#e2e8f0;--dim:#94a3b8;--muted:#64748b;
+  --accent:#38bdf8;--cyan:#22d3ee;--green:#10b981;--yellow:#fbbf24;
+  --red:#ef4444;--purple:#a78bfa;--orange:#fb923c;--pink:#f472b6;
+  --ff:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --fm:'Cascadia Code','Fira Code',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--ff);background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ═══ LOGIN SCREEN ═══ */
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.login-box{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:48px 40px;width:380px;text-align:center;box-shadow:0 25px 50px rgba(0,0,0,.5)}
+.login-logo{font-size:2em;font-weight:900;margin-bottom:4px;background:linear-gradient(135deg,var(--cyan),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-sub{font-size:.78em;color:var(--muted);margin-bottom:28px}
+.pin-dots{display:flex;gap:10px;justify-content:center;margin:20px 0}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--border2);transition:all .15s}
+.pin-dot.filled{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 12px rgba(34,211,238,.4)}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:240px;margin:0 auto}
+.pin-key{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:1.2em;font-weight:700;color:var(--text);cursor:pointer;transition:all .1s;user-select:none}
+.pin-key:hover{background:var(--surface);border-color:var(--accent)}
+.pin-key:active{transform:scale(.95);background:var(--accent);color:var(--bg)}
+.pin-key.fn{font-size:.75em;color:var(--muted)}
+.login-error{color:var(--red);font-size:.78em;min-height:20px;margin-top:12px}
+
+/* ═══ LAYOUT ═══ */
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
+.topbar-logo{font-weight:900;font-size:1.1em;background:linear-gradient(135deg,var(--cyan),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topbar-user{margin-left:auto;display:flex;align-items:center;gap:10px}
+.topbar-user .name{font-weight:700;font-size:.85em}
+.topbar-user .role{font-size:.7em;color:var(--muted)}
+.btn{padding:6px 14px;border-radius:7px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:.8em;font-family:var(--ff);transition:all .15s;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-cyan{background:rgba(34,211,238,.1);border-color:rgba(34,211,238,.3);color:var(--cyan)}
+.btn-green{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green)}
+.btn-red{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+.btn-yellow{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:var(--yellow)}
+
+/* TABS */
+.tabs{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{padding:10px 18px;font-size:.82em;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+.tab .badge{background:var(--red);color:#fff;font-size:.65em;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700}
+
+/* PANELS */
+.panel{display:none;padding:20px}
+.panel.active{display:block}
+.container{max-width:1400px;margin:0 auto}
+
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px}
+.card-hd{font-weight:800;font-size:.88em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center}
+.kpi-val{font-size:1.4em;font-weight:900}
+.kpi-label{font-size:.7em;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+.kpi.cyan .kpi-val{color:var(--cyan)}
+.kpi.green .kpi-val{color:var(--green)}
+.kpi.yellow .kpi-val{color:var(--yellow)}
+.kpi.red .kpi-val{color:var(--red)}
+.kpi.purple .kpi-val{color:var(--purple)}
+.kpi.orange .kpi-val{color:var(--orange)}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.8em}
+th{background:var(--bg3);padding:8px 10px;text-align:left;font-weight:700;font-size:.75em;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:rgba(56,189,248,.03)}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:rgba(56,189,248,.06)}
+.num{text-align:right;font-family:var(--fm);font-size:.85em}
+
+/* SEARCH */
+.search-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.search-bar input,.search-bar select{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:7px 12px;color:var(--text);font-size:.82em;font-family:var(--ff)}
+.search-bar input{flex:1;min-width:200px}
+.search-bar input:focus,.search-bar select:focus{outline:none;border-color:var(--accent)}
+
+/* SITE DETAIL DRAWER */
+#site-drawer{position:fixed;top:0;right:-520px;width:500px;max-width:92vw;height:100vh;background:var(--bg2);border-left:1px solid var(--border);z-index:200;transition:right .25s ease;overflow-y:auto;padding:20px;box-shadow:-5px 0 30px rgba(0,0,0,.4)}
+#site-drawer.open{right:0}
+.drawer-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:1.4em;cursor:pointer}
+.drawer-close:hover{color:var(--red)}
+.drawer-hd{font-size:1.1em;font-weight:900;margin-bottom:4px;padding-right:30px}
+.drawer-sub{font-size:.78em;color:var(--muted);margin-bottom:14px}
+.drawer-section{margin-top:16px}
+.drawer-section h4{font-size:.78em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:8px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.info-item{font-size:.78em;padding:6px 8px;background:var(--bg3);border-radius:5px}
+.info-item .lbl{color:var(--muted);font-size:.85em}
+.info-item .val{font-weight:700;margin-top:1px}
+
+/* CRM LOG */
+.log-entry{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
+.log-entry .log-date{font-size:.72em;color:var(--muted);font-family:var(--fm)}
+.log-entry .log-type{font-size:.68em;padding:2px 6px;border-radius:4px;font-weight:700;display:inline-block;margin-left:6px}
+.log-entry .log-body{font-size:.82em;margin-top:4px;line-height:1.5}
+.type-call{background:rgba(34,211,238,.15);color:var(--cyan)}
+.type-task{background:rgba(251,191,36,.15);color:var(--yellow)}
+.type-note{background:rgba(148,163,184,.15);color:var(--dim)}
+.type-urgent{background:rgba(239,68,68,.15);color:var(--red)}
+.type-followup{background:rgba(16,185,129,.15);color:var(--green)}
+
+/* AGING COLORS */
+.age-fresh{border-left:3px solid var(--green)}
+.age-warm{border-left:3px solid var(--yellow)}
+.age-stale{border-left:3px solid var(--orange)}
+.age-critical{border-left:3px solid var(--red)}
+
+/* CALENDAR */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:8px}
+.cal-hd{font-size:.65em;text-align:center;color:var(--muted);padding:4px;font-weight:700}
+.cal-day{text-align:center;padding:6px 2px;font-size:.75em;border-radius:4px;min-height:36px;cursor:pointer;position:relative}
+.cal-day:hover{background:var(--bg3)}
+.cal-day.today{background:rgba(34,211,238,.1);color:var(--cyan);font-weight:700}
+.cal-day.other{color:var(--border2)}
+.cal-day .cal-dot{width:5px;height:5px;border-radius:50%;margin:2px auto 0;display:block}
+.cal-day .cal-dot.dot-call{background:var(--cyan)}
+.cal-day .cal-dot.dot-task{background:var(--yellow)}
+.cal-day .cal-dot.dot-urgent{background:var(--red)}
+
+/* RATES TABLE */
+.rate-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px}
+.rate-card .proc{font-weight:800;font-size:.85em;margin-bottom:2px}
+.rate-card .rate{font-size:.78em;color:var(--cyan);font-family:var(--fm)}
+.rate-card .note{font-size:.7em;color:var(--muted);margin-top:2px}
+
+/* CALCULATOR */
+.calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.calc-input{display:flex;flex-direction:column;gap:4px}
+.calc-input label{font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.calc-input input,.calc-input select{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--fm);font-size:.9em}
+.calc-input input:focus,.calc-input select:focus{outline:none;border-color:var(--cyan)}
+.calc-result{background:linear-gradient(135deg,rgba(34,211,238,.05),rgba(16,185,129,.05));border:1px solid rgba(34,211,238,.2);border-radius:10px;padding:16px;margin-top:12px}
+.calc-result .cr-row{display:flex;justify-content:space-between;padding:4px 0;font-size:.85em}
+.calc-result .cr-row.total{font-weight:900;font-size:1em;border-top:1px solid var(--border);padding-top:8px;margin-top:4px}
+.calc-result .cr-val{font-family:var(--fm);color:var(--cyan)}
+
+/* FORM */
+.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fg label{font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.fg input,.fg select,.fg textarea{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--ff);font-size:.85em}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:var(--cyan)}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--green);color:var(--green);padding:10px 20px;border-radius:8px;font-size:.82em;font-weight:600;z-index:9999;transform:translateY(100px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}
+
+/* OVERLAY */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:none;align-items:center;justify-content:center}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;width:500px;max-width:92vw;max-height:85vh;overflow-y:auto}
+.modal h3{font-size:1em;font-weight:800;margin-bottom:14px}
+
+@media(max-width:768px){
+  .panel{padding:12px}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .info-grid{grid-template-columns:1fr}
+  .calc-grid{grid-template-columns:1fr}
+  .tabs{padding:0 8px}
+  .tab{padding:8px 12px;font-size:.75em}
+}
+
+/* ═══ TERRITORY MAP ═══ */
+.ter-map-wrap{position:relative;margin-bottom:16px}
+.us-map{width:100%;max-width:900px;margin:0 auto;display:block}
+.gs-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px}
+.gs-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:all .15s;border-left:4px solid var(--muted)}
+.gs-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.gs-card .gs-name{font-weight:900;font-size:.92em;margin-bottom:2px}
+.gs-card .gs-region{font-size:.72em;color:var(--muted);margin-bottom:8px}
+.gs-card .gs-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.gs-card .gs-stat{text-align:center}
+.gs-card .gs-stat-val{font-weight:800;font-size:1.05em}
+.gs-card .gs-stat-lbl{font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.ter-sub-tabs{display:flex;gap:2px;margin-bottom:14px;background:var(--bg3);border-radius:8px;padding:3px;width:fit-content}
+.ter-sub-tab{padding:7px 16px;border-radius:6px;font-size:.78em;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s}
+.ter-sub-tab:hover{color:var(--text)}
+.ter-sub-tab.active{background:var(--accent);color:var(--bg);font-weight:700}
+.state-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.state-pill{background:var(--bg);padding:2px 7px;border-radius:4px;font-size:.68em;font-weight:700;color:var(--dim);border:1px solid var(--border)}
+
+/* ═══ CRM ENHANCED ═══ */
+.task-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.task-col{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:200px}
+.task-col-hd{font-weight:800;font-size:.82em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.task-col-hd .col-count{background:var(--bg);padding:1px 7px;border-radius:10px;font-size:.78em;color:var(--muted)}
+.task-item{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;transition:all .12s}
+.task-item:hover{border-color:var(--accent);background:rgba(56,189,248,.03)}
+.task-item .task-title{font-weight:700;font-size:.82em;margin-bottom:3px}
+.task-item .task-meta{font-size:.7em;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.task-item .task-site{font-size:.72em;color:var(--cyan)}
+.task-pri-high{border-left:3px solid var(--red)}
+.task-pri-med{border-left:3px solid var(--yellow)}
+.task-pri-low{border-left:3px solid var(--green)}
+.task-status{font-size:.65em;padding:2px 6px;border-radius:4px;font-weight:700;display:inline-block}
+.ts-todo{background:rgba(148,163,184,.15);color:var(--dim)}
+.ts-progress{background:rgba(34,211,238,.15);color:var(--cyan)}
+.ts-waiting{background:rgba(251,191,36,.15);color:var(--yellow)}
+.ts-done{background:rgba(16,185,129,.15);color:var(--green)}
+.crm-view-toggle{display:flex;gap:2px;background:var(--bg3);border-radius:6px;padding:2px;width:fit-content}
+.crm-vt{padding:5px 12px;border-radius:4px;font-size:.75em;font-weight:600;color:var(--muted);cursor:pointer}
+.crm-vt.active{background:var(--accent);color:var(--bg)}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN SCREEN ═══ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">ROADY'S</div>
+    <div style="font-size:.82em;font-weight:700;margin-bottom:2px">Growth Strategist Command Center</div>
+    <div class="login-sub">Enter your PIN to continue</div>
+    <div class="pin-dots" id="pin-dots"></div>
+    <div class="pin-pad" id="pin-pad"></div>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ═══ MAIN APP ═══ -->
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="topbar-logo">⛽ GS Command Center</div>
+    <div class="topbar-user">
+      <div><div class="name" id="tb-name"></div><div class="role" id="tb-role"></div></div>
+      <button class="btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="tabs" id="main-tabs">
+    <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard',this)">📊 Dashboard</div>
+    <div class="tab" data-tab="territory" onclick="switchTab('territory',this)">🗺️ Territory</div>
+    <div class="tab" data-tab="crm" onclick="switchTab('crm',this)">📋 CRM / Tasks</div>
+    <div class="tab" data-tab="calendar" onclick="switchTab('calendar',this)">📅 Calendar</div>
+    <div class="tab" data-tab="rates" onclick="switchTab('rates',this)">💰 Rates & Fees</div>
+    <div class="tab" data-tab="calculator" onclick="switchTab('calculator',this)">🧮 Calculator</div>
+    <div class="tab" data-tab="fuel-intro" onclick="switchTab('fuel-intro',this)">🔥 Fuel Intro</div>
+    <div class="tab" data-tab="critical" onclick="switchTab('critical',this)">🚨 Critical<span class="badge" id="crit-badge" style="display:none">0</span></div>
+  </div>
+
+  <!-- ═══ DASHBOARD ═══ -->
+  <div class="panel active" id="p-dashboard"><div class="container" id="dash-content"></div></div>
+
+  <!-- ═══ TERRITORY ═══ -->
+  <div class="panel" id="p-territory"><div class="container" id="ter-content"></div></div>
+
+  <!-- ═══ CRM ═══ -->
+  <div class="panel" id="p-crm"><div class="container" id="crm-content"></div></div>
+
+  <!-- ═══ CALENDAR ═══ -->
+  <div class="panel" id="p-calendar"><div class="container" id="cal-content"></div></div>
+
+  <!-- ═══ RATES ═══ -->
+  <div class="panel" id="p-rates"><div class="container" id="rates-content"></div></div>
+
+  <!-- ═══ CALCULATOR ═══ -->
+  <div class="panel" id="p-calculator"><div class="container" id="calc-content"></div></div>
+
+  <!-- ═══ FUEL INTRO ═══ -->
+  <div class="panel" id="p-fuel-intro"><div class="container" id="fuel-content"></div></div>
+
+  <!-- ═══ CRITICAL ═══ -->
+  <div class="panel" id="p-critical"><div class="container" id="crit-content"></div></div>
+</div>
+
+<!-- SITE DETAIL DRAWER -->
+<div id="site-drawer">
+  <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+  <div id="drawer-body"></div>
+</div>
+
+<!-- ADD LOG MODAL -->
+<div class="overlay" id="log-modal">
+  <div class="modal">
+    <h3>📝 Add Activity Log</h3>
+    <input type="hidden" id="log-site-id">
+    <div class="form-row">
+      <div class="fg"><label>Type</label>
+        <select id="log-type"><option value="call">📞 Call</option><option value="task">✅ Task</option><option value="note">📝 Note</option><option value="followup">🔄 Follow-up</option><option value="urgent">🚨 Urgent</option></select>
+      </div>
+      <div class="fg"><label>Date/Time</label><input type="datetime-local" id="log-dt"></div>
+    </div>
+    <div class="fg" style="margin-bottom:10px"><label>Subject</label><input id="log-subject" placeholder="Brief subject line..."></div>
+    <div class="fg" style="margin-bottom:14px"><label>Notes</label><textarea id="log-notes" rows="3" placeholder="Details..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('log-modal')">Cancel</button>
+      <button class="btn btn-cyan" onclick="saveLog()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCHEDULE CALL MODAL -->
+<div class="overlay" id="sched-modal">
+  <div class="modal">
+    <h3>📅 Schedule Call</h3>
+    <input type="hidden" id="sched-site-id">
+    <div class="form-row">
+      <div class="fg"><label>Date</label><input type="date" id="sched-date"></div>
+      <div class="fg"><label>Time</label><input type="time" id="sched-time" value="09:00"></div>
+    </div>
+    <div class="fg" style="margin-bottom:10px"><label>Contact Name</label><input id="sched-contact" placeholder="Who to call..."></div>
+    <div class="fg" style="margin-bottom:14px"><label>Purpose</label><textarea id="sched-purpose" rows="2" placeholder="Reason for call..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('sched-modal')">Cancel</button>
+      <button class="btn btn-green" onclick="saveSchedule()">Schedule</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ADD/EDIT TASK MODAL -->
+<div class="overlay" id="task-modal">
+  <div class="modal">
+    <h3 id="task-modal-title">Add Task</h3>
+    <input type="hidden" id="task-edit-id">
+    <div class="form-row">
+      <div class="fg"><label>Task Title</label><input id="task-title" placeholder="What needs to be done..."></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Site</label>
+        <select id="task-site"><option value="">-- Select Stop --</option></select>
+      </div>
+      <div class="fg"><label>Priority</label>
+        <select id="task-pri"><option value="low">Low</option><option value="med" selected>Medium</option><option value="high">High</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Status</label>
+        <select id="task-status"><option value="todo">To Do</option><option value="progress">In Progress</option><option value="waiting">Waiting</option><option value="done">Done</option></select>
+      </div>
+      <div class="fg"><label>Due Date</label><input type="date" id="task-due"></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Category</label>
+        <select id="task-cat"><option value="general">General</option><option value="fuel">Fuel</option><option value="rewards">Rewards</option><option value="aggregator">Aggregator</option><option value="billing">Billing</option><option value="onboarding">Onboarding</option><option value="followup">Follow-up</option></select>
+      </div>
+      <div class="fg"><label>Assigned To</label>
+        <select id="task-assign"><option value="">Self</option><option>Kaden</option><option>Angel</option><option>Burt</option><option>Robert</option><option>Logan</option><option>Steph</option><option>Stefanie</option><option>Maria</option><option>Shannon</option><option>Jason</option><option>Jack</option><option>Sergey</option></select>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:14px"><label>Notes</label><textarea id="task-notes" rows="3" placeholder="Details, context, next steps..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('task-modal')">Cancel</button>
+      <button class="btn btn-red" id="task-del-btn" style="display:none" onclick="deleteTask()">Delete</button>
+      <button class="btn btn-cyan" onclick="saveTask()">Save Task</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════
+const MEMBERS = [{"id": "R03650", "company": "115 Truck Stop, Inc.", "type": "Truck Stop", "group": "Roady's", "name": "115 Truck Stop", "street": "14547 22 1/2 Mile Road", "city": "Marshall", "state": "MI", "zip": "49068", "exit": "Exit 115 I-94", "phone": "(269) 781-9616", "status": "active"}, {"id": "R01272", "company": "Demo Truck Stops", "type": "Truck Stop", "group": "Roady's", "name": "1234 Truck Stop Demo", "street": "", "city": "", "state": "MT", "zip": "", "exit": "lost", "phone": "", "status": "active"}, {"id": "P01224", "company": "Fuel Express Travel Centers", "type": "Truck Stop", "group": "PTP", "name": "218 Fuel Express", "street": "68 Monroe St", "city": "Floyd", "state": "IA", "zip": "50434", "exit": "", "phone": "(641) 398-2390", "status": "active"}, {"id": "P03654", "company": "287 Diesel Service", "type": "Service Center", "group": "PTP", "name": "287 Diesel Service", "street": "1101 E. 11th St.", "city": "Quanah", "state": "TX", "zip": "79252", "exit": "Hwy 287", "phone": "(940) 663-2424", "status": "active"}, {"id": "R01273", "company": "Demo Truck Stops", "type": "Truck Stop", "group": "Roady's", "name": "3456 Truck Stop Demo", "street": "", "city": "", "state": "-1", "zip": "", "exit": "lost", "phone": "", "status": "active"}, {"id": "L03461", "company": "Sunny Alliance LLC", "type": "Truck Stop", "group": "Roady's Lite", "name": "365 Food and Fuel", "street": "11175 U.S. Highway 190 W.", "city": "Livingston", "state": "TX", "zip": "77351", "exit": "11175 U.S. Highway 190 W.", "phone": "(936) 646-7522", "status": "active"}, {"id": "R03876", "company": "Deming 5R LLC", "type": "Truck Stop", "group": "Roady's", "name": "5R Travel Center", "street": "1695 Silver City Hwy NW", "city": "Deming", "state": "NM", "zip": "88030", "exit": "Exit-82 / I-10", "phone": "(575) 544-7725", "status": "active"}, {"id": "R01260", "company": "79 One-Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "79 One Stop", "street": "11980 IN-62, St Croix, IN 47576", "city": "Saint Croix", "state": "IN", "zip": "47576", "exit": "I-64 Exit 79", "phone": "(812) 843-3048", "status": "active"}, {"id": "R03922", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80122-Belfield Truck Stop", "street": "804 Hwy 85 N", "city": "Belfield", "state": "ND", "zip": "58622", "exit": "I 94, Exit 42", "phone": "(701) 575-4216", "status": "active"}, {"id": "R03923", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80126-Jamestown Shell", "street": "2315 Hwy 281 S", "city": "Jamestown", "state": "ND", "zip": "58402", "exit": "I 94 & Exit 258", "phone": "(701) 252-4732", "status": "active"}, {"id": "R03920", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80132-Dawn to Dusk", "street": "7141 Hwy 2 E", "city": "Minot", "state": "ND", "zip": "58701", "exit": "US Hwy 2 & 72nd St. S.E.", "phone": "(701) 852-0094", "status": "active"}, {"id": "R03924", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80143-New Town", "street": "8258 39th St NW", "city": "New Town", "state": "ND", "zip": "58763", "exit": "ND23 / ND8", "phone": "(701) 627-4646", "status": "active"}, {"id": "R03539", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80145-SPR #45 Cheyenne TS", "street": "3306 W College Drive", "city": "Cheyenne", "state": "WY", "zip": "82007", "exit": "I-25 exit 7", "phone": "(307) 638-1500", "status": "active"}, {"id": "R03921", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80159-Tower City Travel Center", "street": "101 Maiden Lane", "city": "Tower City", "state": "ND", "zip": "58701", "exit": "Exit 307 / I-94", "phone": "(701) 749-6000", "status": "active"}, {"id": "R03543", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80184-Heber City", "street": "1590 US-40", "city": "Heber City", "state": "UT", "zip": "84032", "exit": "", "phone": "(435) 654-4642", "status": "active"}, {"id": "R03541", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80188-Flagstaff Travel Center", "street": "7180 US-89", "city": "Flagstaff", "state": "AZ", "zip": "86004", "exit": "", "phone": "(928) 714-9115", "status": "active"}, {"id": "R03544", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80200-Broadway-Sinclair", "street": "6185 Broadway", "city": "Denver", "state": "CO", "zip": "80216", "exit": "I 76, Exit #5 (Broadway & 62nd Ave.)", "phone": "(303) 428-4898", "status": "active"}, {"id": "R03625", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80213-KJ's Travel Center", "street": "615 E Iona Road", "city": "Idaho Falls", "state": "ID", "zip": "83401", "exit": "", "phone": "(208) 524-3012", "status": "active"}, {"id": "R03627", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80216-KJ's Boozers", "street": "1300 W Broadway St.", "city": "Idaho Falls", "state": "ID", "zip": "83402", "exit": "", "phone": "(208) 820-3020", "status": "active"}, {"id": "R03626", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80217-Malad City", "street": "226 E 50 S", "city": "Malad City", "state": "ID", "zip": "83252", "exit": "", "phone": "(208) 766-4950", "status": "active"}, {"id": "R03628", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80229-KJ's Alpine Phillips 66", "street": "15 Boardwalk Drive", "city": "Alpine", "state": "WY", "zip": "83128", "exit": "", "phone": "(307) 654-9982", "status": "active"}, {"id": "R03542", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80232-Elwood Chevron", "street": "5175 W 9600 N", "city": "Elwood", "state": "UT", "zip": "84337", "exit": "", "phone": "(435) 257-4710", "status": "active"}, {"id": "R03630", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80249 Mr. Gas", "street": "1223 W. Main St.", "city": "Jerome", "state": "ID", "zip": "83338", "exit": "", "phone": "(208) 242-2252", "status": "active"}, {"id": "R03629", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80254 Mr. Gas Boise #21", "street": "10026 South Eisenman Road", "city": "Boise", "state": "ID", "zip": "83716", "exit": "I84/exit 50", "phone": "(208) 912-1840", "status": "active"}, {"id": "R01188", "company": "Virk Petroleum Corp.", "type": "Truck Stop", "group": "Roady's", "name": "Akal Travel Plaza", "street": "1748 CA-99", "city": "Delano", "state": "CA", "zip": "93215", "exit": "60 & 61", "phone": "(661) 725-5525", "status": "active"}, {"id": "R03929", "company": "KBFW 7 LLC", "type": "Truck Stop", "group": "Roady's", "name": "Allstar", "street": "21356 KS Hwy 239", "city": "Prescott", "state": "KS", "zip": "66767", "exit": "K239/Hwy 69", "phone": "(512) 586-6652", "status": "active"}, {"id": "P03515", "company": "Unadilla Business Corporation", "type": "Service Center", "group": "PTP", "name": "All State Truck Shop", "street": "475 Pine Street", "city": "Unadilla", "state": "GA", "zip": "31091", "exit": "", "phone": "(478) 627-3217", "status": "active"}, {"id": "P03604", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Amite Travel Plaza", "street": "30036 Hwy 16 West", "city": "Amite", "state": "LA", "zip": "70422", "exit": "", "phone": "(985) 748-7870", "status": "active"}, {"id": "R03638", "company": "Excell Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Anvil Block Marathon #112", "street": "2360 Anvilblock Rd", "city": "Ellenwood", "state": "GA", "zip": "30294", "exit": "", "phone": "(404) 363-6277", "status": "active"}, {"id": "R00315", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Appleton T/P-CITGO", "street": "2775 W. Wisconsin Ave", "city": "Appleton", "state": "WI", "zip": "54914", "exit": "US Hwy 10 (E of Hwy 41)", "phone": "(920) 993-8706", "status": "active"}, {"id": "R03693", "company": "Petroluxe Properties LLC", "type": "Truck Stop", "group": "Roady's", "name": "Baker Truck Corral", "street": "515 Campbell", "city": "Baker City", "state": "OR", "zip": "98714", "exit": "I-84, Exit 304", "phone": "(541) 523-3952", "status": "active"}, {"id": "R02592", "company": "Easher Corp", "type": "Truck Stop", "group": "Roady's", "name": "Bar-B Travel Plaza", "street": "108 W Interstate 20", "city": "Gordon", "state": "TX", "zip": "76453", "exit": "Exit 370  I-20", "phone": "(254) 693-5851", "status": "active"}, {"id": "R01186", "company": "Majors Management", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Battlefield Fuel Stop", "street": "6860 Battlefield Pkwy", "city": "Ringgold", "state": "GA", "zip": "30736", "exit": "Exit 350", "phone": "(706) 965-9384", "status": "active"}, {"id": "P03606", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Bayou Vista Truck Plaza", "street": "1829 Hwy 90 West", "city": "Bayou Vista", "state": "LA", "zip": "70380", "exit": "", "phone": "(985) 399-6533", "status": "active"}, {"id": "R00608", "company": "Outagamie Co-op Services Inc.", "type": "C-Store", "group": "Roady's", "name": "Bear Creek T/P-CITGO", "street": "N8086 Hwy 45", "city": "Bear Creek", "state": "WI", "zip": "54922", "exit": "", "phone": "(715) 752-3504", "status": "active"}, {"id": "R01024", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #13", "street": "605 W Peru St", "city": "Princeton", "state": "IL", "zip": "61356", "exit": "", "phone": "", "status": "active"}, {"id": "R00930", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #14", "street": "1838 N Main St", "city": "Princeton", "state": "IL", "zip": "61356", "exit": "I-80 / Exit 56", "phone": "(815) 872-0630", "status": "active"}, {"id": "R01025", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #15", "street": "317 Derby St", "city": "Pekin", "state": "IL", "zip": "61554", "exit": "", "phone": "", "status": "active"}, {"id": "R01026", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #17", "street": "349 Tenney St", "city": "Kewanee", "state": "IL", "zip": "61443", "exit": "", "phone": "", "status": "active"}, {"id": "R01027", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #18", "street": "1581 E Main St", "city": "Galesburg", "state": "IL", "zip": "61401", "exit": "", "phone": "", "status": "active"}, {"id": "R01028", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #19", "street": "703 Shooting Park Rd", "city": "Peru", "state": "IL", "zip": "61354", "exit": "", "phone": "", "status": "active"}, {"id": "R00931", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #22", "street": "1010 Heitmann Dr.", "city": "Lincoln", "state": "IL", "zip": "62656", "exit": "I-55 / RT 10 Exit 126", "phone": "(217) 732-3759", "status": "active"}, {"id": "R01022", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #23", "street": "359 3rd St", "city": "LaSalle", "state": "IL", "zip": "61301", "exit": "", "phone": "", "status": "active"}, {"id": "R01023", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #25", "street": "1301 13th Ave", "city": "Mendota", "state": "IL", "zip": "61342", "exit": "", "phone": "(815) 539-9353", "status": "active"}, {"id": "R00932", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #26", "street": "2433 S Oakwood", "city": "Geneseo", "state": "IL", "zip": "61254", "exit": "I-80 Exit 19", "phone": "(309) 944-6040", "status": "active"}, {"id": "R00782", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #27", "street": "1302 Raymond Drive", "city": "Mendota", "state": "IL", "zip": "61342", "exit": "I-39, Exit 72", "phone": "(815) 539-3300", "status": "active"}, {"id": "R01029", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #28", "street": "615 N 4th St", "city": "Chillicothe", "state": "IL", "zip": "61523", "exit": "", "phone": "(309) 274-4255", "status": "active"}, {"id": "R01174", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #30", "street": "1301 Washington Road", "city": "Washington", "state": "IL", "zip": "61571", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R03517", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Becks-Peoria Heights", "street": "918 E War Memorial Drive", "city": "Peoria Heights", "state": "IL", "zip": "61616", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R03967", "company": "I 43 Belgium Inc", "type": "Truck Stop", "group": "Roady's", "name": "Belgium Plaza", "street": "105 Lakeview Drive", "city": "Belgium", "state": "WI", "zip": "53004", "exit": "I-43/Exit 107", "phone": "(262) 476-5009", "status": "active"}, {"id": "P03670", "company": "Edward L. Smith", "type": "Service Center", "group": "PTP", "name": "B&E Tire", "street": "843 N Main", "city": "Palestine", "state": "AR", "zip": "72372", "exit": "Exit 233 I-40", "phone": "(870) 581-2593", "status": "active"}, {"id": "R00255", "company": "Big Daddys Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "Big Daddys Truck Stop", "street": "6055 St Anthony Rd", "city": "Ottawa Lake", "state": "MI", "zip": "49267", "exit": "US 23, Exit 5 (US 223)", "phone": "(734) 854-6611", "status": "active"}, {"id": "P03460", "company": "Big Easy Travel Center LLC", "type": "Service Center", "group": "PTP", "name": "Big Easy Tire & Lube", "street": "5000 Old Gentilly Rd.", "city": "New Orleans", "state": "LA", "zip": "70126", "exit": "Exit-239 I-10", "phone": "(504) 942-2412", "status": "active"}, {"id": "R01165", "company": "Big's", "type": "Truck Stop", "group": "Roady's", "name": "Big's 211", "street": "2999 N. Hwy 123 Bypass", "city": "Seguin", "state": "TX", "zip": "78155", "exit": "I-10, Hwy. 123, Exit 610", "phone": "(830) 379-1201", "status": "active"}, {"id": "P03659", "company": "Dhaliwal Ventures Inc.", "type": "Truck Stop", "group": "PTP", "name": "Big Springs Travel Center", "street": "100 Frontage Rd", "city": "Big Springs", "state": "NE", "zip": "69122", "exit": "Exit 107 I-80", "phone": "(308) 889-3608", "status": "active"}, {"id": "R00717", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Blackfoot Stinker Truck Stop #85", "street": "1228 Parkway Dr.", "city": "Blackfoot", "state": "ID", "zip": "83221", "exit": "I-15, Exit 93", "phone": "(208) 785-6607", "status": "active"}, {"id": "R00718", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Bliss Stinker Truck Stop #74", "street": "401 E. Hwy 30", "city": "Bliss", "state": "ID", "zip": "83314", "exit": "I-84/Hwy 30, Exit 137", "phone": "(208) 352-4627", "status": "active"}, {"id": "R03968", "company": "Hari Retail LLC", "type": "Truck Stop", "group": "Roady's", "name": "Blue Ridge Travel Plaza", "street": "7121 Blue Ridge Trail", "city": "Mountain Top", "state": "PA", "zip": "18707", "exit": "Exit 155/I-81", "phone": "(570) 868-3117", "status": "active"}, {"id": "R00326", "company": "Osseo Truck Stop", "type": "Truck Stop", "group": "Roady's", "name": "BP Kenosha Travel Plaza", "street": "11800 Burlington Rd", "city": "Kenosha", "state": "WI", "zip": "53144", "exit": "I-94, Exit 340", "phone": "(262) 233-8865", "status": "active"}, {"id": "R01072", "company": "Wisconsin Fuel LLC", "type": "Truck Stop", "group": "Roady's", "name": "BP Pleasant Springs Travel Plaza", "street": "2763 County Road N", "city": "Cottage Grove", "state": "WI", "zip": "53527", "exit": "I-94 HWY N, Exit 147", "phone": "(608) 873-0504", "status": "active"}, {"id": "R01258", "company": "Braj Convenience Store", "type": "Truck Stop", "group": "Roady's", "name": "Braj Convenience Store", "street": "1501 Main Ave", "city": "De Pere", "state": "WI", "zip": "54115", "exit": "I-41", "phone": "(920) 632-2251", "status": "active"}, {"id": "R03932", "company": "SNS Gas & More Inc", "type": "Truck Stop", "group": "Roady's", "name": "Bravo Travel Center", "street": "3949 Luna Pier Rd", "city": "Erie", "state": "MI", "zip": "48133", "exit": "Exit 6/Hwy 75", "phone": "(313) 559-6976", "status": "active"}, {"id": "R01020", "company": "Golden Country LLC", "type": "C-Store", "group": "Roady's", "name": "Bristol BP", "street": "20015 93rd Street", "city": "Bristol", "state": "WI", "zip": "53104", "exit": "", "phone": "(262) 857-7022", "status": "active"}, {"id": "R01033", "company": "NEC OPCO I Inc (Nouria Energy)", "type": "Truck Stop", "group": "Roady's", "name": "Broad St. Truck Stop", "street": "720 Hall of Fame Ave.", "city": "Springfield", "state": "MA", "zip": "01105", "exit": "I-91, Exit 5 North", "phone": "(413) 739-8678", "status": "active"}, {"id": "R00112", "company": "Alsaker Corporation", "type": "Truck Stop", "group": "Roady's", "name": "Broadway Travel Center #110", "street": "654 W Front St", "city": "Battle Mountain", "state": "NV", "zip": "89820", "exit": "I-80, Exit 229", "phone": "(775) 635-5424", "status": "active"}, {"id": "R03913", "company": "JT Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Brown Deer Amoco", "street": "10501 W Brown Deer Rd.", "city": "Milwaukee", "state": "WI", "zip": "53224", "exit": "State Hwy 41", "phone": "(414) 446-5307", "status": "active"}, {"id": "R01130", "company": "Golden Lomira LLC", "type": "C-Store", "group": "Roady's", "name": "Brownsville BP", "street": "868 W. Main Street", "city": "Brownsville", "state": "WI", "zip": "53006", "exit": "I-41 Exit 87", "phone": "(920) 583-3700", "status": "active"}, {"id": "R00454", "company": "MRH Corporation", "type": "C-Store", "group": "Roady's", "name": "Bunker Hill Short Stop", "street": "702 S Washington St", "city": "Bunker Hill", "state": "IL", "zip": "62014", "exit": "", "phone": "(618) 585-4514", "status": "active"}, {"id": "R01261", "company": "YAD Inc", "type": "Truck Stop", "group": "Roady's", "name": "Carefree Foodmart", "street": "6945 S STATE ROAD 66", "city": "Leavenworth", "state": "IN", "zip": "47137", "exit": "", "phone": "(812) 739-4744", "status": "active"}, {"id": "P03624", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Berwick", "street": "2051 Hwy 90", "city": "Berwick", "state": "LA", "zip": "70342", "exit": "", "phone": "(985) 399-5688", "status": "active"}, {"id": "P03642", "company": "Jacobs Entertainment, Inc.", "type": "PPO", "group": "PTP", "name": "Cash Magic Galliano", "street": "16816 Hwy 3235", "city": "Cut Off", "state": "LA", "zip": "70345", "exit": "", "phone": "(985) 325-4445", "status": "active"}, {"id": "P03639", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Prospect Station", "street": "1444 Prospect Blvd.", "city": "Houma", "state": "LA", "zip": "70364", "exit": "", "phone": "(985) 857-8752", "status": "active"}, {"id": "P03641", "company": "Jacobs Entertainment, Inc.", "type": "PPO", "group": "PTP", "name": "Cash Magic Royal Flush", "street": "10618 E. Main St.", "city": "Houma", "state": "LA", "zip": "70363", "exit": "", "phone": "(985) 868-0336", "status": "active"}, {"id": "P03612", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Truck Stop", "street": "3747 Hwy 190", "city": "Eunice", "state": "LA", "zip": "70535", "exit": "", "phone": "(337) 457-7745", "status": "active"}, {"id": "P03607", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Truck Stop", "street": "1869 Mills Hwy", "city": "Breaux Bridge", "state": "LA", "zip": "70517", "exit": "", "phone": "(337) 507-2274", "status": "active"}, {"id": "P03621", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Truck Stop", "street": "2334 Hwy 109 South", "city": "Vinton", "state": "LA", "zip": "70668", "exit": "", "phone": "(337) 589-3993", "status": "active"}, {"id": "R00800", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #31", "street": "3325 Brooks", "city": "Missoula", "state": "MT", "zip": "59801", "exit": "", "phone": "(406) 542-7741", "status": "active"}, {"id": "R00809", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #32", "street": "1540 Toole Ave", "city": "Missoula", "state": "MT", "zip": "59801", "exit": "", "phone": "(406) 543-7002", "status": "active"}, {"id": "R00825", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #39", "street": "305 E Idaho", "city": "Kallispell", "state": "MT", "zip": "59901", "exit": "", "phone": "(406) 755-3664", "status": "active"}, {"id": "R00833", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #40", "street": "1420 First Ave E", "city": "Kalispell", "state": "MT", "zip": "59901", "exit": "", "phone": "(406) 755-5713", "status": "active"}, {"id": "R00840", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #41", "street": "2490 US Highway 93 N", "city": "Kalispell", "state": "MT", "zip": "59901", "exit": "", "phone": "(406) 752-7555", "status": "active"}, {"id": "R00848", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #42", "street": "3100 N Montana Ave", "city": "Helena", "state": "MT", "zip": "59602", "exit": "", "phone": "(406) 449-8766", "status": "active"}, {"id": "R00826", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #43", "street": "1318 Euclid Ave", "city": "Helena", "state": "MT", "zip": "59601", "exit": "", "phone": "(406) 442-9402", "status": "active"}, {"id": "R00841", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #45", "street": "625 1st Ave N", "city": "Great Falls", "state": "MT", "zip": "59401", "exit": "", "phone": "(406) 761-2175", "status": "active"}, {"id": "R00849", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #46", "street": "1210 E Main St", "city": "Bozeman", "state": "MT", "zip": "59715", "exit": "", "phone": "(406) 587-0611", "status": "active"}, {"id": "R00827", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #47", "street": "101 Centennial Dr", "city": "Livingston", "state": "MT", "zip": "59047", "exit": "", "phone": "(406) 222-7371", "status": "active"}, {"id": "R00835", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #48", "street": "911 W 11th", "city": "Havre", "state": "MT", "zip": "59501", "exit": "", "phone": "(406) 265-9821", "status": "active"}, {"id": "R00842", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #49", "street": "1004 1st St", "city": "Havre", "state": "MT", "zip": "59501", "exit": "", "phone": "(406) 265-9812", "status": "active"}, {"id": "R00641", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #50", "street": "104 North Park Street", "city": "Park City", "state": "MT", "zip": "59063", "exit": "I-90, Exit 426", "phone": "(406) 633-2359", "status": "active"}, {"id": "R00828", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #51", "street": "1544 Broadwater Ave", "city": "Billings", "state": "MT", "zip": "59102", "exit": "", "phone": "(406) 651-0001", "status": "active"}, {"id": "R00836", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #52", "street": "1201 Central Ave", "city": "Billings", "state": "MT", "zip": "59102", "exit": "", "phone": "(406) 245-9670", "status": "active"}, {"id": "R00843", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #53", "street": "2975 Grand Ave", "city": "Billings", "state": "MT", "zip": "59102", "exit": "", "phone": "(406) 655-0871", "status": "active"}, {"id": "R00642", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #54", "street": "151 Rosebud Lane", "city": "Billings", "state": "MT", "zip": "59101", "exit": "I-90, exit 452", "phone": "(406) 259-5426", "status": "active"}, {"id": "R00832", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #55", "street": "236 Main St", "city": "Billings", "state": "MT", "zip": "59105", "exit": "", "phone": "(406) 259-3240", "status": "active"}, {"id": "R03863", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "CENEX ZIP TRIP 56", "street": "16 SHILOH RD", "city": "Billings", "state": "MT", "zip": "59106", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R00844", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #57", "street": "1046 N 27th St", "city": "Billings", "state": "MT", "zip": "59101", "exit": "", "phone": "(406) 252-9654", "status": "active"}, {"id": "R00850", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #58", "street": "610 Wicks Lane", "city": "Billings", "state": "MT", "zip": "59105", "exit": "", "phone": "(406) 259-7054", "status": "active"}, {"id": "R00640", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #59", "street": "1321 S Haynes Ave.", "city": "Miles City", "state": "MT", "zip": "59301", "exit": "I-94, exit 138", "phone": "(406) 820-2121", "status": "active"}, {"id": "R00639", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #60", "street": "501 E. Hart", "city": "Buffalo", "state": "WY", "zip": "82834", "exit": "I-25 & Hwy 16", "phone": "(307) 684-9513", "status": "active"}, {"id": "R00845", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #61", "street": "1111 12th St W", "city": "Grafton", "state": "ND", "zip": "58237", "exit": "", "phone": "(701) 352-1722", "status": "active"}, {"id": "R00829", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #63", "street": "1005 6th St", "city": "Brookings", "state": "SD", "zip": "57006", "exit": "", "phone": "", "status": "active"}, {"id": "R00837", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #64", "street": "3045 Lefevre Dr", "city": "Brookings", "state": "SD", "zip": "57006", "exit": "", "phone": "", "status": "active"}, {"id": "R00852", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #66", "street": "2605 W Lincoln Ave", "city": "Fergus Falls", "state": "MN", "zip": "56537", "exit": "", "phone": "", "status": "active"}, {"id": "R00847", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #69", "street": "6585 Hwy 93 S", "city": "Whitefish", "state": "MT", "zip": "59937", "exit": "", "phone": "(406) 862-6903", "status": "active"}, {"id": "R00853", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #71", "street": "8840 Hwy 2 E", "city": "Hungry Horse", "state": "MT", "zip": "59919", "exit": "", "phone": "", "status": "active"}, {"id": "R00831", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #72", "street": "2801 Harrison Ave", "city": "Butte", "state": "MT", "zip": "59701", "exit": "", "phone": "(406) 494-2558", "status": "active"}, {"id": "R00839", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #73", "street": "848 W Park St", "city": "Butte", "state": "MT", "zip": "59701", "exit": "", "phone": "(406) 782-2159", "status": "active"}, {"id": "R03860", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "CENEX ZIP TRIP #74", "street": "902 BROADWAY AVE", "city": "Red Lodge", "state": "MT", "zip": "59068", "exit": "", "phone": "(406) 446-0338", "status": "active"}, {"id": "R00958", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #75", "street": "1815 South Haynes", "city": "Miles City", "state": "MT", "zip": "59301", "exit": "I-94, Exit 138", "phone": "(406) 232-4553", "status": "active"}, {"id": "R03676", "company": "Crosby Enterprise, Inc.", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Circle C Travel Plaza", "street": "11109 Augusta Hwy", "city": "Walterboro", "state": "SC", "zip": "29488", "exit": "Exit 68 I-95", "phone": "(843) 538-5443", "status": "active"}, {"id": "R01229", "company": "Trinity Petro Hialeah LLC", "type": "Truck Stop", "group": "Roady's", "name": "CITGO", "street": "13899 W Okeechobee Road", "city": "Hialeah", "state": "FL", "zip": "33018", "exit": "Hwy 821, Exit 35", "phone": "(305) 698-5593", "status": "active"}, {"id": "P03620", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Colonel's Truck Plaza", "street": "233 West Park Ave.", "city": "Thibodoux", "state": "LA", "zip": "70301", "exit": "", "phone": "(985) 447-7800", "status": "active"}, {"id": "R00205", "company": "Bargain Brothers Inc", "type": "Truck Stop", "group": "Roady's", "name": "Crazy Fred's Truck Stop", "street": "2770 W. Old Hwy 66", "city": "Golden Valley", "state": "AZ", "zip": "86413", "exit": "I-40, Exit 44", "phone": "(928) 753-3834", "status": "active"}, {"id": "R03602", "company": "Laguna Development Corporation", "type": "Truck Stop", "group": "Roady's", "name": "Dancing Eagle Travel Center", "street": "167 Casablanca Rd I-40", "city": "Paraje", "state": "NM", "zip": "87007", "exit": "Exit 108 I-40", "phone": "(505) 552-7477", "status": "active"}, {"id": "P03673", "company": "Dandy Dan's Inc.", "type": "Truck Stop", "group": "PTP", "name": "Dandy Dan's", "street": "6734 Hwy 49 North", "city": "Hattiesburg", "state": "MS", "zip": "39402", "exit": "Hwy 49", "phone": "(601) 264-1240", "status": "active"}, {"id": "P03674", "company": "Dandy Dan's Inc.", "type": "Truck Stop", "group": "PTP", "name": "Dan's Truck Stop and Cafe", "street": "4875 US Hwy 49", "city": "Hattiesburg", "state": "MS", "zip": "39401", "exit": "Hwy 49 & Hwy 98", "phone": "(601) 545-2435", "status": "active"}, {"id": "P03689", "company": "David's Towing Inc.", "type": "Service Center", "group": "PTP", "name": "David's Towing Service & Tire", "street": "16 Robinson Dr", "city": "Newport News", "state": "VA", "zip": "23601", "exit": "Exit 258 /  I-64", "phone": "(757) 595-7290", "status": "active"}, {"id": "R01084", "company": "Dilley Truck Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Dilley Truck Stop", "street": "16250 Interstate Hwy 35", "city": "Dilley", "state": "TX", "zip": "78017", "exit": "I-35, Exit 85", "phone": "(830) 963-0548", "status": "active"}, {"id": "R03699", "company": "Donna's Travel Plazas, Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Donna's Travel Plaza", "street": "3104 116th St. NE", "city": "Marysville", "state": "WA", "zip": "98291", "exit": "Exit 202 / I-5", "phone": "(360) 653-3000", "status": "active"}, {"id": "R01017", "company": "Byersview Inc", "type": "Truck Stop", "group": "Roady's", "name": "Downieville Fuel Stop", "street": "1039 County Road 308", "city": "Downieville", "state": "CO", "zip": "80436", "exit": "I-70, Exit 234", "phone": "(303) 567-4730", "status": "active"}, {"id": "R01083", "company": "Eagle Express Travel Centers LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Eagle Express Travel Center", "street": "N2536 Kasal Lane", "city": "Peshtigo", "state": "WI", "zip": "54157", "exit": "Hwy 41", "phone": "(715) 582-0180", "status": "active"}, {"id": "R01132", "company": "Eco Travel Plaza LLC", "type": "Truck Stop", "group": "Roady's", "name": "Eco Travel Plaza", "street": "1897 Genesis Road", "city": "Crossville", "state": "TN", "zip": "38555", "exit": "I-40 Exit 320", "phone": "(931) 484-7498", "status": "active"}, {"id": "R01107", "company": "Edgerton Truck Stop Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Edgerton Travel Plaza", "street": "568 Haugen Road", "city": "Edgerton", "state": "WI", "zip": "53534", "exit": "I-90, Exit 160", "phone": "(608) 884-9451", "status": "active"}, {"id": "R01171", "company": "Excel Food Mart", "type": "Truck Stop", "group": "Roady's", "name": "E-Express at Central Truck Stop", "street": "5300 NE 122nd Street", "city": "Oklahoma City", "state": "OK", "zip": "73131", "exit": "I-35 & I-44, Exit 137", "phone": "(405) 478-3052", "status": "active"}, {"id": "R01187", "company": "Excel Food Mart", "type": "Truck Stop", "group": "Roady's", "name": "E-Express at Choctaw", "street": "7501 S Choctaw Road", "city": "Choctaw", "state": "OK", "zip": "73020", "exit": "I-40 Exit 166", "phone": "(405) 638-3000", "status": "active"}, {"id": "P03653", "company": "Emergency Rd. Service & Diesel Repair", "type": "Service Center", "group": "PTP", "name": "Emergency Rd. Service & Diesel Repair", "street": "3192 N Pearce St", "city": "Eloy", "state": "AZ", "zip": "85131", "exit": "Exit 382 I-10", "phone": "(520) 705-4927", "status": "active"}, {"id": "L03911", "company": "Exit 66 Truck Stop LLC", "type": "Truck Stop", "group": "Roady's Lite", "name": "Exit 66 Truck Stop", "street": "9730 US Highway 70e", "city": "Bells", "state": "TN", "zip": "38006", "exit": "Exit 66/Hwy 70e", "phone": "(731) 772-1006", "status": "active"}, {"id": "R01080", "company": "Sri Aurobindo 3 LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Fackler Texaco Truckstop", "street": "13750 Co. Rd. 42", "city": "Fackler", "state": "AL", "zip": "35746", "exit": "US Hwy 72 mile 149", "phone": "(256) 437-2663", "status": "active"}, {"id": "R03469", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Center (#27)", "street": "22450 MO-19", "city": "Center", "state": "MO", "zip": "63436", "exit": "Hwy-19", "phone": "(573) 640-0344", "status": "active"}, {"id": "R00262", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Eolia (#26)", "street": "121 W Outer Road", "city": "Eolia", "state": "MO", "zip": "63344", "exit": "US 61 & MO FF", "phone": "(573) 485-7500", "status": "active"}, {"id": "R01066", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Gasper's Truck Plaza (#51)", "street": "3325 County Rd 211", "city": "Kingdom City", "state": "MO", "zip": "65262", "exit": "I-70, Exit 148", "phone": "(573) 642-6642", "status": "active"}, {"id": "R01067", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Moberly Truck Plaza (#59)", "street": "600 E. Hwy 24", "city": "Moberly", "state": "MO", "zip": "65270", "exit": "Hwy 63, Hwy 24", "phone": "(660) 263-5510", "status": "active"}, {"id": "R00670", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Taylor (#63)", "street": "6725 Highway 6", "city": "Taylor", "state": "MO", "zip": "63471", "exit": "Highway 61 & 6", "phone": "(573) 769-2861", "status": "active"}, {"id": "R01178", "company": "Rising Harvey", "type": "Truck Stop", "group": "Roady's", "name": "Fast Trac 21", "street": "11378 State Hwy 21 E", "city": "Caldwell", "state": "TX", "zip": "77836-4402", "exit": "Hwy 21 & FM 50", "phone": "(979) 596-5704", "status": "active"}, {"id": "R09601", "company": "Monroe Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Fill Good #17", "street": "305 Unionville I.T. Road", "city": "Indian Trail", "state": "NC", "zip": "28079", "exit": "I-485, Exit 51B", "phone": "(704) 893-0994", "status": "active"}, {"id": "R00096", "company": "Monroe Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Fill Good #802", "street": "4102 W Hwy 74", "city": "Monroe", "state": "NC", "zip": "28110", "exit": "US 74 W & Rocky River", "phone": "(704) 291-9961", "status": "active"}, {"id": "R01183", "company": "Texas Petroleum Group", "type": "Truck Stop", "group": "Roady's", "name": "Flatonia Travel Center", "street": "709 N LaGrange Street", "city": "Flatonia", "state": "TX", "zip": "78941", "exit": "I-10  Exit 661", "phone": "(361) 865-9399", "status": "active"}, {"id": "R00076", "company": "Flynn's Truck Plaza", "type": "Truck Stop", "group": "Roady's", "name": "Flynn's Truck Plaza", "street": "307 Hartford Pike", "city": "Shrewsbury", "state": "MA", "zip": "01545", "exit": "MA 140 / US 20", "phone": "(508) 753-9698", "status": "active"}, {"id": "R03523", "company": "GJT Inc", "type": "Truck Stop", "group": "Roady's", "name": "Food-N-Fuel", "street": "103 W 4th Ave", "city": "Milbank", "state": "SD", "zip": "57252", "exit": "", "phone": "(605) 432-6678", "status": "active"}, {"id": "P03605", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Forest Gold Travel Plaza", "street": "30036 Hwy 16 West", "city": "Amite", "state": "LA", "zip": "70422", "exit": "", "phone": "(985) 748-5167", "status": "active"}, {"id": "R00320", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Francis Creek Travel Plaza-CITGO", "street": "185 Hillcrest Rd.", "city": "Francis Creek", "state": "WI", "zip": "54214", "exit": "I-43, Exit157", "phone": "(920) 684-4300", "status": "active"}, {"id": "R00321", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Fremont T/P-CITGO", "street": "E7487 State Road 110", "city": "Fremont", "state": "WI", "zip": "54940", "exit": "Hwy 10 & WI 96E", "phone": "(920) 446-3344", "status": "active"}, {"id": "", "company": "Roady's Corporate Office", "type": "Truck Stop", "group": "None", "name": "Fuelman Payments", "street": "", "city": "", "state": "AL", "zip": "", "exit": "", "phone": "", "status": "active"}, {"id": "P03614", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Fuel Stop 36", "street": "108 N Hwy 397", "city": "Lake Charles", "state": "LA", "zip": "70615", "exit": "", "phone": "(337) 491-9293", "status": "active"}, {"id": "R03494", "company": "RB Management Midwest LLC", "type": "Truck Stop", "group": "Roady's", "name": "Garden Inn Truck Plaza-Cabool", "street": "14081 Hwy 60", "city": "Cabool", "state": "MO", "zip": "65689", "exit": "Hwy 60/63", "phone": "(417) 962-3817", "status": "active"}, {"id": "R03495", "company": "RB Management Midwest LLC", "type": "Truck Stop", "group": "Roady's", "name": "Garden Inn Truck Plaza-Forest City", "street": "27478 Holt 223", "city": "Forest City", "state": "MO", "zip": "64451", "exit": "I-29 Exit 79", "phone": "(660) 442-0120", "status": "active"}, {"id": "R00179", "company": "Gee Cee's Inc", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Gee Cee's Truck Stop", "street": "123 Foster Creek Rd", "city": "Toledo", "state": "WA", "zip": "98591", "exit": "I-5, Exit 57", "phone": "(360) 864-4300", "status": "active"}, {"id": "R01265", "company": "Sheltons Stage Stop", "type": "C-Store", "group": "Roady's", "name": "Goebel's", "street": "504 W. First Street", "city": "Wallowa", "state": "OR", "zip": "97885", "exit": "Hwy 82 & S. Douglas St.", "phone": "(541) 886-2811", "status": "active"}, {"id": "R03927", "company": "Petroluxe Properties LLC", "type": "Truck Stop", "group": "Roady's", "name": "Goldendale Travel Plaza", "street": "279 Highway 97", "city": "Goldendale", "state": "WA", "zip": "98620", "exit": "US 97", "phone": "(509) 502-8002", "status": "active"}, {"id": "R00616", "company": "Good Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Good to Go #10", "street": "1201 N US Highway 35", "city": "Winamac", "state": "IN", "zip": "46996", "exit": "", "phone": "(574) 946-4863", "status": "active"}, {"id": "R01135", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #14", "street": "6256 Corridor Dr.", "city": "Marion", "state": "IN", "zip": "56953", "exit": "", "phone": "(574) 946-4863", "status": "active"}, {"id": "R61507", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #22", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R61509", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #24", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01136", "company": "Good Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Good To Go #32", "street": "106 N Chicago St", "city": "Royal Center", "state": "IN", "zip": "46978", "exit": "246", "phone": "(574) 643-2225", "status": "active"}, {"id": "R61502", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #34", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R61503", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #35", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R03792", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good to Go #37", "street": "201 W Rochester Ave", "city": "Akron", "state": "IN", "zip": "46910", "exit": "", "phone": "(574) 893-4202", "status": "active"}, {"id": "R01059", "company": "Good Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Good to Go #40", "street": "9435 West State Road 114", "city": "Rensselaer", "state": "IN", "zip": "47978", "exit": "I-65, Exit 215", "phone": "(219) 866-8802", "status": "active"}, {"id": "R01118", "company": "JSA Foodmart Inc", "type": "Truck Stop", "group": "Roady's", "name": "Good To Go #45", "street": "101 W 5th St.", "city": "Fowler", "state": "IN", "zip": "47944", "exit": "Hwy 52", "phone": "(765) 884-0955", "status": "active"}, {"id": "R61508", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #50", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01120", "company": "NA Express Inc", "type": "C-Store", "group": "Roady's", "name": "Good to Go #60", "street": "403 N US Highway 421", "city": "Medaryville", "state": "IN", "zip": "47957", "exit": "21", "phone": "(219) 843-7111", "status": "active"}, {"id": "R61504", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #70", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01152", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #73", "street": "1440 W SR 32", "city": "Westfield", "state": "IN", "zip": "46074", "exit": "Hwy 32", "phone": "(463) 230-1442", "status": "active"}, {"id": "R61506", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #95", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01164", "company": "Pops Mart Fuels LLC", "type": "Truck Stop", "group": "Roady's", "name": "Grand Central Station - Pops Mart Fuels", "street": "11193 State Hwy 200", "city": "Winnsboro", "state": "SC", "zip": "29180", "exit": "", "phone": "(803) 482-2118", "status": "active"}, {"id": "P03683", "company": "Gulf Coast Drive Train", "type": "Service Center", "group": "PTP", "name": "Gulf Coast Drive Train", "street": "10200 Hwy 31", "city": "Spanish Fort", "state": "AL", "zip": "36527", "exit": "Exit-382 I-10", "phone": "(251) 625-6862", "status": "active"}, {"id": "R00941", "company": "Anwar Petroleum Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Guthrie Travel Center", "street": "2621 E Hwy 33", "city": "Guthrie", "state": "OK", "zip": "73044", "exit": "I-35, Exit 157", "phone": "(405) 260-1596", "status": "active"}, {"id": "R03524", "company": "S&P Oil LLC", "type": "Truck Stop", "group": "Roady's", "name": "Halsey Truck Stop", "street": "32980 Highway 228", "city": "Halsey", "state": "OR", "zip": "97348", "exit": "Exit 216 I-5", "phone": "(541) 369-2624", "status": "active"}, {"id": "R01866", "company": "Navjit Dhillon", "type": "Fuel Stop", "group": "Roady's", "name": "Harbor Truck and Auto Plaza", "street": "2816 W. Capitol Ave.", "city": "Sacramento", "state": "CA", "zip": "95691", "exit": "I-80", "phone": "(916) 372-2893", "status": "active"}, {"id": "P03657", "company": "Harvey Services LLC", "type": "Service Center", "group": "PTP", "name": "Harvey Services", "street": "41 Grove St", "city": "N Brookfield", "state": "MA", "zip": "01535", "exit": "Exit 3A Route 84", "phone": "(774) 922-0138", "status": "active"}, {"id": "R03912", "company": "Henryetta Fuel Stop LLC", "type": "PPO", "group": "Roady's", "name": "Henryetta Fuel Stop", "street": "102 Dewey Bartlett Rd", "city": "Henryetta", "state": "OK", "zip": "74437", "exit": "I-40/Exit 237", "phone": "(918) 652-7436", "status": "active"}, {"id": "P03655", "company": "High Country Ventures Inc.", "type": "Service Center", "group": "PTP", "name": "High Country Ventures", "street": "607 Broadway", "city": "Van Horn", "state": "TX", "zip": "79855", "exit": "Exit 138 I-10", "phone": "(432) 283-2343", "status": "active"}, {"id": "R01129", "company": "Golden Lomira LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Hi Way Hop BP", "street": "665 East Ave", "city": "Lomira", "state": "WI", "zip": "53048", "exit": "Exit 85 | Hwy 41", "phone": "(920) 269-7621", "status": "active"}, {"id": "R00881", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1000", "street": "551 E Main St", "city": "Sylva", "state": "NC", "zip": "28779", "exit": "", "phone": "(828) 586-3881", "status": "active"}, {"id": "R00882", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1102", "street": "1030 Main Street", "city": "Bryson City", "state": "NC", "zip": "28714", "exit": "", "phone": "(828) 488-6544", "status": "active"}, {"id": "R00854", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1103", "street": "9332 Ocean Hwy", "city": "Pawley's Island", "state": "SC", "zip": "29585", "exit": "", "phone": "(843) 237-1314", "status": "active"}, {"id": "R00855", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1201", "street": "517 W Main St", "city": "Easley", "state": "SC", "zip": "09640", "exit": "", "phone": "(864) 855-3006", "status": "active"}, {"id": "R00856", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1601", "street": "2203 N. Main St.", "city": "Summerville", "state": "SC", "zip": "29483", "exit": "", "phone": "(843) 873-7882", "status": "active"}, {"id": "R00497", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #1607", "street": "12340 Old Number Six Highway", "city": "Eutawville", "state": "SC", "zip": "29048", "exit": "", "phone": "(803) 492-7830", "status": "active"}, {"id": "R00498", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #1608", "street": "153 W Main St.", "city": "Harleyville", "state": "SC", "zip": "29448", "exit": "", "phone": "(843) 462-7610", "status": "active"}, {"id": "R00884", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2003", "street": "1069 Sweeten Creek Rd", "city": "Asheville", "state": "NC", "zip": "28801", "exit": "", "phone": "(828) 274-4161", "status": "active"}, {"id": "R00857", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2005", "street": "1915 Hwy. 321 North", "city": "Clover", "state": "SC", "zip": "29710", "exit": "", "phone": "(843) 462-7610", "status": "active"}, {"id": "R00888", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2008", "street": "5560 W. US Hwy 64", "city": "Murphy", "state": "NC", "zip": "28806", "exit": "", "phone": "(828) 837-6939", "status": "active"}, {"id": "R00296", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2009", "street": "3228 Hwy 25 S.", "city": "Greenwood", "state": "SC", "zip": "29646", "exit": "", "phone": "(864) 227-1234", "status": "active"}, {"id": "R00859", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2011", "street": "3180 N. Blackstock Rd.", "city": "Spartanburg", "state": "SC", "zip": "29206", "exit": "", "phone": "(864) 545-2220", "status": "active"}, {"id": "R00862", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2016", "street": "2901 E Main St", "city": "Spartanburg", "state": "SC", "zip": "29307", "exit": "", "phone": "(864) 579-4554", "status": "active"}, {"id": "R00863", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2017", "street": "6167 Hwy 221", "city": "Roebuck", "state": "SC", "zip": "29376", "exit": "", "phone": "(864) 587-6402", "status": "active"}, {"id": "R00864", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2018", "street": "371 Battleground Rd", "city": "Cowpens", "state": "SC", "zip": "29330", "exit": "", "phone": "(864) 463-3205", "status": "active"}, {"id": "R00865", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2019", "street": "4036 Hwy 221 S", "city": "Laurens", "state": "SC", "zip": "29360", "exit": "", "phone": "(864) 682-4145", "status": "active"}, {"id": "R00449", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2021", "street": "2524 West Highway 378", "city": "Britton's Neck", "state": "SC", "zip": "29546", "exit": "", "phone": "(864) 277-8767", "status": "active"}, {"id": "R00298", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2022", "street": "11504 Augusta, Rd.", "city": "Honea Path", "state": "SC", "zip": "29654", "exit": "", "phone": "(864) 369-6105", "status": "active"}, {"id": "R00868", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2024", "street": "1379 Red Bluff Rd.", "city": "Loris", "state": "SC", "zip": "29569", "exit": "", "phone": "(843) 756-8210", "status": "active"}, {"id": "R00887", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2025", "street": "459 E. Main St.", "city": "Franklin", "state": "NC", "zip": "28734", "exit": "", "phone": "(828) 524-5483", "status": "active"}, {"id": "R00869", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2026", "street": "2595 Hwy 56", "city": "Pauline", "state": "SC", "zip": "29374", "exit": "", "phone": "(864) 591-1231", "status": "active"}, {"id": "R00291", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2028", "street": "4641 U.S. 76", "city": "Marion", "state": "SC", "zip": "29571", "exit": "", "phone": "(843) 423-2174", "status": "active"}, {"id": "R00870", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2035", "street": "201 N. Howard Ave", "city": "Landrum", "state": "SC", "zip": "29356", "exit": "", "phone": "(864) 457-2706", "status": "active"}, {"id": "R00871", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #3003", "street": "831 Main St", "city": "New Ellenton", "state": "SC", "zip": "29809", "exit": "", "phone": "(803) 652-2155", "status": "active"}, {"id": "R00872", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #3004", "street": "553 J.C. Calhoun Dr", "city": "Orangeburg", "state": "SC", "zip": "29115", "exit": "", "phone": "(803) 531-3228", "status": "active"}, {"id": "R00292", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #3005", "street": "107 Hampton St.", "city": "Chesnee", "state": "SC", "zip": "29323", "exit": "", "phone": "(864) 461-4147", "status": "active"}, {"id": "R00873", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #4002", "street": "3908 JC Calhoun Memorial Hwy", "city": "Easley", "state": "SC", "zip": "29640", "exit": "", "phone": "(864) 269-7426", "status": "active"}, {"id": "R00874", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #4004", "street": "2801 Gentry Memorial Hwy", "city": "Pickens", "state": "SC", "zip": "29671", "exit": "", "phone": "(864) 878-3367", "status": "active"}, {"id": "R00875", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #4005", "street": "103 Hammett Bridge Rd.", "city": "Greer", "state": "SC", "zip": "29651", "exit": "", "phone": "(864) 877-2251", "status": "active"}, {"id": "R00890", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5001", "street": "110 Weaverville Rd.", "city": "Asheville", "state": "NC", "zip": "28806", "exit": "", "phone": "(828) 645-5790", "status": "active"}, {"id": "R00891", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5002", "street": "103 Leicester Hwy", "city": "Asheville", "state": "NC", "zip": "28806", "exit": "", "phone": "(282) 258-2619", "status": "active"}, {"id": "R00892", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5003", "street": "118 Brevard Rd", "city": "Asheville", "state": "NC", "zip": "28806", "exit": "", "phone": "(828) 665-1491", "status": "active"}, {"id": "R00893", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5004", "street": "3225 Asheville Hwy", "city": "Canton", "state": "NC", "zip": "28716", "exit": "", "phone": "(828) 648-7414", "status": "active"}, {"id": "R00876", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #6002", "street": "308 E. Poinsett", "city": "Greer", "state": "SC", "zip": "29651", "exit": "", "phone": "(864) 848-4154", "status": "active"}, {"id": "R00448", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #6007", "street": "675 Gossett RD", "city": "Spartanburg", "state": "SC", "zip": "29307", "exit": "", "phone": "(864) 579-4121", "status": "active"}, {"id": "R00880", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #8001", "street": "3000 W. Blue Ridge Dr.", "city": "Greenville", "state": "SC", "zip": "29604", "exit": "", "phone": "(864) 269-6357", "status": "active"}, {"id": "R00297", "company": "R.L. Jordon Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Hot Spot T/S #2013", "street": "1940 Hwy 292", "city": "Inman", "state": "SC", "zip": "29349", "exit": "I-26, Exit 10", "phone": "(864) 472-3199", "status": "active"}, {"id": "R00294", "company": "R.L. Jordon Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Hot Spot T/S #6004", "street": "3883 Cross Anchor Rd.", "city": "Enoree", "state": "SC", "zip": "29335", "exit": "I-26, Exit 38", "phone": "(864) 969-7081", "status": "active"}, {"id": "P03613", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Houma Truck Plaza", "street": "1541 Grand Caillou Rd", "city": "Houma", "state": "LA", "zip": "70363", "exit": "", "phone": "(985) 857-8668", "status": "active"}, {"id": "R03889", "company": "Circle K Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Hutch's", "street": "515 SE 2nd St", "city": "Guymon", "state": "OK", "zip": "73942", "exit": "Hwy 54, Hwy 412", "phone": "(580) 754-2860", "status": "active"}, {"id": "P03667", "company": "I-81 Travel Plaza Inc.", "type": "Service Center", "group": "PTP", "name": "I-81 Repair Center", "street": "5722 E Lee Hwy", "city": "Max Meadows", "state": "VA", "zip": "24360", "exit": "Exit 86 I-81", "phone": "(276) 637-3118", "status": "active"}, {"id": "P03677", "company": "Interstate Tire and Lube, Inc.", "type": "Service Center", "group": "PTP", "name": "Interstate Tire & Lube", "street": "155 Travelers Pathway", "city": "Calhoun", "state": "GA", "zip": "30707", "exit": "Exit 318 I-75", "phone": "(706) 629-4529", "status": "active"}, {"id": "R01127", "company": "Wortman Holdings LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jack Flash Altamont", "street": "1206 S. Main St.", "city": "Altamont", "state": "IL", "zip": "62411", "exit": "I-70 Hwy 128 Exit 82", "phone": "(618) 483-6990", "status": "active"}, {"id": "R00221", "company": "Wortman Development LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jack Flash Farina", "street": "1003 W Washington", "city": "Farina", "state": "IL", "zip": "62838", "exit": "I-57, Exit 135", "phone": "(618) 245-2566", "status": "active"}, {"id": "R01259", "company": "Jack Flash LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jack Flash Farmersville", "street": "30239 W Frontage Rd.", "city": "Farmersville", "state": "IL", "zip": "62533", "exit": "I-55 Exit 72", "phone": "(217) 227-3634", "status": "active"}, {"id": "P03618", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Jalou Truck Stop", "street": "1011 N Arkansas", "city": "Springhill", "state": "LA", "zip": "71075", "exit": "", "phone": "(318) 539-4200", "status": "active"}, {"id": "P03622", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Jalou Truck Stop", "street": "14347 LA Hwy 1", "city": "Vivian", "state": "LA", "zip": "71082", "exit": "", "phone": "(318) 375-5144", "status": "active"}, {"id": "R03500", "company": "ENR Investment Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Jefferson Travel Plaza", "street": "1413 W. Junction Rd.", "city": "Jefferson", "state": "WI", "zip": "53549", "exit": "Hwy 26/30", "phone": "(920) 541-3090", "status": "active"}, {"id": "R00208", "company": "Jimmie's Truckstop Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Jimmies Auto/Truck Plaza", "street": "3167 County Road 255", "city": "Lee", "state": "FL", "zip": "32059", "exit": "I-10, Exit 262", "phone": "(850) 971-4200", "status": "active"}, {"id": "R01099", "company": "Jimmie's Truckstop Inc.", "type": "PPO", "group": "Roady's", "name": "Jimmies Firestone and Service Center", "street": "3167 SE CR 255", "city": "Lee", "state": "FL", "zip": "32059", "exit": "Exit I-10, Exit 262", "phone": "(850) 973-8546", "status": "active"}, {"id": "R01179", "company": "Johnson Junction Inc", "type": "Truck Stop", "group": "Roady's", "name": "JJ's Travel Plaza", "street": "2964 W. 100 N.", "city": "Peru", "state": "IN", "zip": "46970", "exit": "US 31, US 24", "phone": "(765) 472-1963", "status": "active"}, {"id": "P03658", "company": "Jolly Truck & Trailer Service Inc.", "type": "Service Center", "group": "PTP", "name": "Jolly Truck & Trailer Service", "street": "3460 US Hwy 287", "city": "Jolly", "state": "TX", "zip": "76305", "exit": "Exit-2393FM Hwy 287", "phone": "(940) 723-8473", "status": "active"}, {"id": "R00774", "company": "Jones Auto & Truck Plaza, LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jonesy's Travel Center", "street": "2031 W. Elm", "city": "Lebanon", "state": "MO", "zip": "65536", "exit": "I-44, Exit 127 (US 66 W)", "phone": "(417) 588-2281", "status": "active"}, {"id": "R00917", "company": "JR's Truck Stop Corporation", "type": "Truck Stop", "group": "Roady's", "name": "J.R.'s Rally Stop", "street": "2635 North Freeway Drive", "city": "Cedar City", "state": "UT", "zip": "84721", "exit": "I-15, Exit 62", "phone": "(435) 586-0498", "status": "active"}, {"id": "R01184", "company": "Texas Petroleum Group", "type": "Truck Stop", "group": "Roady's", "name": "Junction Travel Center", "street": "2416 N. Main Street", "city": "Junction", "state": "TX", "zip": "76849", "exit": "I-10  Exit 456", "phone": "(325) 446-8740", "status": "active"}, {"id": "R00118", "company": "Kaw Gaming Inc", "type": "Truck Stop", "group": "Roady's", "name": "Kanza Travel Plaza", "street": "9695 N. Hwy 177", "city": "Braman", "state": "OK", "zip": "74632", "exit": "I-35, Exit 231", "phone": "(580) 385-2137", "status": "active"}, {"id": "R00252", "company": "K-D Quik Stop Inc", "type": "C-Store", "group": "Roady's", "name": "K-D Quik Stop", "street": "235 N Clare Avenue", "city": "Harrison", "state": "MI", "zip": "48625", "exit": "", "phone": "(989) 539-1269", "status": "active"}, {"id": "R03649", "company": "Keystops LLC", "type": "Truck Stop", "group": "Roady's", "name": "Keystop", "street": "4391 Nashville Rd.", "city": "Franklin", "state": "KY", "zip": "42134", "exit": "Exit 2 I-65", "phone": "(270) 586-5922", "status": "active"}, {"id": "R03857", "company": "Algu Business LLC", "type": "Truck Stop", "group": "Roady's", "name": "Landmark Travel Center Minden", "street": "2197 Hwy 532", "city": "Minden", "state": "LA", "zip": "71055", "exit": "Exit 52 / I-20", "phone": "(281) 692-8584", "status": "active"}, {"id": "R01106", "company": "LaPine Travel Center LLC", "type": "Truck Stop", "group": "Roady's", "name": "LaPine Travel Plaza", "street": "17045 Whitney Rd.", "city": "La Pine", "state": "OR", "zip": "97739", "exit": "Hwy 97, Roseland Exit", "phone": "(541) 536-6055", "status": "active"}, {"id": "R00408", "company": "Shawn Ibrahim Inc.", "type": "Truck Stop", "group": "Roady's", "name": "La Porte Travel Plaza aka Moody's Travel Plaza", "street": "9119 Highway 225", "city": "La Porte", "state": "TX", "zip": "77571", "exit": "Hwy 225", "phone": "(281) 542-5300", "status": "active"}, {"id": "R01182", "company": "Texas Petroleum Group", "type": "Truck Stop", "group": "Roady's", "name": "Laredo Fuel Stop", "street": "8852 Killam Industrial Blvd", "city": "Laredo", "state": "TX", "zip": "78045", "exit": "I-35 Exit 8      Mines Rd & Riverbank Dr.", "phone": "(956) 717-8552", "status": "active"}, {"id": "P03615", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Larose Truck Plaza", "street": "11825 Hwy 308", "city": "Lockport", "state": "LA", "zip": "70374", "exit": "", "phone": "(985) 693-7424", "status": "active"}, {"id": "R00723", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Lewiston Stinker Store #42", "street": "3110 N and South Hwy", "city": "Lewiston", "state": "ID", "zip": "83501", "exit": "Hwy 95 & 12", "phone": "(208) 746-3234", "status": "active"}, {"id": "P03688", "company": "Lindsey Diesel Repair LLC", "type": "Service Center", "group": "PTP", "name": "Lindsey's Diesel Repair", "street": "13414 Hwy 113", "city": "Brewton", "state": "AL", "zip": "36426", "exit": "Exit-69 / I-65", "phone": "(251) 296-7230", "status": "active"}, {"id": "P03647", "company": "Local Gas, LLC", "type": "Truck Stop", "group": "PTP", "name": "Local Gas ADK", "street": "1 Country Mile", "city": "Frankfort", "state": "NY", "zip": "13340", "exit": "I-90", "phone": "(315) 894-1111", "status": "active"}, {"id": "P03715", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "Local Gas Brookfield", "street": "10546 Main Street", "city": "Brookfield", "state": "NY", "zip": "13314", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R03973", "company": "Local Gas, LLC", "type": "PPO", "group": "Roady's", "name": "Local Gas Glossvale", "street": "2344 State Route 49", "city": "Blossvale", "state": "NY", "zip": "13308", "exit": "", "phone": "(315) 820-4506", "status": "active"}, {"id": "P03713", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "LOCAL GAS MILLERS", "street": "1995 STATE HWY 80", "city": "EDMESTON", "state": "NY", "zip": "13335", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "P03716", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "Local Gas North Bay", "street": "2090 State Route 49", "city": "North Bay", "state": "NY", "zip": "13123", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "P03714", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "Local Gas South Otselic", "street": "1603 NY 26", "city": "South Otselic", "state": "NY", "zip": "13155", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R01220", "company": "Kastas Investment Inc", "type": "Truck Stop", "group": "Roady's", "name": "Longhorn Express", "street": "15045 US Hwy 70", "city": "Ardmore", "state": "OK", "zip": "73401", "exit": "", "phone": "(580) 319-5255", "status": "active"}, {"id": "R01217", "company": "Lion Petroleum Inc", "type": "C-Store", "group": "Roady's", "name": "LP Mart Palmyra", "street": "887 Marion City Rd.", "city": "Palmyra", "state": "MO", "zip": "63461", "exit": "US Hwy 61", "phone": "(573) 769-3638", "status": "active"}, {"id": "R00614", "company": "Lucky Deuces LLC", "type": "Truck Stop", "group": "Roady's", "name": "Lucky Deuces Truck Stop", "street": "3002 Daulat Drive", "city": "Duson", "state": "LA", "zip": "70529", "exit": "I-10, Exit 92", "phone": "(337) 873-5400", "status": "active"}, {"id": "P03610", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Lucky Magnolia Truck Stop", "street": "52396 Hwy 16", "city": "Denham Springs", "state": "LA", "zip": "70706", "exit": "", "phone": "(225) 664-7595", "status": "active"}, {"id": "R01835", "company": "LW Miller Transportation Services Inc", "type": "Truck Stop", "group": "Roady's", "name": "L.W.'s Truck Stop", "street": "1020 W 200 N", "city": "Logan", "state": "UT", "zip": "84321", "exit": "", "phone": "(435) 753-7461", "status": "active"}, {"id": "P01225", "company": "Magnolia Travel Center", "type": "Truck Stop", "group": "PTP", "name": "Magnolia Travel Center", "street": "US-82", "city": "Magnolia", "state": "AR", "zip": "71753", "exit": "", "phone": "(870) 234-7806", "status": "active"}, {"id": "R01241", "company": "Hallmark Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Majors 660 Diboll Truck Plaza", "street": "1605 N. Temple Dr.", "city": "Diboll", "state": "TX", "zip": "75941", "exit": "", "phone": "(936) 829-1100", "status": "active"}, {"id": "R01240", "company": "Hallmark Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Majors 661 Henderson Truck Plaza", "street": "1609 Kilgore Dr", "city": "Henderson", "state": "TX", "zip": "75652", "exit": "", "phone": "(903) 655-1568", "status": "active"}, {"id": "R01338", "company": "Hallmark Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Majors 664 Stallings Dr Truck Plaza", "street": "4919 NW Stallings Dr.", "city": "Nacogdoches", "state": "TX", "zip": "75964", "exit": "", "phone": "(936) 560-0558", "status": "active"}, {"id": "R01219", "company": "Navis Enterprises Inc", "type": "Truck Stop", "group": "Roady's", "name": "Mauston Interstate BP", "street": "1005 Gateway Ave", "city": "Mauston", "state": "WI", "zip": "53948", "exit": "", "phone": "(608) 847-4384", "status": "active"}, {"id": "P03645", "company": "Mega Stop Inc", "type": "Truck Stop", "group": "PTP", "name": "Mega Stop Holiday #3552", "street": "21100 Keprick Ave", "city": "Lakeville", "state": "MN", "zip": "55044", "exit": "Exit 81 I-35", "phone": "(952) 469-1998", "status": "active"}, {"id": "R00581", "company": "Bargain Brothers Inc", "type": "PPO", "group": "Roady's", "name": "Mesa Drive Fuel C-Store", "street": "13015 Mesa Drive", "city": "Blythe", "state": "CA", "zip": "92225", "exit": "", "phone": "(760) 921-2667", "status": "active"}, {"id": "R03601", "company": "Midway Enterprises, Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Midway Travel Center", "street": "6401 W Hwy 40", "city": "Columbia", "state": "MO", "zip": "65202", "exit": "Exit 121 I-70", "phone": "(573) 445-9466", "status": "active"}, {"id": "P03666", "company": "M & M Tire & Mechanical Services Inc.", "type": "Service Center", "group": "PTP", "name": "M & M Tire", "street": "1203 1st Ave.", "city": "Graysville", "state": "AL", "zip": "35073", "exit": "I-22/Corridor X", "phone": "(205) 674-6640", "status": "active"}, {"id": "P03656", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Brush", "street": "1156 N Colorado Ave", "city": "Brush", "state": "CO", "zip": "80723", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03705", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Colorado Springs", "street": "30 Mountain Lane", "city": "Colorado Springs", "state": "CO", "zip": "80907", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03704", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Grand Prairie", "street": "2831 Kate Ln.", "city": "Grand Prairie", "state": "TX", "zip": "75052", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03702", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Green River", "street": "6 Fry Burger Rd.", "city": "Green River", "state": "WY", "zip": "82935", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03703", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Harlingen", "street": "201 A Bob Youker St.", "city": "Harlingen", "state": "TX", "zip": "78550", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03706", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Mission", "street": "4101 W. Military Hwy. Suite Z", "city": "Mission", "state": "TX", "zip": "78572", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03701", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Watkins", "street": "33365 E Colfax Ave", "city": "Watkins", "state": "CO", "zip": "80137", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "R01437", "company": "ABSGA LLC", "type": "Truck Stop", "group": "Roady's", "name": "Morehead Shell", "street": "3333 Ky Highway 801 S", "city": "Morehead", "state": "KY", "zip": "40351", "exit": "Exit 133 I-64", "phone": "(606) 783-1828", "status": "active"}, {"id": "R03648", "company": "Morton's Truck Stop Inc.", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Morton's Truck Stop", "street": "1000 E Cheyene Ave", "city": "N Las Vegas", "state": "NV", "zip": "89030", "exit": "Exit 46 I-15", "phone": "(702) 649-2001", "status": "active"}, {"id": "R03903", "company": "ANS Truck & Travel Center LLC", "type": "Truck Stop", "group": "Roady's", "name": "Motor Inn Travel Plaza", "street": "10391 US RT 127", "city": "Mendon", "state": "OH", "zip": "45862", "exit": "INTERSECTION OF ROUTE 127 AND ROUTE 33", "phone": "(567) 324-0077", "status": "active"}, {"id": "R01236", "company": "Excell Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "New Deal Truck Stop", "street": "101 East Main Street", "city": "New Deal", "state": "TX", "zip": "79350", "exit": "I-27 Exit 14", "phone": "(806) 746-4866", "status": "active"}, {"id": "R01063", "company": "Par Hawaii LLC", "type": "Truck Stop", "group": "Roady's", "name": "Nomnom", "street": "901 W Main Street", "city": "Grangeville", "state": "ID", "zip": "83530", "exit": "Hwy 95, W Main St", "phone": "(208) 983-7508", "status": "active"}, {"id": "R03933", "company": "On The Go Armour Rd", "type": "Fuel Stop", "group": "Roady's", "name": "On the Go Armour Road", "street": "1910 Armour Rd", "city": "Kansas City", "state": "MO", "zip": "64116", "exit": "Exit 6/I-35", "phone": "(816) 534-0550", "status": "active"}, {"id": "R00901", "company": "My Store III", "type": "Truck Stop", "group": "Roady's", "name": "On The Go Travel Center", "street": "9134 Woodend Rd", "city": "Edwardsville", "state": "KS", "zip": "66111", "exit": "I-435, Exit 8-B", "phone": "(913) 441-5700", "status": "active"}, {"id": "R01036", "company": "Raceway Management Co. Inc", "type": "Truck Stop", "group": "Roady's", "name": "Onvo Travel Plaza - Lake Ariel", "street": "151 Twin Rocks Rd.", "city": "Lake Ariel", "state": "PA", "zip": "18436", "exit": "I-84, Exit 17", "phone": "(570) 689-4345", "status": "active"}, {"id": "R01133", "company": "Calhoun Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Palmetto Express #115", "street": "495 Old Sandy Run Road", "city": "Gaston", "state": "SC", "zip": "29053", "exit": "I-26 Exit 125", "phone": "(803) 908-4080", "status": "active"}, {"id": "R01965", "company": "Lakeside Liquor & Gas Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Paragpur Travel Center-Carlyle", "street": "2610 12th St", "city": "Carlyle", "state": "IL", "zip": "62231", "exit": "", "phone": "(618) 594-6344", "status": "active"}, {"id": "R01104", "company": "Paramount Travel Center LLC", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Paramount Travel Center", "street": "520 Hwy 19N", "city": "Prescott", "state": "AR", "zip": "71857", "exit": "I-30 - Exit 46", "phone": "(870) 887-0786", "status": "active"}, {"id": "R03870", "company": "Pauls Valley Travel Center", "type": "Truck Stop", "group": "Roady's", "name": "Pauls Valley Travel Center", "street": "3002 W Grant Ave", "city": "Pauls Valley", "state": "OK", "zip": "73075", "exit": "Exit-72 / I-35", "phone": "(405) 238-3216", "status": "active"}, {"id": "R01227", "company": "PDC Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "PDC Truck Stop", "street": "1910 S Marquette Rd", "city": "Prairie Du Chien", "state": "WI", "zip": "53821", "exit": "", "phone": "(608) 326-8155", "status": "active"}, {"id": "R00325", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Plainfield T/P-CITGO", "street": "N. 6466 4th Ct.", "city": "Plainfield", "state": "WI", "zip": "54966", "exit": "I-39, Exit 136", "phone": "(715) 335-7339", "status": "active"}, {"id": "R01121", "company": "Planeview Travel Plaza Inc", "type": "Truck Stop", "group": "Roady's", "name": "Planeview Travel Plaza", "street": "1500 Planeview Drive", "city": "Oshkosh", "state": "WI", "zip": "54904", "exit": "I-41, Exit 113", "phone": "(920) 426-2641", "status": "active"}, {"id": "R01222", "company": "Dharam Inc", "type": "Truck Stop", "group": "Roady's", "name": "Plaza 23 Truck Stop", "street": "240 Church Street STE-10", "city": "Albany", "state": "NY", "zip": "12202", "exit": "I-87, exit 23", "phone": "(518) 462-1234", "status": "active"}, {"id": "R03871", "company": "Leemak Texas II", "type": "Truck Stop", "group": "Roady's", "name": "Qmart", "street": "8755 IH 10", "city": "Converse", "state": "TX", "zip": "78109", "exit": "Exit 1516 / IH-10", "phone": "(210) 462-1520", "status": "active"}, {"id": "P03616", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Raceland Truck Plaza", "street": "109 South Service Rd", "city": "Raceland", "state": "LA", "zip": "70394", "exit": "", "phone": "(985) 537-8717", "status": "active"}, {"id": "", "company": "Roady's Corporate Office", "type": "Truck Stop", "group": "None", "name": "RCheck Payments", "street": "", "city": "", "state": "AL", "zip": "", "exit": "", "phone": "", "status": "active"}, {"id": "R01167", "company": "Liberty Square Gas station Inc", "type": "Truck Stop", "group": "Roady's", "name": "Refuel Pantry-Columbus West", "street": "2200 W James Street", "city": "Columbus", "state": "WI", "zip": "53925", "exit": "Hwy 151, Exit 118", "phone": "(920) 623-9740", "status": "active"}, {"id": "R03915", "company": "Liberty Square Gas station Inc", "type": "Truck Stop", "group": "Roady's", "name": "Refuel Pantry-Sturtevant", "street": "611 S Sylvania Ave", "city": "Sturtevant", "state": "WI", "zip": "53177", "exit": "I-94/Exit 333", "phone": "(262) 886-2738", "status": "active"}, {"id": "R01075", "company": "Manu Sangha INC", "type": "C-Store", "group": "Roady's", "name": "Riverside 2 Go", "street": "3400 CR 6 E.", "city": "Elkhart", "state": "IN", "zip": "46514", "exit": "", "phone": "(574) 206-1480", "status": "active"}, {"id": "R00111", "company": "Roadrunner Travel Plaza", "type": "Truck Stop", "group": "Roady's", "name": "Roadrunner Travel Center", "street": "400 W. Frontage Rd.", "city": "Lemitar", "state": "NM", "zip": "87823", "exit": "I-25, Exit 156", "phone": "(575) 838-1400", "status": "active"}, {"id": "R03917", "company": "Spartan Stores Fuel LLC", "type": "Truck Stop", "group": "Roady's", "name": "Road Trip Oasis", "street": "3034 Lansing Rd", "city": "Perry", "state": "MI", "zip": "48872", "exit": "I-69/Exit 105", "phone": "(517) 625-1112", "status": "active"}, {"id": "R03603", "company": "Laguna Development Corporation", "type": "Truck Stop", "group": "Roady's", "name": "Route 66 Travel Center", "street": "14314 Central Ave. SW", "city": "Albuquerque", "state": "NM", "zip": "87121", "exit": "Exit 140 I-40", "phone": "(505) 352-7876", "status": "active"}, {"id": "L03465", "company": "Sassy's Truck Stop Inc.", "type": "Truck Stop", "group": "Roady's Lite", "name": "Sassy's Truck Stop", "street": "2088 US-219", "city": "Limestone", "state": "NY", "zip": "14753", "exit": "", "phone": "(716) 945-2595", "status": "active"}, {"id": "R00099", "company": "Schatz Crossroads Truck Stop Inc", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Schatz Crossroads", "street": "1712 20th Ave SE", "city": "Minot", "state": "ND", "zip": "58701", "exit": "US 2-52 Bypass (EB) & US 83", "phone": "(701) 852-0810", "status": "active"}, {"id": "L03935", "company": "Somers Market", "type": "Truck Stop", "group": "Roady's Lite", "name": "Shell Somers Market", "street": "11302 12th Street", "city": "Sturtevant", "state": "WI", "zip": "53177", "exit": "I-94/ Hwy E/Exit 339", "phone": "(262) 403-8036", "status": "active"}, {"id": "P03661", "company": "Shop Rite Inc.", "type": "Truck Stop", "group": "PTP", "name": "Shop Rite #82", "street": "1823 Elton Road", "city": "Jennings", "state": "LA", "zip": "70546", "exit": "Exit 64 I-10", "phone": "(337) 616-9989", "status": "active"}, {"id": "P03662", "company": "Shop Rite Inc.", "type": "Truck Stop", "group": "PTP", "name": "Shop Rite #85", "street": "129 Frontage Road", "city": "Rayne", "state": "LA", "zip": "70578", "exit": "I-10 Exit 92", "phone": "(337) 873-8100", "status": "active"}, {"id": "P03617", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Silver Dollar", "street": "1324 N. Market St", "city": "Shreveport", "state": "LA", "zip": "71107", "exit": "", "phone": "(318) 675-0260", "status": "active"}, {"id": "P03611", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Silver Fox Truck Stop", "street": "40249 Hwy 16", "city": "Denham Springs", "state": "LA", "zip": "70706", "exit": "", "phone": "(225) 665-8122", "status": "active"}, {"id": "R03665", "company": "Parker Oil Company Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Simmons Travel Center-Bracey", "street": "3134 Hwy 903", "city": "Bracey", "state": "VA", "zip": "23919", "exit": "Exit 4 I-85", "phone": "(434) 689-2221", "status": "active"}, {"id": "R03664", "company": "Parker Oil Company Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Simmons Travel Center-Emporia", "street": "1589 Skippers Rd", "city": "Emporia", "state": "VA", "zip": "23847", "exit": "Exit 8 I-95", "phone": "(434) 634-9296", "status": "active"}, {"id": "R00933", "company": "Smithton Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "Smithton Travel Center", "street": "138 Motor Drome Road", "city": "Smithton", "state": "PA", "zip": "15479", "exit": "I-70, Exit 49", "phone": "(724) 872-4224", "status": "active"}, {"id": "R01140", "company": "BP Kenosha Travel Plaza", "type": "C-Store", "group": "Roady's", "name": "Somer's Amoco", "street": "1170 22nd Ave", "city": "Kenosha", "state": "WI", "zip": "53140", "exit": "I-94 Exit 339", "phone": "(262) 425-1685", "status": "active"}, {"id": "R01205", "company": "JLP Development LLC", "type": "Truck Stop", "group": "Roady's", "name": "Space Age #202", "street": "9515 Old Pacific Hwy N.", "city": "Castle Rock", "state": "WA", "zip": "98611-9821", "exit": "I-5 Exit52", "phone": "(360) 282-6312", "status": "active"}, {"id": "R00286", "company": "Space Age Fuel Inc", "type": "Truck Stop", "group": "Roady's", "name": "Space Age Travel Center", "street": "77522 South Hwy 207", "city": "Hermiston", "state": "OR", "zip": "97838", "exit": "I-84, Exit 182", "phone": "(541) 564-6254", "status": "active"}, {"id": "R00935", "company": "AMBA Corp", "type": "Truck Stop", "group": "Roady's", "name": "Sparta Travel Center", "street": "4105 Theater Rd.", "city": "Sparta", "state": "WI", "zip": "54656", "exit": "I-90, Exit 28", "phone": "(608) 269-3277", "status": "active"}, {"id": "P03750", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #1", "street": "4007 Fredrick Ave", "city": "St. Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 364-1751", "status": "active"}, {"id": "P03721", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #10", "street": "4623 North Village Dr", "city": "Saint Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 396-9111", "status": "active"}, {"id": "P03749", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #2", "street": "1525 St Joseph Ave", "city": "St. Joseph", "state": "MO", "zip": "64505", "exit": "", "phone": "(816) 279-1141", "status": "active"}, {"id": "P03748", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #3", "street": "1011 S Belt Hwy", "city": "St. Joseph", "state": "MO", "zip": "64507", "exit": "", "phone": "(816) 232-7119", "status": "active"}, {"id": "P03746", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #4", "street": "2420 Fredrick Ave", "city": "St. Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 232-1551", "status": "active"}, {"id": "P03745", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #5", "street": "1704 Mitchell Ave", "city": "St. Joseph", "state": "MO", "zip": "64507", "exit": "", "phone": "(816) 233-0318", "status": "active"}, {"id": "R01837", "company": "Speedy Convenience Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Speedy's Convenience #6", "street": "1310 Riverside Rd", "city": "St. Joseph", "state": "MO", "zip": "64507", "exit": "Hwy 36", "phone": "(816) 232-7111", "status": "active"}, {"id": "P03744", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #7", "street": "2221 N Belt Hwy", "city": "St. Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 671-9491", "status": "active"}, {"id": "P03743", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #8", "street": "2728 Messanie", "city": "St. Joseph", "state": "MO", "zip": "64501", "exit": "", "phone": "(816) 279-4801", "status": "active"}, {"id": "P03742", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #9", "street": "141 S 18th Street", "city": "Kansas City", "state": "KS", "zip": "66102", "exit": "", "phone": "(913) 371-0570", "status": "active"}, {"id": "P03671", "company": "Stampede Inc.", "type": "Service Center", "group": "PTP", "name": "Stampede", "street": "54 SE 1000", "city": "Andrews", "state": "TX", "zip": "79714", "exit": "", "phone": "(432) 223-3115", "status": "active"}, {"id": "P03595", "company": "State Oil Fuel Center Inc.", "type": "Truck Stop", "group": "PTP", "name": "State Oil Fuel Center", "street": "7127 Hwy 23", "city": "Belle Chase", "state": "LA", "zip": "70037", "exit": "Hwy 23", "phone": "(504) 398-1375", "status": "active"}, {"id": "R03934", "company": "Kenai Enterprises LLC DBA Station 177 Food & Fuel", "type": "Truck Stop", "group": "Roady's", "name": "Station 177 Food & Fuel", "street": "37363 Rocky Boots Way", "city": "Logan", "state": "OH", "zip": "43138", "exit": "US-33/Exit 177", "phone": "(740) 822-2017", "status": "active"}, {"id": "R01569", "company": "Station 67 LLC", "type": "PPO", "group": "Roady's", "name": "Station 67 BP", "street": "649 WI-67", "city": "Ashippun", "state": "WI", "zip": "53003", "exit": "", "phone": "(920) 474-4773", "status": "active"}, {"id": "R01635", "company": "Station Hwy 33 LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Station Hwy 33 Citgo", "street": "W346 Luedtke Ln #9354", "city": "Hartford", "state": "WI", "zip": "53027", "exit": "", "phone": "(262) 629-1990", "status": "active"}, {"id": "R01570", "company": "Station Ixonia LLC", "type": "PPO", "group": "Roady's", "name": "Station Ixonia BP", "street": "W1168 WI-16", "city": "Ixonia", "state": "WI", "zip": "53036", "exit": "", "phone": "(920) 541-1042", "status": "active"}, {"id": "R03972", "company": "Station Kewaskum LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Station Kewaskum", "street": "890 Fond Du Lac Ave", "city": "Kewaskum", "state": "WI", "zip": "53040", "exit": "Hwy 45", "phone": "(262) 626-8471", "status": "active"}, {"id": "R01602", "company": "Station Neosho LLC", "type": "PPO", "group": "Roady's", "name": "Station Neosho", "street": "446 S Schuyler St", "city": "Neosho", "state": "WI", "zip": "53059", "exit": "", "phone": "(920) 625-2038", "status": "active"}, {"id": "R03907", "company": "Station Wild Goose LLC", "type": "Truck Stop", "group": "Roady's", "name": "Station Wild Goose", "street": "W5948 WI 33", "city": "Juneau", "state": "WI", "zip": "54935", "exit": "Highway 33/26", "phone": "(920) 386-4949", "status": "active"}, {"id": "P03623", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "St. Helena's Express", "street": "30139 Hwy 16 West", "city": "West Amite", "state": "LA", "zip": "70422", "exit": "", "phone": "(985) 747-9022", "status": "active"}, {"id": "R03970", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Stinker 122 Fargo", "street": "1902 N Franklin Blvd", "city": "Nampa", "state": "ID", "zip": "83687", "exit": "Exit 36 / I-84", "phone": "(208) 475-4067", "status": "active"}, {"id": "R01244", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Stinker's Broken Wheel Truck Stop #218", "street": "2332 E. Richards", "city": "Douglas", "state": "WY", "zip": "82633", "exit": "I-25 Exit 135", "phone": "(307) 358-4444", "status": "active"}, {"id": "R01243", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Stinker's Ghost Town Truck Stop #217", "street": "6680 W Yellowstone Hwy", "city": "Casper", "state": "WY", "zip": "82604", "exit": "I-25 Exit 189", "phone": "(307) 472-0200", "status": "active"}, {"id": "R01245", "company": "Stinker Stores Inc", "type": "Fuel Stop", "group": "Roady's", "name": "Stinker's Outpost Fuel Stop #219", "street": "1025 S Main Street", "city": "Lusk", "state": "WY", "zip": "82225", "exit": "I-25 Exit 126", "phone": "(307) 334-2048", "status": "active"}, {"id": "R01143", "company": "MAC Enterprises LLC", "type": "Truck Stop", "group": "Roady's", "name": "Stockmen's Truck Stop", "street": "501 Farwell Ave Ste 2", "city": "South Saint Paul", "state": "MN", "zip": "55075", "exit": "I-494, Exit 64A", "phone": "(651) 455-3044", "status": "active"}, {"id": "R03918", "company": "HNZZ Investments LLC", "type": "Truck Stop", "group": "Roady's", "name": "Stop N Shop #12", "street": "27050 S Hwy 133", "city": "Richland", "state": "MO", "zip": "65556", "exit": "I-40/Exit 145", "phone": "(573) 873-4375", "status": "active"}, {"id": "R00395", "company": "Sunshine Plaza of the South", "type": "Truck Stop", "group": "Roady's", "name": "Sunshine Plaza of South Florida", "street": "12200 NW South River Drive", "city": "Medley", "state": "FL", "zip": "33178", "exit": "", "phone": "(305) 883-1004", "status": "active"}, {"id": "R01151", "company": "Marli LLC", "type": "Truck Stop", "group": "Roady's", "name": "Super B Express", "street": "300 E 3rd St", "city": "Donalsonville", "state": "GA", "zip": "39845", "exit": "", "phone": "(229) 524-6073", "status": "active"}, {"id": "R03971", "company": "Peoria Road Mart LLC", "type": "Truck Stop", "group": "Roady's", "name": "Super Station", "street": "3840 N Peoria Rd", "city": "Springfield", "state": "IL", "zip": "62702", "exit": "Exit 105 / I-55", "phone": "(217) 280-5042", "status": "active"}, {"id": "R03877", "company": "A N 81 Oregon LLC", "type": "Truck Stop", "group": "Roady's", "name": "Talent Travel Center", "street": "251 W Valleyview Rd.", "city": "Talent", "state": "OR", "zip": "97540", "exit": "Exit 21 / I-5", "phone": "(541) 897-4133", "status": "active"}, {"id": "P03685", "company": "TDI Repair Facility LLC", "type": "Service Center", "group": "PTP", "name": "TDI Repair", "street": "265 State Route 11", "city": "Champlain", "state": "NY", "zip": "12919", "exit": "", "phone": "(800) 560-3163", "status": "active"}, {"id": "P03686", "company": "TDI Repair Facility LLC", "type": "Service Center", "group": "PTP", "name": "TDI Truck Repair", "street": "50 Babbie Blvd.", "city": "Swanton", "state": "VT", "zip": "05488", "exit": "Exit-21 I-89", "phone": "(800) 560-3163", "status": "active"}, {"id": "R02229", "company": "Temp Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Temp-Stop #102", "street": "7 Acorn Drive", "city": "Eldon", "state": "MO", "zip": "65026", "exit": "", "phone": "(573) 392-5510", "status": "active"}, {"id": "R02230", "company": "Temp Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Temp-Stop #103", "street": "4575 S Limit Ave.", "city": "Sedalia", "state": "MO", "zip": "65301", "exit": "", "phone": "(660) 826-8222", "status": "active"}, {"id": "R02231", "company": "Temp Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Temp-Stop #117", "street": "723 N. Main St.", "city": "Grain Valley", "state": "MO", "zip": "64029", "exit": "I-70", "phone": "(816) 355-0584", "status": "active"}, {"id": "P03600", "company": "Sachs Capitol Group, LP", "type": "Truck Stop", "group": "PTP", "name": "Tennessean Truck Stop", "street": "3686 Pulaski Hwy", "city": "Cornersville", "state": "TN", "zip": "37047", "exit": "Exit 22 I-65", "phone": "(931) 293-4171", "status": "active"}, {"id": "R01038", "company": "TCI Royale Inc", "type": "Truck Stop", "group": "Roady's", "name": "Texas Best Smokehouse 5", "street": "3302 S. Eastman Road", "city": "Longview", "state": "TX", "zip": "75602", "exit": "I-20, Exit 596", "phone": "(903) 248-4300", "status": "active"}, {"id": "R00587", "company": "Rayann Group LLC", "type": "C-Store", "group": "Roady's", "name": "The Patriot's Travel Center", "street": "109 SR 522", "city": "Wheelersburg", "state": "OH", "zip": "45694", "exit": "", "phone": "(740) 574-1803", "status": "active"}, {"id": "R00245", "company": "LaPlace Travel Center LLC", "type": "Truck Stop", "group": "Roady's", "name": "The Swamp Stop", "street": "4325 US Highway 51", "city": "LaPlace", "state": "LA", "zip": "70068", "exit": "I-10, Exit 209", "phone": "(985) 651-1800", "status": "active"}, {"id": "R00244", "company": "Tiger Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "Tiger Truck Stop", "street": "76740 Garner Ln., PO Box 644", "city": "Grosse Tete", "state": "LA", "zip": "70740", "exit": "I-10, Exit 139", "phone": "(225) 612-7916", "status": "active"}, {"id": "R01168", "company": "Majors Management", "type": "Truck Stop", "group": "Roady's", "name": "Timeout Market 647", "street": "1130 W Highway 25 / 70", "city": "Newport", "state": "TN", "zip": "37821", "exit": "Hwy 25W Exit 432B", "phone": "(423) 623-7440", "status": "active"}, {"id": "P03663", "company": "Shop Rite Inc.", "type": "Truck Stop", "group": "PTP", "name": "Tobacco Plus #5", "street": "2217 Old Hwy 90", "city": "Vinton", "state": "LA", "zip": "70668", "exit": "Exit 4 I-10", "phone": "(337) 589-6396", "status": "active"}, {"id": "P03660", "company": "Dhaliwal Ventures Inc.", "type": "Truck Stop", "group": "PTP", "name": "Tomahawk Truck Stop", "street": "1103 Santa Fe Ave.", "city": "Fountain", "state": "CO", "zip": "80817", "exit": "Exit 128 I-25", "phone": "(719) 382-5473", "status": "active"}, {"id": "R01021", "company": "Tonkawa Trading Post Inc", "type": "C-Store", "group": "Roady's", "name": "Tonkawa Trading Post", "street": "16401 W South Avenue", "city": "Tonkawa", "state": "OK", "zip": "74653", "exit": "", "phone": "(580) 308-6102", "status": "active"}, {"id": "L03969", "company": "Trexler Travel Center LLC", "type": "Truck Stop", "group": "Roady's Lite", "name": "Trexler Travel Center", "street": "5829 Tilgham Street", "city": "Allentown", "state": "PA", "zip": "18104", "exit": "Exit 49A / US-22", "phone": "(610) 395-6000", "status": "active"}, {"id": "R01180", "company": "SKR3L", "type": "Truck Stop", "group": "Roady's", "name": "Truck Stops Demo", "street": "1615 12th Ave Rd Suite C", "city": "Nampa", "state": "ID", "zip": "83686", "exit": "84", "phone": "(888) 540-2909", "status": "active"}, {"id": "R03598", "company": "Truck World Inc", "type": "Truck Stop", "group": "Roady's", "name": "Truck World - Conneaut", "street": "780 State Rt 7", "city": "Conneaut", "state": "OH", "zip": "44030", "exit": "Exit 241 I-90", "phone": "(440) 593-6220", "status": "active"}, {"id": "R03596", "company": "Truck World Inc", "type": "Truck Stop", "group": "Roady's", "name": "Truck World - Hubbard", "street": "6965 Truck World Blvd", "city": "Hubbard", "state": "OH", "zip": "44425", "exit": "Exit 234 I-80", "phone": "(330) 534-8166", "status": "active"}, {"id": "R03597", "company": "Truck World Inc", "type": "Truck Stop", "group": "Roady's", "name": "Truck World - North Jackson", "street": "12700 Leonard Pkwy", "city": "North Jackson", "state": "OH", "zip": "44451", "exit": "Exit 57 I-76", "phone": "(330) 538-7030", "status": "active"}, {"id": "P03930", "company": "Truck World Inc", "type": "PPO", "group": "PTP", "name": "Truck World - Shell Food Mart & Gas Boardman", "street": "998 East Western Reserve Rd", "city": "Boardman", "state": "OH", "zip": "44512", "exit": "", "phone": "(330) 758-0217", "status": "active"}, {"id": "P03718", "company": "Truck World Inc", "type": "PPO", "group": "PTP", "name": "Truck World - Shell Food Mart & Gas Girard", "street": "420 S State Street", "city": "Girard", "state": "OH", "zip": "44420", "exit": "", "phone": "(330) 507-1099", "status": "active"}, {"id": "P03931", "company": "Truck World Inc", "type": "PPO", "group": "PTP", "name": "Truck World - Shell Food Mart & Gas Poland", "street": "3190 Center Road", "city": "Poland", "state": "OH", "zip": "44514", "exit": "", "phone": "(330) 757-4204", "status": "active"}, {"id": "P03608", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Vegas Style North", "street": "1144 NE Evangeline Thrwy", "city": "Broussard", "state": "LA", "zip": "70518", "exit": "", "phone": "(337) 857-0078", "status": "active"}, {"id": "P03609", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Vegas Style South", "street": "1050 Baker Hughes Drive", "city": "Broussard", "state": "LA", "zip": "70518", "exit": "", "phone": "(337) 364-9929", "status": "active"}, {"id": "R00703", "company": "Ware Oil & Supply Company, Inc", "type": "Truck Stop", "group": "Roady's", "name": "Waco Travel Center", "street": "2717 S Byron Butler Pkwy", "city": "Perry", "state": "FL", "zip": "32348", "exit": "US Hwy 98", "phone": "(850) 838-1852", "status": "active"}, {"id": "R03791", "company": "Jalaram Enterprises Group LLC", "type": "Truck Stop", "group": "Roady's", "name": "Waco Truck Stop", "street": "1001 Enterprises Blvd.", "city": "Hewitt", "state": "TX", "zip": "76643", "exit": "Exit #325 / IH-35", "phone": "(254) 655-4150", "status": "active"}, {"id": "R01018", "company": "Warren Travel Plaza Inc", "type": "Truck Stop", "group": "Roady's", "name": "Warren Travel Plaza", "street": "7270 S Warren Rd", "city": "Warren", "state": "IN", "zip": "46792", "exit": "I-69, Exit 278", "phone": "(260) 375-2888", "status": "active"}, {"id": "R01169", "company": "Demo Truck Stops", "type": "PPO", "group": "Roady's", "name": "W.D. Truck Stop", "street": "1120 S Rackham Wayed", "city": "Meridian", "state": "ID", "zip": "83642", "exit": "", "phone": "(208) 555-1212", "status": "active"}, {"id": "R01032", "company": "NEC OPCO I Inc (Nouria Energy)", "type": "Truck Stop", "group": "Roady's", "name": "Whately Truck Stop", "street": "372 State Rd US-5", "city": "Whately", "state": "MA", "zip": "01093", "exit": "I-91, Exit 24", "phone": "(413) 642-9070", "status": "active"}, {"id": "R01201", "company": "Sparkle Supply LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Williams Fuel Stop Of Gallipolis", "street": "683 State Route 7 N", "city": "Gallipolis", "state": "OH", "zip": "45631", "exit": "", "phone": "(740) 446-9459", "status": "active"}, {"id": "P03681", "company": "Winchester Truck Repair Holdings, Inc.", "type": "Service Center", "group": "PTP", "name": "Winchester Truck Repair", "street": "259 Tyson Drive", "city": "Winchester", "state": "VA", "zip": "22603", "exit": "Exit 317 I-81", "phone": "(540) 325-7820", "status": "active"}, {"id": "P03619", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Winner's Choice Truck Plaza", "street": "2654 Hwy 108", "city": "Sulphur", "state": "LA", "zip": "70665", "exit": "", "phone": "(337) 882-1405", "status": "active"}, {"id": "R03867", "company": "Wolf Den Inc.", "type": "C-Store", "group": "Roady's", "name": "Wolf Den", "street": "61 West Wapato Rd.", "city": "Wapato", "state": "WA", "zip": "98951", "exit": "", "phone": "(509) 877-2552", "status": "active"}, {"id": "P03599", "company": "Yreka Properties, LLC.", "type": "Truck Stop", "group": "PTP", "name": "Yreka Truck Stop", "street": "787 Montague Rd", "city": "Yreka", "state": "CA", "zip": "96097", "exit": "I-5/Exit 776", "phone": "(530) 200-8954", "status": "active"}];
+
+const MANAGER_MAP = {
+  'CT':'OPEN','DE':'OPEN','IA':'OPEN','ME':'OPEN','MD':'OPEN','MA':'OPEN','MI':'OPEN','MN':'OPEN','NH':'OPEN','NJ':'OPEN','NY':'OPEN','OH':'OPEN','PA':'OPEN','RI':'OPEN','VT':'OPEN','VA':'OPEN','WV':'OPEN',
+  'LA':'Burt Newman',
+  'AZ':'Maria Coleman','CA':'Maria Coleman','NV':'Maria Coleman','NM':'Maria Coleman','OR':'Maria Coleman','UT':'Maria Coleman','WA':'Maria Coleman',
+  'AL':'Shannon Bumbalough','AR':'Shannon Bumbalough','FL':'Shannon Bumbalough','GA':'Shannon Bumbalough','IL':'Shannon Bumbalough','KY':'Shannon Bumbalough','MS':'Shannon Bumbalough','MO':'Shannon Bumbalough','NC':'Shannon Bumbalough','SC':'Shannon Bumbalough','TN':'Shannon Bumbalough',
+  'WI':'Stefanie Ritter',
+  'CO':'Steph Leslie','ID':'Steph Leslie','KS':'Steph Leslie','MT':'Steph Leslie','NE':'Steph Leslie','ND':'Steph Leslie','OK':'Steph Leslie','SD':'Steph Leslie','TX':'Steph Leslie','WY':'Steph Leslie',
+  'IN':'Shannon Bumbalough'
+};
+
+// OPEN territory → Logan Resinkin
+Object.keys(MANAGER_MAP).forEach(k=>{if(MANAGER_MAP[k]==='OPEN')MANAGER_MAP[k]='Logan Resinkin';});
+
+const REGIONS = {
+  'Logan Resinkin':      {states:['CT','DE','IA','ME','MD','MA','MI','MN','NH','NJ','NY','OH','PA','RI','VT','VA','WV'], color:'#4ade80', label:'Northeast'},
+  'Burt Newman':         {states:['LA'], color:'#FF6B35', label:'Louisiana'},
+  'Maria Coleman':       {states:['AZ','CA','NV','NM','OR','UT','WA'], color:'#00D68F', label:'West'},
+  'Shannon Bumbalough':  {states:['AL','AR','FL','GA','IL','IN','KY','MS','MO','NC','SC','TN'], color:'#FF4757', label:'Southeast'},
+  'Stefanie Ritter':     {states:['WI'], color:'#7C3AED', label:'Upper Midwest'},
+  'Steph Leslie':        {states:['CO','ID','KS','MT','NE','ND','OK','SD','TX','WY'], color:'#00C8FF', label:'Central'}
+};
+
+const GS_PINS = {
+  '1001':{name:'Logan Resinkin',role:'Growth Strategist'},
+  '1002':{name:'Burt Newman',role:'Growth Strategist'},
+  '1003':{name:'Maria Coleman',role:'Growth Strategist'},
+  '1004':{name:'Shannon Bumbalough',role:'Growth Strategist'},
+  '1005':{name:'Stefanie Ritter',role:'Growth Strategist'},
+  '1006':{name:'Steph Leslie',role:'Growth Strategist'},
+  '9999':{name:'Manager',role:'Manager — All Territories',isManager:true}
+};
+
+const PROCESSOR_RATES = [
+  {agg:'Mudflap',proc:'Tablet/Visa',rate:'1.50%',note:''},
+  {agg:'Fuelman',proc:'Fuelman',rate:'Cost + $.03/$.04',note:"Roady's Members: Cost + $.05"},
+  {agg:'Comdata Admin Fee',proc:'Comdata',rate:'$295 monthly',note:"Roady's Members: $0"},
+  {agg:'Comdata Normal',proc:'Comdata',rate:'3.5% / $.11',note:''},
+  {agg:'Amazon ATS',proc:'Comdata',rate:'3.5% / $.11',note:''},
+  {agg:'Comdata Direct Bill',proc:'Comdata',rate:'$2 Trans fee',note:''},
+  {agg:'Prime Advantage',proc:'Comdata',rate:'$2 Trans fee',note:''},
+  {agg:'New Prime Inc.',proc:'Comdata / Direct Bill',rate:'$2 Trans fee',note:''},
+  {agg:'Bridgehaul',proc:'Comdata',rate:'$2 Trans fee',note:''},
+  {agg:'TSD Logistics',proc:'EFS',rate:'2.50%',note:''},
+  {agg:'RXO / XPO Logistics',proc:'EFS',rate:'2.50%',note:''},
+  {agg:'Load Connex',proc:'EFS / TCH',rate:'2.5% / $.08',note:''},
+  {agg:'Oneida',proc:'EFS',rate:'2.5% / $.08',note:''},
+  {agg:'OTR Solutions',proc:'EFS',rate:'2.5% / $.08',note:''},
+  {agg:'RTO',proc:'EFS',rate:'2.5% / $.08',note:''},
+  {agg:'Fleet One Edge',proc:'EFS/Fleet One/TCH',rate:'2.50%',note:''},
+  {agg:'RTS Carrier Services',proc:'Fleet One',rate:'1.42%',note:''},
+  {agg:'QPN-Quality Plus Network',proc:'Fleet One / TCH',rate:'1.42%',note:''},
+  {agg:'OOIDA',proc:'Fleet One',rate:'2.5% / $.08',note:''},
+  {agg:'Trans-Connect Services (TCS)',proc:'TCH',rate:'2.50%',note:''},
+  {agg:'Factorloads',proc:'TCH',rate:'2.50%',note:''},
+  {agg:'Fleet One (TCH)',proc:'TCH',rate:'2.50%',note:''},
+  {agg:'TCH',proc:'TCH',rate:'2.50%',note:''},
+  {agg:'Motive',proc:'MC',rate:'Your % Trans fee',note:''},
+  {agg:'Haulers United',proc:'MC',rate:'Your % Trans fee',note:"AtoB branded card"},
+  {agg:'TOA Service',proc:'MC / Visa',rate:'Your % Trans fee',note:''},
+  {agg:'A to B',proc:'MC / Visa',rate:'Your % Trans fee',note:"A to B branded card"},
+  {agg:'Cloudtrucks',proc:'Visa',rate:'Visa % Trans fee',note:"Own branded card"},
+  {agg:'Haul Pay',proc:'Visa',rate:'Visa % Trans fee',note:''},
+  {agg:'Greenlane',proc:'Quick Q',rate:'$1.50 direct bill / 1.75%',note:''},
+  {agg:'Quick Q',proc:'Quick Q',rate:'$1.50 direct bill / 1.75%',note:''},
+  {agg:'Ten-4',proc:'Cardless',rate:'2.50%',note:''},
+  {agg:'On Ramp',proc:'Cardless',rate:'1.25% / $2.00 Flat',note:''}
+];
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let currentUser = null;
+let myStops = [];
+let LS_KEY = 'gs_cmd_';
+let activityLogs = {};  // {siteId: [{date,type,subject,notes}]}
+let scheduledCalls = []; // [{siteId,date,time,contact,purpose}]
+let siteExtras = {};     // {siteId: {hasRewards,vendorPrograms,contacts,notes}}
+let criticalItems = [];  // [{siteId,reason,created}]
+let tasks = [];           // [{id,title,siteId,priority,status,due,category,assignedTo,notes,created,updated}]
+let calMonth = new Date().getMonth();
+let calYear = new Date().getFullYear();
+
+function loadData(){
+  const k = LS_KEY + (currentUser?.name||'shared');
+  try{
+    const d=JSON.parse(localStorage.getItem(k+'_logs')||'{}');activityLogs=d;
+  }catch(e){activityLogs={};}
+  try{scheduledCalls=JSON.parse(localStorage.getItem(k+'_sched')||'[]');}catch(e){scheduledCalls=[];}
+  try{siteExtras=JSON.parse(localStorage.getItem(k+'_extras')||'{}');}catch(e){siteExtras={};}
+  try{criticalItems=JSON.parse(localStorage.getItem(k+'_critical')||'[]');}catch(e){criticalItems=[];}
+  try{tasks=JSON.parse(localStorage.getItem(k+'_tasks')||'[]');}catch(e){tasks=[];}
+}
+function saveData(){
+  const k = LS_KEY + (currentUser?.name||'shared');
+  localStorage.setItem(k+'_logs',JSON.stringify(activityLogs));
+  localStorage.setItem(k+'_sched',JSON.stringify(scheduledCalls));
+  localStorage.setItem(k+'_extras',JSON.stringify(siteExtras));
+  localStorage.setItem(k+'_critical',JSON.stringify(criticalItems));
+  localStorage.setItem(k+'_tasks',JSON.stringify(tasks));
+}
+
+// ═══════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════
+let pinEntry = '';
+function initLogin(){
+  const dots = document.getElementById('pin-dots');
+  dots.innerHTML = [0,1,2,3].map(()=>'<div class="pin-dot"></div>').join('');
+  const pad = document.getElementById('pin-pad');
+  pad.innerHTML = [1,2,3,4,5,6,7,8,9,'C',0,'→'].map(k=>{
+    const cls = (k==='C'||k==='→')?'pin-key fn':'pin-key';
+    return `<div class="${cls}" onclick="pinPress('${k}')">${k==='→'?'Enter':k==='C'?'Clear':k}</div>`;
+  }).join('');
+}
+function pinPress(k){
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  if(k==='C'){pinEntry='';updateDots();return;}
+  if(k==='→'){
+    const user = GS_PINS[pinEntry];
+    if(user){loginAs(user);}
+    else{err.textContent='Invalid PIN';pinEntry='';updateDots();}
+    return;
+  }
+  if(pinEntry.length<4){pinEntry+=k;updateDots();}
+  if(pinEntry.length===4){
+    setTimeout(()=>{
+      const user=GS_PINS[pinEntry];
+      if(user){loginAs(user);}
+      else{err.textContent='Invalid PIN';pinEntry='';updateDots();}
+    },200);
+  }
+}
+function updateDots(){
+  document.querySelectorAll('.pin-dot').forEach((d,i)=>{
+    d.classList.toggle('filled',i<pinEntry.length);
+  });
+}
+function loginAs(user){
+  currentUser=user;
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('tb-name').textContent=user.name;
+  document.getElementById('tb-role').textContent=user.role;
+  // Filter stops
+  if(user.isManager){
+    myStops = MEMBERS.filter(m=>m.status==='active'&&m.group!=='None');
+  } else {
+    const region = REGIONS[user.name];
+    const states = region ? region.states : [];
+    myStops = MEMBERS.filter(m=>m.status==='active'&&m.group!=='None'&&states.includes(m.state));
+  }
+  loadData();
+  renderAll();
+}
+function logout(){
+  currentUser=null;pinEntry='';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('app').style.display='none';
+  updateDots();
+}
+
+// ═══════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════
+function switchTab(id,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  if(el)el.classList.add('active');
+  const p=document.getElementById('p-'+id);if(p)p.classList.add('active');
+  if(id==='calendar')renderCalendar();
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER ALL
+// ═══════════════════════════════════════════════════════
+function renderAll(){
+  renderDashboard();renderTerritory();renderCRM();renderCalendar();renderRates();renderCalculator();renderFuelIntro();renderCritical();
+}
+
+function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fG(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n);}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+function openModal(id){document.getElementById(id).classList.add('show');}
+
+function getLastContact(siteId){
+  const logs=(activityLogs[siteId]||[]).filter(l=>l.type==='call');
+  if(!logs.length)return null;
+  return logs.sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+}
+function ageDays(dateStr){
+  if(!dateStr)return 999;
+  return Math.floor((Date.now()-new Date(dateStr).getTime())/(1000*60*60*24));
+}
+function ageClass(days){
+  if(days<=7)return 'age-fresh';
+  if(days<=21)return 'age-warm';
+  if(days<=45)return 'age-stale';
+  return 'age-critical';
+}
+function ageLabel(days){
+  if(days>=999)return '<span style="color:var(--red)">Never</span>';
+  if(days===0)return '<span style="color:var(--green)">Today</span>';
+  if(days<=7)return `<span style="color:var(--green)">${days}d ago</span>`;
+  if(days<=21)return `<span style="color:var(--yellow)">${days}d ago</span>`;
+  if(days<=45)return `<span style="color:var(--orange)">${days}d ago</span>`;
+  return `<span style="color:var(--red)">${days}d ago</span>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════
+function renderDashboard(){
+  const stops=myStops;
+  const types={};stops.forEach(s=>{types[s.type]=(types[s.type]||0)+1;});
+  const groups={};stops.forEach(s=>{groups[s.group]=(groups[s.group]||0)+1;});
+  const totalLogs=Object.values(activityLogs).reduce((s,a)=>s+a.length,0);
+  const upcoming=scheduledCalls.filter(c=>new Date(c.date+'T'+c.time)>=new Date()).length;
+  const overdue=stops.filter(s=>{const lc=getLastContact(s.id);return ageDays(lc?.date)>30;}).length;
+  const noContact=stops.filter(s=>!(activityLogs[s.id]||[]).length).length;
+
+  document.getElementById('dash-content').innerHTML=`
+    <div class="card"><div class="card-hd">📊 ${currentUser?.isManager?'Network':'Territory'} Overview — ${esc(currentUser?.name||'')}</div>
+    <div class="kpi-row">
+      <div class="kpi cyan"><div class="kpi-val">${stops.length}</div><div class="kpi-label">Total Stops</div></div>
+      <div class="kpi green"><div class="kpi-val">${groups["Roady's"]||0}</div><div class="kpi-label">Roady's</div></div>
+      <div class="kpi purple"><div class="kpi-val">${groups['PTP']||0}</div><div class="kpi-label">PTP</div></div>
+      <div class="kpi yellow"><div class="kpi-val">${totalLogs}</div><div class="kpi-label">Activity Logs</div></div>
+      <div class="kpi cyan"><div class="kpi-val">${upcoming}</div><div class="kpi-label">Upcoming Calls</div></div>
+      <div class="kpi red"><div class="kpi-val">${overdue}</div><div class="kpi-label">Overdue (30d+)</div></div>
+    </div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card"><div class="card-hd">📍 By Site Type</div>
+        ${Object.entries(types).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82em"><span>${esc(t)}</span><span style="font-weight:700;color:var(--cyan)">${c}</span></div>`).join('')}
+      </div>
+      <div class="card"><div class="card-hd">🚨 Needs Attention</div>
+        <div style="font-size:.82em;line-height:1.8">
+          <div>🔴 <b>${noContact}</b> stops with no contact logged</div>
+          <div>🟠 <b>${overdue}</b> stops not contacted in 30+ days</div>
+          <div>📅 <b>${upcoming}</b> calls scheduled</div>
+          <div>⚠️ <b>${criticalItems.length}</b> critical items</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════
+// TERRITORY
+// ═══════════════════════════════════════════════════════
+function renderTerritory(){
+  // Build GS territory cards
+  const gsNames=Object.keys(REGIONS);
+  const gsCards=gsNames.map(name=>{
+    const r=REGIONS[name];
+    const stops=MEMBERS.filter(m=>m.status==='active'&&m.group!=='None'&&r.states.includes(m.state));
+    const types={};stops.forEach(s=>{types[s.type]=(types[s.type]||0)+1;});
+    const groups={};stops.forEach(s=>{groups[s.group]=(groups[s.group]||0)+1;});
+    const logCount=stops.reduce((s,st)=>(activityLogs[st.id]||[]).length+s,0);
+    const noContact=stops.filter(s=>!(activityLogs[s.id]||[]).some(l=>l.type==='call')).length;
+    const overdue=stops.filter(s=>{const lc=getLastContact(s.id);return ageDays(lc?.date)>30;}).length;
+    return {name,region:r,stops,types,groups,logCount,noContact,overdue};
+  });
+
+  let html=`
+    <div class="ter-sub-tabs">
+      <div class="ter-sub-tab active" onclick="terSubTab('map',this)">🗺️ Territory Map</div>
+      <div class="ter-sub-tab" onclick="terSubTab('list',this)">📋 Stop List</div>
+    </div>
+
+    <div id="ter-view-map">
+      <div class="card"><div class="card-hd">🗺️ Growth Strategist Territories</div>
+        <div class="gs-cards-grid">
+          ${gsCards.map(g=>`<div class="gs-card" style="border-left-color:${g.region.color}" data-gs="${g.name}" onclick="terDrill(this.dataset.gs)">
+            <div class="gs-name" style="color:${g.region.color}">${esc(g.name)}</div>
+            <div class="gs-region">${esc(g.region.label)} · ${g.stops.length} stops · ${g.region.states.length} states</div>
+            <div class="state-pills">${g.region.states.map(st=>'<span class="state-pill">'+st+'</span>').join('')}</div>
+            <div class="gs-stats" style="margin-top:10px">
+              <div class="gs-stat"><div class="gs-stat-val" style="color:var(--green)">${g.groups["Roady's"]||0}</div><div class="gs-stat-lbl">Roady's</div></div>
+              <div class="gs-stat"><div class="gs-stat-val" style="color:var(--purple)">${g.groups['PTP']||0}</div><div class="gs-stat-lbl">PTP</div></div>
+              <div class="gs-stat"><div class="gs-stat-val" style="color:${g.overdue?'var(--red)':'var(--green)'}">${g.overdue}</div><div class="gs-stat-lbl">Overdue</div></div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <div id="ter-drill" style="display:none"></div>
+    </div>
+
+    <div id="ter-view-list" style="display:none">
+      <div class="search-bar">
+        <input id="ter-search" placeholder="Search stops by name, city, state, ID..." oninput="filterTerritory()">
+        <select id="ter-type" onchange="filterTerritory()"><option value="">All Types</option>
+          <option>Truck Stop</option><option>Fuel Stop</option><option>Truck Stop / Service Center</option>
+          <option>Service Center</option><option>C-Store</option><option>PPO</option></select>
+        <select id="ter-group" onchange="filterTerritory()"><option value="">All Groups</option>
+          <option>Roady's</option><option>PTP</option><option>Roady's Lite</option></select>
+        <select id="ter-state" onchange="filterTerritory()"><option value="">All States</option>
+          ${[...new Set(myStops.map(s=>s.state))].sort().map(st=>'<option>'+st+'</option>').join('')}
+        </select>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>ID</th><th>Name</th><th>City/State</th><th>Type</th><th>Group</th><th>Phone</th><th>Manager</th><th>Last Contact</th><th>Actions</th></tr></thead>
+        <tbody id="ter-tbody"></tbody>
+      </table></div>
+    </div>`;
+  document.getElementById('ter-content').innerHTML=html;
+  filterTerritory();
+}
+
+function terSubTab(view,el){
+  document.querySelectorAll('.ter-sub-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('ter-view-map').style.display=view==='map'?'block':'none';
+  document.getElementById('ter-view-list').style.display=view==='list'?'block':'none';
+}
+
+function terDrill(gsName){
+  const r=REGIONS[gsName];if(!r)return;
+  const stops=MEMBERS.filter(m=>m.status==='active'&&m.group!=='None'&&r.states.includes(m.state));
+  const byState={};stops.forEach(s=>{if(!byState[s.state])byState[s.state]=[];byState[s.state].push(s);});
+
+  document.getElementById('ter-drill').style.display='block';
+  document.getElementById('ter-drill').innerHTML=`
+    <div class="card" style="border-left:4px solid ${r.color}">
+      <div class="card-hd" style="justify-content:space-between">
+        <span style="color:${r.color}">📍 ${esc(gsName)} — ${esc(r.label)}</span>
+        <button class="btn" onclick="document.getElementById('ter-drill').style.display='none'" style="font-size:.72em">✕ Close</button>
+      </div>
+      <div class="kpi-row" style="margin-bottom:14px">
+        <div class="kpi cyan"><div class="kpi-val">${stops.length}</div><div class="kpi-label">Stops</div></div>
+        <div class="kpi green"><div class="kpi-val">${r.states.length}</div><div class="kpi-label">States</div></div>
+        <div class="kpi yellow"><div class="kpi-val">${stops.reduce((s,st)=>(activityLogs[st.id]||[]).length+s,0)}</div><div class="kpi-label">Logs</div></div>
+        <div class="kpi red"><div class="kpi-val">${stops.filter(s=>{const lc=getLastContact(s.id);return ageDays(lc?.date)>30;}).length}</div><div class="kpi-label">Overdue</div></div>
+      </div>
+      ${Object.entries(byState).sort((a,b)=>b[1].length-a[1].length).map(([state,stStops])=>`
+        <div style="margin-bottom:10px">
+          <div style="font-weight:700;font-size:.82em;color:${r.color};margin-bottom:4px">${state} (${stStops.length} stops)</div>
+          ${stStops.map(s=>{
+            const lc=getLastContact(s.id);const days=ageDays(lc?.date);
+            return '<div class="log-entry '+ageClass(days)+'" style="cursor:pointer;padding:6px 10px" onclick="openSiteDrawer(\''+s.id+'\')"><span style="font-weight:700;font-size:.82em">'+esc(s.name)+'</span> <span style="font-size:.72em;color:var(--muted)">'+esc(s.type)+' · '+esc(s.city)+'</span><span style="float:right;font-size:.72em">'+ageLabel(days)+'</span></div>';
+          }).join('')}
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('ter-drill').scrollIntoView({behavior:'smooth'});
+}
+function filterTerritory(){
+  const q=(document.getElementById('ter-search')?.value||'').toLowerCase();
+  const tf=document.getElementById('ter-type')?.value||'';
+  const gf=document.getElementById('ter-group')?.value||'';
+  const sf=document.getElementById('ter-state')?.value||'';
+  let d=myStops.filter(s=>{
+    if(q&&!s.name.toLowerCase().includes(q)&&!s.city.toLowerCase().includes(q)&&!s.state.toLowerCase().includes(q)&&!s.id.toLowerCase().includes(q)&&!(s.company||'').toLowerCase().includes(q))return false;
+    if(tf&&s.type!==tf)return false;
+    if(gf&&s.group!==gf)return false;
+    if(sf&&s.state!==sf)return false;
+    return true;
+  });
+  const tb=document.getElementById('ter-tbody');if(!tb)return;
+  tb.innerHTML=d.map((s,i)=>{
+    const lc=getLastContact(s.id);
+    const days=ageDays(lc?.date);
+    const mgr=MANAGER_MAP[s.state]||'—';
+    return `<tr class="clickable ${ageClass(days)}" onclick="openSiteDrawer('${s.id}')">
+      <td class="num" style="color:var(--dim)">${i+1}</td>
+      <td style="font-size:.75em;color:var(--muted)">${esc(s.id)}</td>
+      <td><b>${esc(s.name)}</b></td>
+      <td>${esc(s.city)}, ${s.state}</td>
+      <td style="font-size:.78em">${esc(s.type)}</td>
+      <td style="font-size:.78em">${esc(s.group)}</td>
+      <td style="font-size:.78em">${esc(s.phone)}</td>
+      <td style="font-size:.75em">${esc(mgr)}</td>
+      <td style="font-size:.78em">${ageLabel(days)}</td>
+      <td style="white-space:nowrap"><button class="btn btn-cyan" onclick="event.stopPropagation();scheduleCall('${s.id}')" style="font-size:.7em;padding:3px 8px">📅</button>
+          <button class="btn btn-green" onclick="event.stopPropagation();addLog('${s.id}')" style="font-size:.7em;padding:3px 8px">📝</button>
+          <button class="btn btn-yellow" onclick="event.stopPropagation();openTaskForSite('${s.id}')" style="font-size:.7em;padding:3px 8px">✅</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// SITE DRAWER
+// ═══════════════════════════════════════════════════════
+function openSiteDrawer(siteId){
+  const s=MEMBERS.find(m=>m.id===siteId);if(!s)return;
+  const extras=siteExtras[siteId]||{};
+  const logs=(activityLogs[siteId]||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const mgr=MANAGER_MAP[s.state]||'Unassigned';
+
+  document.getElementById('drawer-body').innerHTML=`
+    <div class="drawer-hd">${esc(s.name)}</div>
+    <div class="drawer-sub">${esc(s.id)} · ${esc(s.type)} · ${esc(s.group)}</div>
+
+    <div class="drawer-section"><h4>📍 Location</h4>
+      <div class="info-grid">
+        <div class="info-item"><div class="lbl">Address</div><div class="val">${esc(s.street)}</div></div>
+        <div class="info-item"><div class="lbl">City/State/Zip</div><div class="val">${esc(s.city)}, ${s.state} ${s.zip}</div></div>
+        <div class="info-item"><div class="lbl">Phone</div><div class="val">${s.phone?`<a href="tel:${s.phone}" style="color:var(--cyan)">${esc(s.phone)}</a>`:'—'}</div></div>
+        <div class="info-item"><div class="lbl">Exit</div><div class="val">${esc(s.exit||'—')}</div></div>
+        <div class="info-item"><div class="lbl">Territory</div><div class="val">${esc(mgr)}</div></div>
+        <div class="info-item"><div class="lbl">Company</div><div class="val">${esc(s.company)}</div></div>
+      </div>
+    </div>
+
+    <div class="drawer-section"><h4>⚙️ Site Details</h4>
+      <div class="info-grid">
+        <div class="info-item"><div class="lbl">Has Rewards</div>
+          <div class="val"><label style="cursor:pointer"><input type="checkbox" ${extras.hasRewards?'checked':''} onchange="toggleExtra('${siteId}','hasRewards',this.checked)"> Yes</label></div>
+        </div>
+        <div class="info-item"><div class="lbl">Vendor Programs</div>
+          <div class="val"><input style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:.85em;width:100%" value="${esc(extras.vendorPrograms||'')}" onchange="updateExtra('${siteId}','vendorPrograms',this.value)" placeholder="Programs..."></div>
+        </div>
+        <div class="info-item"><div class="lbl">Contacts</div>
+          <div class="val"><input style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:.85em;width:100%" value="${esc(extras.contacts||'')}" onchange="updateExtra('${siteId}','contacts',this.value)" placeholder="Names..."></div>
+        </div>
+        <div class="info-item"><div class="lbl">Site Notes</div>
+          <div class="val"><input style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:.85em;width:100%" value="${esc(extras.siteNotes||'')}" onchange="updateExtra('${siteId}','siteNotes',this.value)" placeholder="Notes..."></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h4>📋 Activity Log (${logs.length})</h4>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-green" onclick="addLog('${siteId}')" style="font-size:.72em;padding:4px 10px">+ Add</button>
+          <button class="btn btn-cyan" onclick="scheduleCall('${siteId}')" style="font-size:.72em;padding:4px 10px">📅 Schedule</button>
+          <button class="btn btn-red" onclick="addCritical('${siteId}')" style="font-size:.72em;padding:4px 10px">🚨 Flag</button>
+        </div>
+      </div>
+      <div style="margin-top:8px;max-height:300px;overflow-y:auto">
+        ${logs.length?logs.map(l=>`<div class="log-entry ${ageClass(ageDays(l.date))}">
+          <span class="log-date">${new Date(l.date).toLocaleString()}</span>
+          <span class="log-type type-${l.type}">${l.type.toUpperCase()}</span>
+          <div class="log-body"><b>${esc(l.subject)}</b>${l.notes?' — '+esc(l.notes):''}</div>
+        </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82em">No activity logged. Click + Add to start.</div>'}
+      </div>
+    </div>
+  `;
+  document.getElementById('site-drawer').classList.add('open');
+}
+function closeDrawer(){document.getElementById('site-drawer').classList.remove('open');}
+
+function toggleExtra(siteId,field,val){
+  if(!siteExtras[siteId])siteExtras[siteId]={};
+  siteExtras[siteId][field]=val;saveData();
+}
+function updateExtra(siteId,field,val){
+  if(!siteExtras[siteId])siteExtras[siteId]={};
+  siteExtras[siteId][field]=val;saveData();
+}
+
+// ═══════════════════════════════════════════════════════
+// CRM / TASKS
+// ═══════════════════════════════════════════════════════
+function renderCRM(){
+  const view = document.querySelector('.crm-vt.active')?.dataset?.view || 'board';
+
+  // Build task list
+  const allTasks = (tasks||[]).sort((a,b)=>{
+    const priOrd={high:0,med:1,low:2};
+    if(a.status==='done'&&b.status!=='done')return 1;
+    if(b.status==='done'&&a.status!=='done')return -1;
+    return (priOrd[a.priority]||1)-(priOrd[b.priority]||1);
+  });
+
+  // All activity logs
+  const allLogs=[];
+  Object.entries(activityLogs).forEach(([sid,logs])=>{
+    logs.forEach(l=>{const s=MEMBERS.find(m=>m.id===sid);allLogs.push({...l,siteId:sid,siteName:s?.name||sid});});
+  });
+  allLogs.sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  const todoTasks=allTasks.filter(t=>t.status==='todo');
+  const progTasks=allTasks.filter(t=>t.status==='progress');
+  const waitTasks=allTasks.filter(t=>t.status==='waiting');
+  const doneTasks=allTasks.filter(t=>t.status==='done');
+
+  document.getElementById('crm-content').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div class="crm-view-toggle">
+        <div class="crm-vt ${view==='board'?'active':''}" data-view="board" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📋 Task Board</div>
+        <div class="crm-vt ${view==='list'?'active':''}" data-view="list" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📃 Task List</div>
+        <div class="crm-vt ${view==='log'?'active':''}" data-view="log" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📜 Activity Log</div>
+      </div>
+      <button class="btn btn-cyan" onclick="openNewTask()">+ New Task</button>
+    </div>
+
+    ${view==='board'?`
+      <div class="kpi-row" style="margin-bottom:14px">
+        <div class="kpi cyan"><div class="kpi-val">${allTasks.length}</div><div class="kpi-label">Total Tasks</div></div>
+        <div class="kpi red"><div class="kpi-val">${todoTasks.length}</div><div class="kpi-label">To Do</div></div>
+        <div class="kpi yellow"><div class="kpi-val">${progTasks.length}</div><div class="kpi-label">In Progress</div></div>
+        <div class="kpi orange"><div class="kpi-val">${waitTasks.length}</div><div class="kpi-label">Waiting</div></div>
+        <div class="kpi green"><div class="kpi-val">${doneTasks.length}</div><div class="kpi-label">Done</div></div>
+      </div>
+      <div class="task-board">
+        <div class="task-col" style="border-top:3px solid var(--dim)">
+          <div class="task-col-hd">📝 To Do <span class="col-count">${todoTasks.length}</span></div>
+          ${todoTasks.map(t=>renderTaskCard(t)).join('')||'<div style="text-align:center;color:var(--muted);font-size:.78em;padding:20px">No tasks</div>'}
+        </div>
+        <div class="task-col" style="border-top:3px solid var(--cyan)">
+          <div class="task-col-hd">🔄 In Progress <span class="col-count">${progTasks.length}</span></div>
+          ${progTasks.map(t=>renderTaskCard(t)).join('')||'<div style="text-align:center;color:var(--muted);font-size:.78em;padding:20px">No tasks</div>'}
+        </div>
+        <div class="task-col" style="border-top:3px solid var(--yellow)">
+          <div class="task-col-hd">⏳ Waiting <span class="col-count">${waitTasks.length}</span></div>
+          ${waitTasks.map(t=>renderTaskCard(t)).join('')||'<div style="text-align:center;color:var(--muted);font-size:.78em;padding:20px">No tasks</div>'}
+        </div>
+        <div class="task-col" style="border-top:3px solid var(--green)">
+          <div class="task-col-hd">✅ Done <span class="col-count">${doneTasks.length}</span></div>
+          ${doneTasks.slice(0,10).map(t=>renderTaskCard(t)).join('')||'<div style="text-align:center;color:var(--muted);font-size:.78em;padding:20px">No tasks</div>'}
+        </div>
+      </div>
+    `:''}
+
+    ${view==='list'?`
+      <div class="card">
+        <div class="search-bar">
+          <input id="task-search" placeholder="Search tasks..." oninput="renderCRM()">
+          <select id="task-filter-status" onchange="renderCRM()"><option value="">All Status</option><option value="todo">To Do</option><option value="progress">In Progress</option><option value="waiting">Waiting</option><option value="done">Done</option></select>
+          <select id="task-filter-pri" onchange="renderCRM()"><option value="">All Priority</option><option value="high">High</option><option value="med">Medium</option><option value="low">Low</option></select>
+          <select id="task-filter-cat" onchange="renderCRM()"><option value="">All Categories</option><option value="fuel">Fuel</option><option value="rewards">Rewards</option><option value="aggregator">Aggregator</option><option value="billing">Billing</option><option value="onboarding">Onboarding</option><option value="followup">Follow-up</option><option value="general">General</option></select>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th style="width:20px"></th><th>Task</th><th>Site</th><th>Priority</th><th>Status</th><th>Category</th><th>Due</th><th>Assigned</th><th></th></tr></thead>
+          <tbody>${allTasks.map(t=>{
+            const s=MEMBERS.find(m=>m.id===t.siteId);
+            const overdue=t.due&&new Date(t.due)<new Date()&&t.status!=='done';
+            return '<tr class="clickable task-pri-'+t.priority+'" data-tid="'+t.id+'" onclick="editTask(this.dataset.tid)">'+
+
+              '<td>'+(t.status==='done'?'✅':'⬜')+'</td>'+
+              '<td><b>'+esc(t.title)+'</b>'+(t.notes?'<div style="font-size:.72em;color:var(--muted)">'+esc(t.notes).substring(0,60)+'</div>':'')+'</td>'+
+              '<td style="font-size:.78em">'+esc(s?.name||'—')+'</td>'+
+              '<td><span style="font-size:.72em;font-weight:700;color:var(--'+(t.priority==='high'?'red':t.priority==='med'?'yellow':'green')+')">'+t.priority.toUpperCase()+'</span></td>'+
+              '<td><span class="task-status ts-'+t.status+'">'+(t.status==='todo'?'To Do':t.status==='progress'?'In Progress':t.status==='waiting'?'Waiting':'Done')+'</span></td>'+
+              '<td style="font-size:.75em">'+esc(t.category||'—')+'</td>'+
+              '<td style="font-size:.75em;'+(overdue?'color:var(--red);font-weight:700':'')+'">'+esc(t.due||'—')+'</td>'+
+              '<td style="font-size:.75em">'+esc(t.assignedTo||'—')+'</td>'+
+              '<td><button class="btn btn-cyan" data-tid="'+t.id+'" data-next="'+(t.status==='todo'?'progress':t.status==='progress'?'done':t.status==='waiting'?'progress':'todo')+'" onclick="event.stopPropagation();quickStatus(this.dataset.tid,this.dataset.next)" style="font-size:.65em;padding:2px 6px">'+(t.status==='done'?'\u21a9':'\u2192')+'</button></td>'+
+
+                (t.status==='todo'?'progress':t.status==='progress'?'done':t.status==='waiting'?'progress':'todo')+'\\' )" style="font-size:.65em;padding:2px 6px">'+(t.status==='done'?'↩':'→')+'</button></td>'+
+            '</tr>';
+          }).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No tasks. Click + New Task to add.</td></tr>'}</tbody>
+        </table></div>
+      </div>
+    `:''}
+
+    ${view==='log'?`
+      <div class="card"><div class="card-hd">📜 Activity Log (${allLogs.length})</div>
+        <div class="search-bar">
+          <input id="crm-search" placeholder="Search logs...">
+          <select id="crm-type-filter"><option value="">All Types</option>
+            <option value="call">Calls</option><option value="task">Tasks</option><option value="note">Notes</option><option value="followup">Follow-ups</option><option value="urgent">Urgent</option></select>
+        </div>
+        <div style="max-height:600px;overflow-y:auto">
+          ${allLogs.slice(0,100).map(l=>{
+            const days=ageDays(l.date);
+            return '<div class="log-entry '+ageClass(days)+'" style="cursor:pointer" data-sid="'+l.siteId+'" onclick="openSiteDrawer(this.dataset.sid)">'+
+              '<span class="log-date">'+new Date(l.date).toLocaleString()+'</span>'+
+              '<span class="log-type type-'+l.type+'">'+l.type.toUpperCase()+'</span>'+
+              '<span style="font-size:.75em;color:var(--accent);margin-left:6px">'+esc(l.siteName)+'</span>'+
+              '<div class="log-body"><b>'+esc(l.subject)+'</b>'+(l.notes?' — '+esc(l.notes):'')+'</div>'+
+            '</div>';
+          }).join('')||'<div style="padding:20px;text-align:center;color:var(--muted)">No activity logged yet.</div>'}
+        </div>
+      </div>
+    `:''}
+  `;
+}
+
+function renderTaskCard(t){
+  const s=MEMBERS.find(m=>m.id===t.siteId);
+  const overdue=t.due&&new Date(t.due)<new Date()&&t.status!=='done';
+  return '<div class="task-item task-pri-'+t.priority+'" data-tid="'+t.id+'" onclick="editTask(this.dataset.tid)">'+
+    '<div class="task-title">'+esc(t.title)+'</div>'+
+    (t.siteId?'<div class="task-site">'+esc(s?.name||t.siteId)+'</div>':'')+
+    '<div class="task-meta">'+
+      '<span class="task-status ts-'+t.status+'">'+(t.status==='todo'?'To Do':t.status==='progress'?'In Progress':t.status==='waiting'?'Waiting':'Done')+'</span>'+
+      (t.category?'<span>'+esc(t.category)+'</span>':'')+
+      (t.due?'<span style="'+(overdue?'color:var(--red);font-weight:700':'')+'">'+(overdue?'⚠ ':'')+t.due+'</span>':'')+
+      (t.assignedTo?'<span>→ '+esc(t.assignedTo)+'</span>':'')+
+    '</div>'+
+    (t.notes?'<div style="font-size:.72em;color:var(--muted);margin-top:3px">'+esc(t.notes).substring(0,80)+'</div>':'')+
+  '</div>';
+}
+
+// ═══ TASK CRUD ═══
+function openNewTask(){
+  document.getElementById('task-modal-title').textContent='Add Task';
+  document.getElementById('task-edit-id').value='';
+  document.getElementById('task-title').value='';
+  document.getElementById('task-pri').value='med';
+  document.getElementById('task-status').value='todo';
+  document.getElementById('task-due').value='';
+  document.getElementById('task-cat').value='general';
+  document.getElementById('task-assign').value='';
+  document.getElementById('task-notes').value='';
+  document.getElementById('task-del-btn').style.display='none';
+  populateTaskSiteSelect('');
+  openModal('task-modal');
+}
+
+function openTaskForSite(siteId){
+  openNewTask();
+  document.getElementById('task-site').value=siteId;
+}
+
+function populateTaskSiteSelect(val){
+  const sel=document.getElementById('task-site');
+  sel.innerHTML='<option value="">-- No specific stop --</option>'+
+    myStops.map(s=>'<option value="'+s.id+'"'+(s.id===val?' selected':'')+'>'+esc(s.name)+' ('+s.state+')</option>').join('');
+}
+
+function editTask(id){
+  const t=tasks.find(tk=>tk.id===id);if(!t)return;
+  document.getElementById('task-modal-title').textContent='Edit Task';
+  document.getElementById('task-edit-id').value=t.id;
+  document.getElementById('task-title').value=t.title;
+  document.getElementById('task-pri').value=t.priority;
+  document.getElementById('task-status').value=t.status;
+  document.getElementById('task-due').value=t.due||'';
+  document.getElementById('task-cat').value=t.category||'general';
+  document.getElementById('task-assign').value=t.assignedTo||'';
+  document.getElementById('task-notes').value=t.notes||'';
+  document.getElementById('task-del-btn').style.display='inline-block';
+  populateTaskSiteSelect(t.siteId||'');
+  openModal('task-modal');
+}
+
+function saveTask(){
+  const title=document.getElementById('task-title').value.trim();
+  if(!title){toast('Title required');return;}
+  const editId=document.getElementById('task-edit-id').value;
+  const obj={
+    title,
+    siteId:document.getElementById('task-site').value,
+    priority:document.getElementById('task-pri').value,
+    status:document.getElementById('task-status').value,
+    due:document.getElementById('task-due').value,
+    category:document.getElementById('task-cat').value,
+    assignedTo:document.getElementById('task-assign').value,
+    notes:document.getElementById('task-notes').value.trim(),
+    updated:new Date().toISOString()
+  };
+  if(editId){
+    const idx=tasks.findIndex(t=>t.id===editId);
+    if(idx>-1)tasks[idx]={...tasks[idx],...obj};
+  } else {
+    obj.id='task_'+Date.now();
+    obj.created=new Date().toISOString();
+    tasks.push(obj);
+  }
+  saveData();closeModal('task-modal');renderCRM();renderDashboard();
+  toast(editId?'Task updated':'Task added');
+}
+
+function deleteTask(){
+  const id=document.getElementById('task-edit-id').value;
+  if(!id||!confirm('Delete this task?'))return;
+  tasks=tasks.filter(t=>t.id!==id);
+  saveData();closeModal('task-modal');renderCRM();renderDashboard();
+  toast('Task deleted');
+}
+
+function quickStatus(id,newStatus){
+  const t=tasks.find(tk=>tk.id===id);if(!t)return;
+  t.status=newStatus;t.updated=new Date().toISOString();
+  saveData();renderCRM();toast('Status: '+newStatus);
+}
+
+function addLog(siteId){
+  document.getElementById('log-site-id').value=siteId;
+  document.getElementById('log-dt').value=new Date().toISOString().slice(0,16);
+  document.getElementById('log-subject').value='';
+  document.getElementById('log-notes').value='';
+  openModal('log-modal');
+}
+function saveLog(){
+  const siteId=document.getElementById('log-site-id').value;
+  const type=document.getElementById('log-type').value;
+  const dt=document.getElementById('log-dt').value;
+  const subject=document.getElementById('log-subject').value.trim();
+  const notes=document.getElementById('log-notes').value.trim();
+  if(!subject){toast('Subject required');return;}
+  if(!activityLogs[siteId])activityLogs[siteId]=[];
+  activityLogs[siteId].push({date:dt,type,subject,notes,id:'log_'+Date.now()});
+  saveData();closeModal('log-modal');
+  openSiteDrawer(siteId);renderCRM();renderDashboard();
+  toast('Activity logged');
+}
+
+function scheduleCall(siteId){
+  document.getElementById('sched-site-id').value=siteId;
+  const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('sched-date').value=tomorrow.toISOString().slice(0,10);
+  document.getElementById('sched-time').value='09:00';
+  document.getElementById('sched-contact').value='';
+  document.getElementById('sched-purpose').value='';
+  openModal('sched-modal');
+}
+function saveSchedule(){
+  const siteId=document.getElementById('sched-site-id').value;
+  const date=document.getElementById('sched-date').value;
+  const time=document.getElementById('sched-time').value;
+  const contact=document.getElementById('sched-contact').value.trim();
+  const purpose=document.getElementById('sched-purpose').value.trim();
+  if(!date){toast('Date required');return;}
+  scheduledCalls.push({siteId,date,time,contact,purpose,id:'sc_'+Date.now()});
+  saveData();closeModal('sched-modal');renderCalendar();renderDashboard();
+  toast('Call scheduled for '+date);
+}
+
+function addCritical(siteId){
+  const reason=prompt('What needs immediate attention?');
+  if(!reason)return;
+  criticalItems.push({siteId,reason,created:new Date().toISOString(),id:'cr_'+Date.now()});
+  saveData();renderCritical();renderDashboard();
+  const badge=document.getElementById('crit-badge');
+  badge.textContent=criticalItems.length;badge.style.display=criticalItems.length?'inline':'none';
+  toast('Flagged as critical');
+}
+
+// ═══════════════════════════════════════════════════════
+// CALENDAR
+// ═══════════════════════════════════════════════════════
+function renderCalendar(){
+  const now=new Date();
+  const first=new Date(calYear,calMonth,1);
+  const last=new Date(calYear,calMonth+1,0);
+  const startDay=first.getDay();
+  const daysInMonth=last.getDate();
+  const monthName=first.toLocaleString('default',{month:'long',year:'numeric'});
+
+  // Get events for this month
+  const monthCalls=scheduledCalls.filter(c=>{const d=new Date(c.date);return d.getMonth()===calMonth&&d.getFullYear()===calYear;});
+  const callDays=new Set(monthCalls.map(c=>new Date(c.date).getDate()));
+
+  let calHTML=`<div class="card"><div class="card-hd" style="justify-content:space-between">
+    <span>📅 ${monthName}</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar()">&lt;</button>
+      <button class="btn" onclick="calMonth=new Date().getMonth();calYear=new Date().getFullYear();renderCalendar()">Today</button>
+      <button class="btn" onclick="calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar()">&gt;</button>
+    </div></div>
+    <div class="cal-grid">
+      ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>'<div class="cal-hd">'+d+'</div>').join('')}
+  `;
+  // Empty cells before first day
+  for(let i=0;i<startDay;i++)calHTML+='<div class="cal-day other"></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const isToday=(d===now.getDate()&&calMonth===now.getMonth()&&calYear===now.getFullYear());
+    const hasCall=callDays.has(d);
+    calHTML+=`<div class="cal-day${isToday?' today':''}">${d}${hasCall?'<span class="cal-dot dot-call"></span>':''}</div>`;
+  }
+  calHTML+='</div></div>';
+
+  // Upcoming calls list
+  const upcoming=scheduledCalls.filter(c=>new Date(c.date+'T'+c.time)>=new Date()).sort((a,b)=>new Date(a.date+'T'+a.time)-new Date(b.date+'T'+b.time));
+  calHTML+=`<div class="card"><div class="card-hd">📞 Upcoming Scheduled Calls (${upcoming.length})</div>`;
+  if(upcoming.length){
+    calHTML+=upcoming.slice(0,20).map(c=>{
+      const s=MEMBERS.find(m=>m.id===c.siteId);
+      return `<div class="log-entry age-fresh" style="cursor:pointer" onclick="openSiteDrawer('${c.siteId}')">
+        <span class="log-date">${c.date} ${c.time}</span>
+        <span style="font-size:.78em;color:var(--cyan);margin-left:6px">${esc(s?.name||c.siteId)}</span>
+        <div class="log-body">${c.contact?'<b>Contact:</b> '+esc(c.contact)+' · ':''}${esc(c.purpose||'')}</div>
+      </div>`;
+    }).join('');
+  } else {
+    calHTML+='<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82em">No upcoming calls scheduled.</div>';
+  }
+  calHTML+='</div>';
+  document.getElementById('cal-content').innerHTML=calHTML;
+}
+
+// ═══════════════════════════════════════════════════════
+// RATES & FEES
+// ═══════════════════════════════════════════════════════
+function renderRates(){
+  // Group by processor
+  const byProc={};
+  PROCESSOR_RATES.forEach(r=>{
+    const p=r.proc.split('/')[0].trim();
+    if(!byProc[p])byProc[p]=[];
+    byProc[p].push(r);
+  });
+
+  let html=`<div class="card"><div class="card-hd">💰 Processor Rates & Aggregator Fees</div>
+    <div class="search-bar"><input id="rate-search" placeholder="Search aggregator or processor..." oninput="filterRates()"></div>
+    <div id="rates-list">`;
+
+  Object.entries(byProc).forEach(([proc,rates])=>{
+    html+=`<div style="margin-bottom:14px"><div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:6px;padding:4px 8px;background:var(--bg3);border-radius:5px">${esc(proc)}</div>`;
+    rates.forEach(r=>{
+      html+=`<div class="rate-card"><div class="proc">${esc(r.agg)}</div><div class="rate">${esc(r.rate)}</div>${r.note?'<div class="note">'+esc(r.note)+'</div>':''}</div>`;
+    });
+    html+='</div>';
+  });
+  html+='</div></div>';
+
+  // Cross-reference
+  html+=`<div class="card"><div class="card-hd">🔄 Processor Cross-Reference</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Comdata</th><th>EFS</th><th>TCH</th><th>Fleet One</th></tr></thead><tbody>
+      <tr><td>Admin Fee</td><td>TSD Logistics</td><td>Load Connex</td><td>Fleet One Edge</td></tr>
+      <tr><td>Normal</td><td>RXO / XPO</td><td>Fleet One Edge</td><td>RTS Carrier Services</td></tr>
+      <tr><td>Direct Bill</td><td>Load Connex</td><td>QPN</td><td>QPN</td></tr>
+      <tr><td>Amazon ATS</td><td>Oneida</td><td>TCS Fuel</td><td>OOIDA</td></tr>
+      <tr><td>Prime Advantage</td><td>OTR Solutions</td><td>Factorloads</td><td>Fleet One</td></tr>
+      <tr><td>New Prime Inc.</td><td>RTO</td><td>Fleet One</td><td>TCH</td></tr>
+      <tr><td>Bridgehaul</td><td>Fleet One Edge</td><td>TCH</td><td></td></tr>
+    </tbody></table></div></div>`;
+
+  document.getElementById('rates-content').innerHTML=html;
+}
+function filterRates(){
+  const q=(document.getElementById('rate-search')?.value||'').toLowerCase();
+  document.querySelectorAll('.rate-card').forEach(card=>{
+    const text=card.textContent.toLowerCase();
+    card.style.display=(!q||text.includes(q))?'block':'none';
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// CALCULATOR
+// ═══════════════════════════════════════════════════════
+function renderCalculator(){
+  document.getElementById('calc-content').innerHTML=`
+    <div class="card"><div class="card-hd">🧮 Cost & Profit Calculator</div>
+      <div class="calc-grid">
+        <div class="calc-input"><label>Pricing Model</label>
+          <select id="calc-model" onchange="calculate()"><option value="retail-minus">Retail Minus</option><option value="cost-plus">Cost Plus</option></select>
+        </div>
+        <div class="calc-input"><label>Gallons / Month</label><input type="number" id="calc-gallons" value="5000" oninput="calculate()"></div>
+        <div class="calc-input"><label>Retail Price ($/gal)</label><input type="number" id="calc-retail" value="3.899" step="0.001" oninput="calculate()"></div>
+        <div class="calc-input"><label>Cost / Rack ($/gal)</label><input type="number" id="calc-cost" value="3.450" step="0.001" oninput="calculate()"></div>
+        <div class="calc-input"><label>Discount Offered ($/gal)</label><input type="number" id="calc-discount" value="0.50" step="0.01" oninput="calculate()"></div>
+        <div class="calc-input"><label>Processor Fee (%)</label><input type="number" id="calc-procfee" value="2.50" step="0.01" oninput="calculate()"></div>
+      </div>
+      <div class="calc-result" id="calc-result"></div>
+    </div>
+  `;
+  calculate();
+}
+function calculate(){
+  const model=document.getElementById('calc-model')?.value||'retail-minus';
+  const gallons=parseFloat(document.getElementById('calc-gallons')?.value)||0;
+  const retail=parseFloat(document.getElementById('calc-retail')?.value)||0;
+  const cost=parseFloat(document.getElementById('calc-cost')?.value)||0;
+  const discount=parseFloat(document.getElementById('calc-discount')?.value)||0;
+  const procFee=(parseFloat(document.getElementById('calc-procfee')?.value)||0)/100;
+
+  let sellPrice,margin,procCost,netPerGal,netTotal;
+  if(model==='retail-minus'){
+    sellPrice=retail-discount;
+    margin=sellPrice-cost;
+    procCost=sellPrice*procFee;
+    netPerGal=margin-procCost;
+  } else {
+    sellPrice=cost+discount;
+    margin=discount;
+    procCost=sellPrice*procFee;
+    netPerGal=margin-procCost;
+  }
+  netTotal=netPerGal*gallons;
+
+  const el=document.getElementById('calc-result');if(!el)return;
+  el.innerHTML=`
+    <div class="cr-row"><span>Model</span><span class="cr-val">${model==='retail-minus'?'Retail Minus':'Cost Plus'}</span></div>
+    <div class="cr-row"><span>Sell Price / gal</span><span class="cr-val">$${sellPrice.toFixed(3)}</span></div>
+    <div class="cr-row"><span>Gross Margin / gal</span><span class="cr-val">$${margin.toFixed(3)}</span></div>
+    <div class="cr-row"><span>Processor Fee / gal (${(procFee*100).toFixed(2)}%)</span><span class="cr-val" style="color:var(--red)">-$${procCost.toFixed(3)}</span></div>
+    <div class="cr-row"><span>Net / gal</span><span class="cr-val" style="color:${netPerGal>=0?'var(--green)':'var(--red)'}">$${netPerGal.toFixed(3)}</span></div>
+    <div class="cr-row total"><span>Net / Month (${gallons.toLocaleString()} gal)</span><span class="cr-val" style="color:${netTotal>=0?'var(--green)':'var(--red)'}">$${netTotal.toFixed(2)}</span></div>
+    <div class="cr-row total"><span>Net / Year</span><span class="cr-val" style="color:${netTotal>=0?'var(--green)':'var(--red)'}">$${(netTotal*12).toFixed(2)}</span></div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════
+// FUEL INTRO CALLS
+// ═══════════════════════════════════════════════════════
+function renderFuelIntro(){
+  const noContact=myStops.filter(s=>!(activityLogs[s.id]||[]).some(l=>l.type==='call'));
+  document.getElementById('fuel-content').innerHTML=`
+    <div class="card"><div class="card-hd">🔥 Fuel Introduction Calls — ${noContact.length} Stops Need Intro</div>
+      <div style="font-size:.78em;color:var(--muted);margin-bottom:12px">Stops that have never received a call. Use this to manage fuel introduction outreach.</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Name</th><th>City/State</th><th>Type</th><th>Phone</th><th>Action</th></tr></thead>
+        <tbody>${noContact.map((s,i)=>`<tr class="clickable" onclick="openSiteDrawer('${s.id}')">
+          <td class="num">${i+1}</td><td><b>${esc(s.name)}</b></td><td>${esc(s.city)}, ${s.state}</td>
+          <td style="font-size:.78em">${esc(s.type)}</td><td style="font-size:.78em">${esc(s.phone)}</td>
+          <td><button class="btn btn-cyan" onclick="event.stopPropagation();scheduleCall('${s.id}')" style="font-size:.7em;padding:3px 8px">📅 Schedule</button>
+              <button class="btn btn-green" onclick="event.stopPropagation();addLog('${s.id}')" style="font-size:.7em;padding:3px 8px">📝 Log Call</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════
+// CRITICAL ATTENTION
+// ═══════════════════════════════════════════════════════
+function renderCritical(){
+  const badge=document.getElementById('crit-badge');
+  badge.textContent=criticalItems.length;badge.style.display=criticalItems.length?'inline':'none';
+
+  document.getElementById('crit-content').innerHTML=`
+    <div class="card"><div class="card-hd">🚨 Critical Attention Items (${criticalItems.length})</div>
+      ${criticalItems.length?criticalItems.map(c=>{
+        const s=MEMBERS.find(m=>m.id===c.siteId);
+        return `<div class="log-entry age-critical" style="cursor:pointer" onclick="openSiteDrawer('${c.siteId}')">
+          <span class="log-date">${new Date(c.created).toLocaleString()}</span>
+          <span style="font-size:.78em;color:var(--cyan);margin-left:6px">${esc(s?.name||c.siteId)}</span>
+          <div class="log-body" style="font-size:.85em">${esc(c.reason)}</div>
+          <button class="btn btn-red" onclick="event.stopPropagation();resolveCritical('${c.id}')" style="font-size:.68em;padding:2px 8px;position:absolute;top:8px;right:8px">Resolve</button>
+        </div>`;
+      }).join(''):'<div style="padding:30px;text-align:center;color:var(--muted)">No critical items. All clear! ✅</div>'}
+    </div>
+  `;
+}
+function resolveCritical(id){
+  criticalItems=criticalItems.filter(c=>c.id!==id);saveData();renderCritical();renderDashboard();toast('Resolved');
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+initLogin();
+</script>
+</body>
+</html>
