@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Roady's Value Propositions</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
   --bg:#0b1120;--bg2:#0f1729;--bg3:#141e33;--card:#111a2e;--card2:#162038;
@@ -114,9 +113,38 @@ tr{cursor:pointer}
 
 /* Gallon Report fleet tabs */
 .gr-tabs{display:flex;gap:3px;background:var(--bg);border-radius:8px;padding:4px;margin-bottom:14px;flex-wrap:wrap;max-height:160px;overflow-y:auto}
-.gr-tab{padding:6px 12px;font-size:.72em;font-weight:600;color:var(--muted);cursor:pointer;border-radius:5px;transition:all .12s;white-space:nowrap}
-.gr-tab:hover{color:var(--text)}
-.gr-tab.active{background:var(--cyan);color:#000}
+.gr-tab{padding:6px 10px;font-size:.72em;font-weight:600;color:var(--muted);cursor:pointer;border-radius:5px;transition:all .12s;white-space:nowrap;display:flex;align-items:center;gap:5px;position:relative;border:1px solid transparent}
+.gr-tab:hover{color:var(--text);border-color:var(--border2)}
+.gr-tab.active{background:var(--cyan);color:#000;border-color:var(--cyan)}
+.gr-tab.excluded{opacity:.45;text-decoration:line-through}
+.gr-tab.excluded.active{background:var(--muted);border-color:var(--muted);color:#000}
+.gr-tab-name{flex:1}
+.gr-tab-actions{display:none;gap:3px;align-items:center}
+.gr-tab:hover .gr-tab-actions{display:flex}
+.gr-tab.active .gr-tab-actions{display:flex}
+.tab-btn{background:none;border:none;cursor:pointer;padding:2px 3px;border-radius:3px;font-size:.85em;line-height:1;transition:all .12s}
+.tab-btn-edit{color:rgba(0,212,255,.6)}
+.tab-btn-edit:hover{color:var(--cyan);background:rgba(0,212,255,.15)}
+.gr-tab.active .tab-btn-edit{color:rgba(0,0,0,.5)}
+.gr-tab.active .tab-btn-edit:hover{color:#000;background:rgba(0,0,0,.15)}
+.tab-btn-exclude{color:rgba(255,214,0,.5)}
+.tab-btn-exclude:hover{color:var(--yellow);background:rgba(255,214,0,.12)}
+.gr-tab.active .tab-btn-exclude{color:rgba(0,0,0,.5)}
+.gr-tab.active .tab-btn-exclude:hover{color:#000;background:rgba(0,0,0,.15)}
+.tab-btn-del{color:rgba(255,71,87,.0)}
+.gr-tab:hover .tab-btn-del,.gr-tab.active .tab-btn-del{color:rgba(255,71,87,.5)}
+.tab-btn-del:hover{color:var(--red)!important;background:rgba(255,71,87,.12)}
+.tab-btn-del.del-warn{color:var(--red)!important;animation:delwarn .5s ease-out}
+@keyframes delwarn{0%{transform:scale(1.4)}100%{transform:scale(1)}}
+/* Modal */
+.gr-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:flex;align-items:center;justify-content:center}
+.gr-modal{background:var(--card);border:1px solid var(--border2);border-radius:10px;padding:24px;min-width:340px;max-width:480px}
+.gr-modal h3{font-size:.95em;font-weight:700;margin-bottom:16px;color:var(--text)}
+.gr-modal input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:9px 12px;font-size:.9em;font-family:var(--ff);margin-bottom:14px}
+.gr-modal input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,212,255,.12)}
+.gr-modal-btns{display:flex;gap:8px;justify-content:flex-end}
+.del-confirm-box{background:rgba(255,71,87,.08);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:14px;margin-bottom:14px;font-size:.82em;color:var(--text)}
+.del-confirm-box strong{color:var(--red)}
 
 /* Fleet match row */
 .fm-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:6px}
@@ -353,27 +381,50 @@ tr{cursor:pointer}
 
 <script>
 // ═══════════════════════════════════════════════════════
-// SUPABASE
+// SUPABASE — plain REST fetch (no SDK, avoids Headers postMessage cloning error)
 // ═══════════════════════════════════════════════════════
 const SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
-let sb;
-try { sb = supabase.createClient(SB_URL, SB_KEY); } catch(e){ console.error('Supabase init fail', e); }
+
+// Supabase REST calls are inlined per function with AbortController timeouts
 
 async function syncLoad(){
-  // Always load localStorage first as baseline
+  // ── Step 1: Load from localStorage immediately so the app is always usable ──
   try { VPS = JSON.parse(localStorage.getItem('vp_data_v5')||'[]'); } catch(x){ VPS=[]; }
+  // Also restore geo cache from localStorage
+  try {
+    const lg = JSON.parse(localStorage.getItem('vp_geo5')||'null');
+    if(lg) Object.assign(GEO, lg);
+  } catch(x){}
+
   const localCount = VPS.length;
 
-  if(!sb){ setSyncStatus('err','Supabase not initialized'); return; }
+  // ── Step 2: Try Supabase in background — silently skip if network is blocked ──
+  setSyncStatus('loading', localCount ? 'Local data loaded — syncing…' : 'Connecting…');
+
+  // Give the UI a tick to render local data first
+  await new Promise(r => setTimeout(r, 0));
 
   try {
-    const {data,error} = await sb.from('value_props').select('*').order('name');
-    if(error){
-      // Table might not exist — show the actual error
-      console.error('Supabase load error:', JSON.stringify(error));
-      setSyncStatus('err','DB Error: '+error.message+' — Did you run the SQL setup?');
-      toast('⚠️ Supabase error: '+error.message);
+    // 5-second timeout so a blocked network doesn't hang the app
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    let data;
+    try {
+      const resp = await fetch(`${SB_URL}/rest/v1/value_props?select=*&order=name`, {
+        signal: controller.signal,
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Accept':'application/json'}
+      });
+      clearTimeout(timer);
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      data = await resp.json();
+    } catch(fetchErr){
+      clearTimeout(timer);
+      // Network blocked (sandbox, offline, CORS) — stay on local data, no error banner
+      const reason = fetchErr.name === 'AbortError' ? 'timeout' : 'offline/blocked';
+      setSyncStatus('ok', localCount ? 'Local data ('+localCount+' locations)' : 'Offline — no local data');
+      console.log('Supabase unreachable ('+reason+') — running on local data');
       return;
     }
 
@@ -386,48 +437,44 @@ async function syncLoad(){
       created:r.created_at
     }));
 
-    // MERGE: if we have local data that isn't in Supabase, push it up
     if(localCount > 0 && remoteVPs.length === 0){
-      console.log('Pushing '+localCount+' local VPs to Supabase...');
-      setSyncStatus('loading','Uploading '+localCount+' local records...');
-      for(const vp of VPS){
-        await syncSave(vp, true); // silent=true
-      }
+      setSyncStatus('loading','Uploading '+localCount+' local records…');
+      for(const vp of VPS) await syncSave(vp, true);
       setSyncStatus('ok','Synced — uploaded '+localCount+' from local');
     } else if(remoteVPs.length > 0){
-      // Merge: remote wins, but add any local-only records
       const remoteIds = new Set(remoteVPs.map(v=>v.id));
       const localOnly = VPS.filter(v => !remoteIds.has(v.id));
       VPS = [...remoteVPs, ...localOnly];
-      // Push local-only to Supabase
-      for(const vp of localOnly){
-        await syncSave(vp, true);
-      }
+      for(const vp of localOnly) await syncSave(vp, true);
       setSyncStatus('ok','Synced — '+VPS.length+' locations'+(localOnly.length?' (+'+localOnly.length+' uploaded)':''));
     } else {
-      // Both empty
       setSyncStatus('ok','Connected — 0 locations');
     }
 
-    // Save merged state to localStorage
     localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
+    renderList();
+    renderKPIs();
 
-    // Load geo cache from Supabase
+    // Geo cache
     try {
-      const {data:gd} = await sb.from('geo_cache').select('*');
-      if(gd) gd.forEach(r => { GEO[r.city_state] = [r.lat, r.lng]; });
-      localStorage.setItem('vp_geo5', JSON.stringify(GEO));
+      const resp2 = await fetch(`${SB_URL}/rest/v1/geo_cache?select=*`, {
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Accept':'application/json'}
+      });
+      if(resp2.ok){
+        const gd = await resp2.json();
+        if(gd) gd.forEach(r => { GEO[r.city_state] = [r.lat, r.lng]; });
+        localStorage.setItem('vp_geo5', JSON.stringify(GEO));
+      }
     } catch(ge){ console.warn('Geo cache load:', ge); }
 
   } catch(e){
     console.error('Sync load exception:', e);
-    setSyncStatus('err','Connection failed — using local data');
+    setSyncStatus('ok', localCount ? 'Local data ('+localCount+' locations)' : 'Offline — no cloud data');
   }
 }
 
 async function syncSave(vp, silent){
   localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
-  if(!sb) return;
   try {
     const row = {
       id:vp.id, name:vp.name, city:vp.city, state:vp.state, address:vp.address||'',
@@ -437,39 +484,46 @@ async function syncSave(vp, silent){
       notes:vp.notes||'', radius:vp.radius||50, status:vp.status||'active',
       updated_at:new Date().toISOString()
     };
-    const {error} = await sb.from('value_props').upsert(row);
-    if(error){
-      console.error('Supabase save error:', JSON.stringify(error));
-      if(!silent){
-        setSyncStatus('err','Save failed: '+error.message);
-        toast('⚠️ Save failed: '+error.message);
-      }
-      return;
-    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(`${SB_URL}/rest/v1/value_props`, {
+      method:'POST', signal: controller.signal,
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify(row)
+    });
+    clearTimeout(timer);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
     if(!silent) setSyncStatus('ok','Saved to cloud ✓');
   } catch(e){
-    console.error('Sync save exception:', e);
-    if(!silent) setSyncStatus('err','Save failed — check console');
+    // Save is always local-first; cloud failure is non-fatal
+    console.warn('Cloud save skipped:', e.message||e);
+    if(!silent) setSyncStatus('ok','Saved locally ✓');
   }
 }
 
 async function syncDelete(id){
   localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
-  if(!sb) return;
   try {
-    const {error} = await sb.from('value_props').delete().eq('id', id);
-    if(error){
-      console.error('Supabase delete error:', JSON.stringify(error));
-      setSyncStatus('err','Delete failed: '+error.message);
-      return;
-    }
-    setSyncStatus('ok','Deleted from cloud ✓');
-  } catch(e){ console.warn('Sync delete fail:', e); }
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(`${SB_URL}/rest/v1/value_props?id=eq.${encodeURIComponent(id)}`, {
+      method:'DELETE', signal: controller.signal,
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+    });
+    if(resp.ok) setSyncStatus('ok','Deleted ✓');
+  } catch(e){ console.warn('Cloud delete skipped:', e.message||e); }
 }
 
 async function syncGeo(key, lat, lng){
-  if(!sb) return;
-  try { await sb.from('geo_cache').upsert({city_state:key, lat, lng}); } catch(e){}
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000);
+    await fetch(`${SB_URL}/rest/v1/geo_cache`, {
+      method:'POST', signal: controller.signal,
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({city_state:key, lat, lng})
+    });
+  } catch(e){}
 }
 
 function setSyncStatus(s, msg){
@@ -556,6 +610,7 @@ function findFleets(city,state,radius){
     
     // Check every fleet record - all coords are in GEO already
     for(const r of FR){
+      if(excludedFleets && excludedFleets.has(FN[r[0]])) continue; // skip excluded
       const fK=(r[1]+'|'+r[2]).toUpperCase();
       const fc=GEO[fK];
       if(!fc) continue;
@@ -874,7 +929,18 @@ function renderGR(){
     <div class="det-kpi dk-purple"><div class="kpi-label">States</div><div class="kpi-val">${new Set(FR.map(r=>r[2])).size}</div></div>
   `;
   // Fleet tabs
-  document.getElementById('gr-tabs').innerHTML=`<div class="gr-tab ${!grFleet?'active':''}" onclick="grFleet='';renderGR()">All</div>`+FN.map(fn=>`<div class="gr-tab ${grFleet===fn?'active':''}" onclick="grFleet='${fn.replace(/'/g,"\\'")}';renderGR()">${fn}</div>`).join('');
+  document.getElementById('gr-tabs').innerHTML=`<div class="gr-tab ${!grFleet?'active':''}" onclick="grFleet='';renderGR()"><span class="gr-tab-name">All</span></div>`+FN.map((fn,i)=>{
+    const excl=excludedFleets.has(fn);
+    const safe=fn.replace(/'/g,"\'");
+    return `<div class="gr-tab ${grFleet===fn?'active':''} ${excl?'excluded':''}" onclick="grTabClick(event,'${safe}')" title="${excl?'Excluded from scan':''}">
+      <span class="gr-tab-name">${esc(fn)}</span>
+      <span class="gr-tab-actions">
+        <button class="tab-btn tab-btn-edit" title="Rename fleet" onclick="event.stopPropagation();openRenameModal('${safe}')">✏️</button>
+        <button class="tab-btn tab-btn-exclude" title="${excl?'Re-include in scan':'Exclude from scan'}" onclick="event.stopPropagation();toggleExclude('${safe}')">${excl?'✅':'🚫'}</button>
+        <button class="tab-btn tab-btn-del" id="delbtn-${i}" title="Remove fleet" onclick="event.stopPropagation();deleteFleetClick(this,'${safe}',${i})">✕</button>
+      </span>
+    </div>`;
+  }).join('');
   // Filter
   let filt=FR.filter(r=>{
     if(grFleet&&FN[r[0]]!==grFleet) return false;
@@ -1117,6 +1183,162 @@ function exportCSV(){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download='roadys_value_props_'+new Date().toISOString().split('T')[0]+'.csv';a.click();
   toast('Exported '+VPS.length+' value props');
+}
+
+// ═══════════════════════════════════════════════════════
+// FLEET MANAGEMENT — Edit / Exclude / Remove
+// ═══════════════════════════════════════════════════════
+let excludedFleets = new Set(JSON.parse(localStorage.getItem('vp_excluded_fleets')||'[]'));
+let deleteTimers = {}; // per-button confirm timers
+
+function saveExcluded(){
+  localStorage.setItem('vp_excluded_fleets', JSON.stringify([...excludedFleets]));
+}
+
+function grTabClick(e, fn){
+  // Only navigate if click was on the tab itself (not action buttons)
+  if(e.target.closest('.gr-tab-actions')) return;
+  grFleet = (grFleet === fn) ? '' : fn;
+  renderGR();
+}
+
+function toggleExclude(fn){
+  if(excludedFleets.has(fn)) excludedFleets.delete(fn);
+  else excludedFleets.add(fn);
+  saveExcluded();
+  renderGR();
+  toast(excludedFleets.has(fn) ? `🚫 "${fn}" excluded from fleet scan` : `✅ "${fn}" re-included in scan`);
+}
+
+// Also patch findFleets to respect excludedFleets
+const _origFindFleets = findFleets;
+// We'll patch inline in findFleets below — see updated findFleets
+
+function openRenameModal(fn){
+  // Remove any existing modal
+  document.getElementById('gr-rename-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'gr-rename-modal';
+  m.className = 'gr-modal-overlay';
+  m.innerHTML = `
+    <div class="gr-modal">
+      <h3>✏️ Rename Fleet</h3>
+      <input id="rename-input" value="${fn.replace(/"/g,'&quot;')}" maxlength="80" placeholder="Fleet name...">
+      <div class="gr-modal-btns">
+        <button class="btn" onclick="document.getElementById('gr-rename-modal').remove()">Cancel</button>
+        <button class="btn btn-cyan" onclick="confirmRename('${fn.replace(/'/g,"\\'")}')">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  const inp = document.getElementById('rename-input');
+  inp.focus(); inp.select();
+  inp.addEventListener('keydown', e=>{
+    if(e.key==='Enter') confirmRename(fn);
+    if(e.key==='Escape') m.remove();
+  });
+  m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
+}
+
+function confirmRename(oldName){
+  const newName = (document.getElementById('rename-input')?.value||'').trim();
+  if(!newName){ toast('Fleet name cannot be empty'); return; }
+  if(newName===oldName){ document.getElementById('gr-rename-modal')?.remove(); return; }
+  if(FN.includes(newName)){ toast('A fleet with that name already exists'); return; }
+  const idx = FN.indexOf(oldName);
+  if(idx===-1){ toast('Fleet not found'); return; }
+  FN[idx] = newName;
+  // Update importedFleets tracking
+  const imp = importedFleets.indexOf(oldName);
+  if(imp!==-1) importedFleets[imp] = newName;
+  // Update excludedFleets
+  if(excludedFleets.has(oldName)){ excludedFleets.delete(oldName); excludedFleets.add(newName); saveExcluded(); }
+  // Update localStorage saved data
+  try{
+    const saved = JSON.parse(localStorage.getItem('vp_imported_fleets')||'{}');
+    if(saved[oldName]!==undefined){ saved[newName]=saved[oldName]; delete saved[oldName]; localStorage.setItem('vp_imported_fleets',JSON.stringify(saved)); }
+  }catch(e){}
+  if(grFleet===oldName) grFleet=newName;
+  document.getElementById('gr-rename-modal')?.remove();
+  renderGR();
+  toast(`✓ Renamed to "${newName}"`);
+}
+
+function deleteFleetClick(btn, fn, idx){
+  const key = 'del_'+idx;
+  if(deleteTimers[key]){
+    // Second click — confirm delete
+    clearTimeout(deleteTimers[key]);
+    delete deleteTimers[key];
+    openDeleteConfirm(fn);
+    return;
+  }
+  // First click — show warning state
+  btn.classList.add('del-warn');
+  btn.title = 'Click again to confirm removal';
+  btn.style.color = 'var(--red)';
+  btn.textContent = '⚠️';
+  deleteTimers[key] = setTimeout(()=>{
+    delete deleteTimers[key];
+    // Reset button
+    btn.classList.remove('del-warn');
+    btn.title = 'Remove fleet';
+    btn.textContent = '✕';
+    btn.style.color = '';
+  }, 3000);
+}
+
+function openDeleteConfirm(fn){
+  document.getElementById('gr-delete-modal')?.remove();
+  const idx = FN.indexOf(fn);
+  const recCount = FR.filter(r=>r[0]===idx).length;
+  const m = document.createElement('div');
+  m.id = 'gr-delete-modal';
+  m.className = 'gr-modal-overlay';
+  m.innerHTML = `
+    <div class="gr-modal">
+      <h3>⚠️ Remove Fleet</h3>
+      <div class="del-confirm-box">
+        Removing <strong>"${esc(fn)}"</strong> will permanently delete
+        <strong>${fG(recCount)} gallon records</strong> from this session.
+        This cannot be undone.
+      </div>
+      <div class="gr-modal-btns">
+        <button class="btn" onclick="document.getElementById('gr-delete-modal').remove()">Cancel</button>
+        <button class="btn btn-red" style="background:var(--red);color:#fff;border-color:var(--red)" onclick="removeFleet('${fn.replace(/'/g,"\\'")}')">Remove Fleet</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
+}
+
+function removeFleet(fn){
+  const idx = FN.indexOf(fn);
+  if(idx===-1){ toast('Fleet not found'); return; }
+  const removed = FR.filter(r=>r[0]===idx).length;
+  // Remove all records for this fleet
+  // Rebuild FR with updated indices
+  const newFN = FN.filter((_,i)=>i!==idx);
+  const newFR = FR.filter(r=>r[0]!==idx).map(r=>{
+    const newIdx = r[0]>idx ? r[0]-1 : r[0];
+    return [newIdx, r[1], r[2], r[3]];
+  });
+  FN.length=0; newFN.forEach(n=>FN.push(n));
+  FR.length=0; newFR.forEach(r=>FR.push(r));
+  // Cleanup
+  const imp = importedFleets.indexOf(fn);
+  if(imp!==-1) importedFleets.splice(imp,1);
+  if(excludedFleets.has(fn)){ excludedFleets.delete(fn); saveExcluded(); }
+  // Remove from localStorage
+  try{
+    const saved = JSON.parse(localStorage.getItem('vp_imported_fleets')||'{}');
+    delete saved[fn];
+    localStorage.setItem('vp_imported_fleets', JSON.stringify(saved));
+  }catch(e){}
+  if(grFleet===fn) grFleet='';
+  document.getElementById('gr-delete-modal')?.remove();
+  document.getElementById('gr-count').textContent=FN.length;
+  renderGR();
+  toast(`🗑️ Removed "${fn}" (${fG(removed)} records)`);
 }
 
 // ═══════════════════════════════════════════════════════
