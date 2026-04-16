@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Roady's — Vendor Programs</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
+  --accent:#00C8FF;--green:#00D68F;--red:#FF4757;--yellow:#FFD60A;--orange:#FF6B35;
+  --purple:#7C3AED;--teal:#0891B2;--text:#E8EDF8;--muted:#6B7A99;--dim:#3A4A6B;
+  --ff:'Barlow Condensed','Arial Narrow',sans-serif;
+  --fb:'DM Sans','Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:14px;}
+a{color:var(--accent);text-decoration:none;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:var(--surface);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:56px;display:flex;align-items:center;gap:16px;}
+.topbar-title{font-family:var(--ff);font-size:1.5em;font-weight:900;letter-spacing:.06em;color:var(--text);}
+.topbar-badge{font-size:.72em;background:var(--purple);color:#fff;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.topbar-back{color:var(--accent);font-size:.85em;cursor:pointer;display:flex;align-items:center;gap:6px;margin-left:auto;font-weight:600;opacity:.8;transition:opacity .2s;}
+.topbar-back:hover{opacity:1;}
+
+.content{max-width:1400px;margin:0 auto;padding:24px 28px;}
+
+.sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+.sec-title{font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text);}
+.badge{font-size:.72em;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.06em;}
+.badge.bg{background:rgba(0,200,255,.12);color:var(--accent);}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:24px;}
+.kc{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;position:relative;overflow:hidden;}
+.kc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--purple));}
+.kc-label{font-size:.72em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.kc-val{font-family:var(--ff);font-size:1.8em;font-weight:900;color:var(--text);}
+.kc-delta{font-size:.78em;font-weight:700;margin-top:4px;}
+.kc-sub{font-size:.72em;color:var(--muted);margin-top:6px;}
+.kc-ytd{font-size:.72em;color:var(--accent);margin-top:4px;font-weight:600;}
+
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:24px;}
+.panel-hdr{padding:16px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.panel-title{font-family:var(--ff);font-size:.9em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);}
+
+.dt{width:100%;border-collapse:collapse;}
+.dt th{font-family:var(--ff);font-size:.7em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.dt td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+
+.btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:.82em;font-weight:600;transition:all .15s;}
+.btn:hover{border-color:var(--accent);color:var(--accent);}
+.btn-primary{background:rgba(0,200,255,.15);border-color:rgba(0,200,255,.3);color:var(--accent);}
+.btn-green{background:rgba(0,214,143,.12);border-color:rgba(0,214,143,.3);color:var(--green);}
+
+.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:24px;}
+.chart-title{font-family:var(--ff);font-size:.85em;font-weight:700;color:var(--accent);letter-spacing:.06em;margin-bottom:12px;text-transform:uppercase;}
+
+input[type="text"],select{background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:6px 10px;font-size:.82em;outline:none;font-family:var(--fb);}
+input[type="text"]:focus,select:focus{border-color:var(--accent);}
+
+@media(max-width:768px){
+  .content{padding:16px;}
+  .topbar{padding:0 16px;}
+  .kpi-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">🏢 VENDOR PROGRAMS</div>
+  <span class="topbar-badge">Standalone Module</span>
+  <a class="topbar-back" onclick="window.close()" title="Back to Command Center">← Command Center</a>
+</div>
+
+<div class="content">
+
+  <div class="sec-hdr">
+    <div class="sec-title">VENDOR PROGRAMS</div>
+    <span class="badge bg" id="vp-period">—</span>
+    <select id="ms" onchange="init()" style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 12px;font-size:.82em;">
+    </select>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="vp-kpis"></div>
+
+  <!-- Revenue Chart -->
+  <div class="chart-wrap">
+    <div class="chart-title">📊 Monthly Vendor Program Revenue</div>
+    <canvas id="vp-rev-chart" height="200"></canvas>
+  </div>
+
+  <!-- CSV Upload Tool -->
+  <div class="panel" style="margin-bottom:24px">
+    <div class="panel-hdr">
+      <div class="panel-title">📥 Import Vendor Enrollment CSV</div>
+      <button class="btn" onclick="vpShowCsvFormat()" style="font-size:.72em">📋 View Format</button>
+      <button class="btn btn-green" onclick="vpExportEnrollCSV()" style="font-size:.72em;margin-left:auto">📤 Export Enrollment</button>
+    </div>
+    <div style="padding:16px">
+      <div style="font-size:.78em;color:var(--muted);margin-bottom:10px;">
+        Upload a CSV to import enrollment data. Required columns: <code style="background:var(--bg);padding:2px 6px;border-radius:3px;color:var(--accent)">stop_id</code> and one or more vendor columns (by vendor name or ID).
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="vp-csv-input" accept=".csv" style="display:none" onchange="vpHandleCSV(this)">
+        <button class="btn btn-primary" onclick="document.getElementById('vp-csv-input').click()">📁 Choose CSV File</button>
+        <span id="vp-csv-filename" style="font-size:.78em;color:var(--muted)">No file selected</span>
+      </div>
+      <div id="vp-csv-status" style="margin-top:10px;font-size:.82em"></div>
+      <div id="vp-csv-format" style="display:none;margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px">
+        <div style="font-size:.75em;font-weight:700;color:var(--accent);margin-bottom:8px;letter-spacing:.06em;text-transform:uppercase">Format Option A — By Vendor ID</div>
+        <code style="font-size:.78em;color:var(--text);line-height:1.8;display:block;margin-bottom:12px;white-space:pre">stop_id,vendor_id,enrolled
+R00112,V00033,true
+R00112,V00134,1
+R01180,V00040,yes</code>
+        <div style="font-size:.75em;font-weight:700;color:var(--accent);margin-bottom:8px;letter-spacing:.06em;text-transform:uppercase">Format Option B — Vendor Columns</div>
+        <code style="font-size:.78em;color:var(--text);line-height:1.8;display:block;white-space:pre">stop_id,Coca-Cola,Entegra,Cintas,DAS,Heartland,Sysco
+R00112,yes,yes,no,yes,no,yes
+R01180,no,yes,yes,no,yes,no</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top 10 Vendor Programs -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <div class="panel-title">⭐ Top 10 Vendor Programs</div>
+      <span style="font-size:.72em;color:var(--muted);font-weight:500">Click ＋ to expand truck stop detail</span>
+    </div>
+    <div style="overflow-x:auto"><table class="dt" id="vp-top10-tbl"></table></div>
+  </div>
+
+  <!-- Full Vendor Directory -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <div class="panel-title">📋 All Vendors Directory</div>
+      <input type="text" id="vendor-search" placeholder="Search vendors..." oninput="renderVendorDirectory()" style="min-width:200px">
+      <select id="vendor-program-filter" onchange="renderVendorDirectory()">
+        <option value="all">All Programs</option>
+        <option value="PVP">PVP</option>
+        <option value="Entegra">Entegra</option>
+        <option value="Shop">Shop</option>
+        <option value="Approved Vendor">Approved Vendor</option>
+        <option value="NO VP">NO VP</option>
+      </select>
+      <span id="vendor-count" style="font-size:.75em;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div style="overflow-x:auto;max-height:500px"><table class="dt" id="vendor-dir-tbl"></table></div>
+  </div>
+
+  <!-- Full Enrollment Data -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <div class="panel-title">📋 All Enrollment Data</div>
+      <input type="text" id="vp-enroll-search" placeholder="Search stops..." oninput="renderVPEnrollTable()" style="min-width:180px">
+      <select id="vp-enroll-vendor" onchange="renderVPEnrollTable()">
+        <option value="all">All Vendors</option>
+      </select>
+      <span id="vp-enroll-count" style="font-size:.75em;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div style="overflow-x:auto;max-height:600px"><table class="dt" id="vp-enroll-tbl"></table></div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// SUPABASE (same project as Command Center)
+// ═══════════════════════════════════════════════
+let roadysSB = null;
+try {
+  roadysSB = supabase.createClient(
+    'https://yyhnnalsqzyghjqtfisy.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgyODcwNTEsImV4cCI6MjA1Mzg2MzA1MX0.qVBMGhVK3YN9L7ywghkT-E2hR66aOCwlOHKl4dFoaO8'
+  );
+} catch(e){ console.warn('Supabase not loaded'); }
+
+// ═══════════════════════════════════════════════
+// SHARED DATA
+// ═══════════════════════════════════════════════
+const MOS=['2025-01','2025-02','2025-03','2025-04','2025-05','2025-06','2025-07','2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02'];
+
+const MEMBERS = [{"id": "R03650", "company": "115 Truck Stop, Inc.", "type": "Truck Stop", "group": "Roady's", "name": "115 Truck Stop", "street": "14547 22 1/2 Mile Road", "city": "Marshall", "state": "MI", "zip": "49068", "exit": "Exit 115 I-94", "phone": "(269) 781-9616", "status": "active"}, {"id": "R01272", "company": "Demo Truck Stops", "type": "Truck Stop", "group": "Roady's", "name": "1234 Truck Stop Demo", "street": "", "city": "", "state": "MT", "zip": "", "exit": "lost", "phone": "", "status": "active"}, {"id": "P01224", "company": "Fuel Express Travel Centers", "type": "Truck Stop", "group": "PTP", "name": "218 Fuel Express", "street": "68 Monroe St", "city": "Floyd", "state": "IA", "zip": "50434", "exit": "", "phone": "(641) 398-2390", "status": "active"}, {"id": "P03654", "company": "287 Diesel Service", "type": "Service Center", "group": "PTP", "name": "287 Diesel Service", "street": "1101 E. 11th St.", "city": "Quanah", "state": "TX", "zip": "79252", "exit": "Hwy 287", "phone": "(940) 663-2424", "status": "active"}, {"id": "R01273", "company": "Demo Truck Stops", "type": "Truck Stop", "group": "Roady's", "name": "3456 Truck Stop Demo", "street": "", "city": "", "state": "-1", "zip": "", "exit": "lost", "phone": "", "status": "active"}, {"id": "L03461", "company": "Sunny Alliance LLC", "type": "Truck Stop", "group": "Roady's Lite", "name": "365 Food and Fuel", "street": "11175 U.S. Highway 190 W.", "city": "Livingston", "state": "TX", "zip": "77351", "exit": "11175 U.S. Highway 190 W.", "phone": "(936) 646-7522", "status": "active"}, {"id": "R03876", "company": "Deming 5R LLC", "type": "Truck Stop", "group": "Roady's", "name": "5R Travel Center", "street": "1695 Silver City Hwy NW", "city": "Deming", "state": "NM", "zip": "88030", "exit": "Exit-82 / I-10", "phone": "(575) 544-7725", "status": "active"}, {"id": "R01260", "company": "79 One-Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "79 One Stop", "street": "11980 IN-62, St Croix, IN 47576", "city": "Saint Croix", "state": "IN", "zip": "47576", "exit": "I-64 Exit 79", "phone": "(812) 843-3048", "status": "active"}, {"id": "R03922", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80122-Belfield Truck Stop", "street": "804 Hwy 85 N", "city": "Belfield", "state": "ND", "zip": "58622", "exit": "I 94, Exit 42", "phone": "(701) 575-4216", "status": "active"}, {"id": "R03923", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80126-Jamestown Shell", "street": "2315 Hwy 281 S", "city": "Jamestown", "state": "ND", "zip": "58402", "exit": "I 94 & Exit 258", "phone": "(701) 252-4732", "status": "active"}, {"id": "R03920", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80132-Dawn to Dusk", "street": "7141 Hwy 2 E", "city": "Minot", "state": "ND", "zip": "58701", "exit": "US Hwy 2 & 72nd St. S.E.", "phone": "(701) 852-0094", "status": "active"}, {"id": "R03924", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80143-New Town", "street": "8258 39th St NW", "city": "New Town", "state": "ND", "zip": "58763", "exit": "ND23 / ND8", "phone": "(701) 627-4646", "status": "active"}, {"id": "R03539", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80145-SPR #45 Cheyenne TS", "street": "3306 W College Drive", "city": "Cheyenne", "state": "WY", "zip": "82007", "exit": "I-25 exit 7", "phone": "(307) 638-1500", "status": "active"}, {"id": "R03921", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80159-Tower City Travel Center", "street": "101 Maiden Lane", "city": "Tower City", "state": "ND", "zip": "58701", "exit": "Exit 307 / I-94", "phone": "(701) 749-6000", "status": "active"}, {"id": "R03543", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80184-Heber City", "street": "1590 US-40", "city": "Heber City", "state": "UT", "zip": "84032", "exit": "", "phone": "(435) 654-4642", "status": "active"}, {"id": "R03541", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80188-Flagstaff Travel Center", "street": "7180 US-89", "city": "Flagstaff", "state": "AZ", "zip": "86004", "exit": "", "phone": "(928) 714-9115", "status": "active"}, {"id": "R03544", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80200-Broadway-Sinclair", "street": "6185 Broadway", "city": "Denver", "state": "CO", "zip": "80216", "exit": "I 76, Exit #5 (Broadway & 62nd Ave.)", "phone": "(303) 428-4898", "status": "active"}, {"id": "R03625", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80213-KJ's Travel Center", "street": "615 E Iona Road", "city": "Idaho Falls", "state": "ID", "zip": "83401", "exit": "", "phone": "(208) 524-3012", "status": "active"}, {"id": "R03627", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80216-KJ's Boozers", "street": "1300 W Broadway St.", "city": "Idaho Falls", "state": "ID", "zip": "83402", "exit": "", "phone": "(208) 820-3020", "status": "active"}, {"id": "R03626", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80217-Malad City", "street": "226 E 50 S", "city": "Malad City", "state": "ID", "zip": "83252", "exit": "", "phone": "(208) 766-4950", "status": "active"}, {"id": "R03628", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80229-KJ's Alpine Phillips 66", "street": "15 Boardwalk Drive", "city": "Alpine", "state": "WY", "zip": "83128", "exit": "", "phone": "(307) 654-9982", "status": "active"}, {"id": "R03542", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80232-Elwood Chevron", "street": "5175 W 9600 N", "city": "Elwood", "state": "UT", "zip": "84337", "exit": "", "phone": "(435) 257-4710", "status": "active"}, {"id": "R03630", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80249 Mr. Gas", "street": "1223 W. Main St.", "city": "Jerome", "state": "ID", "zip": "83338", "exit": "", "phone": "(208) 242-2252", "status": "active"}, {"id": "R03629", "company": "Parkland USA Corporation", "type": "Truck Stop", "group": "Roady's", "name": "80254 Mr. Gas Boise #21", "street": "10026 South Eisenman Road", "city": "Boise", "state": "ID", "zip": "83716", "exit": "I84/exit 50", "phone": "(208) 912-1840", "status": "active"}, {"id": "R01188", "company": "Virk Petroleum Corp.", "type": "Truck Stop", "group": "Roady's", "name": "Akal Travel Plaza", "street": "1748 CA-99", "city": "Delano", "state": "CA", "zip": "93215", "exit": "60 & 61", "phone": "(661) 725-5525", "status": "active"}, {"id": "R03929", "company": "KBFW 7 LLC", "type": "Truck Stop", "group": "Roady's", "name": "Allstar", "street": "21356 KS Hwy 239", "city": "Prescott", "state": "KS", "zip": "66767", "exit": "K239/Hwy 69", "phone": "(512) 586-6652", "status": "active"}, {"id": "P03515", "company": "Unadilla Business Corporation", "type": "Service Center", "group": "PTP", "name": "All State Truck Shop", "street": "475 Pine Street", "city": "Unadilla", "state": "GA", "zip": "31091", "exit": "", "phone": "(478) 627-3217", "status": "active"}, {"id": "P03604", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Amite Travel Plaza", "street": "30036 Hwy 16 West", "city": "Amite", "state": "LA", "zip": "70422", "exit": "", "phone": "(985) 748-7870", "status": "active"}, {"id": "R03638", "company": "Excell Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Anvil Block Marathon #112", "street": "2360 Anvilblock Rd", "city": "Ellenwood", "state": "GA", "zip": "30294", "exit": "", "phone": "(404) 363-6277", "status": "active"}, {"id": "R00315", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Appleton T/P-CITGO", "street": "2775 W. Wisconsin Ave", "city": "Appleton", "state": "WI", "zip": "54914", "exit": "US Hwy 10 (E of Hwy 41)", "phone": "(920) 993-8706", "status": "active"}, {"id": "R03693", "company": "Petroluxe Properties LLC", "type": "Truck Stop", "group": "Roady's", "name": "Baker Truck Corral", "street": "515 Campbell", "city": "Baker City", "state": "OR", "zip": "98714", "exit": "I-84, Exit 304", "phone": "(541) 523-3952", "status": "active"}, {"id": "R02592", "company": "Easher Corp", "type": "Truck Stop", "group": "Roady's", "name": "Bar-B Travel Plaza", "street": "108 W Interstate 20", "city": "Gordon", "state": "TX", "zip": "76453", "exit": "Exit 370  I-20", "phone": "(254) 693-5851", "status": "active"}, {"id": "R01186", "company": "Majors Management", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Battlefield Fuel Stop", "street": "6860 Battlefield Pkwy", "city": "Ringgold", "state": "GA", "zip": "30736", "exit": "Exit 350", "phone": "(706) 965-9384", "status": "active"}, {"id": "P03606", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Bayou Vista Truck Plaza", "street": "1829 Hwy 90 West", "city": "Bayou Vista", "state": "LA", "zip": "70380", "exit": "", "phone": "(985) 399-6533", "status": "active"}, {"id": "R00608", "company": "Outagamie Co-op Services Inc.", "type": "C-Store", "group": "Roady's", "name": "Bear Creek T/P-CITGO", "street": "N8086 Hwy 45", "city": "Bear Creek", "state": "WI", "zip": "54922", "exit": "", "phone": "(715) 752-3504", "status": "active"}, {"id": "R01024", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #13", "street": "605 W Peru St", "city": "Princeton", "state": "IL", "zip": "61356", "exit": "", "phone": "", "status": "active"}, {"id": "R00930", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #14", "street": "1838 N Main St", "city": "Princeton", "state": "IL", "zip": "61356", "exit": "I-80 / Exit 56", "phone": "(815) 872-0630", "status": "active"}, {"id": "R01025", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #15", "street": "317 Derby St", "city": "Pekin", "state": "IL", "zip": "61554", "exit": "", "phone": "", "status": "active"}, {"id": "R01026", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #17", "street": "349 Tenney St", "city": "Kewanee", "state": "IL", "zip": "61443", "exit": "", "phone": "", "status": "active"}, {"id": "R01027", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #18", "street": "1581 E Main St", "city": "Galesburg", "state": "IL", "zip": "61401", "exit": "", "phone": "", "status": "active"}, {"id": "R01028", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #19", "street": "703 Shooting Park Rd", "city": "Peru", "state": "IL", "zip": "61354", "exit": "", "phone": "", "status": "active"}, {"id": "R00931", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #22", "street": "1010 Heitmann Dr.", "city": "Lincoln", "state": "IL", "zip": "62656", "exit": "I-55 / RT 10 Exit 126", "phone": "(217) 732-3759", "status": "active"}, {"id": "R01022", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #23", "street": "359 3rd St", "city": "LaSalle", "state": "IL", "zip": "61301", "exit": "", "phone": "", "status": "active"}, {"id": "R01023", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #25", "street": "1301 13th Ave", "city": "Mendota", "state": "IL", "zip": "61342", "exit": "", "phone": "(815) 539-9353", "status": "active"}, {"id": "R00932", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #26", "street": "2433 S Oakwood", "city": "Geneseo", "state": "IL", "zip": "61254", "exit": "I-80 Exit 19", "phone": "(309) 944-6040", "status": "active"}, {"id": "R00782", "company": "Beck Oil Company of Illinois", "type": "Truck Stop", "group": "Roady's", "name": "Beck's #27", "street": "1302 Raymond Drive", "city": "Mendota", "state": "IL", "zip": "61342", "exit": "I-39, Exit 72", "phone": "(815) 539-3300", "status": "active"}, {"id": "R01029", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #28", "street": "615 N 4th St", "city": "Chillicothe", "state": "IL", "zip": "61523", "exit": "", "phone": "(309) 274-4255", "status": "active"}, {"id": "R01174", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Beck's #30", "street": "1301 Washington Road", "city": "Washington", "state": "IL", "zip": "61571", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R03517", "company": "Beck Oil Company of Illinois", "type": "PPO", "group": "Roady's", "name": "Becks-Peoria Heights", "street": "918 E War Memorial Drive", "city": "Peoria Heights", "state": "IL", "zip": "61616", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R03967", "company": "I 43 Belgium Inc", "type": "Truck Stop", "group": "Roady's", "name": "Belgium Plaza", "street": "105 Lakeview Drive", "city": "Belgium", "state": "WI", "zip": "53004", "exit": "I-43/Exit 107", "phone": "(262) 476-5009", "status": "active"}, {"id": "P03670", "company": "Edward L. Smith", "type": "Service Center", "group": "PTP", "name": "B&E Tire", "street": "843 N Main", "city": "Palestine", "state": "AR", "zip": "72372", "exit": "Exit 233 I-40", "phone": "(870) 581-2593", "status": "active"}, {"id": "R00255", "company": "Big Daddys Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "Big Daddys Truck Stop", "street": "6055 St Anthony Rd", "city": "Ottawa Lake", "state": "MI", "zip": "49267", "exit": "US 23, Exit 5 (US 223)", "phone": "(734) 854-6611", "status": "active"}, {"id": "P03460", "company": "Big Easy Travel Center LLC", "type": "Service Center", "group": "PTP", "name": "Big Easy Tire & Lube", "street": "5000 Old Gentilly Rd.", "city": "New Orleans", "state": "LA", "zip": "70126", "exit": "Exit-239 I-10", "phone": "(504) 942-2412", "status": "active"}, {"id": "R01165", "company": "Big's", "type": "Truck Stop", "group": "Roady's", "name": "Big's 211", "street": "2999 N. Hwy 123 Bypass", "city": "Seguin", "state": "TX", "zip": "78155", "exit": "I-10, Hwy. 123, Exit 610", "phone": "(830) 379-1201", "status": "active"}, {"id": "P03659", "company": "Dhaliwal Ventures Inc.", "type": "Truck Stop", "group": "PTP", "name": "Big Springs Travel Center", "street": "100 Frontage Rd", "city": "Big Springs", "state": "NE", "zip": "69122", "exit": "Exit 107 I-80", "phone": "(308) 889-3608", "status": "active"}, {"id": "R00717", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Blackfoot Stinker Truck Stop #85", "street": "1228 Parkway Dr.", "city": "Blackfoot", "state": "ID", "zip": "83221", "exit": "I-15, Exit 93", "phone": "(208) 785-6607", "status": "active"}, {"id": "R00718", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Bliss Stinker Truck Stop #74", "street": "401 E. Hwy 30", "city": "Bliss", "state": "ID", "zip": "83314", "exit": "I-84/Hwy 30, Exit 137", "phone": "(208) 352-4627", "status": "active"}, {"id": "R03968", "company": "Hari Retail LLC", "type": "Truck Stop", "group": "Roady's", "name": "Blue Ridge Travel Plaza", "street": "7121 Blue Ridge Trail", "city": "Mountain Top", "state": "PA", "zip": "18707", "exit": "Exit 155/I-81", "phone": "(570) 868-3117", "status": "active"}, {"id": "R00326", "company": "Osseo Truck Stop", "type": "Truck Stop", "group": "Roady's", "name": "BP Kenosha Travel Plaza", "street": "11800 Burlington Rd", "city": "Kenosha", "state": "WI", "zip": "53144", "exit": "I-94, Exit 340", "phone": "(262) 233-8865", "status": "active"}, {"id": "R01072", "company": "Wisconsin Fuel LLC", "type": "Truck Stop", "group": "Roady's", "name": "BP Pleasant Springs Travel Plaza", "street": "2763 County Road N", "city": "Cottage Grove", "state": "WI", "zip": "53527", "exit": "I-94 HWY N, Exit 147", "phone": "(608) 873-0504", "status": "active"}, {"id": "R01258", "company": "Braj Convenience Store", "type": "Truck Stop", "group": "Roady's", "name": "Braj Convenience Store", "street": "1501 Main Ave", "city": "De Pere", "state": "WI", "zip": "54115", "exit": "I-41", "phone": "(920) 632-2251", "status": "active"}, {"id": "R03932", "company": "SNS Gas & More Inc", "type": "Truck Stop", "group": "Roady's", "name": "Bravo Travel Center", "street": "3949 Luna Pier Rd", "city": "Erie", "state": "MI", "zip": "48133", "exit": "Exit 6/Hwy 75", "phone": "(313) 559-6976", "status": "active"}, {"id": "R01020", "company": "Golden Country LLC", "type": "C-Store", "group": "Roady's", "name": "Bristol BP", "street": "20015 93rd Street", "city": "Bristol", "state": "WI", "zip": "53104", "exit": "", "phone": "(262) 857-7022", "status": "active"}, {"id": "R01033", "company": "NEC OPCO I Inc (Nouria Energy)", "type": "Truck Stop", "group": "Roady's", "name": "Broad St. Truck Stop", "street": "720 Hall of Fame Ave.", "city": "Springfield", "state": "MA", "zip": "01105", "exit": "I-91, Exit 5 North", "phone": "(413) 739-8678", "status": "active"}, {"id": "R00112", "company": "Alsaker Corporation", "type": "Truck Stop", "group": "Roady's", "name": "Broadway Travel Center #110", "street": "654 W Front St", "city": "Battle Mountain", "state": "NV", "zip": "89820", "exit": "I-80, Exit 229", "phone": "(775) 635-5424", "status": "active"}, {"id": "R03913", "company": "JT Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Brown Deer Amoco", "street": "10501 W Brown Deer Rd.", "city": "Milwaukee", "state": "WI", "zip": "53224", "exit": "State Hwy 41", "phone": "(414) 446-5307", "status": "active"}, {"id": "R01130", "company": "Golden Lomira LLC", "type": "C-Store", "group": "Roady's", "name": "Brownsville BP", "street": "868 W. Main Street", "city": "Brownsville", "state": "WI", "zip": "53006", "exit": "I-41 Exit 87", "phone": "(920) 583-3700", "status": "active"}, {"id": "R00454", "company": "MRH Corporation", "type": "C-Store", "group": "Roady's", "name": "Bunker Hill Short Stop", "street": "702 S Washington St", "city": "Bunker Hill", "state": "IL", "zip": "62014", "exit": "", "phone": "(618) 585-4514", "status": "active"}, {"id": "R01261", "company": "YAD Inc", "type": "Truck Stop", "group": "Roady's", "name": "Carefree Foodmart", "street": "6945 S STATE ROAD 66", "city": "Leavenworth", "state": "IN", "zip": "47137", "exit": "", "phone": "(812) 739-4744", "status": "active"}, {"id": "P03624", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Berwick", "street": "2051 Hwy 90", "city": "Berwick", "state": "LA", "zip": "70342", "exit": "", "phone": "(985) 399-5688", "status": "active"}, {"id": "P03642", "company": "Jacobs Entertainment, Inc.", "type": "PPO", "group": "PTP", "name": "Cash Magic Galliano", "street": "16816 Hwy 3235", "city": "Cut Off", "state": "LA", "zip": "70345", "exit": "", "phone": "(985) 325-4445", "status": "active"}, {"id": "P03639", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Prospect Station", "street": "1444 Prospect Blvd.", "city": "Houma", "state": "LA", "zip": "70364", "exit": "", "phone": "(985) 857-8752", "status": "active"}, {"id": "P03641", "company": "Jacobs Entertainment, Inc.", "type": "PPO", "group": "PTP", "name": "Cash Magic Royal Flush", "street": "10618 E. Main St.", "city": "Houma", "state": "LA", "zip": "70363", "exit": "", "phone": "(985) 868-0336", "status": "active"}, {"id": "P03612", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Truck Stop", "street": "3747 Hwy 190", "city": "Eunice", "state": "LA", "zip": "70535", "exit": "", "phone": "(337) 457-7745", "status": "active"}, {"id": "P03607", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Truck Stop", "street": "1869 Mills Hwy", "city": "Breaux Bridge", "state": "LA", "zip": "70517", "exit": "", "phone": "(337) 507-2274", "status": "active"}, {"id": "P03621", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Cash Magic Truck Stop", "street": "2334 Hwy 109 South", "city": "Vinton", "state": "LA", "zip": "70668", "exit": "", "phone": "(337) 589-3993", "status": "active"}, {"id": "R00800", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #31", "street": "3325 Brooks", "city": "Missoula", "state": "MT", "zip": "59801", "exit": "", "phone": "(406) 542-7741", "status": "active"}, {"id": "R00809", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #32", "street": "1540 Toole Ave", "city": "Missoula", "state": "MT", "zip": "59801", "exit": "", "phone": "(406) 543-7002", "status": "active"}, {"id": "R00825", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #39", "street": "305 E Idaho", "city": "Kallispell", "state": "MT", "zip": "59901", "exit": "", "phone": "(406) 755-3664", "status": "active"}, {"id": "R00833", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #40", "street": "1420 First Ave E", "city": "Kalispell", "state": "MT", "zip": "59901", "exit": "", "phone": "(406) 755-5713", "status": "active"}, {"id": "R00840", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #41", "street": "2490 US Highway 93 N", "city": "Kalispell", "state": "MT", "zip": "59901", "exit": "", "phone": "(406) 752-7555", "status": "active"}, {"id": "R00848", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #42", "street": "3100 N Montana Ave", "city": "Helena", "state": "MT", "zip": "59602", "exit": "", "phone": "(406) 449-8766", "status": "active"}, {"id": "R00826", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #43", "street": "1318 Euclid Ave", "city": "Helena", "state": "MT", "zip": "59601", "exit": "", "phone": "(406) 442-9402", "status": "active"}, {"id": "R00841", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #45", "street": "625 1st Ave N", "city": "Great Falls", "state": "MT", "zip": "59401", "exit": "", "phone": "(406) 761-2175", "status": "active"}, {"id": "R00849", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #46", "street": "1210 E Main St", "city": "Bozeman", "state": "MT", "zip": "59715", "exit": "", "phone": "(406) 587-0611", "status": "active"}, {"id": "R00827", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #47", "street": "101 Centennial Dr", "city": "Livingston", "state": "MT", "zip": "59047", "exit": "", "phone": "(406) 222-7371", "status": "active"}, {"id": "R00835", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #48", "street": "911 W 11th", "city": "Havre", "state": "MT", "zip": "59501", "exit": "", "phone": "(406) 265-9821", "status": "active"}, {"id": "R00842", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #49", "street": "1004 1st St", "city": "Havre", "state": "MT", "zip": "59501", "exit": "", "phone": "(406) 265-9812", "status": "active"}, {"id": "R00641", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #50", "street": "104 North Park Street", "city": "Park City", "state": "MT", "zip": "59063", "exit": "I-90, Exit 426", "phone": "(406) 633-2359", "status": "active"}, {"id": "R00828", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #51", "street": "1544 Broadwater Ave", "city": "Billings", "state": "MT", "zip": "59102", "exit": "", "phone": "(406) 651-0001", "status": "active"}, {"id": "R00836", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #52", "street": "1201 Central Ave", "city": "Billings", "state": "MT", "zip": "59102", "exit": "", "phone": "(406) 245-9670", "status": "active"}, {"id": "R00843", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #53", "street": "2975 Grand Ave", "city": "Billings", "state": "MT", "zip": "59102", "exit": "", "phone": "(406) 655-0871", "status": "active"}, {"id": "R00642", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #54", "street": "151 Rosebud Lane", "city": "Billings", "state": "MT", "zip": "59101", "exit": "I-90, exit 452", "phone": "(406) 259-5426", "status": "active"}, {"id": "R00832", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #55", "street": "236 Main St", "city": "Billings", "state": "MT", "zip": "59105", "exit": "", "phone": "(406) 259-3240", "status": "active"}, {"id": "R03863", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "CENEX ZIP TRIP 56", "street": "16 SHILOH RD", "city": "Billings", "state": "MT", "zip": "59106", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R00844", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #57", "street": "1046 N 27th St", "city": "Billings", "state": "MT", "zip": "59101", "exit": "", "phone": "(406) 252-9654", "status": "active"}, {"id": "R00850", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #58", "street": "610 Wicks Lane", "city": "Billings", "state": "MT", "zip": "59105", "exit": "", "phone": "(406) 259-7054", "status": "active"}, {"id": "R00640", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #59", "street": "1321 S Haynes Ave.", "city": "Miles City", "state": "MT", "zip": "59301", "exit": "I-94, exit 138", "phone": "(406) 820-2121", "status": "active"}, {"id": "R00639", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #60", "street": "501 E. Hart", "city": "Buffalo", "state": "WY", "zip": "82834", "exit": "I-25 & Hwy 16", "phone": "(307) 684-9513", "status": "active"}, {"id": "R00845", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #61", "street": "1111 12th St W", "city": "Grafton", "state": "ND", "zip": "58237", "exit": "", "phone": "(701) 352-1722", "status": "active"}, {"id": "R00829", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #63", "street": "1005 6th St", "city": "Brookings", "state": "SD", "zip": "57006", "exit": "", "phone": "", "status": "active"}, {"id": "R00837", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #64", "street": "3045 Lefevre Dr", "city": "Brookings", "state": "SD", "zip": "57006", "exit": "", "phone": "", "status": "active"}, {"id": "R00852", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #66", "street": "2605 W Lincoln Ave", "city": "Fergus Falls", "state": "MN", "zip": "56537", "exit": "", "phone": "", "status": "active"}, {"id": "R00847", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #69", "street": "6585 Hwy 93 S", "city": "Whitefish", "state": "MT", "zip": "59937", "exit": "", "phone": "(406) 862-6903", "status": "active"}, {"id": "R00853", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #71", "street": "8840 Hwy 2 E", "city": "Hungry Horse", "state": "MT", "zip": "59919", "exit": "", "phone": "", "status": "active"}, {"id": "R00831", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #72", "street": "2801 Harrison Ave", "city": "Butte", "state": "MT", "zip": "59701", "exit": "", "phone": "(406) 494-2558", "status": "active"}, {"id": "R00839", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "Cenex Zip Trip #73", "street": "848 W Park St", "city": "Butte", "state": "MT", "zip": "59701", "exit": "", "phone": "(406) 782-2159", "status": "active"}, {"id": "R03860", "company": "CHS", "type": "PPO", "group": "Roady's", "name": "CENEX ZIP TRIP #74", "street": "902 BROADWAY AVE", "city": "Red Lodge", "state": "MT", "zip": "59068", "exit": "", "phone": "(406) 446-0338", "status": "active"}, {"id": "R00958", "company": "CHS", "type": "Truck Stop", "group": "Roady's", "name": "Cenex Zip Trip #75", "street": "1815 South Haynes", "city": "Miles City", "state": "MT", "zip": "59301", "exit": "I-94, Exit 138", "phone": "(406) 232-4553", "status": "active"}, {"id": "R03676", "company": "Crosby Enterprise, Inc.", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Circle C Travel Plaza", "street": "11109 Augusta Hwy", "city": "Walterboro", "state": "SC", "zip": "29488", "exit": "Exit 68 I-95", "phone": "(843) 538-5443", "status": "active"}, {"id": "R01229", "company": "Trinity Petro Hialeah LLC", "type": "Truck Stop", "group": "Roady's", "name": "CITGO", "street": "13899 W Okeechobee Road", "city": "Hialeah", "state": "FL", "zip": "33018", "exit": "Hwy 821, Exit 35", "phone": "(305) 698-5593", "status": "active"}, {"id": "P03620", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Colonel's Truck Plaza", "street": "233 West Park Ave.", "city": "Thibodoux", "state": "LA", "zip": "70301", "exit": "", "phone": "(985) 447-7800", "status": "active"}, {"id": "R00205", "company": "Bargain Brothers Inc", "type": "Truck Stop", "group": "Roady's", "name": "Crazy Fred's Truck Stop", "street": "2770 W. Old Hwy 66", "city": "Golden Valley", "state": "AZ", "zip": "86413", "exit": "I-40, Exit 44", "phone": "(928) 753-3834", "status": "active"}, {"id": "R03602", "company": "Laguna Development Corporation", "type": "Truck Stop", "group": "Roady's", "name": "Dancing Eagle Travel Center", "street": "167 Casablanca Rd I-40", "city": "Paraje", "state": "NM", "zip": "87007", "exit": "Exit 108 I-40", "phone": "(505) 552-7477", "status": "active"}, {"id": "P03673", "company": "Dandy Dan's Inc.", "type": "Truck Stop", "group": "PTP", "name": "Dandy Dan's", "street": "6734 Hwy 49 North", "city": "Hattiesburg", "state": "MS", "zip": "39402", "exit": "Hwy 49", "phone": "(601) 264-1240", "status": "active"}, {"id": "P03674", "company": "Dandy Dan's Inc.", "type": "Truck Stop", "group": "PTP", "name": "Dan's Truck Stop and Cafe", "street": "4875 US Hwy 49", "city": "Hattiesburg", "state": "MS", "zip": "39401", "exit": "Hwy 49 & Hwy 98", "phone": "(601) 545-2435", "status": "active"}, {"id": "P03689", "company": "David's Towing Inc.", "type": "Service Center", "group": "PTP", "name": "David's Towing Service & Tire", "street": "16 Robinson Dr", "city": "Newport News", "state": "VA", "zip": "23601", "exit": "Exit 258 /  I-64", "phone": "(757) 595-7290", "status": "active"}, {"id": "R01084", "company": "Dilley Truck Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Dilley Truck Stop", "street": "16250 Interstate Hwy 35", "city": "Dilley", "state": "TX", "zip": "78017", "exit": "I-35, Exit 85", "phone": "(830) 963-0548", "status": "active"}, {"id": "R03699", "company": "Donna's Travel Plazas, Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Donna's Travel Plaza", "street": "3104 116th St. NE", "city": "Marysville", "state": "WA", "zip": "98291", "exit": "Exit 202 / I-5", "phone": "(360) 653-3000", "status": "active"}, {"id": "R01017", "company": "Byersview Inc", "type": "Truck Stop", "group": "Roady's", "name": "Downieville Fuel Stop", "street": "1039 County Road 308", "city": "Downieville", "state": "CO", "zip": "80436", "exit": "I-70, Exit 234", "phone": "(303) 567-4730", "status": "active"}, {"id": "R01083", "company": "Eagle Express Travel Centers LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Eagle Express Travel Center", "street": "N2536 Kasal Lane", "city": "Peshtigo", "state": "WI", "zip": "54157", "exit": "Hwy 41", "phone": "(715) 582-0180", "status": "active"}, {"id": "R01132", "company": "Eco Travel Plaza LLC", "type": "Truck Stop", "group": "Roady's", "name": "Eco Travel Plaza", "street": "1897 Genesis Road", "city": "Crossville", "state": "TN", "zip": "38555", "exit": "I-40 Exit 320", "phone": "(931) 484-7498", "status": "active"}, {"id": "R01107", "company": "Edgerton Truck Stop Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Edgerton Travel Plaza", "street": "568 Haugen Road", "city": "Edgerton", "state": "WI", "zip": "53534", "exit": "I-90, Exit 160", "phone": "(608) 884-9451", "status": "active"}, {"id": "R01171", "company": "Excel Food Mart", "type": "Truck Stop", "group": "Roady's", "name": "E-Express at Central Truck Stop", "street": "5300 NE 122nd Street", "city": "Oklahoma City", "state": "OK", "zip": "73131", "exit": "I-35 & I-44, Exit 137", "phone": "(405) 478-3052", "status": "active"}, {"id": "R01187", "company": "Excel Food Mart", "type": "Truck Stop", "group": "Roady's", "name": "E-Express at Choctaw", "street": "7501 S Choctaw Road", "city": "Choctaw", "state": "OK", "zip": "73020", "exit": "I-40 Exit 166", "phone": "(405) 638-3000", "status": "active"}, {"id": "P03653", "company": "Emergency Rd. Service & Diesel Repair", "type": "Service Center", "group": "PTP", "name": "Emergency Rd. Service & Diesel Repair", "street": "3192 N Pearce St", "city": "Eloy", "state": "AZ", "zip": "85131", "exit": "Exit 382 I-10", "phone": "(520) 705-4927", "status": "active"}, {"id": "L03911", "company": "Exit 66 Truck Stop LLC", "type": "Truck Stop", "group": "Roady's Lite", "name": "Exit 66 Truck Stop", "street": "9730 US Highway 70e", "city": "Bells", "state": "TN", "zip": "38006", "exit": "Exit 66/Hwy 70e", "phone": "(731) 772-1006", "status": "active"}, {"id": "R01080", "company": "Sri Aurobindo 3 LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Fackler Texaco Truckstop", "street": "13750 Co. Rd. 42", "city": "Fackler", "state": "AL", "zip": "35746", "exit": "US Hwy 72 mile 149", "phone": "(256) 437-2663", "status": "active"}, {"id": "R03469", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Center (#27)", "street": "22450 MO-19", "city": "Center", "state": "MO", "zip": "63436", "exit": "Hwy-19", "phone": "(573) 640-0344", "status": "active"}, {"id": "R00262", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Eolia (#26)", "street": "121 W Outer Road", "city": "Eolia", "state": "MO", "zip": "63344", "exit": "US 61 & MO FF", "phone": "(573) 485-7500", "status": "active"}, {"id": "R01066", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Gasper's Truck Plaza (#51)", "street": "3325 County Rd 211", "city": "Kingdom City", "state": "MO", "zip": "65262", "exit": "I-70, Exit 148", "phone": "(573) 642-6642", "status": "active"}, {"id": "R01067", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Moberly Truck Plaza (#59)", "street": "600 E. Hwy 24", "city": "Moberly", "state": "MO", "zip": "65270", "exit": "Hwy 63, Hwy 24", "phone": "(660) 263-5510", "status": "active"}, {"id": "R00670", "company": "Warrenton Oil Co", "type": "Truck Stop", "group": "Roady's", "name": "FastLane Taylor (#63)", "street": "6725 Highway 6", "city": "Taylor", "state": "MO", "zip": "63471", "exit": "Highway 61 & 6", "phone": "(573) 769-2861", "status": "active"}, {"id": "R01178", "company": "Rising Harvey", "type": "Truck Stop", "group": "Roady's", "name": "Fast Trac 21", "street": "11378 State Hwy 21 E", "city": "Caldwell", "state": "TX", "zip": "77836-4402", "exit": "Hwy 21 & FM 50", "phone": "(979) 596-5704", "status": "active"}, {"id": "R09601", "company": "Monroe Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Fill Good #17", "street": "305 Unionville I.T. Road", "city": "Indian Trail", "state": "NC", "zip": "28079", "exit": "I-485, Exit 51B", "phone": "(704) 893-0994", "status": "active"}, {"id": "R00096", "company": "Monroe Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Fill Good #802", "street": "4102 W Hwy 74", "city": "Monroe", "state": "NC", "zip": "28110", "exit": "US 74 W & Rocky River", "phone": "(704) 291-9961", "status": "active"}, {"id": "R01183", "company": "Texas Petroleum Group", "type": "Truck Stop", "group": "Roady's", "name": "Flatonia Travel Center", "street": "709 N LaGrange Street", "city": "Flatonia", "state": "TX", "zip": "78941", "exit": "I-10  Exit 661", "phone": "(361) 865-9399", "status": "active"}, {"id": "R00076", "company": "Flynn's Truck Plaza", "type": "Truck Stop", "group": "Roady's", "name": "Flynn's Truck Plaza", "street": "307 Hartford Pike", "city": "Shrewsbury", "state": "MA", "zip": "01545", "exit": "MA 140 / US 20", "phone": "(508) 753-9698", "status": "active"}, {"id": "R03523", "company": "GJT Inc", "type": "Truck Stop", "group": "Roady's", "name": "Food-N-Fuel", "street": "103 W 4th Ave", "city": "Milbank", "state": "SD", "zip": "57252", "exit": "", "phone": "(605) 432-6678", "status": "active"}, {"id": "P03605", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Forest Gold Travel Plaza", "street": "30036 Hwy 16 West", "city": "Amite", "state": "LA", "zip": "70422", "exit": "", "phone": "(985) 748-5167", "status": "active"}, {"id": "R00320", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Francis Creek Travel Plaza-CITGO", "street": "185 Hillcrest Rd.", "city": "Francis Creek", "state": "WI", "zip": "54214", "exit": "I-43, Exit157", "phone": "(920) 684-4300", "status": "active"}, {"id": "R00321", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Fremont T/P-CITGO", "street": "E7487 State Road 110", "city": "Fremont", "state": "WI", "zip": "54940", "exit": "Hwy 10 & WI 96E", "phone": "(920) 446-3344", "status": "active"}, {"id": "", "company": "Roady's Corporate Office", "type": "Truck Stop", "group": "None", "name": "Fuelman Payments", "street": "", "city": "", "state": "AL", "zip": "", "exit": "", "phone": "", "status": "active"}, {"id": "P03614", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Fuel Stop 36", "street": "108 N Hwy 397", "city": "Lake Charles", "state": "LA", "zip": "70615", "exit": "", "phone": "(337) 491-9293", "status": "active"}, {"id": "R03494", "company": "RB Management Midwest LLC", "type": "Truck Stop", "group": "Roady's", "name": "Garden Inn Truck Plaza-Cabool", "street": "14081 Hwy 60", "city": "Cabool", "state": "MO", "zip": "65689", "exit": "Hwy 60/63", "phone": "(417) 962-3817", "status": "active"}, {"id": "R03495", "company": "RB Management Midwest LLC", "type": "Truck Stop", "group": "Roady's", "name": "Garden Inn Truck Plaza-Forest City", "street": "27478 Holt 223", "city": "Forest City", "state": "MO", "zip": "64451", "exit": "I-29 Exit 79", "phone": "(660) 442-0120", "status": "active"}, {"id": "R00179", "company": "Gee Cee's Inc", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Gee Cee's Truck Stop", "street": "123 Foster Creek Rd", "city": "Toledo", "state": "WA", "zip": "98591", "exit": "I-5, Exit 57", "phone": "(360) 864-4300", "status": "active"}, {"id": "R01265", "company": "Sheltons Stage Stop", "type": "C-Store", "group": "Roady's", "name": "Goebel's", "street": "504 W. First Street", "city": "Wallowa", "state": "OR", "zip": "97885", "exit": "Hwy 82 & S. Douglas St.", "phone": "(541) 886-2811", "status": "active"}, {"id": "R03927", "company": "Petroluxe Properties LLC", "type": "Truck Stop", "group": "Roady's", "name": "Goldendale Travel Plaza", "street": "279 Highway 97", "city": "Goldendale", "state": "WA", "zip": "98620", "exit": "US 97", "phone": "(509) 502-8002", "status": "active"}, {"id": "R00616", "company": "Good Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Good to Go #10", "street": "1201 N US Highway 35", "city": "Winamac", "state": "IN", "zip": "46996", "exit": "", "phone": "(574) 946-4863", "status": "active"}, {"id": "R01135", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #14", "street": "6256 Corridor Dr.", "city": "Marion", "state": "IN", "zip": "56953", "exit": "", "phone": "(574) 946-4863", "status": "active"}, {"id": "R61507", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #22", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R61509", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #24", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01136", "company": "Good Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Good To Go #32", "street": "106 N Chicago St", "city": "Royal Center", "state": "IN", "zip": "46978", "exit": "246", "phone": "(574) 643-2225", "status": "active"}, {"id": "R61502", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #34", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R61503", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #35", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R03792", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good to Go #37", "street": "201 W Rochester Ave", "city": "Akron", "state": "IN", "zip": "46910", "exit": "", "phone": "(574) 893-4202", "status": "active"}, {"id": "R01059", "company": "Good Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Good to Go #40", "street": "9435 West State Road 114", "city": "Rensselaer", "state": "IN", "zip": "47978", "exit": "I-65, Exit 215", "phone": "(219) 866-8802", "status": "active"}, {"id": "R01118", "company": "JSA Foodmart Inc", "type": "Truck Stop", "group": "Roady's", "name": "Good To Go #45", "street": "101 W 5th St.", "city": "Fowler", "state": "IN", "zip": "47944", "exit": "Hwy 52", "phone": "(765) 884-0955", "status": "active"}, {"id": "R61508", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #50", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01120", "company": "NA Express Inc", "type": "C-Store", "group": "Roady's", "name": "Good to Go #60", "street": "403 N US Highway 421", "city": "Medaryville", "state": "IN", "zip": "47957", "exit": "21", "phone": "(219) 843-7111", "status": "active"}, {"id": "R61504", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #70", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01152", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #73", "street": "1440 W SR 32", "city": "Westfield", "state": "IN", "zip": "46074", "exit": "Hwy 32", "phone": "(463) 230-1442", "status": "active"}, {"id": "R61506", "company": "Good Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Good To Go #95", "street": "1201 N US 35", "city": "WINAMAC", "state": "IN", "zip": "46996", "exit": "", "phone": "", "status": "active"}, {"id": "R01164", "company": "Pops Mart Fuels LLC", "type": "Truck Stop", "group": "Roady's", "name": "Grand Central Station - Pops Mart Fuels", "street": "11193 State Hwy 200", "city": "Winnsboro", "state": "SC", "zip": "29180", "exit": "", "phone": "(803) 482-2118", "status": "active"}, {"id": "P03683", "company": "Gulf Coast Drive Train", "type": "Service Center", "group": "PTP", "name": "Gulf Coast Drive Train", "street": "10200 Hwy 31", "city": "Spanish Fort", "state": "AL", "zip": "36527", "exit": "Exit-382 I-10", "phone": "(251) 625-6862", "status": "active"}, {"id": "R00941", "company": "Anwar Petroleum Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Guthrie Travel Center", "street": "2621 E Hwy 33", "city": "Guthrie", "state": "OK", "zip": "73044", "exit": "I-35, Exit 157", "phone": "(405) 260-1596", "status": "active"}, {"id": "R03524", "company": "S&P Oil LLC", "type": "Truck Stop", "group": "Roady's", "name": "Halsey Truck Stop", "street": "32980 Highway 228", "city": "Halsey", "state": "OR", "zip": "97348", "exit": "Exit 216 I-5", "phone": "(541) 369-2624", "status": "active"}, {"id": "R01866", "company": "Navjit Dhillon", "type": "Fuel Stop", "group": "Roady's", "name": "Harbor Truck and Auto Plaza", "street": "2816 W. Capitol Ave.", "city": "Sacramento", "state": "CA", "zip": "95691", "exit": "I-80", "phone": "(916) 372-2893", "status": "active"}, {"id": "P03657", "company": "Harvey Services LLC", "type": "Service Center", "group": "PTP", "name": "Harvey Services", "street": "41 Grove St", "city": "N Brookfield", "state": "MA", "zip": "01535", "exit": "Exit 3A Route 84", "phone": "(774) 922-0138", "status": "active"}, {"id": "R03912", "company": "Henryetta Fuel Stop LLC", "type": "PPO", "group": "Roady's", "name": "Henryetta Fuel Stop", "street": "102 Dewey Bartlett Rd", "city": "Henryetta", "state": "OK", "zip": "74437", "exit": "I-40/Exit 237", "phone": "(918) 652-7436", "status": "active"}, {"id": "P03655", "company": "High Country Ventures Inc.", "type": "Service Center", "group": "PTP", "name": "High Country Ventures", "street": "607 Broadway", "city": "Van Horn", "state": "TX", "zip": "79855", "exit": "Exit 138 I-10", "phone": "(432) 283-2343", "status": "active"}, {"id": "R01129", "company": "Golden Lomira LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Hi Way Hop BP", "street": "665 East Ave", "city": "Lomira", "state": "WI", "zip": "53048", "exit": "Exit 85 | Hwy 41", "phone": "(920) 269-7621", "status": "active"}, {"id": "R00881", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1000", "street": "551 E Main St", "city": "Sylva", "state": "NC", "zip": "28779", "exit": "", "phone": "(828) 586-3881", "status": "active"}, {"id": "R00882", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1102", "street": "1030 Main Street", "city": "Bryson City", "state": "NC", "zip": "28714", "exit": "", "phone": "(828) 488-6544", "status": "active"}, {"id": "R00854", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1103", "street": "9332 Ocean Hwy", "city": "Pawley's Island", "state": "SC", "zip": "29585", "exit": "", "phone": "(843) 237-1314", "status": "active"}, {"id": "R00855", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1201", "street": "517 W Main St", "city": "Easley", "state": "SC", "zip": "09640", "exit": "", "phone": "(864) 855-3006", "status": "active"}, {"id": "R00856", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #1601", "street": "2203 N. Main St.", "city": "Summerville", "state": "SC", "zip": "29483", "exit": "", "phone": "(843) 873-7882", "status": "active"}, {"id": "R00497", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #1607", "street": "12340 Old Number Six Highway", "city": "Eutawville", "state": "SC", "zip": "29048", "exit": "", "phone": "(803) 492-7830", "status": "active"}, {"id": "R00498", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #1608", "street": "153 W Main St.", "city": "Harleyville", "state": "SC", "zip": "29448", "exit": "", "phone": "(843) 462-7610", "status": "active"}, {"id": "R00884", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2003", "street": "1069 Sweeten Creek Rd", "city": "Asheville", "state": "NC", "zip": "28801", "exit": "", "phone": "(828) 274-4161", "status": "active"}, {"id": "R00857", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2005", "street": "1915 Hwy. 321 North", "city": "Clover", "state": "SC", "zip": "29710", "exit": "", "phone": "(843) 462-7610", "status": "active"}, {"id": "R00888", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2008", "street": "5560 W. US Hwy 64", "city": "Murphy", "state": "NC", "zip": "28806", "exit": "", "phone": "(828) 837-6939", "status": "active"}, {"id": "R00296", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2009", "street": "3228 Hwy 25 S.", "city": "Greenwood", "state": "SC", "zip": "29646", "exit": "", "phone": "(864) 227-1234", "status": "active"}, {"id": "R00859", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2011", "street": "3180 N. Blackstock Rd.", "city": "Spartanburg", "state": "SC", "zip": "29206", "exit": "", "phone": "(864) 545-2220", "status": "active"}, {"id": "R00862", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2016", "street": "2901 E Main St", "city": "Spartanburg", "state": "SC", "zip": "29307", "exit": "", "phone": "(864) 579-4554", "status": "active"}, {"id": "R00863", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2017", "street": "6167 Hwy 221", "city": "Roebuck", "state": "SC", "zip": "29376", "exit": "", "phone": "(864) 587-6402", "status": "active"}, {"id": "R00864", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2018", "street": "371 Battleground Rd", "city": "Cowpens", "state": "SC", "zip": "29330", "exit": "", "phone": "(864) 463-3205", "status": "active"}, {"id": "R00865", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2019", "street": "4036 Hwy 221 S", "city": "Laurens", "state": "SC", "zip": "29360", "exit": "", "phone": "(864) 682-4145", "status": "active"}, {"id": "R00449", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2021", "street": "2524 West Highway 378", "city": "Britton's Neck", "state": "SC", "zip": "29546", "exit": "", "phone": "(864) 277-8767", "status": "active"}, {"id": "R00298", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2022", "street": "11504 Augusta, Rd.", "city": "Honea Path", "state": "SC", "zip": "29654", "exit": "", "phone": "(864) 369-6105", "status": "active"}, {"id": "R00868", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2024", "street": "1379 Red Bluff Rd.", "city": "Loris", "state": "SC", "zip": "29569", "exit": "", "phone": "(843) 756-8210", "status": "active"}, {"id": "R00887", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2025", "street": "459 E. Main St.", "city": "Franklin", "state": "NC", "zip": "28734", "exit": "", "phone": "(828) 524-5483", "status": "active"}, {"id": "R00869", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2026", "street": "2595 Hwy 56", "city": "Pauline", "state": "SC", "zip": "29374", "exit": "", "phone": "(864) 591-1231", "status": "active"}, {"id": "R00291", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #2028", "street": "4641 U.S. 76", "city": "Marion", "state": "SC", "zip": "29571", "exit": "", "phone": "(843) 423-2174", "status": "active"}, {"id": "R00870", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #2035", "street": "201 N. Howard Ave", "city": "Landrum", "state": "SC", "zip": "29356", "exit": "", "phone": "(864) 457-2706", "status": "active"}, {"id": "R00871", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #3003", "street": "831 Main St", "city": "New Ellenton", "state": "SC", "zip": "29809", "exit": "", "phone": "(803) 652-2155", "status": "active"}, {"id": "R00872", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #3004", "street": "553 J.C. Calhoun Dr", "city": "Orangeburg", "state": "SC", "zip": "29115", "exit": "", "phone": "(803) 531-3228", "status": "active"}, {"id": "R00292", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #3005", "street": "107 Hampton St.", "city": "Chesnee", "state": "SC", "zip": "29323", "exit": "", "phone": "(864) 461-4147", "status": "active"}, {"id": "R00873", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #4002", "street": "3908 JC Calhoun Memorial Hwy", "city": "Easley", "state": "SC", "zip": "29640", "exit": "", "phone": "(864) 269-7426", "status": "active"}, {"id": "R00874", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #4004", "street": "2801 Gentry Memorial Hwy", "city": "Pickens", "state": "SC", "zip": "29671", "exit": "", "phone": "(864) 878-3367", "status": "active"}, {"id": "R00875", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #4005", "street": "103 Hammett Bridge Rd.", "city": "Greer", "state": "SC", "zip": "29651", "exit": "", "phone": "(864) 877-2251", "status": "active"}, {"id": "R00890", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5001", "street": "110 Weaverville Rd.", "city": "Asheville", "state": "NC", "zip": "28806", "exit": "", "phone": "(828) 645-5790", "status": "active"}, {"id": "R00891", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5002", "street": "103 Leicester Hwy", "city": "Asheville", "state": "NC", "zip": "28806", "exit": "", "phone": "(282) 258-2619", "status": "active"}, {"id": "R00892", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5003", "street": "118 Brevard Rd", "city": "Asheville", "state": "NC", "zip": "28806", "exit": "", "phone": "(828) 665-1491", "status": "active"}, {"id": "R00893", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #5004", "street": "3225 Asheville Hwy", "city": "Canton", "state": "NC", "zip": "28716", "exit": "", "phone": "(828) 648-7414", "status": "active"}, {"id": "R00876", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #6002", "street": "308 E. Poinsett", "city": "Greer", "state": "SC", "zip": "29651", "exit": "", "phone": "(864) 848-4154", "status": "active"}, {"id": "R00448", "company": "R.L. Jordon Oil Company Inc", "type": "C-Store", "group": "Roady's", "name": "Hot Spot #6007", "street": "675 Gossett RD", "city": "Spartanburg", "state": "SC", "zip": "29307", "exit": "", "phone": "(864) 579-4121", "status": "active"}, {"id": "R00880", "company": "R.L. Jordon Oil Company Inc", "type": "PPO", "group": "Roady's", "name": "Hot Spot #8001", "street": "3000 W. Blue Ridge Dr.", "city": "Greenville", "state": "SC", "zip": "29604", "exit": "", "phone": "(864) 269-6357", "status": "active"}, {"id": "R00297", "company": "R.L. Jordon Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Hot Spot T/S #2013", "street": "1940 Hwy 292", "city": "Inman", "state": "SC", "zip": "29349", "exit": "I-26, Exit 10", "phone": "(864) 472-3199", "status": "active"}, {"id": "R00294", "company": "R.L. Jordon Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Hot Spot T/S #6004", "street": "3883 Cross Anchor Rd.", "city": "Enoree", "state": "SC", "zip": "29335", "exit": "I-26, Exit 38", "phone": "(864) 969-7081", "status": "active"}, {"id": "P03613", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Houma Truck Plaza", "street": "1541 Grand Caillou Rd", "city": "Houma", "state": "LA", "zip": "70363", "exit": "", "phone": "(985) 857-8668", "status": "active"}, {"id": "R03889", "company": "Circle K Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Hutch's", "street": "515 SE 2nd St", "city": "Guymon", "state": "OK", "zip": "73942", "exit": "Hwy 54, Hwy 412", "phone": "(580) 754-2860", "status": "active"}, {"id": "P03667", "company": "I-81 Travel Plaza Inc.", "type": "Service Center", "group": "PTP", "name": "I-81 Repair Center", "street": "5722 E Lee Hwy", "city": "Max Meadows", "state": "VA", "zip": "24360", "exit": "Exit 86 I-81", "phone": "(276) 637-3118", "status": "active"}, {"id": "P03677", "company": "Interstate Tire and Lube, Inc.", "type": "Service Center", "group": "PTP", "name": "Interstate Tire & Lube", "street": "155 Travelers Pathway", "city": "Calhoun", "state": "GA", "zip": "30707", "exit": "Exit 318 I-75", "phone": "(706) 629-4529", "status": "active"}, {"id": "R01127", "company": "Wortman Holdings LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jack Flash Altamont", "street": "1206 S. Main St.", "city": "Altamont", "state": "IL", "zip": "62411", "exit": "I-70 Hwy 128 Exit 82", "phone": "(618) 483-6990", "status": "active"}, {"id": "R00221", "company": "Wortman Development LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jack Flash Farina", "street": "1003 W Washington", "city": "Farina", "state": "IL", "zip": "62838", "exit": "I-57, Exit 135", "phone": "(618) 245-2566", "status": "active"}, {"id": "R01259", "company": "Jack Flash LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jack Flash Farmersville", "street": "30239 W Frontage Rd.", "city": "Farmersville", "state": "IL", "zip": "62533", "exit": "I-55 Exit 72", "phone": "(217) 227-3634", "status": "active"}, {"id": "P03618", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Jalou Truck Stop", "street": "1011 N Arkansas", "city": "Springhill", "state": "LA", "zip": "71075", "exit": "", "phone": "(318) 539-4200", "status": "active"}, {"id": "P03622", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Jalou Truck Stop", "street": "14347 LA Hwy 1", "city": "Vivian", "state": "LA", "zip": "71082", "exit": "", "phone": "(318) 375-5144", "status": "active"}, {"id": "R03500", "company": "ENR Investment Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Jefferson Travel Plaza", "street": "1413 W. Junction Rd.", "city": "Jefferson", "state": "WI", "zip": "53549", "exit": "Hwy 26/30", "phone": "(920) 541-3090", "status": "active"}, {"id": "R00208", "company": "Jimmie's Truckstop Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Jimmies Auto/Truck Plaza", "street": "3167 County Road 255", "city": "Lee", "state": "FL", "zip": "32059", "exit": "I-10, Exit 262", "phone": "(850) 971-4200", "status": "active"}, {"id": "R01099", "company": "Jimmie's Truckstop Inc.", "type": "PPO", "group": "Roady's", "name": "Jimmies Firestone and Service Center", "street": "3167 SE CR 255", "city": "Lee", "state": "FL", "zip": "32059", "exit": "Exit I-10, Exit 262", "phone": "(850) 973-8546", "status": "active"}, {"id": "R01179", "company": "Johnson Junction Inc", "type": "Truck Stop", "group": "Roady's", "name": "JJ's Travel Plaza", "street": "2964 W. 100 N.", "city": "Peru", "state": "IN", "zip": "46970", "exit": "US 31, US 24", "phone": "(765) 472-1963", "status": "active"}, {"id": "P03658", "company": "Jolly Truck & Trailer Service Inc.", "type": "Service Center", "group": "PTP", "name": "Jolly Truck & Trailer Service", "street": "3460 US Hwy 287", "city": "Jolly", "state": "TX", "zip": "76305", "exit": "Exit-2393FM Hwy 287", "phone": "(940) 723-8473", "status": "active"}, {"id": "R00774", "company": "Jones Auto & Truck Plaza, LLC", "type": "Truck Stop", "group": "Roady's", "name": "Jonesy's Travel Center", "street": "2031 W. Elm", "city": "Lebanon", "state": "MO", "zip": "65536", "exit": "I-44, Exit 127 (US 66 W)", "phone": "(417) 588-2281", "status": "active"}, {"id": "R00917", "company": "JR's Truck Stop Corporation", "type": "Truck Stop", "group": "Roady's", "name": "J.R.'s Rally Stop", "street": "2635 North Freeway Drive", "city": "Cedar City", "state": "UT", "zip": "84721", "exit": "I-15, Exit 62", "phone": "(435) 586-0498", "status": "active"}, {"id": "R01184", "company": "Texas Petroleum Group", "type": "Truck Stop", "group": "Roady's", "name": "Junction Travel Center", "street": "2416 N. Main Street", "city": "Junction", "state": "TX", "zip": "76849", "exit": "I-10  Exit 456", "phone": "(325) 446-8740", "status": "active"}, {"id": "R00118", "company": "Kaw Gaming Inc", "type": "Truck Stop", "group": "Roady's", "name": "Kanza Travel Plaza", "street": "9695 N. Hwy 177", "city": "Braman", "state": "OK", "zip": "74632", "exit": "I-35, Exit 231", "phone": "(580) 385-2137", "status": "active"}, {"id": "R00252", "company": "K-D Quik Stop Inc", "type": "C-Store", "group": "Roady's", "name": "K-D Quik Stop", "street": "235 N Clare Avenue", "city": "Harrison", "state": "MI", "zip": "48625", "exit": "", "phone": "(989) 539-1269", "status": "active"}, {"id": "R03649", "company": "Keystops LLC", "type": "Truck Stop", "group": "Roady's", "name": "Keystop", "street": "4391 Nashville Rd.", "city": "Franklin", "state": "KY", "zip": "42134", "exit": "Exit 2 I-65", "phone": "(270) 586-5922", "status": "active"}, {"id": "R03857", "company": "Algu Business LLC", "type": "Truck Stop", "group": "Roady's", "name": "Landmark Travel Center Minden", "street": "2197 Hwy 532", "city": "Minden", "state": "LA", "zip": "71055", "exit": "Exit 52 / I-20", "phone": "(281) 692-8584", "status": "active"}, {"id": "R01106", "company": "LaPine Travel Center LLC", "type": "Truck Stop", "group": "Roady's", "name": "LaPine Travel Plaza", "street": "17045 Whitney Rd.", "city": "La Pine", "state": "OR", "zip": "97739", "exit": "Hwy 97, Roseland Exit", "phone": "(541) 536-6055", "status": "active"}, {"id": "R00408", "company": "Shawn Ibrahim Inc.", "type": "Truck Stop", "group": "Roady's", "name": "La Porte Travel Plaza aka Moody's Travel Plaza", "street": "9119 Highway 225", "city": "La Porte", "state": "TX", "zip": "77571", "exit": "Hwy 225", "phone": "(281) 542-5300", "status": "active"}, {"id": "R01182", "company": "Texas Petroleum Group", "type": "Truck Stop", "group": "Roady's", "name": "Laredo Fuel Stop", "street": "8852 Killam Industrial Blvd", "city": "Laredo", "state": "TX", "zip": "78045", "exit": "I-35 Exit 8      Mines Rd & Riverbank Dr.", "phone": "(956) 717-8552", "status": "active"}, {"id": "P03615", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Larose Truck Plaza", "street": "11825 Hwy 308", "city": "Lockport", "state": "LA", "zip": "70374", "exit": "", "phone": "(985) 693-7424", "status": "active"}, {"id": "R00723", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Lewiston Stinker Store #42", "street": "3110 N and South Hwy", "city": "Lewiston", "state": "ID", "zip": "83501", "exit": "Hwy 95 & 12", "phone": "(208) 746-3234", "status": "active"}, {"id": "P03688", "company": "Lindsey Diesel Repair LLC", "type": "Service Center", "group": "PTP", "name": "Lindsey's Diesel Repair", "street": "13414 Hwy 113", "city": "Brewton", "state": "AL", "zip": "36426", "exit": "Exit-69 / I-65", "phone": "(251) 296-7230", "status": "active"}, {"id": "P03647", "company": "Local Gas, LLC", "type": "Truck Stop", "group": "PTP", "name": "Local Gas ADK", "street": "1 Country Mile", "city": "Frankfort", "state": "NY", "zip": "13340", "exit": "I-90", "phone": "(315) 894-1111", "status": "active"}, {"id": "P03715", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "Local Gas Brookfield", "street": "10546 Main Street", "city": "Brookfield", "state": "NY", "zip": "13314", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R03973", "company": "Local Gas, LLC", "type": "PPO", "group": "Roady's", "name": "Local Gas Glossvale", "street": "2344 State Route 49", "city": "Blossvale", "state": "NY", "zip": "13308", "exit": "", "phone": "(315) 820-4506", "status": "active"}, {"id": "P03713", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "LOCAL GAS MILLERS", "street": "1995 STATE HWY 80", "city": "EDMESTON", "state": "NY", "zip": "13335", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "P03716", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "Local Gas North Bay", "street": "2090 State Route 49", "city": "North Bay", "state": "NY", "zip": "13123", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "P03714", "company": "Local Gas, LLC", "type": "PPO", "group": "PTP", "name": "Local Gas South Otselic", "street": "1603 NY 26", "city": "South Otselic", "state": "NY", "zip": "13155", "exit": "", "phone": "(999) 999-9999", "status": "active"}, {"id": "R01220", "company": "Kastas Investment Inc", "type": "Truck Stop", "group": "Roady's", "name": "Longhorn Express", "street": "15045 US Hwy 70", "city": "Ardmore", "state": "OK", "zip": "73401", "exit": "", "phone": "(580) 319-5255", "status": "active"}, {"id": "R01217", "company": "Lion Petroleum Inc", "type": "C-Store", "group": "Roady's", "name": "LP Mart Palmyra", "street": "887 Marion City Rd.", "city": "Palmyra", "state": "MO", "zip": "63461", "exit": "US Hwy 61", "phone": "(573) 769-3638", "status": "active"}, {"id": "R00614", "company": "Lucky Deuces LLC", "type": "Truck Stop", "group": "Roady's", "name": "Lucky Deuces Truck Stop", "street": "3002 Daulat Drive", "city": "Duson", "state": "LA", "zip": "70529", "exit": "I-10, Exit 92", "phone": "(337) 873-5400", "status": "active"}, {"id": "P03610", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Lucky Magnolia Truck Stop", "street": "52396 Hwy 16", "city": "Denham Springs", "state": "LA", "zip": "70706", "exit": "", "phone": "(225) 664-7595", "status": "active"}, {"id": "R01835", "company": "LW Miller Transportation Services Inc", "type": "Truck Stop", "group": "Roady's", "name": "L.W.'s Truck Stop", "street": "1020 W 200 N", "city": "Logan", "state": "UT", "zip": "84321", "exit": "", "phone": "(435) 753-7461", "status": "active"}, {"id": "P01225", "company": "Magnolia Travel Center", "type": "Truck Stop", "group": "PTP", "name": "Magnolia Travel Center", "street": "US-82", "city": "Magnolia", "state": "AR", "zip": "71753", "exit": "", "phone": "(870) 234-7806", "status": "active"}, {"id": "R01241", "company": "Hallmark Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Majors 660 Diboll Truck Plaza", "street": "1605 N. Temple Dr.", "city": "Diboll", "state": "TX", "zip": "75941", "exit": "", "phone": "(936) 829-1100", "status": "active"}, {"id": "R01240", "company": "Hallmark Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Majors 661 Henderson Truck Plaza", "street": "1609 Kilgore Dr", "city": "Henderson", "state": "TX", "zip": "75652", "exit": "", "phone": "(903) 655-1568", "status": "active"}, {"id": "R01338", "company": "Hallmark Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "Majors 664 Stallings Dr Truck Plaza", "street": "4919 NW Stallings Dr.", "city": "Nacogdoches", "state": "TX", "zip": "75964", "exit": "", "phone": "(936) 560-0558", "status": "active"}, {"id": "R01219", "company": "Navis Enterprises Inc", "type": "Truck Stop", "group": "Roady's", "name": "Mauston Interstate BP", "street": "1005 Gateway Ave", "city": "Mauston", "state": "WI", "zip": "53948", "exit": "", "phone": "(608) 847-4384", "status": "active"}, {"id": "P03645", "company": "Mega Stop Inc", "type": "Truck Stop", "group": "PTP", "name": "Mega Stop Holiday #3552", "street": "21100 Keprick Ave", "city": "Lakeville", "state": "MN", "zip": "55044", "exit": "Exit 81 I-35", "phone": "(952) 469-1998", "status": "active"}, {"id": "R00581", "company": "Bargain Brothers Inc", "type": "PPO", "group": "Roady's", "name": "Mesa Drive Fuel C-Store", "street": "13015 Mesa Drive", "city": "Blythe", "state": "CA", "zip": "92225", "exit": "", "phone": "(760) 921-2667", "status": "active"}, {"id": "R03601", "company": "Midway Enterprises, Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Midway Travel Center", "street": "6401 W Hwy 40", "city": "Columbia", "state": "MO", "zip": "65202", "exit": "Exit 121 I-70", "phone": "(573) 445-9466", "status": "active"}, {"id": "P03666", "company": "M & M Tire & Mechanical Services Inc.", "type": "Service Center", "group": "PTP", "name": "M & M Tire", "street": "1203 1st Ave.", "city": "Graysville", "state": "AL", "zip": "35073", "exit": "I-22/Corridor X", "phone": "(205) 674-6640", "status": "active"}, {"id": "P03656", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Brush", "street": "1156 N Colorado Ave", "city": "Brush", "state": "CO", "zip": "80723", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03705", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Colorado Springs", "street": "30 Mountain Lane", "city": "Colorado Springs", "state": "CO", "zip": "80907", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03704", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Grand Prairie", "street": "2831 Kate Ln.", "city": "Grand Prairie", "state": "TX", "zip": "75052", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03702", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Green River", "street": "6 Fry Burger Rd.", "city": "Green River", "state": "WY", "zip": "82935", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03703", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Harlingen", "street": "201 A Bob Youker St.", "city": "Harlingen", "state": "TX", "zip": "78550", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03706", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Mission", "street": "4101 W. Military Hwy. Suite Z", "city": "Mission", "state": "TX", "zip": "78572", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "P03701", "company": "Mobile Transportation Group", "type": "Service Center", "group": "PTP", "name": "Mobile Transportation Service-Watkins", "street": "33365 E Colfax Ave", "city": "Watkins", "state": "CO", "zip": "80137", "exit": "", "phone": "(303) 476-3622", "status": "active"}, {"id": "R01437", "company": "ABSGA LLC", "type": "Truck Stop", "group": "Roady's", "name": "Morehead Shell", "street": "3333 Ky Highway 801 S", "city": "Morehead", "state": "KY", "zip": "40351", "exit": "Exit 133 I-64", "phone": "(606) 783-1828", "status": "active"}, {"id": "R03648", "company": "Morton's Truck Stop Inc.", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Morton's Truck Stop", "street": "1000 E Cheyene Ave", "city": "N Las Vegas", "state": "NV", "zip": "89030", "exit": "Exit 46 I-15", "phone": "(702) 649-2001", "status": "active"}, {"id": "R03903", "company": "ANS Truck & Travel Center LLC", "type": "Truck Stop", "group": "Roady's", "name": "Motor Inn Travel Plaza", "street": "10391 US RT 127", "city": "Mendon", "state": "OH", "zip": "45862", "exit": "INTERSECTION OF ROUTE 127 AND ROUTE 33", "phone": "(567) 324-0077", "status": "active"}, {"id": "R01236", "company": "Excell Petroleum LLC", "type": "Truck Stop", "group": "Roady's", "name": "New Deal Truck Stop", "street": "101 East Main Street", "city": "New Deal", "state": "TX", "zip": "79350", "exit": "I-27 Exit 14", "phone": "(806) 746-4866", "status": "active"}, {"id": "R01063", "company": "Par Hawaii LLC", "type": "Truck Stop", "group": "Roady's", "name": "Nomnom", "street": "901 W Main Street", "city": "Grangeville", "state": "ID", "zip": "83530", "exit": "Hwy 95, W Main St", "phone": "(208) 983-7508", "status": "active"}, {"id": "R03933", "company": "On The Go Armour Rd", "type": "Fuel Stop", "group": "Roady's", "name": "On the Go Armour Road", "street": "1910 Armour Rd", "city": "Kansas City", "state": "MO", "zip": "64116", "exit": "Exit 6/I-35", "phone": "(816) 534-0550", "status": "active"}, {"id": "R00901", "company": "My Store III", "type": "Truck Stop", "group": "Roady's", "name": "On The Go Travel Center", "street": "9134 Woodend Rd", "city": "Edwardsville", "state": "KS", "zip": "66111", "exit": "I-435, Exit 8-B", "phone": "(913) 441-5700", "status": "active"}, {"id": "R01036", "company": "Raceway Management Co. Inc", "type": "Truck Stop", "group": "Roady's", "name": "Onvo Travel Plaza - Lake Ariel", "street": "151 Twin Rocks Rd.", "city": "Lake Ariel", "state": "PA", "zip": "18436", "exit": "I-84, Exit 17", "phone": "(570) 689-4345", "status": "active"}, {"id": "R01133", "company": "Calhoun Oil Company Inc", "type": "Truck Stop", "group": "Roady's", "name": "Palmetto Express #115", "street": "495 Old Sandy Run Road", "city": "Gaston", "state": "SC", "zip": "29053", "exit": "I-26 Exit 125", "phone": "(803) 908-4080", "status": "active"}, {"id": "R01965", "company": "Lakeside Liquor & Gas Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Paragpur Travel Center-Carlyle", "street": "2610 12th St", "city": "Carlyle", "state": "IL", "zip": "62231", "exit": "", "phone": "(618) 594-6344", "status": "active"}, {"id": "R01104", "company": "Paramount Travel Center LLC", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Paramount Travel Center", "street": "520 Hwy 19N", "city": "Prescott", "state": "AR", "zip": "71857", "exit": "I-30 - Exit 46", "phone": "(870) 887-0786", "status": "active"}, {"id": "R03870", "company": "Pauls Valley Travel Center", "type": "Truck Stop", "group": "Roady's", "name": "Pauls Valley Travel Center", "street": "3002 W Grant Ave", "city": "Pauls Valley", "state": "OK", "zip": "73075", "exit": "Exit-72 / I-35", "phone": "(405) 238-3216", "status": "active"}, {"id": "R01227", "company": "PDC Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "PDC Truck Stop", "street": "1910 S Marquette Rd", "city": "Prairie Du Chien", "state": "WI", "zip": "53821", "exit": "", "phone": "(608) 326-8155", "status": "active"}, {"id": "R00325", "company": "Outagamie Co-op Services Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Plainfield T/P-CITGO", "street": "N. 6466 4th Ct.", "city": "Plainfield", "state": "WI", "zip": "54966", "exit": "I-39, Exit 136", "phone": "(715) 335-7339", "status": "active"}, {"id": "R01121", "company": "Planeview Travel Plaza Inc", "type": "Truck Stop", "group": "Roady's", "name": "Planeview Travel Plaza", "street": "1500 Planeview Drive", "city": "Oshkosh", "state": "WI", "zip": "54904", "exit": "I-41, Exit 113", "phone": "(920) 426-2641", "status": "active"}, {"id": "R01222", "company": "Dharam Inc", "type": "Truck Stop", "group": "Roady's", "name": "Plaza 23 Truck Stop", "street": "240 Church Street STE-10", "city": "Albany", "state": "NY", "zip": "12202", "exit": "I-87, exit 23", "phone": "(518) 462-1234", "status": "active"}, {"id": "R03871", "company": "Leemak Texas II", "type": "Truck Stop", "group": "Roady's", "name": "Qmart", "street": "8755 IH 10", "city": "Converse", "state": "TX", "zip": "78109", "exit": "Exit 1516 / IH-10", "phone": "(210) 462-1520", "status": "active"}, {"id": "P03616", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Raceland Truck Plaza", "street": "109 South Service Rd", "city": "Raceland", "state": "LA", "zip": "70394", "exit": "", "phone": "(985) 537-8717", "status": "active"}, {"id": "", "company": "Roady's Corporate Office", "type": "Truck Stop", "group": "None", "name": "RCheck Payments", "street": "", "city": "", "state": "AL", "zip": "", "exit": "", "phone": "", "status": "active"}, {"id": "R01167", "company": "Liberty Square Gas station Inc", "type": "Truck Stop", "group": "Roady's", "name": "Refuel Pantry-Columbus West", "street": "2200 W James Street", "city": "Columbus", "state": "WI", "zip": "53925", "exit": "Hwy 151, Exit 118", "phone": "(920) 623-9740", "status": "active"}, {"id": "R03915", "company": "Liberty Square Gas station Inc", "type": "Truck Stop", "group": "Roady's", "name": "Refuel Pantry-Sturtevant", "street": "611 S Sylvania Ave", "city": "Sturtevant", "state": "WI", "zip": "53177", "exit": "I-94/Exit 333", "phone": "(262) 886-2738", "status": "active"}, {"id": "R01075", "company": "Manu Sangha INC", "type": "C-Store", "group": "Roady's", "name": "Riverside 2 Go", "street": "3400 CR 6 E.", "city": "Elkhart", "state": "IN", "zip": "46514", "exit": "", "phone": "(574) 206-1480", "status": "active"}, {"id": "R00111", "company": "Roadrunner Travel Plaza", "type": "Truck Stop", "group": "Roady's", "name": "Roadrunner Travel Center", "street": "400 W. Frontage Rd.", "city": "Lemitar", "state": "NM", "zip": "87823", "exit": "I-25, Exit 156", "phone": "(575) 838-1400", "status": "active"}, {"id": "R03917", "company": "Spartan Stores Fuel LLC", "type": "Truck Stop", "group": "Roady's", "name": "Road Trip Oasis", "street": "3034 Lansing Rd", "city": "Perry", "state": "MI", "zip": "48872", "exit": "I-69/Exit 105", "phone": "(517) 625-1112", "status": "active"}, {"id": "R03603", "company": "Laguna Development Corporation", "type": "Truck Stop", "group": "Roady's", "name": "Route 66 Travel Center", "street": "14314 Central Ave. SW", "city": "Albuquerque", "state": "NM", "zip": "87121", "exit": "Exit 140 I-40", "phone": "(505) 352-7876", "status": "active"}, {"id": "L03465", "company": "Sassy's Truck Stop Inc.", "type": "Truck Stop", "group": "Roady's Lite", "name": "Sassy's Truck Stop", "street": "2088 US-219", "city": "Limestone", "state": "NY", "zip": "14753", "exit": "", "phone": "(716) 945-2595", "status": "active"}, {"id": "R00099", "company": "Schatz Crossroads Truck Stop Inc", "type": "Truck Stop / Service Center", "group": "Roady's", "name": "Schatz Crossroads", "street": "1712 20th Ave SE", "city": "Minot", "state": "ND", "zip": "58701", "exit": "US 2-52 Bypass (EB) & US 83", "phone": "(701) 852-0810", "status": "active"}, {"id": "L03935", "company": "Somers Market", "type": "Truck Stop", "group": "Roady's Lite", "name": "Shell Somers Market", "street": "11302 12th Street", "city": "Sturtevant", "state": "WI", "zip": "53177", "exit": "I-94/ Hwy E/Exit 339", "phone": "(262) 403-8036", "status": "active"}, {"id": "P03661", "company": "Shop Rite Inc.", "type": "Truck Stop", "group": "PTP", "name": "Shop Rite #82", "street": "1823 Elton Road", "city": "Jennings", "state": "LA", "zip": "70546", "exit": "Exit 64 I-10", "phone": "(337) 616-9989", "status": "active"}, {"id": "P03662", "company": "Shop Rite Inc.", "type": "Truck Stop", "group": "PTP", "name": "Shop Rite #85", "street": "129 Frontage Road", "city": "Rayne", "state": "LA", "zip": "70578", "exit": "I-10 Exit 92", "phone": "(337) 873-8100", "status": "active"}, {"id": "P03617", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Silver Dollar", "street": "1324 N. Market St", "city": "Shreveport", "state": "LA", "zip": "71107", "exit": "", "phone": "(318) 675-0260", "status": "active"}, {"id": "P03611", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Silver Fox Truck Stop", "street": "40249 Hwy 16", "city": "Denham Springs", "state": "LA", "zip": "70706", "exit": "", "phone": "(225) 665-8122", "status": "active"}, {"id": "R03665", "company": "Parker Oil Company Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Simmons Travel Center-Bracey", "street": "3134 Hwy 903", "city": "Bracey", "state": "VA", "zip": "23919", "exit": "Exit 4 I-85", "phone": "(434) 689-2221", "status": "active"}, {"id": "R03664", "company": "Parker Oil Company Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Simmons Travel Center-Emporia", "street": "1589 Skippers Rd", "city": "Emporia", "state": "VA", "zip": "23847", "exit": "Exit 8 I-95", "phone": "(434) 634-9296", "status": "active"}, {"id": "R00933", "company": "Smithton Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "Smithton Travel Center", "street": "138 Motor Drome Road", "city": "Smithton", "state": "PA", "zip": "15479", "exit": "I-70, Exit 49", "phone": "(724) 872-4224", "status": "active"}, {"id": "R01140", "company": "BP Kenosha Travel Plaza", "type": "C-Store", "group": "Roady's", "name": "Somer's Amoco", "street": "1170 22nd Ave", "city": "Kenosha", "state": "WI", "zip": "53140", "exit": "I-94 Exit 339", "phone": "(262) 425-1685", "status": "active"}, {"id": "R01205", "company": "JLP Development LLC", "type": "Truck Stop", "group": "Roady's", "name": "Space Age #202", "street": "9515 Old Pacific Hwy N.", "city": "Castle Rock", "state": "WA", "zip": "98611-9821", "exit": "I-5 Exit52", "phone": "(360) 282-6312", "status": "active"}, {"id": "R00286", "company": "Space Age Fuel Inc", "type": "Truck Stop", "group": "Roady's", "name": "Space Age Travel Center", "street": "77522 South Hwy 207", "city": "Hermiston", "state": "OR", "zip": "97838", "exit": "I-84, Exit 182", "phone": "(541) 564-6254", "status": "active"}, {"id": "R00935", "company": "AMBA Corp", "type": "Truck Stop", "group": "Roady's", "name": "Sparta Travel Center", "street": "4105 Theater Rd.", "city": "Sparta", "state": "WI", "zip": "54656", "exit": "I-90, Exit 28", "phone": "(608) 269-3277", "status": "active"}, {"id": "P03750", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #1", "street": "4007 Fredrick Ave", "city": "St. Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 364-1751", "status": "active"}, {"id": "P03721", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #10", "street": "4623 North Village Dr", "city": "Saint Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 396-9111", "status": "active"}, {"id": "P03749", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #2", "street": "1525 St Joseph Ave", "city": "St. Joseph", "state": "MO", "zip": "64505", "exit": "", "phone": "(816) 279-1141", "status": "active"}, {"id": "P03748", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #3", "street": "1011 S Belt Hwy", "city": "St. Joseph", "state": "MO", "zip": "64507", "exit": "", "phone": "(816) 232-7119", "status": "active"}, {"id": "P03746", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #4", "street": "2420 Fredrick Ave", "city": "St. Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 232-1551", "status": "active"}, {"id": "P03745", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #5", "street": "1704 Mitchell Ave", "city": "St. Joseph", "state": "MO", "zip": "64507", "exit": "", "phone": "(816) 233-0318", "status": "active"}, {"id": "R01837", "company": "Speedy Convenience Inc.", "type": "Truck Stop", "group": "Roady's", "name": "Speedy's Convenience #6", "street": "1310 Riverside Rd", "city": "St. Joseph", "state": "MO", "zip": "64507", "exit": "Hwy 36", "phone": "(816) 232-7111", "status": "active"}, {"id": "P03744", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #7", "street": "2221 N Belt Hwy", "city": "St. Joseph", "state": "MO", "zip": "64506", "exit": "", "phone": "(816) 671-9491", "status": "active"}, {"id": "P03743", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #8", "street": "2728 Messanie", "city": "St. Joseph", "state": "MO", "zip": "64501", "exit": "", "phone": "(816) 279-4801", "status": "active"}, {"id": "P03742", "company": "Speedy Convenience Inc.", "type": "PPO", "group": "PTP", "name": "Speedy's Convenience #9", "street": "141 S 18th Street", "city": "Kansas City", "state": "KS", "zip": "66102", "exit": "", "phone": "(913) 371-0570", "status": "active"}, {"id": "P03671", "company": "Stampede Inc.", "type": "Service Center", "group": "PTP", "name": "Stampede", "street": "54 SE 1000", "city": "Andrews", "state": "TX", "zip": "79714", "exit": "", "phone": "(432) 223-3115", "status": "active"}, {"id": "P03595", "company": "State Oil Fuel Center Inc.", "type": "Truck Stop", "group": "PTP", "name": "State Oil Fuel Center", "street": "7127 Hwy 23", "city": "Belle Chase", "state": "LA", "zip": "70037", "exit": "Hwy 23", "phone": "(504) 398-1375", "status": "active"}, {"id": "R03934", "company": "Kenai Enterprises LLC DBA Station 177 Food & Fuel", "type": "Truck Stop", "group": "Roady's", "name": "Station 177 Food & Fuel", "street": "37363 Rocky Boots Way", "city": "Logan", "state": "OH", "zip": "43138", "exit": "US-33/Exit 177", "phone": "(740) 822-2017", "status": "active"}, {"id": "R01569", "company": "Station 67 LLC", "type": "PPO", "group": "Roady's", "name": "Station 67 BP", "street": "649 WI-67", "city": "Ashippun", "state": "WI", "zip": "53003", "exit": "", "phone": "(920) 474-4773", "status": "active"}, {"id": "R01635", "company": "Station Hwy 33 LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Station Hwy 33 Citgo", "street": "W346 Luedtke Ln #9354", "city": "Hartford", "state": "WI", "zip": "53027", "exit": "", "phone": "(262) 629-1990", "status": "active"}, {"id": "R01570", "company": "Station Ixonia LLC", "type": "PPO", "group": "Roady's", "name": "Station Ixonia BP", "street": "W1168 WI-16", "city": "Ixonia", "state": "WI", "zip": "53036", "exit": "", "phone": "(920) 541-1042", "status": "active"}, {"id": "R03972", "company": "Station Kewaskum LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Station Kewaskum", "street": "890 Fond Du Lac Ave", "city": "Kewaskum", "state": "WI", "zip": "53040", "exit": "Hwy 45", "phone": "(262) 626-8471", "status": "active"}, {"id": "R01602", "company": "Station Neosho LLC", "type": "PPO", "group": "Roady's", "name": "Station Neosho", "street": "446 S Schuyler St", "city": "Neosho", "state": "WI", "zip": "53059", "exit": "", "phone": "(920) 625-2038", "status": "active"}, {"id": "R03907", "company": "Station Wild Goose LLC", "type": "Truck Stop", "group": "Roady's", "name": "Station Wild Goose", "street": "W5948 WI 33", "city": "Juneau", "state": "WI", "zip": "54935", "exit": "Highway 33/26", "phone": "(920) 386-4949", "status": "active"}, {"id": "P03623", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "St. Helena's Express", "street": "30139 Hwy 16 West", "city": "West Amite", "state": "LA", "zip": "70422", "exit": "", "phone": "(985) 747-9022", "status": "active"}, {"id": "R03970", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Stinker 122 Fargo", "street": "1902 N Franklin Blvd", "city": "Nampa", "state": "ID", "zip": "83687", "exit": "Exit 36 / I-84", "phone": "(208) 475-4067", "status": "active"}, {"id": "R01244", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Stinker's Broken Wheel Truck Stop #218", "street": "2332 E. Richards", "city": "Douglas", "state": "WY", "zip": "82633", "exit": "I-25 Exit 135", "phone": "(307) 358-4444", "status": "active"}, {"id": "R01243", "company": "Stinker Stores Inc", "type": "Truck Stop", "group": "Roady's", "name": "Stinker's Ghost Town Truck Stop #217", "street": "6680 W Yellowstone Hwy", "city": "Casper", "state": "WY", "zip": "82604", "exit": "I-25 Exit 189", "phone": "(307) 472-0200", "status": "active"}, {"id": "R01245", "company": "Stinker Stores Inc", "type": "Fuel Stop", "group": "Roady's", "name": "Stinker's Outpost Fuel Stop #219", "street": "1025 S Main Street", "city": "Lusk", "state": "WY", "zip": "82225", "exit": "I-25 Exit 126", "phone": "(307) 334-2048", "status": "active"}, {"id": "R01143", "company": "MAC Enterprises LLC", "type": "Truck Stop", "group": "Roady's", "name": "Stockmen's Truck Stop", "street": "501 Farwell Ave Ste 2", "city": "South Saint Paul", "state": "MN", "zip": "55075", "exit": "I-494, Exit 64A", "phone": "(651) 455-3044", "status": "active"}, {"id": "R03918", "company": "HNZZ Investments LLC", "type": "Truck Stop", "group": "Roady's", "name": "Stop N Shop #12", "street": "27050 S Hwy 133", "city": "Richland", "state": "MO", "zip": "65556", "exit": "I-40/Exit 145", "phone": "(573) 873-4375", "status": "active"}, {"id": "R00395", "company": "Sunshine Plaza of the South", "type": "Truck Stop", "group": "Roady's", "name": "Sunshine Plaza of South Florida", "street": "12200 NW South River Drive", "city": "Medley", "state": "FL", "zip": "33178", "exit": "", "phone": "(305) 883-1004", "status": "active"}, {"id": "R01151", "company": "Marli LLC", "type": "Truck Stop", "group": "Roady's", "name": "Super B Express", "street": "300 E 3rd St", "city": "Donalsonville", "state": "GA", "zip": "39845", "exit": "", "phone": "(229) 524-6073", "status": "active"}, {"id": "R03971", "company": "Peoria Road Mart LLC", "type": "Truck Stop", "group": "Roady's", "name": "Super Station", "street": "3840 N Peoria Rd", "city": "Springfield", "state": "IL", "zip": "62702", "exit": "Exit 105 / I-55", "phone": "(217) 280-5042", "status": "active"}, {"id": "R03877", "company": "A N 81 Oregon LLC", "type": "Truck Stop", "group": "Roady's", "name": "Talent Travel Center", "street": "251 W Valleyview Rd.", "city": "Talent", "state": "OR", "zip": "97540", "exit": "Exit 21 / I-5", "phone": "(541) 897-4133", "status": "active"}, {"id": "P03685", "company": "TDI Repair Facility LLC", "type": "Service Center", "group": "PTP", "name": "TDI Repair", "street": "265 State Route 11", "city": "Champlain", "state": "NY", "zip": "12919", "exit": "", "phone": "(800) 560-3163", "status": "active"}, {"id": "P03686", "company": "TDI Repair Facility LLC", "type": "Service Center", "group": "PTP", "name": "TDI Truck Repair", "street": "50 Babbie Blvd.", "city": "Swanton", "state": "VT", "zip": "05488", "exit": "Exit-21 I-89", "phone": "(800) 560-3163", "status": "active"}, {"id": "R02229", "company": "Temp Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Temp-Stop #102", "street": "7 Acorn Drive", "city": "Eldon", "state": "MO", "zip": "65026", "exit": "", "phone": "(573) 392-5510", "status": "active"}, {"id": "R02230", "company": "Temp Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Temp-Stop #103", "street": "4575 S Limit Ave.", "city": "Sedalia", "state": "MO", "zip": "65301", "exit": "", "phone": "(660) 826-8222", "status": "active"}, {"id": "R02231", "company": "Temp Stop LLC", "type": "Truck Stop", "group": "Roady's", "name": "Temp-Stop #117", "street": "723 N. Main St.", "city": "Grain Valley", "state": "MO", "zip": "64029", "exit": "I-70", "phone": "(816) 355-0584", "status": "active"}, {"id": "P03600", "company": "Sachs Capitol Group, LP", "type": "Truck Stop", "group": "PTP", "name": "Tennessean Truck Stop", "street": "3686 Pulaski Hwy", "city": "Cornersville", "state": "TN", "zip": "37047", "exit": "Exit 22 I-65", "phone": "(931) 293-4171", "status": "active"}, {"id": "R01038", "company": "TCI Royale Inc", "type": "Truck Stop", "group": "Roady's", "name": "Texas Best Smokehouse 5", "street": "3302 S. Eastman Road", "city": "Longview", "state": "TX", "zip": "75602", "exit": "I-20, Exit 596", "phone": "(903) 248-4300", "status": "active"}, {"id": "R00587", "company": "Rayann Group LLC", "type": "C-Store", "group": "Roady's", "name": "The Patriot's Travel Center", "street": "109 SR 522", "city": "Wheelersburg", "state": "OH", "zip": "45694", "exit": "", "phone": "(740) 574-1803", "status": "active"}, {"id": "R00245", "company": "LaPlace Travel Center LLC", "type": "Truck Stop", "group": "Roady's", "name": "The Swamp Stop", "street": "4325 US Highway 51", "city": "LaPlace", "state": "LA", "zip": "70068", "exit": "I-10, Exit 209", "phone": "(985) 651-1800", "status": "active"}, {"id": "R00244", "company": "Tiger Truck Stop Inc", "type": "Truck Stop", "group": "Roady's", "name": "Tiger Truck Stop", "street": "76740 Garner Ln., PO Box 644", "city": "Grosse Tete", "state": "LA", "zip": "70740", "exit": "I-10, Exit 139", "phone": "(225) 612-7916", "status": "active"}, {"id": "R01168", "company": "Majors Management", "type": "Truck Stop", "group": "Roady's", "name": "Timeout Market 647", "street": "1130 W Highway 25 / 70", "city": "Newport", "state": "TN", "zip": "37821", "exit": "Hwy 25W Exit 432B", "phone": "(423) 623-7440", "status": "active"}, {"id": "P03663", "company": "Shop Rite Inc.", "type": "Truck Stop", "group": "PTP", "name": "Tobacco Plus #5", "street": "2217 Old Hwy 90", "city": "Vinton", "state": "LA", "zip": "70668", "exit": "Exit 4 I-10", "phone": "(337) 589-6396", "status": "active"}, {"id": "P03660", "company": "Dhaliwal Ventures Inc.", "type": "Truck Stop", "group": "PTP", "name": "Tomahawk Truck Stop", "street": "1103 Santa Fe Ave.", "city": "Fountain", "state": "CO", "zip": "80817", "exit": "Exit 128 I-25", "phone": "(719) 382-5473", "status": "active"}, {"id": "R01021", "company": "Tonkawa Trading Post Inc", "type": "C-Store", "group": "Roady's", "name": "Tonkawa Trading Post", "street": "16401 W South Avenue", "city": "Tonkawa", "state": "OK", "zip": "74653", "exit": "", "phone": "(580) 308-6102", "status": "active"}, {"id": "L03969", "company": "Trexler Travel Center LLC", "type": "Truck Stop", "group": "Roady's Lite", "name": "Trexler Travel Center", "street": "5829 Tilgham Street", "city": "Allentown", "state": "PA", "zip": "18104", "exit": "Exit 49A / US-22", "phone": "(610) 395-6000", "status": "active"}, {"id": "R01180", "company": "SKR3L", "type": "Truck Stop", "group": "Roady's", "name": "Truck Stops Demo", "street": "1615 12th Ave Rd Suite C", "city": "Nampa", "state": "ID", "zip": "83686", "exit": "84", "phone": "(888) 540-2909", "status": "active"}, {"id": "R03598", "company": "Truck World Inc", "type": "Truck Stop", "group": "Roady's", "name": "Truck World - Conneaut", "street": "780 State Rt 7", "city": "Conneaut", "state": "OH", "zip": "44030", "exit": "Exit 241 I-90", "phone": "(440) 593-6220", "status": "active"}, {"id": "R03596", "company": "Truck World Inc", "type": "Truck Stop", "group": "Roady's", "name": "Truck World - Hubbard", "street": "6965 Truck World Blvd", "city": "Hubbard", "state": "OH", "zip": "44425", "exit": "Exit 234 I-80", "phone": "(330) 534-8166", "status": "active"}, {"id": "R03597", "company": "Truck World Inc", "type": "Truck Stop", "group": "Roady's", "name": "Truck World - North Jackson", "street": "12700 Leonard Pkwy", "city": "North Jackson", "state": "OH", "zip": "44451", "exit": "Exit 57 I-76", "phone": "(330) 538-7030", "status": "active"}, {"id": "P03930", "company": "Truck World Inc", "type": "PPO", "group": "PTP", "name": "Truck World - Shell Food Mart & Gas Boardman", "street": "998 East Western Reserve Rd", "city": "Boardman", "state": "OH", "zip": "44512", "exit": "", "phone": "(330) 758-0217", "status": "active"}, {"id": "P03718", "company": "Truck World Inc", "type": "PPO", "group": "PTP", "name": "Truck World - Shell Food Mart & Gas Girard", "street": "420 S State Street", "city": "Girard", "state": "OH", "zip": "44420", "exit": "", "phone": "(330) 507-1099", "status": "active"}, {"id": "P03931", "company": "Truck World Inc", "type": "PPO", "group": "PTP", "name": "Truck World - Shell Food Mart & Gas Poland", "street": "3190 Center Road", "city": "Poland", "state": "OH", "zip": "44514", "exit": "", "phone": "(330) 757-4204", "status": "active"}, {"id": "P03608", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Vegas Style North", "street": "1144 NE Evangeline Thrwy", "city": "Broussard", "state": "LA", "zip": "70518", "exit": "", "phone": "(337) 857-0078", "status": "active"}, {"id": "P03609", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Vegas Style South", "street": "1050 Baker Hughes Drive", "city": "Broussard", "state": "LA", "zip": "70518", "exit": "", "phone": "(337) 364-9929", "status": "active"}, {"id": "R00703", "company": "Ware Oil & Supply Company, Inc", "type": "Truck Stop", "group": "Roady's", "name": "Waco Travel Center", "street": "2717 S Byron Butler Pkwy", "city": "Perry", "state": "FL", "zip": "32348", "exit": "US Hwy 98", "phone": "(850) 838-1852", "status": "active"}, {"id": "R03791", "company": "Jalaram Enterprises Group LLC", "type": "Truck Stop", "group": "Roady's", "name": "Waco Truck Stop", "street": "1001 Enterprises Blvd.", "city": "Hewitt", "state": "TX", "zip": "76643", "exit": "Exit #325 / IH-35", "phone": "(254) 655-4150", "status": "active"}, {"id": "R01018", "company": "Warren Travel Plaza Inc", "type": "Truck Stop", "group": "Roady's", "name": "Warren Travel Plaza", "street": "7270 S Warren Rd", "city": "Warren", "state": "IN", "zip": "46792", "exit": "I-69, Exit 278", "phone": "(260) 375-2888", "status": "active"}, {"id": "R01169", "company": "Demo Truck Stops", "type": "PPO", "group": "Roady's", "name": "W.D. Truck Stop", "street": "1120 S Rackham Wayed", "city": "Meridian", "state": "ID", "zip": "83642", "exit": "", "phone": "(208) 555-1212", "status": "active"}, {"id": "R01032", "company": "NEC OPCO I Inc (Nouria Energy)", "type": "Truck Stop", "group": "Roady's", "name": "Whately Truck Stop", "street": "372 State Rd US-5", "city": "Whately", "state": "MA", "zip": "01093", "exit": "I-91, Exit 24", "phone": "(413) 642-9070", "status": "active"}, {"id": "R01201", "company": "Sparkle Supply LLC", "type": "Fuel Stop", "group": "Roady's", "name": "Williams Fuel Stop Of Gallipolis", "street": "683 State Route 7 N", "city": "Gallipolis", "state": "OH", "zip": "45631", "exit": "", "phone": "(740) 446-9459", "status": "active"}, {"id": "P03681", "company": "Winchester Truck Repair Holdings, Inc.", "type": "Service Center", "group": "PTP", "name": "Winchester Truck Repair", "street": "259 Tyson Drive", "city": "Winchester", "state": "VA", "zip": "22603", "exit": "Exit 317 I-81", "phone": "(540) 325-7820", "status": "active"}, {"id": "P03619", "company": "Jacobs Entertainment, Inc.", "type": "Truck Stop", "group": "PTP", "name": "Winner's Choice Truck Plaza", "street": "2654 Hwy 108", "city": "Sulphur", "state": "LA", "zip": "70665", "exit": "", "phone": "(337) 882-1405", "status": "active"}, {"id": "R03867", "company": "Wolf Den Inc.", "type": "C-Store", "group": "Roady's", "name": "Wolf Den", "street": "61 West Wapato Rd.", "city": "Wapato", "state": "WA", "zip": "98951", "exit": "", "phone": "(509) 877-2552", "status": "active"}, {"id": "P03599", "company": "Yreka Properties, LLC.", "type": "Truck Stop", "group": "PTP", "name": "Yreka Truck Stop", "street": "787 Montague Rd", "city": "Yreka", "state": "CA", "zip": "96097", "exit": "I-5/Exit 776", "phone": "(530) 200-8954", "status": "active"}];
+
+
+let MANAGER_MAP = {
+  'CT':'OPEN','DE':'OPEN','IA':'OPEN','ME':'OPEN','MD':'OPEN','MA':'OPEN','MI':'OPEN','MN':'OPEN','NH':'OPEN','NJ':'OPEN','NY':'OPEN','OH':'OPEN','PA':'OPEN','RI':'OPEN','VT':'OPEN','VA':'OPEN','WV':'OPEN',
+  'LA':'Burt Newman',
+  'AZ':'Maria Coleman','CA':'Maria Coleman','NV':'Maria Coleman','NM':'Maria Coleman','OR':'Maria Coleman','UT':'Maria Coleman','WA':'Maria Coleman',
+  'AL':'Shannon Bumbalough','AR':'Shannon Bumbalough','FL':'Shannon Bumbalough','GA':'Shannon Bumbalough','IL':'Shannon Bumbalough','KY':'Shannon Bumbalough','MS':'Shannon Bumbalough','MO':'Shannon Bumbalough','NC':'Shannon Bumbalough','SC':'Shannon Bumbalough','TN':'Shannon Bumbalough',
+  'WI':'Stefanie Ritter',
+  'CO':'Steph Leslie','ID':'Steph Leslie','KS':'Steph Leslie','MT':'Steph Leslie','NE':'Steph Leslie','ND':'Steph Leslie','OK':'Steph Leslie','SD':'Steph Leslie','TX':'Steph Leslie','WY':'Steph Leslie',
+  'default':'Unassigned'
+};
+const REGIONS = {
+  'OPEN':                {states:['CT','DE','IA','ME','MD','MA','MI','MN','NH','NJ','NY','OH','PA','RI','VT','VA','WV'], color:'#888888', label:'Northeast (Open)'},
+  'Burt Newman':         {states:['LA'], color:'#FF6B35', label:'Louisiana'},
+  'Maria Coleman':       {states:['AZ','CA','NV','NM','OR','UT','WA'], color:'#00D68F', label:'West'},
+  'Shannon Bumbalough':  {states:['AL','AR','FL','GA','IL','KY','MS','MO','NC','SC','TN'], color:'#FF4757', label:'Southeast'},
+  'Stefanie Ritter':     {states:['WI'], color:'#7C3AED', label:'Upper Midwest'},
+  'Steph Leslie':        {states:['CO','ID','KS','MT','NE','ND','OK','SD','TX','WY'], color:'#00C8FF', label:'Central'}
+};
+function getManager(state){ return MANAGER_MAP[state] || MANAGER_MAP['default']; }
+function getRegionColor(mgr){ return REGIONS[mgr]?.color || '#3A4A6B'; }
+
+// KPI Data
+const KPI_VP = {
+  'Monthly Vendor Program Revenue':{'2025-01':51172.5,'2025-02':8280.66,'2025-03':77949.96,'2025-04':16618.93,'2025-05':17540.45,'2025-06':71275.19,'2025-07':10491.54,'2025-08':16365.29,'2025-09':93175.79,'2025-10':7856.8,'2025-11':6462.8,'2025-12':154747.02,'2026-01':24461.79,'2026-02':161.64},
+  'Vendor Program Revenue YTD':{'2025-01':51172.5,'2025-02':59453.16,'2025-03':137403.12,'2025-04':154022.05,'2025-05':171562.5,'2025-06':242837.69,'2025-07':253329.23,'2025-08':269694.52,'2025-09':362870.31,'2025-10':370727.11,'2025-11':377189.91,'2025-12':531936.93,'2026-01':24461.79,'2026-02':24623.43}
+};
+
+// VENDOR PROGRAMS SYSTEM
+// ═══════════════════════════════════════════════
+const VP_VENDORS = [{"id":"V00003","name":"Airgas","program":"Entegra","priority":"Medium","status":"Active","phone":"(877) 717-4540"},{"id":"V00005","name":"All Over Media","program":"PVP","priority":"Low","status":"Active","phone":"(800) 525-8762"},{"id":"V00398","name":"Bens Peanuts LLC","program":"PVP","priority":"Low","status":"Active","phone":"(760) 412-7102"},{"id":"V00099","name":"Big Rig Tees","program":"NO VP","priority":"Low","status":"Active","phone":"(918) 663-8339"},{"id":"V00028","name":"Brown & Brown Insurance","program":"NO VP","priority":"Low","status":"Active","phone":"(610) 317-1423"},{"id":"V00134","name":"Cintas","program":"Entegra","priority":"High","status":"Active","phone":""},{"id":"V00137","name":"Cintas First Aid","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00032","name":"CMA / USG Vending","program":"PVP","priority":"Low","status":"Active","phone":"(724) 838-8977"},{"id":"V00033","name":"Coca-Cola CCNA","program":"PVP","priority":"High","status":"Active","phone":"(800) 241-2653"},{"id":"V00138","name":"Community Coffee","program":"Entegra","priority":"Low","status":"Active","phone":"(225) 368-3900"},{"id":"V00101","name":"Cord Financial","program":"PVP","priority":"Medium","status":"Active","phone":""},{"id":"V00035","name":"Core-Mark","program":"Entegra","priority":"Medium","status":"Active","phone":"(940) 293-8600"},{"id":"V00036","name":"DAS","program":"PVP","priority":"High","status":"Active","phone":"(800) 251-9104"},{"id":"V00136","name":"Data Facts","program":"Entegra","priority":"Low","status":"Active","phone":"(800) 264-4110"},{"id":"V00038","name":"Ecolab Corp","program":"PVP","priority":"Medium","status":"Active","phone":"(800) 352-5326"},{"id":"V00629","name":"Ecolab Inst & Elimination","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00040","name":"Entegra Procurement Services","program":"PVP","priority":"High","status":"Active","phone":"(866) 368-3472"},{"id":"V00002","name":"Farmer Brothers","program":"PVP","priority":"High","status":"Active","phone":"(877) 322-6898"},{"id":"V00331","name":"FAT Brands","program":"PVP","priority":"Medium","status":"Active","phone":"(770) 514-4848"},{"id":"V00026","name":"First Touch / Software Earnings","program":"PVP","priority":"Low","status":"Active","phone":""},{"id":"V00662","name":"FSG Signs","program":"PVP","priority":"Low","status":"Active","phone":"(210) 772-5180"},{"id":"V00088","name":"Grainger","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00232","name":"Heartland / Global Payments","program":"PVP","priority":"High","status":"Active","phone":"(800) 367-2638"},{"id":"V00025","name":"Hi-Way Distributing","program":"Approved Vendor","priority":"Low","status":"Active","phone":"(800) 321-0965"},{"id":"V00139","name":"Home Depot Pro","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00199","name":"Iowa Smokehouse","program":"PVP","priority":"Low","status":"Active","phone":"(800) 434-7695"},{"id":"V00332","name":"Leanin Tree","program":"PVP","priority":"Low","status":"Active","phone":"(800) 525-0846"},{"id":"V00022","name":"Lynco","program":"PVP","priority":"High","status":"Active","phone":"(800) 758-9244"},{"id":"V00071","name":"NATSO","program":"NO VP","priority":"Low","status":"Active","phone":""},{"id":"V00630","name":"Nestle Water","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00631","name":"Network Services Co.","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00020","name":"NTW - National Tire Wholesale","program":"Shop","priority":"Low","status":"Active","phone":""},{"id":"V00298","name":"NuDef","program":"PVP","priority":"Low","status":"Active","phone":"(855) 300-0031"},{"id":"V00019","name":"ODP - Office Depot","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00596","name":"Omaha Protein Popcorn","program":"PVP","priority":"Low","status":"Active","phone":"(515) 783-6729"},{"id":"V00073","name":"OPIS","program":"NO VP","priority":"Low","status":"Active","phone":""},{"id":"V00632","name":"Orkin","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00140","name":"Parts Town","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00034","name":"PDI Technologies","program":"PVP","priority":"Low","status":"Active","phone":""},{"id":"V00633","name":"PepsiCo","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00365","name":"Pittsburgh Power","program":"PVP","priority":"Low","status":"Active","phone":"(724) 360-4080"},{"id":"V00016","name":"Premier Merchants Group, LLC","program":"PVP","priority":"Low","status":"Active","phone":"(855) 764-2867"},{"id":"V00013","name":"Road Sync","program":"Shop","priority":"Low","status":"Active","phone":"(678) 485-5670"},{"id":"V00012","name":"Sayle Oil Company","program":"Shop","priority":"Low","status":"Active","phone":""},{"id":"V00141","name":"Sherwin Williams","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00168","name":"Shoes For Crews","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00010","name":"Sysco","program":"PVP","priority":"High","status":"Active","phone":"(281) 584-1390"},{"id":"V00009","name":"Trimark","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00112","name":"Truck Parking Club","program":"PVP","priority":"High","status":"Active","phone":"(317) 508-6638"},{"id":"V00166","name":"United Rentals","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00563","name":"Vendor Invoice Hub","program":"PVP","priority":"Medium","status":"Active","phone":"(678) 304-7539"},{"id":"V00007","name":"Warren Rogers","program":"PVP","priority":"Low","status":"Active","phone":"(800) 972-7472"},{"id":"V00167","name":"Waste Management","program":"Entegra","priority":"Low","status":"Active","phone":""},{"id":"V00497","name":"WinCraft","program":"PVP","priority":"Low","status":"Active","phone":"(507) 453-6508"},{"id":"V00464","name":"XCharge","program":"PVP","priority":"Low","status":"Active","phone":"(909) 821-6124"}];
+const VP_TOP10 = ["V00134", "V00033", "V00036", "V00040", "V00002", "V00232", "V00022", "V00010", "V00112", "V00003"];
+const VP_TOP10_NAMES = {"V00134": "Cintas", "V00033": "Coca-Cola", "V00036": "DAS", "V00040": "Entegra", "V00002": "Farmer Bros", "V00232": "Heartland", "V00022": "Lynco", "V00010": "Sysco", "V00112": "Truck Parking", "V00003": "Airgas"};
+let vpGridPage=0;
+const VP_PER_PAGE=25;
+
+// Enrollment data: stored in localStorage as { locId: { vendorId: true/false } }
+let VP_ENROLL={};
+function loadVPEnroll(){try{const s=localStorage.getItem('roadys_vp_enroll');if(s)VP_ENROLL=JSON.parse(s);}catch(e){}}
+function saveVPEnroll(){try{localStorage.setItem('roadys_vp_enroll',JSON.stringify(VP_ENROLL));}catch(e){}}
+loadVPEnroll();
+
+// Top 10 vendor list matching user spec
+const VP_TOP10_LIST = [
+  {id:'V00033', name:'Coca-Cola'},
+  {id:'V00040', name:'Entegra'},
+  {id:'V00134', name:'Cintas'},
+  {id:'V00036', name:'DAS'},
+  {id:'V00005', name:'All Over Media'},
+  {id:'V00002', name:'Farmer Brothers'},
+  {id:'V00232', name:'Heartland'},
+  {id:'V00022', name:'Lynco'},
+  {id:'V00010', name:'Sysco'},
+  {id:'V00112', name:'Truck Parking Club'},
+];
+
+// Estimated monthly revenue per enrolled stop per vendor
+const VP_REV_PER_STOP = 150;
+
+function pgKpiVendors(){
+  const m=getM(), p=pm(m);
+  const el=document.getElementById('vp-period');
+  if(el) el.textContent=periodLabel(m);
+  renderVendorKPIs();
+  renderTop10VendorTable();
+  renderVPEnrollTable();
+  vpPopulateEnrollVendorFilter();
+}
+
+function renderVendorKPIs(){
+  const m=getM(), p=pm(m);
+  const mi=MOS.indexOf(m);
+  const ytdMos=MOS.slice(0,mi+1);
+
+  // ── Card 1: Total Vendor Programs Revenue ──
+  const vpRev=gv('Monthly Vendor Program Revenue',m)||0;
+  const vpRevP=p?gv('Monthly Vendor Program Revenue',p):null;
+  const vpRevY=gvy('Monthly Vendor Program Revenue',m);
+  const vpYTD=ytdKpi('Monthly Vendor Program Revenue',m);
+
+  // ── Card 2: Top 10 Vendor Program Revenue (enrollment-based estimate) ──
+  const activeLocs=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
+  function top10Rev(mo){
+    return activeLocs.reduce((s,mb)=>{
+      const le=VP_ENROLL[mb.id]||{};
+      const cnt=VP_TOP10_LIST.reduce((c,v)=>c+(le[v.id]?1:0),0);
+      return s+cnt*VP_REV_PER_STOP;
+    },0);
+  }
+  const t10Rev=top10Rev(m);
+  const t10RevP=p?top10Rev(p):null;
+  const t10YTD=ytdMos.reduce((s,mo)=>s+top10Rev(mo),0);
+  const t10RevY=null; // prior year not available at vendor level
+
+  const el=document.getElementById('vp-kpis');
+  if(!el) return;
+  el.innerHTML=
+    kpiKC('Vendor Programs Revenue',vpRev,'$',vpRevP,'Monthly vendor program fees',false,vpYTD,vpRevY)+
+    kpiKC('Top 10 Vendor Program Revenue',t10Rev,'$',t10RevP,'Est. from enrolled stops',false,t10YTD,t10RevY);
+}
+
+function renderTop10VendorTable(){
+  const m=getM(), p=pm(m);
+  const mi=MOS.indexOf(m);
+  const ytdMos=MOS.slice(0,mi+1);
+  const activeLocs=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
+
+  // Build per-vendor stats
+  const vendorData=VP_TOP10_LIST.map((v,idx)=>{
+    const enrolled=activeLocs.filter(mb=>(VP_ENROLL[mb.id]||{})[v.id]);
+    const enrolledP=p?activeLocs.filter(mb=>(VP_ENROLL[mb.id]||{})[v.id]).length:null; // same (static)
+    const count=enrolled.length;
+    const countP=enrolledP; // enrollment doesn't change by month in current model — show static
+    const monthRev=count*VP_REV_PER_STOP;
+    const monthRevP=countP!==null?countP*VP_REV_PER_STOP:null;
+    const ytdRev=ytdMos.length*monthRev; // simple: same enrollment × months
+    return {v,idx,count,countP:count,monthRev,monthRevP,ytdRev,enrolled};
+  });
+
+  // Rank by month revenue
+  const sorted=[...vendorData].sort((a,b)=>b.monthRev-a.monthRev);
+  sorted.forEach((d,i)=>d.rank=i+1);
+
+  const tbl=document.getElementById('vp-top10-tbl');
+  if(!tbl) return;
+
+  const thStyle='style="font-family:var(--ff);font-size:.7em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap"';
+  const thead=`<thead><tr>
+    <th ${thStyle} style="width:32px"></th>
+    <th ${thStyle}>Vendor Program</th>
+    <th ${thStyle} style="text-align:center"># Truck Stops</th>
+    <th ${thStyle} style="text-align:center">vs Prior Mo</th>
+    <th ${thStyle} style="text-align:center">Rank</th>
+    <th ${thStyle} style="text-align:right">Month Revenue</th>
+    <th ${thStyle} style="text-align:right">YTD Revenue</th>
+  </tr></thead>`;
+
+  const tbody=vendorData.map((d,rowIdx)=>{
+    const delta=d.count-d.countP;
+    const deltaHtml=delta===0
+      ?`<span style="color:var(--muted)">—</span>`
+      :delta>0
+        ?`<span style="color:var(--green)">▲ ${delta}</span>`
+        :`<span style="color:var(--red)">▼ ${Math.abs(delta)}</span>`;
+    const rankMedal=d.rank===1?'🥇':d.rank===2?'🥈':d.rank===3?'🥉':`#${d.rank}`;
+    const tdBase='style="padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle"';
+    const expandId=`vp-expand-${rowIdx}`;
+    return `<tr id="vp-row-${rowIdx}" style="cursor:pointer">
+      <td ${tdBase} style="text-align:center;padding:10px 8px">
+        <button onclick="vpToggleExpand(${rowIdx})" style="background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.3);color:var(--accent);border-radius:4px;width:22px;height:22px;font-size:.85em;cursor:pointer;font-weight:700;line-height:1" id="vp-expand-btn-${rowIdx}">＋</button>
+      </td>
+      <td ${tdBase}><span style="font-weight:700;color:var(--text)">${d.v.name}</span></td>
+      <td ${tdBase} style="text-align:center;font-weight:700;font-size:1.05em">${d.count}</td>
+      <td ${tdBase} style="text-align:center;font-size:.88em">${deltaHtml}</td>
+      <td ${tdBase} style="text-align:center;font-size:1.1em">${rankMedal}</td>
+      <td ${tdBase} style="text-align:right;font-weight:700;font-family:var(--ff)">$${d.monthRev.toLocaleString()}</td>
+      <td ${tdBase} style="text-align:right;color:var(--accent);font-weight:700;font-family:var(--ff)">$${d.ytdRev.toLocaleString()}</td>
+    </tr>
+    <tr id="${expandId}" style="display:none">
+      <td colspan="7" style="padding:0;border-bottom:1px solid var(--border)">
+        <div style="background:rgba(0,0,0,.2);padding:12px 16px">
+          ${renderVPStopDetail(d)}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  tbl.innerHTML=thead+`<tbody>${tbody}</tbody>`;
+}
+
+function renderVPStopDetail(d){
+  const m=getM(), p=pm(m);
+  const mi=MOS.indexOf(m);
+  const ytdMos=MOS.slice(0,mi+1);
+
+  if(!d.enrolled.length){
+    return `<div style="color:var(--muted);font-size:.85em;padding:8px 0">No truck stops currently enrolled in ${d.v.name}.</div>`;
+  }
+
+  const thS='style="font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2)"';
+  const rows=d.enrolled.map(mb=>{
+    const gs=getManager(mb.state);
+    const gsColor=getRegionColor(gs);
+    const stopRev=VP_REV_PER_STOP;
+    const stopYTD=ytdMos.length*stopRev;
+    const tdS='style="padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);font-size:.82em"';
+    return `<tr>
+      <td ${tdS}><span style="font-weight:600">${mb.name}</span></td>
+      <td ${tdS}>${mb.city||'—'}, ${mb.state||'—'}</td>
+      <td ${tdS}><span style="color:${gsColor};font-weight:600;font-size:.85em">${gs}</span></td>
+      <td ${tdS} style="text-align:right;font-weight:600">$${stopRev.toLocaleString()}</td>
+      <td ${tdS} style="text-align:right;color:var(--accent)">$${stopYTD.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  return `<table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th ${thS}>Truck Stop</th>
+      <th ${thS}>Location</th>
+      <th ${thS}>Growth Strategist</th>
+      <th ${thS} style="text-align:right">Month Revenue</th>
+      <th ${thS} style="text-align:right">YTD Revenue</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+let vpExpandState={};
+function vpToggleExpand(rowIdx){
+  const row=document.getElementById(`vp-expand-${rowIdx}`);
+  const btn=document.getElementById(`vp-expand-btn-${rowIdx}`);
+  if(!row) return;
+  const open=row.style.display==='table-row';
+  row.style.display=open?'none':'table-row';
+  btn.textContent=open?'＋':'－';
+  btn.style.background=open?'rgba(0,200,255,.1)':'rgba(0,200,255,.25)';
+}
+
+function renderVPByGS(){/* legacy — no-op, replaced by top10 table */}
+// ── VP CSV Upload ──────────────────────────────────────
+function vpShowCsvFormat(){
+  const el=document.getElementById('vp-csv-format');
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+
+function vpHandleCSV(input){
+  const file=input.files[0];
+  if(!file) return;
+  document.getElementById('vp-csv-filename').textContent=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>vpParseCSV(e.target.result);
+  reader.readAsText(file);
+}
+
+function vpParseCSV(text){
+  const status=document.getElementById('vp-csv-status');
+  status.innerHTML='<span style="color:var(--muted)">Parsing...</span>';
+  try{
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length<2){ status.innerHTML='<span style="color:var(--red)">Error: File must have a header row and at least one data row.</span>'; return; }
+
+    const headers=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/['"]/g,''));
+    const stopIdCol=headers.findIndex(h=>h==='stop_id'||h==='stopid'||h==='id'||h==='member_id');
+    if(stopIdCol===-1){ status.innerHTML='<span style="color:var(--red)">Error: Missing <b>stop_id</b> column.</span>'; return; }
+
+    // Build vendor name→id lookup
+    const vnLookup={};
+    VP_TOP10_LIST.forEach(v=>{ vnLookup[v.name.toLowerCase()]=v.id; vnLookup[v.id.toLowerCase()]=v.id; });
+    VP_VENDORS.forEach(v=>{ vnLookup[v.name.toLowerCase()]=v.id; vnLookup[v.id.toLowerCase()]=v.id; });
+
+    let imported=0, skipped=0, rows=[];
+
+    // Detect format: single row per stop with vendor columns, OR triplet (stop_id, vendor_id, enrolled)
+    const vendorIdCol=headers.findIndex(h=>h==='vendor_id'||h==='vendorid');
+    const enrolledCol=headers.findIndex(h=>h==='enrolled'||h==='active'||h==='status');
+
+    if(vendorIdCol!==-1){
+      // Format A: stop_id, vendor_id, enrolled
+      lines.slice(1).forEach(line=>{
+        const cols=line.split(',').map(c=>c.trim().replace(/^["']|["']$/g,''));
+        const sid=cols[stopIdCol]?.toUpperCase();
+        const vid=cols[vendorIdCol]?.trim();
+        if(!sid||!vid){ skipped++; return; }
+        const resolvedVid=vnLookup[vid.toLowerCase()]||vid;
+        const enrolledVal=enrolledCol!==-1?cols[enrolledCol]?.toLowerCase():'true';
+        const enrolled=['true','yes','1','y','enrolled'].includes(enrolledVal||'true');
+        if(!VP_ENROLL[sid]) VP_ENROLL[sid]={};
+        VP_ENROLL[sid][resolvedVid]=enrolled;
+        rows.push({stop_id:sid,vendor_id:resolvedVid,enrolled});
+        imported++;
+      });
+    } else {
+      // Format B: stop_id + vendor name columns
+      const vendorCols=[];
+      headers.forEach((h,i)=>{ if(i===stopIdCol) return; const vid=vnLookup[h]; if(vid) vendorCols.push({col:i,vid,name:h}); });
+      if(!vendorCols.length){ status.innerHTML='<span style="color:var(--red)">Error: No recognized vendor columns found. Use vendor names or IDs as column headers.</span>'; return; }
+      lines.slice(1).forEach(line=>{
+        const cols=line.split(',').map(c=>c.trim().replace(/^["']|["']$/g,''));
+        const sid=cols[stopIdCol]?.toUpperCase();
+        if(!sid){ skipped++; return; }
+        if(!VP_ENROLL[sid]) VP_ENROLL[sid]={};
+        vendorCols.forEach(({col,vid})=>{
+          const val=(cols[col]||'').toLowerCase();
+          const enrolled=['true','yes','1','y','enrolled','✓','x'].includes(val);
+          VP_ENROLL[sid][vid]=enrolled;
+          rows.push({stop_id:sid,vendor_id:vid,enrolled});
+          imported++;
+        });
+      });
+    }
+
+    saveVPEnroll();
+    status.innerHTML=`<span style="color:var(--green)">✅ Imported <b>${imported}</b> enrollment records across <b>${Object.keys(VP_ENROLL).length}</b> stops${skipped?' ('+skipped+' rows skipped)':''}</span>`;
+
+    // Supabase sync if connected
+    vpSyncToSupabase(rows);
+
+    // Refresh page
+    renderVendorKPIs();
+    renderTop10VendorTable();
+    renderVPEnrollTable();
+  } catch(err){
+    document.getElementById('vp-csv-status').innerHTML=`<span style="color:var(--red)">Error parsing CSV: ${err.message}</span>`;
+  }
+}
+
+async function vpSyncToSupabase(rows){
+  if(!roadysSB||!rows.length) return;
+  const status=document.getElementById('vp-csv-status');
+  try{
+    const upsertRows=rows.map(r=>({
+      stop_id:r.stop_id,
+      vendor_id:r.vendor_id,
+      vendor_name:(VP_TOP10_LIST.find(v=>v.id===r.vendor_id)||VP_VENDORS.find(v=>v.id===r.vendor_id)||{}).name||r.vendor_id,
+      enrolled:r.enrolled,
+      updated_at:new Date().toISOString()
+    }));
+    const {error}=await roadysSB.from('vp_enroll').upsert(upsertRows,{onConflict:'stop_id,vendor_id'});
+    if(error) throw error;
+    status.innerHTML+=' <span style="color:var(--accent)">· Synced to Supabase ✓</span>';
+  } catch(e){
+    status.innerHTML+=' <span style="color:var(--muted)">· Supabase sync skipped (table may not exist yet)</span>';
+  }
+}
+
+// ── VP Enrollment Table ────────────────────────────────
+function vpPopulateEnrollVendorFilter(){
+  const sel=document.getElementById('vp-enroll-vendor');
+  if(!sel) return;
+  const vendors=VP_TOP10_LIST;
+  sel.innerHTML='<option value="all">All Vendors</option>'+vendors.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+}
+
+function renderVPEnrollTable(){
+  const tbl=document.getElementById('vp-enroll-tbl');
+  if(!tbl) return;
+  const q=(document.getElementById('vp-enroll-search')?.value||'').toLowerCase();
+  const vf=document.getElementById('vp-enroll-vendor')?.value||'all';
+  const allStops=MEMBERS.filter(mb=>mb.status==='active'&&mb.id).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  // If filtering by specific vendor, show stops enrolled in that vendor
+  let rows=allStops.filter(mb=>{
+    if(q&&![mb.name,mb.city,mb.state,mb.id].some(v=>(v||'').toLowerCase().includes(q))) return false;
+    if(vf!=='all'){
+      const le=VP_ENROLL[mb.id]||{};
+      return !!le[vf];
+    }
+    return true;
+  });
+
+  const countEl=document.getElementById('vp-enroll-count');
+  if(countEl) countEl.textContent=rows.length+' stops';
+
+  const vendors=VP_TOP10_LIST;
+  const thS='style="font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center"';
+  const thead=`<thead><tr>
+    <th style="font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border);text-align:left">Stop</th>
+    <th style="font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border)">ID</th>
+    <th style="font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border)">GS</th>
+    ${vendors.map(v=>`<th ${thS} title="${v.name}">${v.name.split(' ')[0]}</th>`).join('')}
+    <th ${thS}>Score</th>
+  </tr></thead>`;
+
+  const tbody=rows.map(mb=>{
+    const le=VP_ENROLL[mb.id]||{};
+    const gs=getManager(mb.state);
+    const gsColor=getRegionColor(gs);
+    const score=vendors.reduce((s,v)=>s+(le[v.id]?1:0),0);
+    const scoreColor=score>=8?'var(--green)':score>=5?'var(--yellow)':score>=3?'var(--orange)':'var(--red)';
+    const cells=vendors.map(v=>{
+      const on=!!le[v.id];
+      return `<td style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)">${on?'<span style="color:var(--green);font-size:1.1em">✓</span>':'<span style="color:var(--border2)">·</span>'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap">${mb.name}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:.78em;color:var(--muted);font-family:monospace">${mb.id}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:.75em"><span style="color:${gsColor};font-weight:600">${gs}</span></td>
+      ${cells}
+      <td style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border);font-weight:800;color:${scoreColor}">${score}/${vendors.length}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="${4+vendors.length}" style="padding:20px;text-align:center;color:var(--muted)">No enrollment data. Upload a CSV to get started.</td></tr>`;
+
+  tbl.innerHTML=thead+`<tbody>${tbody}</tbody>`;
+}
+
+function vpExportEnrollCSV(){
+  const vendors=VP_TOP10_LIST;
+  const h=['stop_id','stop_name','city','state','growth_strategist',...vendors.map(v=>v.name),'total_enrolled'];
+  const rows=MEMBERS.filter(mb=>mb.status==='active'&&mb.id).map(mb=>{
+    const le=VP_ENROLL[mb.id]||{};
+    const gs=getManager(mb.state);
+    const score=vendors.reduce((s,v)=>s+(le[v.id]?1:0),0);
+    return [mb.id,mb.name,mb.city||'',mb.state||'',gs,...vendors.map(v=>le[v.id]?'yes':'no'),String(score)];
+  });
+  dlCSV('Roadys_VP_Enrollment_'+new Date().toISOString().slice(0,10)+'.csv',h,rows);
+}
+
+function renderVendorKPIsLegacy(){/* legacy no-op */}
+function renderVendorMaster(){/* legacy no-op */}
+function renderVPGrid(){/* legacy no-op */}
+function vpGoPage(p){/* legacy no-op */}
+function exportVPGrid(){/* legacy no-op */}
+
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+function getM(){ return document.getElementById('ms').value; }
+function pm(m){ const i=MOS.indexOf(m); return i>0?MOS[i-1]:null; }
+function lbl(m){ const [y,mo]=m.split('-'); const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mn[+mo-1]+' '+y; }
+function gv(k,m){ return (KPI_VP[k]||{})[m]||0; }
+function fmt$(v){ if(v==null) return '—'; return '$'+Math.round(v).toLocaleString(); }
+function delta(cur,prev){ if(prev==null||prev===0) return ''; const pct=((cur-prev)/Math.abs(prev))*100; const sign=pct>=0?'+':''; return `<span style="color:${pct>=0?'var(--green)':'var(--red)'}"> ${sign}${pct.toFixed(1)}%</span>`; }
+function ytdKpi(k,m){ const mi=MOS.indexOf(m); const yr=m.split('-')[0]; return MOS.slice(0,mi+1).filter(mo=>mo.startsWith(yr)).reduce((s,mo)=>s+gv(k,mo),0); }
+function gvy(k,m){ const [y,mo]=m.split('-'); const py=String(+y-1)+'-'+mo; return gv(k,py)||null; }
+
+function dlCSV(filename,headers,rows){
+  const csv=[headers.join(','),...rows.map(r=>r.map(c=>'"'+(c||'').replace(/"/g,'""')+'"').join(','))].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+function populateMonthSelector(){
+  const sel=document.getElementById('ms');
+  sel.innerHTML=MOS.slice().reverse().map(m=>`<option value="${m}">${lbl(m)}</option>`).join('');
+}
+
+function init(){
+  const m=getM(), p=pm(m);
+  document.getElementById('vp-period').textContent=lbl(m);
+  renderKPIs();
+  renderTop10VendorTable();
+  renderVPEnrollTable();
+  vpPopulateEnrollVendorFilter();
+  renderVendorDirectory();
+  renderRevenueChart();
+}
+
+// ═══════════════════════════════════════════════
+// KPI CARDS
+// ═══════════════════════════════════════════════
+function renderKPIs(){
+  const m=getM(), p=pm(m);
+  const vpRev=gv('Monthly Vendor Program Revenue',m);
+  const vpRevP=p?gv('Monthly Vendor Program Revenue',p):null;
+  const vpYTD=ytdKpi('Monthly Vendor Program Revenue',m);
+  const vpRevY=gvy('Monthly Vendor Program Revenue',m);
+
+  const activeLocs=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
+  const t10Rev=activeLocs.reduce((s,mb)=>{
+    const le=VP_ENROLL[mb.id]||{};
+    const cnt=VP_TOP10_LIST.reduce((c,v)=>c+(le[v.id]?1:0),0);
+    return s+cnt*VP_REV_PER_STOP;
+  },0);
+
+  const el=document.getElementById('vp-kpis');
+  el.innerHTML=`
+    <div class="kc"><div class="kc-label">Monthly Vendor Program Revenue</div>
+      <div class="kc-val">${fmt$(vpRev)}</div>
+      <div class="kc-delta">${delta(vpRev,vpRevP)}</div>
+      <div class="kc-ytd">YTD: ${fmt$(vpYTD)}</div>
+      <div class="kc-sub">Monthly vendor program fees</div>
+    </div>
+    <div class="kc"><div class="kc-label">Top 10 Vendor Enrollment Revenue (Est.)</div>
+      <div class="kc-val">${fmt$(t10Rev)}</div>
+      <div class="kc-sub">Est. from enrolled stops × $${VP_REV_PER_STOP}/vendor/mo</div>
+    </div>
+    <div class="kc"><div class="kc-label">Total Active Vendors</div>
+      <div class="kc-val">${VP_VENDORS.filter(v=>v.status==='Active').length}</div>
+      <div class="kc-sub">Across PVP, Entegra, Shop, Approved programs</div>
+    </div>
+    <div class="kc"><div class="kc-label">Active Truck Stops</div>
+      <div class="kc-val">${activeLocs.length}</div>
+      <div class="kc-sub">Available for vendor enrollment</div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════
+// REVENUE CHART
+// ═══════════════════════════════════════════════
+let vpChart=null;
+function renderRevenueChart(){
+  const ctx=document.getElementById('vp-rev-chart');
+  if(vpChart) vpChart.destroy();
+  const data=MOS.map(m=>gv('Monthly Vendor Program Revenue',m));
+  const labels=MOS.map(m=>lbl(m));
+  vpChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Vendor Program Revenue',data,backgroundColor:'rgba(124,58,237,.5)',borderColor:'rgba(124,58,237,.8)',borderWidth:1,borderRadius:4}]},
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{
+      x:{ticks:{color:'#6B7A99',font:{size:10}},grid:{display:false}},
+      y:{ticks:{color:'#6B7A99',callback:v=>'$'+Math.round(v/1000)+'K'},grid:{color:'rgba(30,42,69,.5)'}}
+    }}
+  });
+}
+
+// ═══════════════════════════════════════════════
+// VENDOR DIRECTORY
+// ═══════════════════════════════════════════════
+function renderVendorDirectory(){
+  const q=(document.getElementById('vendor-search')?.value||'').toLowerCase();
+  const pf=document.getElementById('vendor-program-filter')?.value||'all';
+  let filtered=VP_VENDORS.filter(v=>{
+    if(q && !v.name.toLowerCase().includes(q) && !v.id.toLowerCase().includes(q)) return false;
+    if(pf!=='all' && v.program!==pf) return false;
+    return true;
+  });
+  document.getElementById('vendor-count').textContent=filtered.length+' vendors';
+
+  const priorityColor={High:'var(--green)',Medium:'var(--yellow)',Low:'var(--muted)'};
+  const programColor={PVP:'var(--accent)',Entegra:'var(--purple)',Shop:'var(--orange)','Approved Vendor':'var(--teal)','NO VP':'var(--dim)'};
+
+  const tbl=document.getElementById('vendor-dir-tbl');
+  tbl.innerHTML=`<thead><tr>
+    <th>ID</th><th>Vendor Name</th><th>Program</th><th>Priority</th><th>Phone</th><th>Status</th>
+  </tr></thead><tbody>${filtered.map(v=>`<tr>
+    <td style="font-family:monospace;font-size:.78em;color:var(--muted)">${v.id}</td>
+    <td style="font-weight:600">${v.name}</td>
+    <td><span style="color:${programColor[v.program]||'var(--muted)'};font-weight:600;font-size:.85em">${v.program}</span></td>
+    <td><span style="color:${priorityColor[v.priority]||'var(--muted)'};font-weight:600">${v.priority}</span></td>
+    <td style="font-size:.82em;color:var(--muted)">${v.phone||'—'}</td>
+    <td><span style="color:var(--green);font-size:.82em">${v.status}</span></td>
+  </tr>`).join('')}</tbody>`;
+}
+
+// Reuse the functions from Command Center (already defined above via vendor_js)
+// renderTop10VendorTable, renderVPEnrollTable, vpPopulateEnrollVendorFilter, etc.
+// are all already embedded from the original vendor system block
+
+populateMonthSelector();
+init();
+</script>
+</body>
+</html>
