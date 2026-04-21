@@ -10322,83 +10322,6 @@ const IMPL_TEMPLATES = {
       "Rewards - Call Stop and confirm Loyalty Button on Trendar"
     ]
   },
-  "PTP to Roady's": {
-    "Robert": [
-      "Email Contract and contact information to Accounting",
-      "Request Merchant ID's",
-      "Email V-check or Bank Letter to Accounting",
-      "Send Stop Copy of the Co-Signed Agreement"
-    ],
-    "Accounting": [
-      "Add to Accounting Implementation Spreadsheet",
-      "Change P to R in Interstate",
-      "Upload Contract/W9",
-      "Banking Information in Interstate",
-      "Change Contacts Receiving Reporting in Banking Section, if applicable",
-      "Verify Stop Mailing Address",
-      "Complete Billing Section",
-      "Notify Team of New Site via Slack W/Start Date",
-      "Monthly Billing Xero",
-      "Setup Fee in Xero",
-      "Cancel Annual Fee, if Applicable",
-      "Add To Commission Summary Sheet",
-      "Send applicable forms to Fuelman",
-      "Confirm Site shows up on Fuelman Website"
-    ],
-    "Angel": [
-      "Calendar Locations \"Active/Public\" Date",
-      "Add Stop to the Operations Sheet",
-      "Send Stop Info to AOM",
-      "Initial intro Call / What to Expect from Roady's",
-      "Verify/Obtain Interstate Contacts: Names, emails, Phone numbers - Enter in Interstate",
-      "Send any changes to Contacts Receiving Reports to Accounting",
-      "Add POS into the Device Manager",
-      "Review/Correct Location Amenities",
-      "Advise Stop of Rewards Training email / Fuel Call",
-      "Add Trendar ID to POS if on rewards",
-      "Send Merchant Console Link/Confirm location able to login",
-      "ALL Programs Information Emailed Including top program one sheets",
-      "Programs discussed and set up on desired programs",
-      "Branding Guide Sent",
-      "Rewards - Schedule Rewards Training with Location",
-      "Rewards Video Training, Rewards Info and Multiplier Info",
-      "Rewards - Location has Rewards transactions"
-    ],
-    "Kaden": [
-      "WEX Login (EFS, TCH, Fleet One) Received and Entered in Interstate",
-      "Log in to EFS Merchant Manager, set up daily reporting",
-      "Fleet Discounts Created In Interstate",
-      "Location Status \"Public\" on contract Start Date, Verify on Roady's Map",
-      "Set Up Aggregator Program Discounts - Cloud Truck, Motive, etc based on acceptance",
-      "Set up Primary Aggregator Discounts - TCS, QPN, etc",
-      "Set up RTS Aggregator Discount once received",
-      "Rewards - Send Welcome Kit to Location with Tablet if Applicable",
-      "Rewards - Email Welcome Kit Tracking # entered in Interstate and notify RM",
-      "Rewards - Create Device (Kiosk) in Device Manager",
-      "Rewards - Toggle on Has Rewards Kiosk in Interstate",
-      "Rewards - Submit Comdata Integration for POS (For SmartDESQ/SmartAuth)",
-      "Rewards - Call Stop and confirm Loyalty Button on Trendar",
-      "Rewards - Schedule Rewards Training with Location"
-    ],
-    "Burt": [
-      "Comdata Price File Fee Removed & Confirmation Received",
-      "Comdata ID Emailed to Comdata connecting to Roady's GS003",
-      "Obtain FCC components from OPIS and confirm same as location",
-      "Obtain OPIS ID from OPIS and enter in Interstate",
-      "Send location info to Primary Aggregators - RTS, TCS, QPN, etc to determine if gallons avail",
-      "Send location the discount form for Primary Aggregators",
-      "Set up Primary Aggregator Discounts - TCS, QPN, etc",
-      "Set up RTS Aggregator Discount once received"
-    ],
-    "Jack": [
-      "Rewards - Send Welcome Kit to Location with Tablet if Applicable",
-      "Rewards - Email Welcome Kit Tracking # entered in Interstate and notify RM",
-      "Rewards - Create Device (Kiosk) in Device Manager",
-      "Rewards - Toggle on Has Rewards Kiosk in Interstate",
-      "Rewards - Submit Comdata Integration for POS (For SmartDESQ/SmartAuth)",
-      "Rewards - Call Stop and confirm Loyalty Button on Trendar"
-    ]
-  }
 };
 
 
@@ -11314,7 +11237,7 @@ if(document.getElementById('implExcelFile')) document.getElementById('implExcelF
   const file=evt.target.files?.[0];if(!file)return;
   try{
     const data=await file.arrayBuffer();const wb=XLSX.read(data,{type:'array'});
-    const map=[{sheet:"Master Sheet Onboarding",type:"Onboarding"},{sheet:"Master Sheet Offboarding",type:"Offboarding"},{sheet:"Master Sheet COO",type:"Change of Ownership"},{sheet:"Master Sheet Roadys Lite",type:"Roady's Lite"},{sheet:"PTP to Roadys Conversion",type:"PTP to Roady's"}];
+    const map=[{sheet:"Master Sheet Onboarding",type:"Onboarding"},{sheet:"Master Sheet Offboarding",type:"Offboarding"},{sheet:"Master Sheet COO",type:"Change of Ownership"},{sheet:"Master Sheet Roadys Lite",type:"Roady's Lite"}];
     const imported=[];
     map.forEach(sm=>{if(!wb.Sheets[sm.sheet])return;imported.push(...implParseSheet(wb.Sheets[sm.sheet],sm.type));});
     const filtered=imported.filter(s=>!String(s.location||'').includes('R1234')&&!String(s.location||'').toLowerCase().includes('test truck stop'));
