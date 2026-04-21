@@ -5401,8 +5401,8 @@ function implDeleteSite(sid){if(!confirm('Delete this site and all its tasks?'))
 async function implClearAllSites(){
   const n=implSites.length;
   if(!confirm(`⚠ This will permanently DELETE all ${n} sites from the cloud database.\n\nEveryone using this tool will see them disappear.\n\nContinue?`))return;
-  const typed=prompt(`Type DELETE ALL to confirm removing ${n} sites:`);
-  if(typed!=='DELETE ALL'){alert('Cancelled — nothing deleted.');return;}
+  const typed=prompt(`Type DELETE to confirm removing ${n} sites:`);
+  if(!typed||typed.trim().toUpperCase()!=='DELETE'){alert('Cancelled — nothing deleted.');return;}
   const sb=getRoadysSB();
   if(!sb){alert('No cloud connection. Cannot clear.');return;}
   try{
