@@ -139,9 +139,16 @@ tr{cursor:pointer}
 /* Modal */
 .gr-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:flex;align-items:center;justify-content:center}
 .gr-modal{background:var(--card);border:1px solid var(--border2);border-radius:10px;padding:24px;min-width:340px;max-width:480px}
+.gr-modal.gr-modal-lg{max-width:720px;width:92vw;max-height:90vh;overflow-y:auto}
 .gr-modal h3{font-size:.95em;font-weight:700;margin-bottom:16px;color:var(--text)}
 .gr-modal input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:9px 12px;font-size:.9em;font-family:var(--ff);margin-bottom:14px}
 .gr-modal input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,212,255,.12)}
+
+/* Exclude-fleets dropdown (Create form) */
+.f-excl-opt:hover{background:rgba(0,212,255,.08)}
+.f-excl-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);color:var(--red);padding:3px 8px;border-radius:12px;font-size:.72em}
+.f-excl-chip button{background:none;border:none;color:var(--red);cursor:pointer;font-size:1em;padding:0;line-height:1}
+.f-excl-chip button:hover{color:#ff2d43}
 .gr-modal-btns{display:flex;gap:8px;justify-content:flex-end}
 .del-confirm-box{background:rgba(255,71,87,.08);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:14px;margin-bottom:14px;font-size:.82em;color:var(--text)}
 .del-confirm-box strong{color:var(--red)}
@@ -300,6 +307,26 @@ tr{cursor:pointer}
     <div class="form-row">
       <div class="fg"><label>Requested Date</label><input id="f-reqdate" type="date"></div>
       <div class="fg" style="grid-column:2/-1"><label>Notes</label><textarea id="f-notes" rows="2" placeholder="Additional context..."></textarea></div>
+    </div>
+    <div class="form-row">
+      <div class="fg" style="grid-column:1/-1;position:relative">
+        <label>Exclude Specific Fleets from Scan <span id="f-excl-count" style="color:var(--muted);text-transform:none;font-weight:500;margin-left:6px"></span></label>
+        <button type="button" class="btn" id="f-excl-toggle" onclick="toggleExclDropdown()" style="text-align:left;display:flex;align-items:center;gap:8px;padding:9px 12px">
+          <span style="flex:1;color:var(--muted)" id="f-excl-btn-text">Click to select fleets to exclude from this scan...</span>
+          <span style="font-size:.9em">▾</span>
+        </button>
+        <div id="f-excl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-top:4px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+          <div style="padding:8px;border-bottom:1px solid var(--border)">
+            <input type="text" id="f-excl-search" placeholder="Search fleets..." oninput="renderExclOptions()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-family:var(--ff);font-size:.82em">
+          </div>
+          <div id="f-excl-options" style="max-height:240px;overflow-y:auto;padding:4px 0"></div>
+          <div style="display:flex;gap:6px;padding:8px;border-top:1px solid var(--border);background:var(--bg2)">
+            <button type="button" class="btn btn-sm" onclick="clearExclSelection()">Clear All</button>
+            <button type="button" class="btn btn-sm btn-cyan" onclick="toggleExclDropdown()" style="margin-left:auto">Done</button>
+          </div>
+        </div>
+        <div id="f-excl-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>
+      </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-cyan" onclick="scanFleets()" id="btn-scan">🔍 Scan Nearby Fleets</button>
@@ -624,7 +651,9 @@ function findFleets(city,state,radius){
     
     // Check every fleet record - all coords are in GEO already
     for(const r of FR){
-      if(excludedFleets && excludedFleets.has(FN[r[0]])) continue; // skip excluded
+      const _fname = FN[r[0]];
+      if(excludedFleets && excludedFleets.has(_fname)) continue; // skip globally excluded
+      if(typeof formExcludedFleets !== 'undefined' && formExcludedFleets.has(_fname)) continue; // skip per-scan excluded
       const fK=(r[1]+'|'+r[2]).toUpperCase();
       const fc=GEO[fK];
       if(!fc) continue;
@@ -721,7 +750,7 @@ function renderList(){
     <td class="num" style="color:var(--green)">${fG(v.winnable||0)}</td>
     <td class="num">${v.fleetCount||0}</td>
     <td class="num">${fG(v.fleetPot||0)}</td>
-    <td><button class="btn btn-sm btn-red" onclick="event.stopPropagation();delVP('${v.id}')">✕</button></td>
+    <td style="white-space:nowrap"><button class="btn btn-sm" title="Edit location" onclick="event.stopPropagation();openEditVP('${v.id}')">✏️</button> <button class="btn btn-sm btn-red" title="Delete location" onclick="event.stopPropagation();delVP('${v.id}')">✕</button></td>
   </tr>`).join('');
   document.getElementById('t-count').textContent='Show rows: '+d.length+(total>d.length?' ('+total+' total)':'');
   renderKPIs();
@@ -855,6 +884,144 @@ function renderAssignments(){
 // CREATE / SCAN
 // ═══════════════════════════════════════════════════════
 let lastScan=null;
+let formExcludedFleets = new Set();
+
+function toggleExclDropdown(){
+  const dd = document.getElementById('f-excl-dropdown');
+  const open = dd.style.display !== 'none';
+  if(open){ dd.style.display='none'; return; }
+  dd.style.display='block';
+  renderExclOptions();
+  const s=document.getElementById('f-excl-search'); if(s){ s.value=''; s.focus(); }
+}
+
+function renderExclOptions(){
+  const q = (document.getElementById('f-excl-search')?.value||'').toLowerCase();
+  const wrap = document.getElementById('f-excl-options'); if(!wrap) return;
+  const list = [...FN].sort((a,b)=>a.localeCompare(b)).filter(fn => !q || fn.toLowerCase().includes(q));
+  if(!list.length){ wrap.innerHTML='<div style="padding:14px;color:var(--muted);font-size:.78em;text-align:center">No fleets match</div>'; return; }
+  wrap.innerHTML = list.map(fn => {
+    const ch = formExcludedFleets.has(fn);
+    const safe = fn.replace(/'/g,"\\'");
+    return `<label class="f-excl-opt" style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;font-size:.82em;${ch?'background:rgba(255,71,87,.08)':''}">
+      <input type="checkbox" ${ch?'checked':''} onchange="toggleFormExcl('${safe}', this.checked)">
+      <span style="flex:1">${esc(fn)}</span>
+    </label>`;
+  }).join('');
+}
+
+function toggleFormExcl(fn, on){
+  if(on) formExcludedFleets.add(fn); else formExcludedFleets.delete(fn);
+  updateExclSummary();
+  renderExclOptions();
+}
+
+function clearExclSelection(){
+  formExcludedFleets.clear();
+  renderExclOptions();
+  updateExclSummary();
+}
+
+function updateExclSummary(){
+  const n = formExcludedFleets.size;
+  const countEl=document.getElementById('f-excl-count'); if(countEl) countEl.textContent = n ? `— ${n} excluded` : '';
+  const btnText=document.getElementById('f-excl-btn-text');
+  if(btnText){
+    btnText.textContent = n ? `${n} fleet${n===1?'':'s'} excluded from scan` : 'Click to select fleets to exclude from this scan...';
+    btnText.style.color = n ? 'var(--text)' : 'var(--muted)';
+  }
+  const chips = document.getElementById('f-excl-chips');
+  if(chips){
+    chips.innerHTML = [...formExcludedFleets].sort().map(fn =>
+      `<span class="f-excl-chip">${esc(fn)}<button title="Remove" onclick="toggleFormExcl('${fn.replace(/'/g,"\\'")}', false)">×</button></span>`
+    ).join('');
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// EDIT LOCATION (inline modal)
+// ═══════════════════════════════════════════════════════
+function openEditVP(id){
+  const vp=VPS.find(v=>v.id===id); if(!vp) return;
+  document.getElementById('edit-vp-modal')?.remove();
+  const stateOpts=[...new Set(FR.map(r=>r[2]))].filter(s=>s.length===2).sort()
+    .map(s=>`<option value="${s}" ${vp.state===s?'selected':''}>${s}</option>`).join('');
+  const posOpts=['SmartDESQ','SmartAuth','Fiscal','Verifone','NCR','Gilbarco','GasPOS','Other']
+    .map(p=>`<option ${vp.pos===p?'selected':''}>${p}</option>`).join('');
+  const siteOpts=["Existing Roady's","Existing Non-Roady's","New Build","Open < 30-days","Open > 30 days"]
+    .map(s=>`<option ${vp.siteStatus===s?'selected':''}>${s}</option>`).join('');
+  const reqOpts=['Kaden','Angel','Burt','Robert','Logan','Steph','Stefanie','Maria','Shannon','Jason']
+    .map(r=>`<option ${vp.requestedBy===r?'selected':''}>${r}</option>`).join('');
+  const m=document.createElement('div');
+  m.id='edit-vp-modal';
+  m.className='gr-modal-overlay';
+  m.innerHTML=`
+    <div class="gr-modal gr-modal-lg">
+      <h3>✏️ Edit Location</h3>
+      <div class="form-row">
+        <div class="fg"><label>Location Name / Address</label><input id="e-name" value="${esc(vp.name||'')}"></div>
+        <div class="fg"><label>City</label><input id="e-city" value="${esc(vp.city||'')}"></div>
+        <div class="fg"><label>State</label><select id="e-state"><option value="">Select...</option>${stateOpts}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Assigned To</label><input id="e-assign" value="${esc(vp.assigned||'')}"></div>
+        <div class="fg"><label>Agg Potential Gallons</label><input id="e-agg" type="number" value="${vp.aggPot||0}"></div>
+        <div class="fg"><label>Search Radius (miles)</label>
+          <select id="e-radius">
+            <option value="25" ${(vp.radius||50)==25?'selected':''}>25 miles</option>
+            <option value="50" ${(vp.radius||50)==50?'selected':''}>50 miles</option>
+            <option value="75" ${(vp.radius||50)==75?'selected':''}>75 miles</option>
+            <option value="100" ${(vp.radius||50)==100?'selected':''}>100 miles</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>POS System</label><select id="e-pos"><option value="">Select...</option>${posOpts}</select></div>
+        <div class="fg"><label>Site Status</label><select id="e-sitestatus"><option value="">Select...</option>${siteOpts}</select></div>
+        <div class="fg"><label>Requested By</label><select id="e-reqby"><option value="">Select...</option>${reqOpts}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Requested Date</label><input id="e-reqdate" type="date" value="${vp.requestedDate||''}"></div>
+        <div class="fg" style="grid-column:2/-1"><label>Notes</label><textarea id="e-notes" rows="2">${esc(vp.notes||'')}</textarea></div>
+      </div>
+      <div style="font-size:.72em;color:var(--muted);margin:4px 0 14px">Fleet matches and gallon totals are preserved. To re-scan with these values, open the location and click "🔄 Re-Scan".</div>
+      <div class="gr-modal-btns">
+        <button class="btn" onclick="document.getElementById('edit-vp-modal').remove()">Cancel</button>
+        <button class="btn btn-cyan" onclick="saveEditVP('${vp.id}')">💾 Save Changes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
+  document.addEventListener('keydown', function esc(e){
+    if(e.key==='Escape'){ m.remove(); document.removeEventListener('keydown', esc); }
+  });
+}
+
+async function saveEditVP(id){
+  const vp=VPS.find(v=>v.id===id); if(!vp){ toast('Not found'); return; }
+  const name=document.getElementById('e-name').value.trim();
+  const city=document.getElementById('e-city').value.trim();
+  const state=document.getElementById('e-state').value;
+  if(!name||!city||!state){ toast('Name, city, state required'); return; }
+  vp.name=name;
+  vp.city=city.charAt(0).toUpperCase()+city.slice(1);
+  vp.state=state;
+  vp.address=name;
+  vp.assigned=document.getElementById('e-assign').value.trim();
+  vp.aggPot=parseFloat(document.getElementById('e-agg').value)||0;
+  vp.radius=parseInt(document.getElementById('e-radius').value)||50;
+  vp.pos=document.getElementById('e-pos').value;
+  vp.siteStatus=document.getElementById('e-sitestatus').value;
+  vp.requestedBy=document.getElementById('e-reqby').value;
+  vp.requestedDate=document.getElementById('e-reqdate').value;
+  vp.notes=document.getElementById('e-notes').value.trim();
+  vp.totalPot=(vp.aggPot||0)+(vp.fleetPot||0);
+  vp.winnable=vp.totalPot*.2;
+  await syncSave(vp);
+  document.getElementById('edit-vp-modal')?.remove();
+  renderList();
+  toast('✓ Location updated');
+}
 
 async function scanFleets(){
   const city=document.getElementById('f-city').value.trim();
@@ -907,6 +1074,7 @@ async function saveVP(){
     requestedBy:document.getElementById('f-reqby').value,
     requestedDate:document.getElementById('f-reqdate').value,
     radius:parseInt(document.getElementById('f-radius').value)||50, status:'active',
+    excludedFleetsList:[...formExcludedFleets],
     created:new Date().toISOString()
   };
   VPS.push(vp);
@@ -917,6 +1085,8 @@ async function saveVP(){
   document.getElementById('f-pos').value='';document.getElementById('f-sitestatus').value='';
   document.getElementById('f-reqby').value='';document.getElementById('f-reqdate').value='';
   document.getElementById('scan-area').style.display='none';document.getElementById('btn-save').disabled=true;lastScan=null;
+  formExcludedFleets.clear(); updateExclSummary();
+  const dd=document.getElementById('f-excl-dropdown'); if(dd) dd.style.display='none';
   toast('Saved with '+ms.length+' fleet matches');
   showTab('locations');renderList();
 }
@@ -934,6 +1104,8 @@ async function reScan(id){
   document.getElementById('f-sitestatus').value=vp.siteStatus||'';
   document.getElementById('f-reqby').value=vp.requestedBy||'';
   document.getElementById('f-reqdate').value=vp.requestedDate||'';
+  formExcludedFleets = new Set(vp.excludedFleetsList||[]);
+  updateExclSummary();
   VPS=VPS.filter(v=>v.id!==id);
   await syncDelete(id);
   showTab('create');
