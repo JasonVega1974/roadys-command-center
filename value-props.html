@@ -694,6 +694,7 @@ function showTab(t){
   if(t==='charts') renderCharts();
   if(t==='assignments') renderAssignments();
   if(t==='gallon') renderGR();
+  if(t==='create' && typeof syncExclDropdown === 'function') syncExclDropdown();
 }
 
 function showListView(){
@@ -936,6 +937,21 @@ function updateExclSummary(){
       `<span class="f-excl-chip">${esc(fn)}<button title="Remove" onclick="toggleFormExcl('${fn.replace(/'/g,"\\'")}', false)">×</button></span>`
     ).join('');
   }
+}
+
+// Call whenever FN changes (import / rename / remove) so dropdown stays in sync
+function syncExclDropdown(){
+  // Drop any excluded-fleet entries that no longer exist in FN
+  const fnSet = new Set(FN);
+  let changed = false;
+  for(const fn of [...formExcludedFleets]){
+    if(!fnSet.has(fn)){ formExcludedFleets.delete(fn); changed = true; }
+  }
+  updateExclSummary();
+  // Re-render the options list if the dropdown is currently open
+  const dd = document.getElementById('f-excl-dropdown');
+  if(dd && dd.style.display !== 'none') renderExclOptions();
+  return changed;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1333,6 +1349,7 @@ function confirmImport(){
   document.getElementById('imp-fleet').value='';
   toggleImport();
   renderGR();
+  syncExclDropdown();
 }
 
 // Persist imported fleet data across sessions
@@ -1457,6 +1474,10 @@ function confirmRename(oldName){
   if(imp!==-1) importedFleets[imp] = newName;
   // Update excludedFleets
   if(excludedFleets.has(oldName)){ excludedFleets.delete(oldName); excludedFleets.add(newName); saveExcluded(); }
+  // Migrate per-scan exclusion (Create-form dropdown)
+  if(typeof formExcludedFleets !== 'undefined' && formExcludedFleets.has(oldName)){
+    formExcludedFleets.delete(oldName); formExcludedFleets.add(newName);
+  }
   // Update localStorage saved data
   try{
     const saved = JSON.parse(localStorage.getItem('vp_imported_fleets')||'{}');
@@ -1465,6 +1486,7 @@ function confirmRename(oldName){
   if(grFleet===oldName) grFleet=newName;
   document.getElementById('gr-rename-modal')?.remove();
   renderGR();
+  syncExclDropdown();
   toast(`✓ Renamed to "${newName}"`);
 }
 
@@ -1543,6 +1565,7 @@ function removeFleet(fn){
   document.getElementById('gr-delete-modal')?.remove();
   document.getElementById('gr-count').textContent=FN.length;
   renderGR();
+  syncExclDropdown();
   toast(`🗑️ Removed "${fn}" (${fG(removed)} records)`);
 }
 
