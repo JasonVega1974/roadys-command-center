@@ -625,6 +625,7 @@ body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-fa
           <button class="impl-btn impl-btn-secondary" onclick="implExportData()">💾 Export Backup</button>
           <label class="impl-btn impl-btn-secondary" for="implJsonFile">📂 Load Backup</label>
           <input id="implJsonFile" type="file" accept=".json" style="display:none" />
+          <button class="impl-btn" onclick="implClearAllSites()" style="background:rgba(255,68,85,.12);border:1px solid rgba(255,68,85,.5);color:#ff4455;">🗑 Clear All Sites</button>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
           <button onclick="implForceSave()" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.5);color:var(--green);font-weight:700;padding:7px 16px;border-radius:8px;cursor:pointer;">
@@ -5397,6 +5398,25 @@ function implToggleTaskNote(nid){const f=document.getElementById(nid);if(f){cons
 function implUpdateStatus(sid,idx,val){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].status=implNormStatus(val);implSaveSites(sid);implRenderAll();}}
 function implUpdateTaskNote(sid,idx,note){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].note=note;implSaveSites(sid);}}
 function implDeleteSite(sid){if(!confirm('Delete this site and all its tasks?'))return;implSites=implSites.filter(s=>s.id!==sid);implSaveSites();implRenderAll();implDeleteSiteFromSupabase(sid);}
+async function implClearAllSites(){
+  const n=implSites.length;
+  if(!confirm(`⚠ This will permanently DELETE all ${n} sites from the cloud database.\n\nEveryone using this tool will see them disappear.\n\nContinue?`))return;
+  const typed=prompt(`Type DELETE ALL to confirm removing ${n} sites:`);
+  if(typed!=='DELETE ALL'){alert('Cancelled — nothing deleted.');return;}
+  const sb=getRoadysSB();
+  if(!sb){alert('No cloud connection. Cannot clear.');return;}
+  try{
+    const {error}=await sb.from('impl_sites').delete().neq('id','__never_matches__');
+    if(error) throw new Error(error.message||error.code||JSON.stringify(error));
+    implSites=[];implProjectNotes={};
+    localStorage.setItem(IMPL_STORAGE_KEY,JSON.stringify({sites:[],projectNotes:{},lastUpdate:new Date().toLocaleString()}));
+    implRenderAll();
+    alert(`✓ Cleared ${n} sites from the cloud. All browsers will update.`);
+  }catch(e){
+    alert('Clear failed: '+(e&&e.message?e.message:String(e)));
+    console.error('[impl] Clear all error:',e);
+  }
+}
 function implFilterSites(q,pt){
   const tb=document.getElementById(`impl-tbody-${implSafeId(pt)}`);if(!tb)return;
   const rows=tb.querySelectorAll('tr'),ql=q.toLowerCase();
