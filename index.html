@@ -11203,7 +11203,15 @@ function implRefreshTaskItem(sid, idx, status){
   item.classList.add(status==='Done'?'impl-task-done':status==='In Progress'?'impl-task-progress':'impl-task-todo');
 }
 function implUpdateTaskNote(sid,idx,note){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].note=note;implSaveSites(sid);}}
-function implDeleteSite(sid){if(!confirm('Delete this site and all its tasks?'))return;implSites=implSites.filter(s=>s.id!==sid);implSaveSites();implRenderAll();implDeleteSiteFromSupabase(sid);}
+async function implDeleteSite(sid){
+  if(!confirm('Delete this site and all its tasks?')) return;
+  implSites=implSites.filter(s=>s.id!==sid);
+  _implDirtyIds.delete(sid);
+  implSaveSites();
+  implRenderAll();
+  const ok = await implDeleteSiteFromSupabase(sid);
+  if(ok===false) alert('Delete may not have reached the cloud. Please try again before refreshing.');
+}
 function implOpenEditSiteModal(sid){
   const s=implSites.find(x=>x.id===sid);
   if(!s){alert('Site not found');return;}
@@ -11215,7 +11223,7 @@ function implOpenEditSiteModal(sid){
   document.getElementById('implEditSiteModal').classList.add('active');
 }
 function implCloseEditSiteModal(){document.getElementById('implEditSiteModal').classList.remove('active');}
-function implHandleEditSite(){
+async function implHandleEditSite(){
   const sid=document.getElementById('implEditSiteId').value;
   const s=implSites.find(x=>x.id===sid);
   if(!s){alert('Site not found');return;}
@@ -11234,7 +11242,9 @@ function implHandleEditSite(){
   }
   implSaveSites(s.id);
   implRenderAll();
+  const ok = await implSaveSiteToSupabase(s);
   implCloseEditSiteModal();
+  if(ok===false){alert('Saved locally, but cloud sync may not have completed. Please avoid refreshing for a moment.');return;}
   alert('✓ Site updated');
 }
 async function implClearAllSites(){
@@ -11426,7 +11436,7 @@ if(document.getElementById('implJsonFile')) document.getElementById('implJsonFil
 
 function implOpenNewSiteModal(){document.getElementById('implNewSiteModal').classList.add('active');document.getElementById('implNewLocation').value='';document.getElementById('implNewProjectType').value='';document.getElementById('implNewStartDate').valueAsDate=new Date();document.getElementById('implNewState').value='';}
 function implCloseNewSiteModal(){document.getElementById('implNewSiteModal').classList.remove('active');}
-function implHandleNewSite(){
+async function implHandleNewSite(){
   const loc=document.getElementById('implNewLocation').value.trim(),pt=document.getElementById('implNewProjectType').value,sd=document.getElementById('implNewStartDate').value;
   if(!loc||!pt||!sd){alert('Please fill in all required fields');return;}
   // Embed state abbreviation into location string so GS auto-assignment can find it
@@ -11434,8 +11444,13 @@ function implHandleNewSite(){
   const finalLoc = (stateRaw && stateRaw.length===2 && !loc.match(/,\s*[A-Z]{2}\s*$/)) ? `${loc}, ${stateRaw}` : loc;
   const tplTasks=implTplGet(pt),tasks=[];
   tplTasks.forEach(t=>{tasks.push({task:t.task,assignedTo:t.assignedTo||'Unassigned',status:'To Do',note:''});});
-  implSites.push({id:`site-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,location:finalLoc,projectType:pt,startDate:sd,tasks});
-  implSaveSites();implRenderAll();implCloseNewSiteModal();
+  const newSite={id:`site-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,location:finalLoc,projectType:pt,startDate:sd,tasks};
+  implSites.push(newSite);
+  implSaveSites(newSite.id);
+  implRenderAll();
+  // Persist to Supabase NOW (not on the 1.5s debounce) so a quick refresh doesn't lose the new site
+  await implSaveSiteToSupabase(newSite);
+  implCloseNewSiteModal();
   alert(`✓ Created "${finalLoc}" with ${tasks.length} tasks!`);
 }
 
@@ -13531,7 +13546,7 @@ async function implLoadFromSupabase(){
 }
 
 async function implSaveSiteToSupabase(site){
-  const sb=getRoadysSB(); if(!sb) return;
+  const sb=getRoadysSB(); if(!sb) return false;
   try{
     const row={
       id:           site.id,
@@ -13542,10 +13557,13 @@ async function implSaveSiteToSupabase(site){
       updated_at:   new Date().toISOString(),
     };
     const {error}=await sb.from('impl_sites').upsert(row,{onConflict:'id'});
-    if(error){ const msg=error.message||error.error_description||error.code||'unknown'; console.warn('[impl] saveSite error:', msg); }
+    if(error){ const msg=error.message||error.error_description||error.code||'unknown'; console.warn('[impl] saveSite error:', msg); return false; }
+    if(_implDirtyIds && typeof _implDirtyIds.delete==='function') _implDirtyIds.delete(site.id);
+    return true;
   }catch(e){
     const msg=e&&e.message?e.message:String(e);
     console.warn('implSaveSiteToSupabase error:', msg);
+    return false;
   }
 }
 
@@ -13579,18 +13597,17 @@ async function implMigrateAllToSupabase(){
 }
 
 async function implDeleteSiteFromSupabase(id){
-  const sb=getRoadysSB(); if(!sb) return;
+  const sb=getRoadysSB(); if(!sb) return false;
   try{
-    console.log('[impl] Deleting site from Supabase:', id);
     const {error}=await sb.from('impl_sites').delete().eq('id',id);
     if(error){
-      const msg=error.message||error.error_description||error.code||JSON.stringify(error);
-      console.warn('[impl] Delete error:', msg);
-      return;
+      console.warn('[impl] Delete error:', error.message||error.error_description||error.code||JSON.stringify(error));
+      return false;
     }
-    console.log('[impl] Deleted from Supabase OK:', id);
+    return true;
   }catch(e){
     console.warn('[impl] implDeleteSiteFromSupabase error:', e&&e.message?e.message:String(e));
+    return false;
   }
 }
 
