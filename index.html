@@ -2319,6 +2319,28 @@ R01180,no,yes,yes,no,yes,no</code>
       </div>
     </div>
 
+    <!-- Implementation Edit Site Modal -->
+    <div class="impl-modal" id="implEditSiteModal">
+      <div class="impl-modal-content">
+        <div class="impl-modal-header"><h2>Edit Site</h2><p class="impl-modal-subtitle">Update location, project type, or start date</p></div>
+        <input type="hidden" id="implEditSiteId" />
+        <div class="impl-form-group"><label>Location *</label><input type="text" id="implEditLocation" required /></div>
+        <div class="impl-form-group"><label>Project Type *</label>
+          <select id="implEditProjectType" required>
+            <option value="Onboarding">Onboarding</option>
+            <option value="Offboarding">Offboarding</option>
+            <option value="Change of Ownership">Change of Ownership</option>
+            <option value="Roady's Lite">Roady's Lite</option>
+          </select>
+        </div>
+        <div class="impl-form-group"><label>Start Date *</label><input type="date" id="implEditStartDate" required /></div>
+        <div class="impl-modal-actions">
+          <button type="button" class="impl-btn impl-btn-secondary" onclick="implCloseEditSiteModal()">Cancel</button>
+          <button type="button" class="impl-btn impl-btn-primary" onclick="implHandleEditSite()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Implementation Notes Modal -->
     <div class="impl-modal" id="implNotesModal">
       <div class="impl-modal-content">
@@ -10423,11 +10445,14 @@ function implParseDate(val){
   if(val instanceof Date && !isNaN(val)) return val;
   const str=String(val).trim();
   if(!str||/^tbd$/i.test(str)) return null;
-  const num=parseFloat(str);
-  if(!isNaN(num)&&num>1000){const ep=new Date(1899,11,30);return new Date(ep.getTime()+num*86400000);}
   // Parse ISO YYYY-MM-DD as local time to avoid UTC offset shifting dates
   const iso=str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(iso) return new Date(parseInt(iso[1]),parseInt(iso[2])-1,parseInt(iso[3]));
+  // Only treat as Excel serial date when the entire string is a pure number
+  if(/^\d+(\.\d+)?$/.test(str)){
+    const num=parseFloat(str);
+    if(!isNaN(num)&&num>1000){const ep=new Date(1899,11,30);return new Date(ep.getTime()+num*86400000);}
+  }
   const d=new Date(str);
   return isNaN(d)?null:d;
 }
@@ -11087,7 +11112,7 @@ function implRenderProjectView(pt){
       <td style="white-space:nowrap;font-size:.82em"><a href="#" onclick="event.stopPropagation();nav('gs-metrics',null);return false;" title="View GS Territory Map" style="color:${gsColor};font-weight:700;text-decoration:none;border-bottom:1px dashed ${gsColor}">${implEsc(firstName)}</a>${regionLabel}</td>
       <td><div style="font-weight:700;margin-bottom:8px">${pct}%</div><div class="impl-progress"><div class="impl-progress-bar" style="width:${pct}%"></div></div></td>
       <td><span class="impl-status-badge impl-status-done">${done} Done</span> <span class="impl-status-badge impl-status-progress">${ip} Active</span> <span class="impl-status-badge impl-status-todo">${total-done-ip} Pending</span></td>
-      <td style="text-align:right"><button class="impl-expand-btn" onclick="implToggleTasks('${site.id}')">📋 Tasks</button> <button class="impl-expand-btn impl-delete-btn" onclick="implDeleteSite('${site.id}')">🗑️</button></td></tr>
+      <td style="text-align:right"><button class="impl-expand-btn" onclick="implToggleTasks('${site.id}')">📋 Tasks</button> <button class="impl-expand-btn" onclick="implOpenEditSiteModal('${site.id}')" title="Edit site">✏️</button> <button class="impl-expand-btn impl-delete-btn" onclick="implDeleteSite('${site.id}')">🗑️</button></td></tr>
       <tr id="impl-tasks-${site.id}" style="display:none"><td colspan="5" style="padding:0 12px 12px">${implRenderTaskDetails(site)}</td></tr>`;
   }).join('');
   return `<div class="impl-tab-header"><div class="impl-filters"><input type="text" placeholder="🔍 Search locations..." oninput="implFilterSites(this.value,'${safePt}')" /></div><div style="display:flex;gap:8px;align-items:center"><label class="impl-btn impl-btn-secondary" style="font-size:.85em;padding:8px 12px;cursor:pointer">📥 Import CSV<input type="file" accept=".csv" style="display:none" onchange="implImportCSV(this,'${safePt}')"/></label><button class="impl-notes-btn${hasNotes?' impl-has-notes':''}" onclick="implOpenNotesModal('${safePt}')">📝 ${hasNotes?'View Notes':'Add Notes'}</button></div></div>
@@ -11121,6 +11146,39 @@ function implToggleTaskNote(nid){const f=document.getElementById(nid);if(f){cons
 function implUpdateStatus(sid,idx,val){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].status=implNormStatus(val);implSaveSites(sid);implRenderAll();}}
 function implUpdateTaskNote(sid,idx,note){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].note=note;implSaveSites(sid);}}
 function implDeleteSite(sid){if(!confirm('Delete this site and all its tasks?'))return;implSites=implSites.filter(s=>s.id!==sid);implSaveSites();implRenderAll();implDeleteSiteFromSupabase(sid);}
+function implOpenEditSiteModal(sid){
+  const s=implSites.find(x=>x.id===sid);
+  if(!s){alert('Site not found');return;}
+  document.getElementById('implEditSiteId').value=s.id;
+  document.getElementById('implEditLocation').value=s.location||'';
+  document.getElementById('implEditProjectType').value=s.projectType||'';
+  const d=implParseDate(s.startDate);
+  document.getElementById('implEditStartDate').value = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+  document.getElementById('implEditSiteModal').classList.add('active');
+}
+function implCloseEditSiteModal(){document.getElementById('implEditSiteModal').classList.remove('active');}
+function implHandleEditSite(){
+  const sid=document.getElementById('implEditSiteId').value;
+  const s=implSites.find(x=>x.id===sid);
+  if(!s){alert('Site not found');return;}
+  const loc=document.getElementById('implEditLocation').value.trim();
+  const pt=document.getElementById('implEditProjectType').value;
+  const sd=document.getElementById('implEditStartDate').value;
+  if(!loc||!pt||!sd){alert('Please fill in all required fields');return;}
+  const ptChanged = s.projectType!==pt;
+  if(ptChanged && !confirm(`Changing project type from "${s.projectType}" to "${pt}" will reset the task list to the new template. Existing task progress will be lost. Continue?`)) return;
+  s.location=loc;
+  s.startDate=sd;
+  if(ptChanged){
+    s.projectType=pt;
+    const tplTasks=implTplGet(pt);
+    s.tasks=tplTasks.map(t=>({task:t.task,assignedTo:t.assignedTo||'Unassigned',status:'To Do',note:''}));
+  }
+  implSaveSites(s.id);
+  implRenderAll();
+  implCloseEditSiteModal();
+  alert('✓ Site updated');
+}
 async function implClearAllSites(){
   const n=implSites.length;
   if(!confirm(`⚠ This will permanently DELETE all ${n} sites from the cloud database.\n\nEveryone using this tool will see them disappear.\n\nContinue?`))return;
@@ -11328,7 +11386,7 @@ function implOpenNotesModal(pt){implCurrentNotesType=pt;document.getElementById(
 function implCloseNotesModal(){document.getElementById('implNotesModal').classList.remove('active');implCurrentNotesType=null;}
 function implSaveNotes(){if(!implCurrentNotesType)return;implProjectNotes[implCurrentNotesType]=document.getElementById('implNotesTextarea').value.trim();implSaveSites();implRenderAll();implCloseNotesModal();}
 
-document.addEventListener('click',e=>{if(e.target===document.getElementById('implNewSiteModal'))implCloseNewSiteModal();if(e.target===document.getElementById('implNotesModal'))implCloseNotesModal();});
+document.addEventListener('click',e=>{if(e.target===document.getElementById('implNewSiteModal'))implCloseNewSiteModal();if(e.target===document.getElementById('implNotesModal'))implCloseNotesModal();if(e.target===document.getElementById('implEditSiteModal'))implCloseEditSiteModal();});
 
 function implInit(){
   if(implInitialized)return;
