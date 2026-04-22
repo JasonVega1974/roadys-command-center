@@ -13516,17 +13516,6 @@ async function implLoadFromSupabase(){
         startDate:   r.start_date||'',
         tasks:       r.tasks||[],
       }));
-      // Migrate: replace Angel with (OPEN) in Supabase-loaded data
-      let changed=false;
-      implSites.forEach(site=>{
-        if(site.tasks) site.tasks.forEach(t=>{
-          if(t.assignedTo==='Angel'){t.assignedTo='(OPEN)';changed=true;}
-        });
-      });
-      if(changed){
-        console.log('[impl] Migrated Angel → (OPEN) in cloud data, re-saving...');
-        implSites.forEach(site=>implSaveSiteToSupabase(site));
-      }
       try{
         localStorage.setItem(IMPL_STORAGE_KEY,JSON.stringify({
           sites:implSites,
