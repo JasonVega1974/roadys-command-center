@@ -4830,8 +4830,8 @@ function implGetProjectMetrics(){
 }
 function implGetTeamMetrics(){
   return IMPL_TEAM.map(member=>{
-    const tasks=implSites.flatMap(s=>s.tasks).filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task)&&t.assignedTo===member&&t.status!=='N/A');
-    return{member,total:tasks.length,done:tasks.filter(t=>t.status==='Done').length,inProgress:tasks.filter(t=>t.status==='In Progress').length,todo:tasks.filter(t=>t.status==='To Do').length};
+    const tasks=implSites.flatMap(s=>s.tasks).filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task)&&t.assignedTo===member);
+    return{member,total:tasks.length,done:tasks.filter(t=>t.status==='Done'||t.status==='N/A').length,inProgress:tasks.filter(t=>t.status==='In Progress').length,todo:tasks.filter(t=>t.status==='To Do').length};
   }).filter(m=>m.total>0);
 }
 
