@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>Roady's Network Command Center</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -13516,6 +13519,31 @@ async function implLoadFromSupabase(){
         startDate:   r.start_date||'',
         tasks:       r.tasks||[],
       }));
+      // Defensive repair: undo damage caused by stale cached HTML in other
+      // browsers that still runs the old Angel->(OPEN) auto-migration.
+      // For every Onboarding task that the template assigns to Angel,
+      // if the cloud row has it as (OPEN), put it back on Angel.
+      try{
+        const canonicalAngel = (IMPL_TEMPLATES && IMPL_TEMPLATES.Onboarding && IMPL_TEMPLATES.Onboarding.Angel) || [];
+        const angelSet = new Set(canonicalAngel);
+        const repairedIds = new Set();
+        implSites.forEach(site=>{
+          if(site.projectType!=='Onboarding' || !Array.isArray(site.tasks)) return;
+          site.tasks.forEach(t=>{
+            if(angelSet.has(t.task) && t.assignedTo==='(OPEN)'){
+              t.assignedTo='Angel';
+              repairedIds.add(site.id);
+            }
+          });
+        });
+        if(repairedIds.size){
+          console.log('[impl] Repairing Angel assignments on', repairedIds.size, 'sites poisoned by stale cached HTML');
+          repairedIds.forEach(id=>{
+            const s=implSites.find(x=>x.id===id);
+            if(s) implSaveSiteToSupabase(s);
+          });
+        }
+      }catch(e){ console.warn('[impl] Angel repair skipped:', e&&e.message?e.message:e); }
       try{
         localStorage.setItem(IMPL_STORAGE_KEY,JSON.stringify({
           sites:implSites,
