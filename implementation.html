@@ -5790,6 +5790,16 @@ function implSubscribeRealtime(){
   try{
     sb.channel('impl_sites_changes')
       .on('postgres_changes', {event:'*', schema:'public', table:'impl_sites'}, payload=>{
+        // DELETE events carry the deleted row's id in payload.old, not payload.new
+        if(payload.eventType==='DELETE'){
+          const oldId = payload.old && payload.old.id;
+          if(!oldId) return;
+          implSites = implSites.filter(s=>s.id!==oldId);
+          if(typeof _implDirtyIds!=='undefined' && _implDirtyIds && typeof _implDirtyIds.delete==='function') _implDirtyIds.delete(oldId);
+          try{ localStorage.setItem(IMPL_STORAGE_KEY, JSON.stringify({sites:implSites, projectNotes:implProjectNotes, lastUpdate:new Date().toLocaleString()})); }catch(e){}
+          implRenderAll();
+          return;
+        }
         const updated = payload.new;
         if(!updated || !updated.id) return;
         const idx = implSites.findIndex(s=>s.id===updated.id);
@@ -5800,13 +5810,9 @@ function implSubscribeRealtime(){
           startDate:   updated.start_date||'',
           tasks:       updated.tasks||[],
         };
-        if(payload.eventType==='DELETE'){
-          implSites = implSites.filter(s=>s.id!==updated.id);
-        } else if(idx>=0){
-          implSites[idx] = site;
-        } else {
-          implSites.push(site);
-        }
+        if(idx>=0) implSites[idx] = site;
+        else implSites.push(site);
+        try{ localStorage.setItem(IMPL_STORAGE_KEY, JSON.stringify({sites:implSites, projectNotes:implProjectNotes, lastUpdate:new Date().toLocaleString()})); }catch(e){}
         implRenderAll();
       })
       .subscribe();
@@ -7983,10 +7989,14 @@ async function implDeleteSiteFromSupabase(id){
   const sb=getRoadysSB(); if(!sb) return false;
   try{
     console.log('[impl] Deleting site from Supabase:', id);
-    const {error}=await sb.from('impl_sites').delete().eq('id',id);
+    const {data,error}=await sb.from('impl_sites').delete().eq('id',id).select('id');
     if(error){
       const msg=error.message||error.error_description||error.code||JSON.stringify(error);
       console.warn('[impl] Delete error:', msg);
+      return false;
+    }
+    if(!data || !data.length){
+      console.warn('[impl] Delete affected 0 rows for id', id, '— possibly RLS or already deleted');
       return false;
     }
     console.log('[impl] Deleted from Supabase OK:', id);
