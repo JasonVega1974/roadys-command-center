@@ -10958,6 +10958,7 @@ function implRenderTabs(){
     const isActive = pt.key===implActiveTab;
     return `<div class="impl-tab-content${isActive?' active':''}" id="impl-tab-${implSafeId(pt.key)}">${implRenderProjectView(pt.key)}</div>`;
   }).join('');
+  implReapplyExpanded();
 }
 function implSwitchTab(key){
   implActiveTab = key;
@@ -11141,9 +11142,61 @@ function implRenderTaskDetails(site){
   }).join('')}</div>`;
 }
 
-function implToggleTasks(id){const r=document.getElementById('impl-tasks-'+id);if(r)r.style.display=r.style.display==='none'?'':'none';}
+let implExpandedSites = new Set();
+function implToggleTasks(id){
+  const r=document.getElementById('impl-tasks-'+id);
+  if(!r) return;
+  const willOpen = r.style.display==='none';
+  r.style.display = willOpen ? '' : 'none';
+  if(willOpen) implExpandedSites.add(id); else implExpandedSites.delete(id);
+}
+function implReapplyExpanded(){
+  implExpandedSites.forEach(id=>{const r=document.getElementById('impl-tasks-'+id);if(r) r.style.display='';});
+}
 function implToggleTaskNote(nid){const f=document.getElementById(nid);if(f){const h=f.style.display==='none';f.style.display=h?'block':'none';if(h)f.focus();}}
-function implUpdateStatus(sid,idx,val){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].status=implNormStatus(val);implSaveSites(sid);implRenderAll();}}
+function implUpdateStatus(sid,idx,val){
+  const s=implSites.find(s=>s.id===sid);
+  if(!s||!s.tasks[idx]) return;
+  s.tasks[idx].status=implNormStatus(val);
+  implSaveSites(sid);
+  // Surgical DOM update — avoid full re-render so expanded tasks panel and scroll stay put
+  implRefreshSiteRow(s);
+  implRefreshTaskItem(sid, idx, s.tasks[idx].status);
+  implRenderDashboard();
+  implRenderCharts();
+}
+function implRefreshSiteRow(site){
+  const tasksRow=document.getElementById('impl-tasks-'+site.id);
+  if(!tasksRow) return;
+  const mainRow=tasksRow.previousElementSibling;
+  const adminRe=/^(document collection|create in interstate|setup & training|cancel preparation)$/i;
+  const at=site.tasks.filter(t=>!adminRe.test(t.task));
+  const total=at.length, done=at.filter(t=>t.status==='Done').length, ip=at.filter(t=>t.status==='In Progress').length;
+  const pct=total?Math.round(done/total*100):0;
+  if(mainRow){
+    const tds=mainRow.querySelectorAll('td');
+    if(tds.length>=4){
+      tds[2].innerHTML=`<div style="font-weight:700;margin-bottom:8px">${pct}%</div><div class="impl-progress"><div class="impl-progress-bar" style="width:${pct}%"></div></div>`;
+      tds[3].innerHTML=`<span class="impl-status-badge impl-status-done">${done} Done</span> <span class="impl-status-badge impl-status-progress">${ip} Active</span> <span class="impl-status-badge impl-status-todo">${total-done-ip} Pending</span>`;
+    }
+  }
+  const grouped={};
+  site.tasks.forEach(t=>{if(adminRe.test(t.task))return;const a=t.assignedTo||'Unassigned';if(!grouped[a])grouped[a]={total:0,done:0};grouped[a].total++;if(t.status==='Done')grouped[a].done++;});
+  tasksRow.querySelectorAll('.impl-task-group').forEach(g=>{
+    const head=g.querySelector('.impl-assignee-header');
+    if(!head) return;
+    const spans=head.querySelectorAll('span');
+    if(spans.length<2) return;
+    const info=grouped[spans[0].textContent];
+    if(info) spans[1].textContent=`${info.done}/${info.total} complete`;
+  });
+}
+function implRefreshTaskItem(sid, idx, status){
+  const item=document.querySelector(`.impl-task-item[data-site-id="${sid}"][data-task-flat-idx="${idx}"]`);
+  if(!item) return;
+  item.classList.remove('impl-task-done','impl-task-progress','impl-task-todo');
+  item.classList.add(status==='Done'?'impl-task-done':status==='In Progress'?'impl-task-progress':'impl-task-todo');
+}
 function implUpdateTaskNote(sid,idx,note){const s=implSites.find(s=>s.id===sid);if(s&&s.tasks[idx]){s.tasks[idx].note=note;implSaveSites(sid);}}
 function implDeleteSite(sid){if(!confirm('Delete this site and all its tasks?'))return;implSites=implSites.filter(s=>s.id!==sid);implSaveSites();implRenderAll();implDeleteSiteFromSupabase(sid);}
 function implOpenEditSiteModal(sid){
