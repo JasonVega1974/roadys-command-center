@@ -238,7 +238,7 @@ tr{cursor:pointer}
     </div>
     <div class="tbl-wrap">
       <table><thead><tr>
-        <th>#</th><th>Location</th><th>City/State</th><th>Assigned</th><th>POS</th><th>Site Status</th>
+        <th>#</th><th>Location</th><th>City/State</th><th>Assigned</th><th>Requested By</th><th>POS</th><th>Site Status</th>
         <th style="text-align:right">Potential Gal</th><th style="text-align:right">Winnable (20%)</th>
         <th style="text-align:right">Fleet Matches</th><th style="text-align:right">Fleet Gal</th><th></th>
       </tr></thead><tbody id="t-list"></tbody></table>
@@ -739,12 +739,13 @@ function renderList(){
   const total=d.length;
   if(lim>0) d=d.slice(0,lim);
   const tb=document.getElementById('t-list');
-  if(!d.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No locations. Click + Create New to add.</td></tr>';document.getElementById('t-count').textContent='';return;}
+  if(!d.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No locations. Click + Create New to add.</td></tr>';document.getElementById('t-count').textContent='';return;}
   tb.innerHTML=d.map((v,i)=>`<tr onclick="showDetail('${v.id}')">
     <td class="num" style="color:var(--dim)">${i+1}</td>
     <td><b>${esc(v.name)}</b></td>
     <td>${esc(v.city)}, ${v.state}</td>
     <td style="font-size:.8em">${esc(v.assigned||'—')}</td>
+    <td style="font-size:.8em">${esc(v.requestedBy||'—')}</td>
     <td style="font-size:.78em">${esc(v.pos||'—')}</td>
     <td style="font-size:.78em">${esc(v.siteStatus||'—')}</td>
     <td class="num">${fG(v.totalPot||0)}</td>
