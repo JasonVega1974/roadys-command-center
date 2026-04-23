@@ -1,0 +1,43 @@
+name: Build React App
+
+on:
+  push:
+    branches: [react-migration]
+    paths:
+      - 'react-app/**'
+      - '.github/workflows/build-react-app.yml'
+  pull_request:
+    branches: [main, react-migration]
+    paths:
+      - 'react-app/**'
+      - '.github/workflows/build-react-app.yml'
+  workflow_dispatch:
+
+# Only the build job runs today. Once the migration is ready to cut over,
+# add a deploy job (actions/deploy-pages) gated on `github.ref == 'refs/heads/main'`.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: react-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: react-app/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: react-app-dist
+          path: react-app/dist
+          retention-days: 14
