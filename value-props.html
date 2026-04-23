@@ -13,6 +13,15 @@
   --cyan:#00d4ff;--green:#00d68f;--yellow:#ffd600;--purple:#a855f7;--red:#ff4757;--orange:#ff6b35;
   --ff:'Segoe UI',system-ui,-apple-system,sans-serif;--fm:'Consolas','Courier New',monospace;
 }
+html{color-scheme:dark}
+body.day-mode{color-scheme:light}
+body.day-mode{
+  --bg:#f7f9fc;--bg2:#eef2f8;--bg3:#e4eaf3;--card:#ffffff;--card2:#f8fafd;
+  --border:#d9e0eb;--border2:#bfc8d6;
+  --text:#0f172a;--muted:#64748b;--dim:#94a3b8;
+  --cyan:#0284c7;--green:#059669;--yellow:#b45309;--purple:#7c3aed;--red:#dc2626;--orange:#ea580c;
+}
+body.day-mode select option{background:#ffffff;color:#0f172a}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:14px}
 ::selection{background:var(--cyan);color:#000}
@@ -119,6 +128,9 @@ tr{cursor:pointer}
 .gr-tab.excluded{opacity:.45;text-decoration:line-through}
 .gr-tab.excluded.active{background:var(--muted);border-color:var(--muted);color:#000}
 .gr-tab-name{flex:1}
+.gr-tab-status{font-size:.6em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;border-radius:10px;background:rgba(0,214,143,.15);color:var(--green)}
+.gr-tab.excluded .gr-tab-status{background:rgba(255,214,0,.15);color:var(--yellow)}
+.gr-tab.active .gr-tab-status{background:rgba(0,0,0,.15);color:#000}
 .gr-tab-actions{display:none;gap:3px;align-items:center}
 .gr-tab:hover .gr-tab-actions{display:flex}
 .gr-tab.active .gr-tab-actions{display:flex}
@@ -199,6 +211,7 @@ tr{cursor:pointer}
   <div class="hdr-right">
     <span class="sync-dot loading" id="sync-dot"></span>
     <span class="sync-label" id="sync-label">Connecting...</span>
+    <button class="link-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark" style="cursor:pointer;background:transparent">🌙 Dark</button>
     <a href="index.html" class="link-btn">← Back to Command Center</a>
   </div>
 </div>
@@ -422,6 +435,28 @@ tr{cursor:pointer}
 
 <script>
 // ═══════════════════════════════════════════════════════
+// THEME TOGGLE (dark default, per-browser preference)
+// ═══════════════════════════════════════════════════════
+function applyTheme(mode){
+  const day = mode === 'day';
+  document.body.classList.toggle('day-mode', day);
+  const btn = document.getElementById('theme-toggle');
+  if(btn) btn.textContent = day ? '☀️ Light' : '🌙 Dark';
+}
+function toggleTheme(){
+  const next = document.body.classList.contains('day-mode') ? 'night' : 'day';
+  localStorage.setItem('vp_theme', next);
+  applyTheme(next);
+  // Re-render charts if on charts tab so they pick up new colors
+  if(document.getElementById('v-charts')?.classList.contains('active') && typeof renderCharts === 'function'){
+    renderCharts();
+  }
+}
+(function initTheme(){
+  try { applyTheme(localStorage.getItem('vp_theme') || 'night'); } catch(e){ applyTheme('night'); }
+})();
+
+// ═══════════════════════════════════════════════════════
 // SUPABASE — plain REST fetch (no SDK, avoids Headers postMessage cloning error)
 // ═══════════════════════════════════════════════════════
 const SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
@@ -469,7 +504,7 @@ async function syncLoad(){
       return;
     }
 
-    const remoteVPs = (data||[]).map(r => ({
+    let remoteVPs = (data||[]).map(r => ({
       id:r.id, name:r.name, city:r.city, state:r.state, address:r.address||'',
       assigned:r.assigned||'', aggPot:r.agg_potential||0, fleetPot:r.fleet_potential||0,
       totalPot:r.total_potential||0, winnable:r.winnable||0,
@@ -477,6 +512,31 @@ async function syncLoad(){
       notes:r.notes||'', radius:r.radius||50, status:r.status||'active',
       created:r.created_at
     }));
+
+    // Honor tombstones: skip records that were deleted locally but still appear
+    // in remote (because the earlier cloud DELETE failed or another session had
+    // stale cache). Retry delete and drop the tombstone once remote agrees.
+    const tombstones = getTombstones();
+    if(tombstones.size){
+      const resurrected = [];
+      remoteVPs = remoteVPs.filter(v => {
+        if(tombstones.has(v.id)){ resurrected.push(v.id); return false; }
+        return true;
+      });
+      if(resurrected.length){
+        console.log('Retrying delete for tombstoned IDs:', resurrected);
+        for(const rid of resurrected){ await syncDelete(rid); }
+      }
+      // Trim tombstones for IDs that are fully gone from remote so the set doesn't grow forever
+      const stillRemote = new Set(remoteVPs.map(v=>v.id));
+      let changed = false;
+      for(const tid of [...tombstones]){
+        if(!stillRemote.has(tid) && resurrected.indexOf(tid) === -1){
+          tombstones.delete(tid); changed = true;
+        }
+      }
+      if(changed) saveTombstones(tombstones);
+    }
 
     if(localCount > 0 && remoteVPs.length === 0){
       setSyncStatus('loading','Uploading '+localCount+' local records…');
@@ -546,13 +606,29 @@ async function syncDelete(id){
   localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
   try {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 5000);
     const resp = await fetch(`${SB_URL}/rest/v1/value_props?id=eq.${encodeURIComponent(id)}`, {
       method:'DELETE', signal: controller.signal,
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
     });
-    if(resp.ok) setSyncStatus('ok','Deleted ✓');
-  } catch(e){ console.warn('Cloud delete skipped:', e.message||e); }
+    clearTimeout(timer);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    setSyncStatus('ok','Deleted ✓');
+    return true;
+  } catch(e){
+    console.warn('Cloud delete failed:', e.message||e);
+    return false;
+  }
+}
+
+// Tombstone helpers: IDs deleted locally but awaiting cloud confirmation.
+// Used so a stale remote row can't resurrect a record the user already removed.
+function getTombstones(){
+  try { return new Set(JSON.parse(localStorage.getItem('vp_tombstones')||'[]')); }
+  catch(e){ return new Set(); }
+}
+function saveTombstones(set){
+  try { localStorage.setItem('vp_tombstones', JSON.stringify([...set])); } catch(e){}
 }
 
 async function syncGeo(key, lat, lng){
@@ -1129,9 +1205,29 @@ async function reScan(id){
   await scanFleets();
 }
 
-function delVP(id){
+async function delVP(id){
   if(!confirm('Delete this value proposition?')) return;
-  VPS=VPS.filter(v=>v.id!==id);syncDelete(id);renderList();toast('Deleted');
+  const prev = VPS;
+  const target = VPS.find(v=>v.id===id);
+  if(!target) return;
+  // Optimistic local delete — render immediately
+  VPS = VPS.filter(v=>v.id!==id);
+  localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
+  renderList();
+  // Await cloud delete. If it fails, revert so the UI doesn't lie.
+  const ok = await syncDelete(id);
+  if(!ok){
+    VPS = prev;
+    localStorage.setItem('vp_data_v5', JSON.stringify(VPS));
+    renderList();
+    toast('⚠️ Delete failed — record restored. Check connection.');
+    return;
+  }
+  // Record tombstone so a stale remote can't resurrect it on next syncLoad
+  const tomb = getTombstones();
+  tomb.add(id);
+  saveTombstones(tomb);
+  toast('Deleted');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1154,11 +1250,15 @@ function renderGR(){
   document.getElementById('gr-tabs').innerHTML=`<div class="gr-tab ${!grFleet?'active':''}" onclick="grFleet='';renderGR()"><span class="gr-tab-name">All</span></div>`+FN.map((fn,i)=>{
     const excl=excludedFleets.has(fn);
     const safe=fn.replace(/'/g,"\'");
-    return `<div class="gr-tab ${grFleet===fn?'active':''} ${excl?'excluded':''}" onclick="grTabClick(event,'${safe}')" title="${excl?'Excluded from scan':''}">
+    const statusLbl = excl ? 'Inactive' : 'Active';
+    const toggleIcon = excl ? '▶' : '⏸';
+    const toggleTitle = excl ? 'Set Active (include in VP scans)' : 'Set Inactive (skip from VP scans)';
+    return `<div class="gr-tab ${grFleet===fn?'active':''} ${excl?'excluded':''}" onclick="grTabClick(event,'${safe}')" title="${statusLbl}">
       <span class="gr-tab-name">${esc(fn)}</span>
+      <span class="gr-tab-status">${statusLbl}</span>
       <span class="gr-tab-actions">
         <button class="tab-btn tab-btn-edit" title="Rename fleet" onclick="event.stopPropagation();openRenameModal('${safe}')">✏️</button>
-        <button class="tab-btn tab-btn-exclude" title="${excl?'Re-include in scan':'Exclude from scan'}" onclick="event.stopPropagation();toggleExclude('${safe}')">${excl?'✅':'🚫'}</button>
+        <button class="tab-btn tab-btn-exclude" title="${toggleTitle}" onclick="event.stopPropagation();toggleExclude('${safe}')">${toggleIcon}</button>
         <button class="tab-btn tab-btn-del" id="delbtn-${i}" title="Remove fleet" onclick="event.stopPropagation();deleteFleetClick(this,'${safe}',${i})">✕</button>
       </span>
     </div>`;
@@ -1409,13 +1509,65 @@ function exportCSV(){
 }
 
 // ═══════════════════════════════════════════════════════
-// FLEET MANAGEMENT — Edit / Exclude / Remove
+// FLEET MANAGEMENT — Active / Inactive / Remove
+// excludedFleets = fleets marked Inactive (skipped from VP scans)
 // ═══════════════════════════════════════════════════════
 let excludedFleets = new Set(JSON.parse(localStorage.getItem('vp_excluded_fleets')||'[]'));
 let deleteTimers = {}; // per-button confirm timers
 
 function saveExcluded(){
   localStorage.setItem('vp_excluded_fleets', JSON.stringify([...excludedFleets]));
+}
+
+// Optional cloud sync for fleet active/inactive status.
+// Requires a Supabase table `fleet_status` (fleet_name text primary key, status text, updated_at timestamptz).
+// If the table does not exist, every call below silently no-ops — the app keeps
+// working on localStorage alone.
+async function syncFleetStatusLoad(){
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(`${SB_URL}/rest/v1/fleet_status?select=fleet_name,status`, {
+      signal: controller.signal,
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Accept':'application/json'}
+    });
+    clearTimeout(timer);
+    if(!resp.ok) return; // table missing / RLS blocked — fall back to localStorage
+    const rows = await resp.json();
+    if(!Array.isArray(rows)) return;
+    // Build the cloud view and reconcile with localStorage.
+    // Cloud "inactive" is authoritative; anything not present is assumed active.
+    const cloudInactive = new Set(rows.filter(r => r.status === 'inactive').map(r => r.fleet_name));
+    // Push any local-only inactives up to the cloud so the two sides converge.
+    const localOnly = [...excludedFleets].filter(fn => !cloudInactive.has(fn));
+    excludedFleets = cloudInactive;
+    saveExcluded();
+    for(const fn of localOnly){ await syncFleetStatusSave(fn, 'inactive'); excludedFleets.add(fn); }
+    if(localOnly.length) saveExcluded();
+  } catch(e){ /* offline/blocked — keep localStorage */ }
+}
+async function syncFleetStatusSave(fleetName, status){
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    await fetch(`${SB_URL}/rest/v1/fleet_status`, {
+      method:'POST', signal: controller.signal,
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({fleet_name:fleetName, status, updated_at:new Date().toISOString()})
+    });
+    clearTimeout(timer);
+  } catch(e){ /* silent — localStorage is still authoritative */ }
+}
+async function syncFleetStatusDelete(fleetName){
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    await fetch(`${SB_URL}/rest/v1/fleet_status?fleet_name=eq.${encodeURIComponent(fleetName)}`, {
+      method:'DELETE', signal: controller.signal,
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+    });
+    clearTimeout(timer);
+  } catch(e){ /* silent */ }
 }
 
 function grTabClick(e, fn){
@@ -1426,11 +1578,13 @@ function grTabClick(e, fn){
 }
 
 function toggleExclude(fn){
-  if(excludedFleets.has(fn)) excludedFleets.delete(fn);
-  else excludedFleets.add(fn);
+  const nowInactive = !excludedFleets.has(fn);
+  if(nowInactive) excludedFleets.add(fn);
+  else excludedFleets.delete(fn);
   saveExcluded();
+  syncFleetStatusSave(fn, nowInactive ? 'inactive' : 'active');
   renderGR();
-  toast(excludedFleets.has(fn) ? `🚫 "${fn}" excluded from fleet scan` : `✅ "${fn}" re-included in scan`);
+  toast(nowInactive ? `⏸ "${fn}" set Inactive (skipped from VP scans)` : `▶ "${fn}" set Active`);
 }
 
 // Also patch findFleets to respect excludedFleets
@@ -1474,7 +1628,11 @@ function confirmRename(oldName){
   const imp = importedFleets.indexOf(oldName);
   if(imp!==-1) importedFleets[imp] = newName;
   // Update excludedFleets
-  if(excludedFleets.has(oldName)){ excludedFleets.delete(oldName); excludedFleets.add(newName); saveExcluded(); }
+  if(excludedFleets.has(oldName)){
+    excludedFleets.delete(oldName); excludedFleets.add(newName); saveExcluded();
+    syncFleetStatusDelete(oldName);
+    syncFleetStatusSave(newName, 'inactive');
+  }
   // Migrate per-scan exclusion (Create-form dropdown)
   if(typeof formExcludedFleets !== 'undefined' && formExcludedFleets.has(oldName)){
     formExcludedFleets.delete(oldName); formExcludedFleets.add(newName);
@@ -1556,6 +1714,7 @@ function removeFleet(fn){
   const imp = importedFleets.indexOf(fn);
   if(imp!==-1) importedFleets.splice(imp,1);
   if(excludedFleets.has(fn)){ excludedFleets.delete(fn); saveExcluded(); }
+  syncFleetStatusDelete(fn);
   // Remove from localStorage
   try{
     const saved = JSON.parse(localStorage.getItem('vp_imported_fleets')||'{}');
@@ -1583,8 +1742,8 @@ async function init(){
     states.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;el.appendChild(o);});
   });
   document.getElementById('gr-count').textContent=FN.length;
-  // Load from Supabase
-  await syncLoad();
+  // Load from Supabase (VPs + fleet active/inactive status in parallel)
+  await Promise.all([syncLoad(), syncFleetStatusLoad()]);
   renderList();
   renderKPIs();
 }
