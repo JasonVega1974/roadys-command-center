@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { SettingsPage } from './pages/SettingsPage';
 import { OverviewPlaceholder } from './pages/OverviewPlaceholder';
 import { VendorsPage } from './pages/VendorsPage';
+import { ValuePropsPage } from './pages/ValuePropsPage';
 
-type PageId = 'overview' | 'vendors' | 'settings';
+type PageId = 'overview' | 'vendors' | 'valueprops' | 'settings';
 
 const NAV: Array<{ id: PageId; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: '🏠' },
   { id: 'vendors', label: 'Vendor Programs', icon: '🤝' },
+  { id: 'valueprops', label: 'Value Propositions', icon: '📍' },
   { id: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
@@ -48,6 +50,7 @@ export function App() {
           {page === 'settings' && <SettingsPage />}
           {page === 'overview' && <OverviewPlaceholder />}
           {page === 'vendors' && <VendorsPage />}
+          {page === 'valueprops' && <ValuePropsPage />}
         </div>
       </main>
     </div>
