@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { SettingsPage } from './pages/SettingsPage';
 import { OverviewPlaceholder } from './pages/OverviewPlaceholder';
+import { VendorsPage } from './pages/VendorsPage';
 
-type PageId = 'overview' | 'settings';
+type PageId = 'overview' | 'vendors' | 'settings';
 
 const NAV: Array<{ id: PageId; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: '🏠' },
+  { id: 'vendors', label: 'Vendor Programs', icon: '🤝' },
   { id: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export function App() {
-  const [page, setPage] = useState<PageId>('settings');
+  const [page, setPage] = useState<PageId>('vendors');
 
   return (
     <div className="app">
@@ -45,6 +47,7 @@ export function App() {
         <div className="content">
           {page === 'settings' && <SettingsPage />}
           {page === 'overview' && <OverviewPlaceholder />}
+          {page === 'vendors' && <VendorsPage />}
         </div>
       </main>
     </div>
