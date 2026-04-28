@@ -158,6 +158,31 @@ tr.clickable:hover td{background:rgba(56,189,248,.06)}
 .calc-result .cr-row.total{font-weight:900;font-size:1em;border-top:1px solid var(--border);padding-top:8px;margin-top:4px}
 .calc-result .cr-val{font-family:var(--fm);color:var(--cyan)}
 
+/* COMPREHENSIVE CALCULATOR (Phase 4) */
+.calc-scenario-hd{display:grid;grid-template-columns:2fr 2fr 1fr;gap:10px;margin-bottom:14px}
+.calc-models{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:1100px){.calc-models{grid-template-columns:1fr}}
+.calc-model{background:var(--bg2);border:2px solid var(--border);border-radius:10px;padding:14px}
+.calc-model.retail{border-color:rgba(34,211,238,.3)}
+.calc-model.costplus{border-color:rgba(167,139,250,.3)}
+.calc-model-hd{font-weight:900;font-size:1em;text-align:center;padding:8px;margin:-14px -14px 12px -14px;border-radius:8px 8px 0 0}
+.calc-model.retail .calc-model-hd{background:rgba(34,211,238,.1);color:var(--cyan)}
+.calc-model.costplus .calc-model-hd{background:rgba(167,139,250,.1);color:var(--purple)}
+.calc-section{margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg3)}
+.calc-section-hd{font-weight:800;font-size:.78em;color:var(--accent);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.calc-section-sub{font-size:.7em;color:var(--muted);font-weight:500;margin-left:6px;text-transform:none;letter-spacing:0}
+.calc-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;align-items:end}
+.calc-cell{display:flex;flex-direction:column;gap:3px;min-width:0}
+.calc-cell label{font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;line-height:1.25;min-height:2em}
+.calc-cell input{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px 8px;color:var(--text);font-family:var(--fm);font-size:.82em;text-align:right;min-width:0;width:100%}
+.calc-cell input:focus{outline:none;border-color:var(--cyan)}
+.calc-cell.input input{background:rgba(251,191,36,.06);border-color:rgba(251,191,36,.3)}
+.calc-cell.output input{background:transparent;border-color:transparent;color:var(--cyan);font-weight:700;font-style:italic;cursor:default}
+.calc-total-row{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:linear-gradient(135deg,rgba(34,211,238,.08),rgba(16,185,129,.08));border:1px solid rgba(34,211,238,.3);border-radius:8px;margin-top:10px}
+.calc-total-row .lbl{font-weight:800;font-size:.85em;line-height:1.3}
+.calc-total-row .val{font-family:var(--fm);font-size:1.25em;font-weight:900;color:var(--cyan);white-space:nowrap}
+.calc-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
 /* FORM */
 .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px}
 .fg{display:flex;flex-direction:column;gap:4px}
@@ -573,6 +598,26 @@ let tasks = [];           // [{id,title,siteId,priority,status,due,category,assi
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
 
+// ── Calculator state ──
+// Defaults seeded from the screenshot template; the imported-coefficient
+// pathway (Phase 4b) will override these once a Manager uploads an
+// Excel coefficient sheet to localStorage['gs_cmd_calc_model'].
+const CALC_DEFAULTS = {
+  retail: {
+    current:   { discount: 0.12,  gallons: 100,   price: 3.889 },
+    potential: { discount: 0.15,  gallons: 2000,  price: 3.889 },
+    def:       { pct: 2,          gallons: 40,    price: 4.50  },
+    inside:    { avgGalPerTxn: 110, transactions: 18, avgRing: 18.32 }
+  },
+  costPlus: {
+    current:   { discount: 0.90,  gallons: 27000, price: 6.000 },
+    potential: { discount: 0.09,  gallons: 27000, price: 6.000 },
+    def:       { pct: 2,          gallons: 540,   price: 4.50  },
+    inside:    { avgGalPerTxn: 110, transactions: 245, avgRing: 18.32 }
+  }
+};
+let calcCurrent = null; // scenario being edited in-memory
+
 function loadData(){
   // In All-GS rollup mode, per-GS arrays stay empty — the master
   // dashboard reads each GS namespace via forEachGS instead.
@@ -656,6 +701,7 @@ function loginAs(user){
     managerSelection = null;
     wrap.classList.remove('show');
   }
+  calcCurrent = null;
   recomputeMyStops();
   loadData();
   renderAll();
@@ -672,6 +718,7 @@ function initGSSelector(){
 function changeGSSelection(value){
   managerSelection = value;
   try { localStorage.setItem('gs_cmd_manager_selection', value); } catch(e){}
+  calcCurrent = null;
   recomputeMyStops();
   loadData();
   renderAll();
@@ -1348,58 +1395,309 @@ function filterRates(){
 }
 
 // ═══════════════════════════════════════════════════════
-// CALCULATOR
+// CALCULATOR (Phase 4: side-by-side Retail-Minus / Cost-Plus,
+// saved scenarios, optional stop+fleet links)
 // ═══════════════════════════════════════════════════════
+function calcSide(side){
+  // Same shape for both Retail-Minus and Cost-Plus columns. Discount is
+  // subtracted from price for both — the column label reframes what the
+  // "price" is (retail vs cost+markup), but the diesel-sales math is
+  // identical for the customer-facing total.
+  const dieselCurrent   = (+side.current.gallons||0)   * ((+side.current.price||0)   - (+side.current.discount||0));
+  const dieselPotential = (+side.potential.gallons||0) * ((+side.potential.price||0) - (+side.potential.discount||0));
+  const defSales        = (+side.def.gallons||0)       * (+side.def.price||0);
+  const insideSales     = (+side.inside.transactions||0) * (+side.inside.avgRing||0);
+  const totalNewRevenue = dieselPotential + defSales + insideSales;
+  return { dieselCurrent, dieselPotential, defSales, insideSales, totalNewRevenue };
+}
+
+function getScenarios(){
+  if(isAllGSMode()){
+    // Manager rollup: walk every GS namespace and stamp source GS on each.
+    const all = [];
+    forEachGS((gsName, ns) => {
+      try {
+        const arr = JSON.parse(localStorage.getItem(ns('scenarios')) || '[]');
+        if(Array.isArray(arr)) arr.forEach(s => all.push({ ...s, _gs: gsName }));
+      } catch(e){}
+    });
+    return all;
+  }
+  const active = getActiveGS();
+  if(!active) return [];
+  try { return JSON.parse(localStorage.getItem(LS_KEY + active + '_scenarios') || '[]'); }
+  catch(e){ return []; }
+}
+
+function saveScenarios(arr){
+  // Per Q3b/Q4: scenario writes happen in a specific GS context only.
+  if(isAllGSMode()) return;
+  const active = getActiveGS();
+  if(!active) return;
+  localStorage.setItem(LS_KEY + active + '_scenarios', JSON.stringify(arr));
+}
+
+function ensureCalcCurrent(){
+  if(calcCurrent) return;
+  calcCurrent = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  calcCurrent.name = '';
+  calcCurrent.stopId = '';
+  calcCurrent.fleet = '';
+  calcCurrent.notes = '';
+}
+
 function renderCalculator(){
-  document.getElementById('calc-content').innerHTML=`
-    <div class="card"><div class="card-hd">🧮 Cost & Profit Calculator</div>
-      <div class="calc-grid">
-        <div class="calc-input"><label>Pricing Model</label>
-          <select id="calc-model" onchange="calculate()"><option value="retail-minus">Retail Minus</option><option value="cost-plus">Cost Plus</option></select>
-        </div>
-        <div class="calc-input"><label>Gallons / Month</label><input type="number" id="calc-gallons" value="5000" oninput="calculate()"></div>
-        <div class="calc-input"><label>Retail Price ($/gal)</label><input type="number" id="calc-retail" value="3.899" step="0.001" oninput="calculate()"></div>
-        <div class="calc-input"><label>Cost / Rack ($/gal)</label><input type="number" id="calc-cost" value="3.450" step="0.001" oninput="calculate()"></div>
-        <div class="calc-input"><label>Discount Offered ($/gal)</label><input type="number" id="calc-discount" value="0.50" step="0.01" oninput="calculate()"></div>
-        <div class="calc-input"><label>Processor Fee (%)</label><input type="number" id="calc-procfee" value="2.50" step="0.01" oninput="calculate()"></div>
+  ensureCalcCurrent();
+  const scenarios = getScenarios();
+  const allMode = isAllGSMode();
+  const dis = allMode ? 'disabled' : '';
+
+  const stopOptions = ['<option value="">-- No stop --</option>']
+    .concat(myStops.map(s => `<option value="${s.id}" ${s.id===calcCurrent.stopId?'selected':''}>${esc(s.name)} (${s.state})</option>`))
+    .join('');
+
+  const savedRows = scenarios.length ? scenarios.map(s => {
+    const stop = MEMBERS.find(m => m.id === s.stopId);
+    const rT = s.retail   ? calcSide(s.retail).totalNewRevenue   : 0;
+    const cT = s.costPlus ? calcSide(s.costPlus).totalNewRevenue : 0;
+    const updated = s.updated ? new Date(s.updated).toLocaleDateString() : '';
+    const gsCol = allMode ? `<td style="font-size:.78em">${esc(s._gs||'')}</td>` : '';
+    const acts = allMode
+      ? `<button class="btn" onclick="openScenario('${s.id}','${esc(s._gs||'')}')" style="font-size:.7em;padding:3px 8px">View</button>`
+      : `<button class="btn" onclick="openScenario('${s.id}')" style="font-size:.7em;padding:3px 8px">Open</button>
+         <button class="btn btn-cyan" onclick="duplicateScenario('${s.id}')" style="font-size:.7em;padding:3px 8px">Dup</button>
+         <button class="btn btn-red" onclick="deleteScenario('${s.id}')" style="font-size:.7em;padding:3px 8px">✕</button>`;
+    return `<tr>
+      <td><b>${esc(s.name||'(unnamed)')}</b></td>
+      ${gsCol}
+      <td style="font-size:.78em">${esc(stop?.name||'—')}</td>
+      <td style="font-size:.78em">${esc(s.fleet||'—')}</td>
+      <td style="font-size:.75em;color:var(--muted)">${esc(updated)}</td>
+      <td class="num" style="color:var(--cyan)">$${rT.toFixed(2)}</td>
+      <td class="num" style="color:var(--purple)">$${cT.toFixed(2)}</td>
+      <td style="white-space:nowrap">${acts}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="${allMode?8:7}" style="text-align:center;padding:20px;color:var(--muted)">No saved scenarios yet. Build one below and click Save Scenario.</td></tr>`;
+
+  document.getElementById('calc-content').innerHTML = `
+    <div class="card">
+      <div class="card-hd">📊 Saved Scenarios (${scenarios.length})</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Name</th>
+            ${allMode?'<th>GS</th>':''}
+            <th>Stop</th><th>Fleet</th><th>Updated</th>
+            <th class="num">Retail Total</th><th class="num">Cost+ Total</th><th></th>
+          </tr></thead>
+          <tbody>${savedRows}</tbody>
+        </table>
       </div>
-      <div class="calc-result" id="calc-result"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">🧮 Cost & Profit Calculator</div>
+      ${allMode ? `<div style="padding:14px;text-align:center;color:var(--muted);background:var(--bg3);border-radius:8px;margin-bottom:14px;font-size:.85em">In <b>All GS</b> view, the calculator is read-only. Pick a specific GS in the topbar dropdown to build or edit scenarios.</div>` : ''}
+
+      <div class="calc-scenario-hd">
+        <div class="fg"><label>Scenario Name</label><input id="calc-name" value="${esc(calcCurrent.name||'')}" placeholder="e.g. ABC Trucking @ Stop #142" oninput="calcUpdateMeta()" ${dis}></div>
+        <div class="fg"><label>Stop (optional)</label><select id="calc-stop" onchange="calcUpdateMeta()" ${dis}>${stopOptions}</select></div>
+        <div class="fg"><label>Fleet (optional)</label><input id="calc-fleet" value="${esc(calcCurrent.fleet||'')}" placeholder="Fleet name" oninput="calcUpdateMeta()" ${dis}></div>
+      </div>
+      <div class="fg" style="margin-bottom:14px"><label>Notes</label><textarea id="calc-notes" rows="2" placeholder="Context, follow-ups..." oninput="calcUpdateMeta()" ${dis}>${esc(calcCurrent.notes||'')}</textarea></div>
+
+      <div class="calc-models">
+        ${renderCalcModelSide('retail',   'RETAIL - Model',  calcCurrent.retail,   allMode)}
+        ${renderCalcModelSide('costPlus', 'COST + Model',    calcCurrent.costPlus, allMode)}
+      </div>
+
+      ${!allMode ? `<div class="calc-actions">
+        <button class="btn btn-green" onclick="saveCurrentScenario()">💾 ${calcCurrent.id?'Update Scenario':'Save Scenario'}</button>
+        <button class="btn btn-cyan" onclick="newCalcScenario()">+ New Scenario</button>
+        <button class="btn" onclick="resetCalcDefaults()">↺ Reset Values to Defaults</button>
+        ${calcCurrent.id?`<span style="font-size:.78em;color:var(--muted);align-self:center;margin-left:auto">Editing: <b>${esc(calcCurrent.name||'(unnamed)')}</b></span>`:''}
+      </div>` : ''}
     </div>
   `;
-  calculate();
+  calcRecalcOutputs();
 }
-function calculate(){
-  const model=document.getElementById('calc-model')?.value||'retail-minus';
-  const gallons=parseFloat(document.getElementById('calc-gallons')?.value)||0;
-  const retail=parseFloat(document.getElementById('calc-retail')?.value)||0;
-  const cost=parseFloat(document.getElementById('calc-cost')?.value)||0;
-  const discount=parseFloat(document.getElementById('calc-discount')?.value)||0;
-  const procFee=(parseFloat(document.getElementById('calc-procfee')?.value)||0)/100;
 
-  let sellPrice,margin,procCost,netPerGal,netTotal;
-  if(model==='retail-minus'){
-    sellPrice=retail-discount;
-    margin=sellPrice-cost;
-    procCost=sellPrice*procFee;
-    netPerGal=margin-procCost;
-  } else {
-    sellPrice=cost+discount;
-    margin=discount;
-    procCost=sellPrice*procFee;
-    netPerGal=margin-procCost;
-  }
-  netTotal=netPerGal*gallons;
+function renderCalcModelSide(key, title, side, allMode){
+  const dis = allMode ? 'disabled' : '';
+  const dlabel = key === 'retail' ? 'Retail - Discount' : 'Cost + Discount';
+  const subA = key === 'retail' ? 'Gallons / Current Retail - Discount' : 'Gallons / Current Cost + Discount';
+  const subB = key === 'retail' ? 'New Gallons / Retail - Discount'      : 'New Gallons / Cost + Discount';
+  const inp = (group, field, step, value) =>
+    `<input type="number" step="${step}" value="${value}" oninput="calcInputChange('${key}','${group}','${field}',this.value)" ${dis}>`;
+  const out = (id) => `<input type="text" id="out-${key}-${id}" readonly>`;
 
-  const el=document.getElementById('calc-result');if(!el)return;
-  el.innerHTML=`
-    <div class="cr-row"><span>Model</span><span class="cr-val">${model==='retail-minus'?'Retail Minus':'Cost Plus'}</span></div>
-    <div class="cr-row"><span>Sell Price / gal</span><span class="cr-val">$${sellPrice.toFixed(3)}</span></div>
-    <div class="cr-row"><span>Gross Margin / gal</span><span class="cr-val">$${margin.toFixed(3)}</span></div>
-    <div class="cr-row"><span>Processor Fee / gal (${(procFee*100).toFixed(2)}%)</span><span class="cr-val" style="color:var(--red)">-$${procCost.toFixed(3)}</span></div>
-    <div class="cr-row"><span>Net / gal</span><span class="cr-val" style="color:${netPerGal>=0?'var(--green)':'var(--red)'}">$${netPerGal.toFixed(3)}</span></div>
-    <div class="cr-row total"><span>Net / Month (${gallons.toLocaleString()} gal)</span><span class="cr-val" style="color:${netTotal>=0?'var(--green)':'var(--red)'}">$${netTotal.toFixed(2)}</span></div>
-    <div class="cr-row total"><span>Net / Year</span><span class="cr-val" style="color:${netTotal>=0?'var(--green)':'var(--red)'}">$${(netTotal*12).toFixed(2)}</span></div>
+  return `
+    <div class="calc-model ${key==='retail'?'retail':'costplus'}">
+      <div class="calc-model-hd">${title}</div>
+
+      <div class="calc-section">
+        <div class="calc-section-hd">Current <span class="calc-section-sub">${subA}</span></div>
+        <div class="calc-row">
+          <div class="calc-cell input"><label>${dlabel}</label>${inp('current','discount','0.01',side.current.discount)}</div>
+          <div class="calc-cell input"><label>Current Gallons</label>${inp('current','gallons','1',side.current.gallons)}</div>
+          <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('current','price','0.001',side.current.price)}</div>
+          <div class="calc-cell output"><label>Diesel Sales</label>${out('currentDiesel')}</div>
+        </div>
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-section-hd">Potential <span class="calc-section-sub">${subB}</span></div>
+        <div class="calc-row">
+          <div class="calc-cell input"><label>${dlabel}</label>${inp('potential','discount','0.01',side.potential.discount)}</div>
+          <div class="calc-cell input"><label>Potential Gallons</label>${inp('potential','gallons','1',side.potential.gallons)}</div>
+          <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('potential','price','0.001',side.potential.price)}</div>
+          <div class="calc-cell output"><label>Diesel Sales</label>${out('potentialDiesel')}</div>
+        </div>
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-section-hd">New DEF Gallons / Sales</div>
+        <div class="calc-row">
+          <div class="calc-cell input"><label>DEF % of diesel sales</label>${inp('def','pct','0.01',side.def.pct)}</div>
+          <div class="calc-cell input"><label>DEF gallons</label>${inp('def','gallons','1',side.def.gallons)}</div>
+          <div class="calc-cell input"><label>DEF Price/gal</label>${inp('def','price','0.01',side.def.price)}</div>
+          <div class="calc-cell output"><label>DEF Sales</label>${out('defSales')}</div>
+        </div>
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-section-hd">New Inside Store Sales</div>
+        <div class="calc-row">
+          <div class="calc-cell input"><label>Avg gallons / transaction</label>${inp('inside','avgGalPerTxn','1',side.inside.avgGalPerTxn)}</div>
+          <div class="calc-cell input"><label># transactions</label>${inp('inside','transactions','1',side.inside.transactions)}</div>
+          <div class="calc-cell input"><label>Avg inside store ring</label>${inp('inside','avgRing','0.01',side.inside.avgRing)}</div>
+          <div class="calc-cell output"><label>Inside store sales</label>${out('insideSales')}</div>
+        </div>
+      </div>
+
+      <div class="calc-total-row">
+        <div class="lbl">Total Potential New Revenue<br><span style="font-size:.7em;color:var(--muted);font-weight:500">(Fuel, DEF, Inside Store Sales)</span></div>
+        <div class="val" id="out-${key}-total">$0.00</div>
+      </div>
+    </div>
   `;
+}
+
+function calcInputChange(side, group, field, value){
+  if(!calcCurrent) return;
+  const num = parseFloat(value);
+  calcCurrent[side][group][field] = isNaN(num) ? 0 : num;
+  calcRecalcOutputs();
+}
+
+function calcUpdateMeta(){
+  if(!calcCurrent) return;
+  const name = document.getElementById('calc-name');
+  const stop = document.getElementById('calc-stop');
+  const fleet = document.getElementById('calc-fleet');
+  const notes = document.getElementById('calc-notes');
+  if(name) calcCurrent.name = name.value;
+  if(stop) calcCurrent.stopId = stop.value;
+  if(fleet) calcCurrent.fleet = fleet.value;
+  if(notes) calcCurrent.notes = notes.value;
+}
+
+function calcRecalcOutputs(){
+  if(!calcCurrent) return;
+  const fmt = v => '$' + (v||0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+  ['retail','costPlus'].forEach(key => {
+    const r = calcSide(calcCurrent[key]);
+    const setVal = (id, val) => { const el = document.getElementById('out-'+key+'-'+id); if(el) el.value = fmt(val); };
+    setVal('currentDiesel',   r.dieselCurrent);
+    setVal('potentialDiesel', r.dieselPotential);
+    setVal('defSales',        r.defSales);
+    setVal('insideSales',     r.insideSales);
+    const total = document.getElementById('out-'+key+'-total');
+    if(total) total.textContent = fmt(r.totalNewRevenue);
+  });
+}
+
+function saveCurrentScenario(){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); return; }
+  calcUpdateMeta();
+  if(!calcCurrent.name?.trim()){ toast('Scenario name required'); return; }
+  const scenarios = getScenarios();
+  const now = new Date().toISOString();
+  if(calcCurrent.id){
+    const idx = scenarios.findIndex(s => s.id === calcCurrent.id);
+    if(idx > -1) scenarios[idx] = { ...calcCurrent, updated: now };
+    else scenarios.push({ ...calcCurrent, updated: now }); // edge case: id existed but record gone
+  } else {
+    calcCurrent.id = 'scn_' + Date.now();
+    calcCurrent.created = now;
+    calcCurrent.updated = now;
+    scenarios.push({ ...calcCurrent });
+  }
+  saveScenarios(scenarios);
+  toast('Scenario saved');
+  renderCalculator();
+  renderDashboard();
+}
+
+function newCalcScenario(){
+  calcCurrent = null;
+  ensureCalcCurrent();
+  renderCalculator();
+  toast('New scenario — fill in values and Save');
+}
+
+function resetCalcDefaults(){
+  if(!confirm('Reset all values on both sides to defaults? Saved scenarios are not affected.')) return;
+  const keep = { id: calcCurrent?.id, name: calcCurrent?.name, stopId: calcCurrent?.stopId, fleet: calcCurrent?.fleet, notes: calcCurrent?.notes, created: calcCurrent?.created };
+  calcCurrent = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  Object.assign(calcCurrent, keep);
+  renderCalculator();
+}
+
+function openScenario(id, gsName){
+  // gsName is only present in All-GS mode (Manager browsing the rollup table).
+  if(gsName && isAllGSMode()){
+    if(!confirm('Switch the workstation to '+gsName+' to open this scenario?')) return;
+    const sel = document.getElementById('gs-selector');
+    if(sel) sel.value = gsName;
+    changeGSSelection(gsName);
+    // Now run again in the GS context
+    setTimeout(() => openScenario(id), 50);
+    return;
+  }
+  const scenarios = getScenarios();
+  const s = scenarios.find(x => x.id === id);
+  if(!s){ toast('Scenario not found'); return; }
+  calcCurrent = JSON.parse(JSON.stringify(s));
+  delete calcCurrent._gs; // strip rollup-only field
+  renderCalculator();
+}
+
+function duplicateScenario(id){
+  const scenarios = getScenarios();
+  const s = scenarios.find(x => x.id === id);
+  if(!s) return;
+  const dup = JSON.parse(JSON.stringify(s));
+  delete dup._gs;
+  dup.id = 'scn_' + Date.now();
+  dup.name = (s.name||'') + ' (copy)';
+  dup.created = new Date().toISOString();
+  dup.updated = dup.created;
+  scenarios.push(dup);
+  saveScenarios(scenarios);
+  toast('Duplicated');
+  renderCalculator();
+}
+
+function deleteScenario(id){
+  if(!confirm('Delete this scenario? This cannot be undone.')) return;
+  let scenarios = getScenarios();
+  scenarios = scenarios.filter(s => s.id !== id);
+  saveScenarios(scenarios);
+  if(calcCurrent?.id === id) newCalcScenario();
+  toast('Deleted');
+  renderCalculator();
+  renderDashboard();
 }
 
 // ═══════════════════════════════════════════════════════
