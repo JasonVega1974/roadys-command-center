@@ -1774,6 +1774,40 @@ function synthGeoCoord(city, state){
   ];
 }
 
+// Sum gallons by case-insensitive trimmed (city, state) so the
+// (fleet_name, city, state) unique index can accept the batch upsert.
+// Real-world fleet exports list one row per transaction; without this
+// pre-pass Postgres rejects the whole batch with 21000 ("ON CONFLICT
+// DO UPDATE command cannot affect row a second time"). findFleets()
+// only ever totals these gallons, so summing on import preserves the
+// downstream radius-scan semantics.
+function dedupeAndSumRows(rows){
+  const map = new Map();
+  for(const r of rows){
+    const city = (r.city||'').trim();
+    const state = (r.state||'').trim();
+    if(!city || !state) continue;
+    const key = city.toLowerCase()+'|'+state.toLowerCase();
+    const gallons = Number(r.gallons)||0;
+    const prev = map.get(key);
+    if(prev) prev.gallons += gallons;
+    else map.set(key, { city, state, gallons });
+  }
+  return [...map.values()];
+}
+
+// Persistent banner for gallon-report sync failures. Separate from the
+// VP sync banner (#sync-banner) so the two don't stomp on each other.
+function showGRSyncBanner(msg){
+  document.getElementById('gr-sync-banner')?.remove();
+  const banner = document.createElement('div');
+  banner.id = 'gr-sync-banner';
+  banner.style.cssText = 'background:rgba(255,107,53,.12);border:1px solid var(--orange);color:var(--orange);padding:10px 24px;font-size:.82em;display:flex;align-items:center;gap:8px;cursor:pointer';
+  banner.onclick = () => banner.remove();
+  banner.innerHTML = '⚠️ <b>Gallon Report Sync:</b> '+esc(msg)+' <span style="margin-left:auto;opacity:.6;font-size:.8em">Click to dismiss</span>';
+  document.querySelector('.hdr')?.after(banner);
+}
+
 // Persist a snapshot of every non-FD fleet to vp_imported_fleets so a
 // browser whose cache was wiped repopulates from cloud on next load. We
 // skip FD-seeded fleets (captured in _ORIG_FD_FLEETS at script-load) so
@@ -1799,8 +1833,12 @@ function setPendingImports(obj){
 }
 function enqueuePendingImport(fleetName, records, source){
   const q = getPendingImports();
-  if(!q[fleetName]) q[fleetName] = { source: source||'manual', rows: [] };
-  for(const r of records){
+  if(!q[fleetName]) q[fleetName] = { source: source||'manual', rows: [], attempts: 0 };
+  // Sum within the incoming batch first so the queue mirrors what the
+  // upsert would actually send. Newer rows for the same (city, state)
+  // replace older queued rows for that key — last-write-wins.
+  const summed = dedupeAndSumRows(records);
+  for(const r of summed){
     const ex = q[fleetName].rows.findIndex(x => x.c===r.city && x.s===r.state);
     if(ex>=0) q[fleetName].rows[ex] = {c:r.city, s:r.state, g:r.gallons};
     else q[fleetName].rows.push({c:r.city, s:r.state, g:r.gallons});
@@ -1811,23 +1849,46 @@ async function flushPendingImports(){
   const q = getPendingImports();
   const fleets = Object.keys(q);
   if(!fleets.length) return;
+  const MAX_FLUSH_ATTEMPTS = 3;
   const remaining = {};
+  const dropped = [];
   for(const fn of fleets){
     const entry = q[fn];
     const records = entry.rows.map(r => ({city:r.c, state:r.s, gallons:r.g}));
     const ok = await upsertGallonReportsToCloud(fn, records, entry.source, {queueOnFail:false});
-    if(!ok) remaining[fn] = entry;
+    if(ok) continue;
+    entry.attempts = (entry.attempts || 0) + 1;
+    if(entry.attempts >= MAX_FLUSH_ATTEMPTS){
+      dropped.push({ fleet: fn, rows: entry.rows.length });
+    } else {
+      remaining[fn] = entry;
+    }
   }
   setPendingImports(remaining);
+  if(dropped.length){
+    const summary = dropped.map(d => d.fleet+' ('+d.rows+' rows)').join(', ');
+    console.error('Dropped '+dropped.length+' pending fleet import(s) after '+MAX_FLUSH_ATTEMPTS+' failed flushes: '+summary);
+    showGRSyncBanner('Dropped '+dropped.length+' pending fleet import(s) after '+MAX_FLUSH_ATTEMPTS+' failed retries — see console.');
+  }
 }
 
 // ── Cloud upsert ──
 // PostgREST upsert via Prefer: resolution=merge-duplicates against the
 // (fleet_name, city, state) unique index. Plain fetch — keeps this file
 // consistent with the rest of its Supabase calls; no SDK dep.
+//
+// Sum-on-import: real fleet exports list one row per transaction. Postgres
+// rejects a batch upsert with two rows on the same conflict key (21000),
+// so we sum gallons per (city, state) before POST.
+//
+// Bounded retry: 3 attempts with exponential backoff (250ms, 500ms, 1s).
+// 4xx is permanent (the request itself is malformed) — we don't retry it,
+// surface a banner, and queue once for manual inspection. 5xx and network
+// errors are transient.
 async function upsertGallonReportsToCloud(fleetName, records, source, opts){
   opts = opts || {};
-  const rows = records.map(r => ({
+  const summed = dedupeAndSumRows(records);
+  const rows = summed.map(r => ({
     fleet_name: fleetName,
     city: r.city,
     state: r.state,
@@ -1835,30 +1896,49 @@ async function upsertGallonReportsToCloud(fleetName, records, source, opts){
     source: source || 'manual'
   }));
   if(!rows.length) return true;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), 5000);
-    const resp = await fetch(`${SB_URL}/rest/v1/fleet_gallon_reports?on_conflict=fleet_name,city,state`, {
-      method:'POST',
-      signal: controller.signal,
-      headers:{
-        'apikey':SB_KEY,
-        'Authorization':'Bearer '+SB_KEY,
-        'Content-Type':'application/json',
-        'Prefer':'resolution=merge-duplicates,return=minimal'
-      },
-      body: JSON.stringify(rows)
-    });
-    clearTimeout(timer);
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    return true;
-  } catch(e){
-    console.warn('Gallon-report upsert deferred ('+(e.message||e)+'). Queued for retry.');
-    if(opts.queueOnFail !== false){
-      enqueuePendingImport(fleetName, records, source);
+
+  const MAX_ATTEMPTS = 3;
+  let lastErr = null;
+  for(let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++){
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(), 5000);
+      const resp = await fetch(`${SB_URL}/rest/v1/fleet_gallon_reports?on_conflict=fleet_name,city,state`, {
+        method:'POST',
+        signal: controller.signal,
+        headers:{
+          'apikey':SB_KEY,
+          'Authorization':'Bearer '+SB_KEY,
+          'Content-Type':'application/json',
+          'Prefer':'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify(rows)
+      });
+      clearTimeout(timer);
+      if(resp.ok) return true;
+      const body = await resp.text().catch(()=>'');
+      // 4xx — permanent. Stop retrying.
+      if(resp.status >= 400 && resp.status < 500){
+        console.error('Gallon-report upsert rejected by Supabase ('+resp.status+'): '+body);
+        if(opts.queueOnFail !== false){
+          enqueuePendingImport(fleetName, records, source);
+        }
+        showGRSyncBanner('Cloud rejected gallon report upload — see browser console.');
+        return false;
+      }
+      lastErr = new Error('HTTP '+resp.status+' '+body);
+    } catch(e){
+      lastErr = e;
     }
-    return false;
+    if(attempt < MAX_ATTEMPTS){
+      await new Promise(r => setTimeout(r, 250 * Math.pow(2, attempt - 1)));
+    }
   }
+  console.warn('Gallon-report upsert failed after '+MAX_ATTEMPTS+' attempts: '+(lastErr && (lastErr.message||lastErr)));
+  if(opts.queueOnFail !== false){
+    enqueuePendingImport(fleetName, records, source);
+  }
+  return false;
 }
 
 // ── Cloud read (paged) + merge into FN/FR/GEO ──
@@ -2038,19 +2118,31 @@ async function migrateSeedDataToCloud(){
 
   // Snapshot rows from FD (use FN as it was at script-load) ignoring
   // anything imported in this session.
-  const seedRows = [];
+  const seedRowsRaw = [];
   for(const r of FR){
     const fn = FN[r[0]];
     if(!_ORIG_FD_FLEETS.has(fn)) continue;
-    seedRows.push({
+    seedRowsRaw.push({
       fleet_name: normalizeFleetName(fn),
       city: r[1],
       state: r[2],
-      gallons: r[3],
+      gallons: Number(r[3])||0,
       source: 'seed'
     });
   }
-  console.log('Seed migration: uploading '+seedRows.length+' rows ('+_ORIG_FD_FLEETS.size+' fleets)...');
+  // Sum-dedupe by (fleet_name, city, state) so a future FD update with
+  // multiple per-city entries doesn't trip Postgres 21000. Today's FD
+  // has one row per city, so this is a no-op — but the safety net is
+  // cheap and keeps the seed path consistent with the import path.
+  const seedMap = new Map();
+  for(const r of seedRowsRaw){
+    const key = r.fleet_name.toLowerCase()+'|'+r.city.trim().toLowerCase()+'|'+r.state.trim().toLowerCase();
+    const prev = seedMap.get(key);
+    if(prev) prev.gallons += r.gallons;
+    else seedMap.set(key, { ...r });
+  }
+  const seedRows = [...seedMap.values()];
+  console.log('Seed migration: uploading '+seedRows.length+' deduped rows ('+_ORIG_FD_FLEETS.size+' fleets, '+seedRowsRaw.length+' raw)...');
 
   const BATCH = 500;
   let total = 0, failed = 0;
