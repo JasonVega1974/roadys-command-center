@@ -48,6 +48,14 @@ body{font-family:var(--ff);background:var(--bg);color:var(--text);font-size:14px
 .btn-red{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
 .btn-yellow{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:var(--yellow)}
 
+/* GS SELECTOR (Manager only) */
+.gs-selector-wrap{display:none;align-items:center;gap:8px}
+.gs-selector-wrap.show{display:flex}
+.gs-selector-wrap label{font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap}
+.gs-selector{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:.82em;font-family:var(--ff);min-width:180px;cursor:pointer}
+.gs-selector:focus{outline:none;border-color:var(--cyan)}
+.gs-selector:hover{border-color:var(--accent)}
+
 /* TABS */
 .tabs{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
 .tab{padding:10px 18px;font-size:.82em;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
@@ -236,6 +244,10 @@ tr.clickable:hover td{background:rgba(56,189,248,.06)}
 <div id="app" style="display:none">
   <div class="topbar">
     <div class="topbar-logo">⛽ GS Command Center</div>
+    <div class="gs-selector-wrap" id="gs-selector-wrap">
+      <label for="gs-selector">Viewing:</label>
+      <select id="gs-selector" class="gs-selector" onchange="changeGSSelection(this.value)"></select>
+    </div>
     <div class="topbar-user">
       <div><div class="name" id="tb-name"></div><div class="role" id="tb-role"></div></div>
       <button class="btn" onclick="logout()">Logout</button>
@@ -443,6 +455,116 @@ const PROCESSOR_RATES = [
 let currentUser = null;
 let myStops = [];
 let LS_KEY = 'gs_cmd_';
+
+// ═══════════════════════════════════════════════════════
+// DATA ACCESS LAYER (mode-aware reads)
+// ═══════════════════════════════════════════════════════
+// Manager dropdown selection. Non-manager users always read their own
+// namespace; managers default to "All GS" (rollup) but can drill into
+// any specific GS via the topbar selector.
+const ALL_GS = 'All GS';
+let managerSelection = null;
+
+function getActiveGS(){
+  // GS name string (a REGIONS key) when scoped to one GS;
+  // null in Manager All-GS mode (or when no one is logged in).
+  if(!currentUser) return null;
+  if(!currentUser.isManager) return currentUser.name;
+  return managerSelection && managerSelection !== ALL_GS ? managerSelection : null;
+}
+
+function isAllGSMode(){
+  return !!(currentUser && currentUser.isManager && (!managerSelection || managerSelection === ALL_GS));
+}
+
+function gsKey(suffix){
+  // Use only when scoped to one GS. In All-GS mode, callers should
+  // walk every namespace via forEachGS instead.
+  const active = getActiveGS();
+  if(!active) throw new Error('gsKey() called in All-GS mode — use forEachGS() instead');
+  return LS_KEY + active + '_' + suffix;
+}
+
+function forEachGS(fn){
+  // Iterates REGIONS keys; fn receives (gsName, ns) where
+  // ns(suffix) returns gs_cmd_<gsName>_<suffix>.
+  for(const gsName of Object.keys(REGIONS)){
+    fn(gsName, suffix => LS_KEY + gsName + '_' + suffix);
+  }
+}
+
+function stopsForGS(gsName){
+  const r = REGIONS[gsName];
+  if(!r) return [];
+  return MEMBERS.filter(m => m.status==='active' && m.group!=='None' && r.states.includes(m.state));
+}
+
+function recomputeMyStops(){
+  if(!currentUser){ myStops = []; return; }
+  if(isAllGSMode()){
+    myStops = MEMBERS.filter(m => m.status==='active' && m.group!=='None');
+  } else {
+    const active = getActiveGS();
+    myStops = active ? stopsForGS(active) : [];
+  }
+}
+
+// Cross-app reads: roadys_fuel / roadys_kpi / roadys_vp_enroll are
+// written by index.html; we read them here. Logs a warning on shape
+// mismatch so a schema change there shows up in the console instead
+// of silently breaking dashboards.
+function loadShared(key){
+  try {
+    const raw = localStorage.getItem(key);
+    if(!raw) return null;
+    const v = JSON.parse(raw);
+    if(v !== null && typeof v !== 'object'){
+      console.warn('loadShared: unexpected shape for ' + key + ' (got ' + typeof v + ')');
+      return null;
+    }
+    return v;
+  } catch(e){
+    console.warn('loadShared: parse error for ' + key + ': ' + e.message);
+    return null;
+  }
+}
+
+// ── Supabase client (anon, read-only) ──
+// Same constants as index.html — see CLAUDE.md for table list.
+const ROADYS_SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
+const ROADYS_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
+let _sbClient = null;
+function ensureSupabaseLib(){
+  if(typeof window !== 'undefined' && window.supabase) return Promise.resolve(window.supabase);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+    s.onload = () => window.supabase ? resolve(window.supabase) : reject(new Error('supabase-js loaded but window.supabase undefined'));
+    s.onerror = () => reject(new Error('supabase-js CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+function getRoadysSB(){
+  if(_sbClient) return _sbClient;
+  if(typeof window !== 'undefined' && window.supabase){
+    try { _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON); return _sbClient; }
+    catch(e){ console.warn('getRoadysSB: ' + e.message); return null; }
+  }
+  return null;
+}
+async function loadVPEnrollFromSupabase(){
+  // Optional read-only pull. Falls back to localStorage on any failure.
+  try {
+    await ensureSupabaseLib();
+    const sb = getRoadysSB(); if(!sb) return null;
+    const { data, error } = await sb.from('vp_enroll').select('*');
+    if(error){ console.warn('loadVPEnrollFromSupabase: ' + error.message); return null; }
+    return data || [];
+  } catch(e){
+    console.log('vp_enroll Supabase unreachable: ' + (e.message||e) + ' — falling back to localStorage');
+    return null;
+  }
+}
 let activityLogs = {};  // {siteId: [{date,type,subject,notes}]}
 let scheduledCalls = []; // [{siteId,date,time,contact,purpose}]
 let siteExtras = {};     // {siteId: {hasRewards,vendorPrograms,contacts,notes}}
@@ -452,17 +574,25 @@ let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
 
 function loadData(){
-  const k = LS_KEY + (currentUser?.name||'shared');
-  try{
-    const d=JSON.parse(localStorage.getItem(k+'_logs')||'{}');activityLogs=d;
-  }catch(e){activityLogs={};}
+  // In All-GS rollup mode, per-GS arrays stay empty — the master
+  // dashboard reads each GS namespace via forEachGS instead.
+  const active = getActiveGS();
+  if(!active){
+    activityLogs={}; scheduledCalls=[]; siteExtras={}; criticalItems=[]; tasks=[];
+    return;
+  }
+  const k = LS_KEY + active;
+  try{const d=JSON.parse(localStorage.getItem(k+'_logs')||'{}');activityLogs=d;}catch(e){activityLogs={};}
   try{scheduledCalls=JSON.parse(localStorage.getItem(k+'_sched')||'[]');}catch(e){scheduledCalls=[];}
   try{siteExtras=JSON.parse(localStorage.getItem(k+'_extras')||'{}');}catch(e){siteExtras={};}
   try{criticalItems=JSON.parse(localStorage.getItem(k+'_critical')||'[]');}catch(e){criticalItems=[];}
   try{tasks=JSON.parse(localStorage.getItem(k+'_tasks')||'[]');}catch(e){tasks=[];}
 }
 function saveData(){
-  const k = LS_KEY + (currentUser?.name||'shared');
+  // No-op in All-GS rollup mode — there is no namespace to write into.
+  const active = getActiveGS();
+  if(!active) return;
+  const k = LS_KEY + active;
   localStorage.setItem(k+'_logs',JSON.stringify(activityLogs));
   localStorage.setItem(k+'_sched',JSON.stringify(scheduledCalls));
   localStorage.setItem(k+'_extras',JSON.stringify(siteExtras));
@@ -513,21 +643,45 @@ function loginAs(user){
   document.getElementById('app').style.display='block';
   document.getElementById('tb-name').textContent=user.name;
   document.getElementById('tb-role').textContent=user.role;
-  // Filter stops
+  const wrap = document.getElementById('gs-selector-wrap');
   if(user.isManager){
-    myStops = MEMBERS.filter(m=>m.status==='active'&&m.group!=='None');
+    initGSSelector();
+    let saved = ALL_GS;
+    try { saved = localStorage.getItem('gs_cmd_manager_selection') || ALL_GS; } catch(e){}
+    if(saved !== ALL_GS && !REGIONS[saved]) saved = ALL_GS; // guard against a renamed/removed GS
+    managerSelection = saved;
+    document.getElementById('gs-selector').value = saved;
+    wrap.classList.add('show');
   } else {
-    const region = REGIONS[user.name];
-    const states = region ? region.states : [];
-    myStops = MEMBERS.filter(m=>m.status==='active'&&m.group!=='None'&&states.includes(m.state));
+    managerSelection = null;
+    wrap.classList.remove('show');
   }
+  recomputeMyStops();
   loadData();
   renderAll();
 }
+
+function initGSSelector(){
+  const sel = document.getElementById('gs-selector');
+  if(!sel) return;
+  const opts = [`<option value="${ALL_GS}">${ALL_GS} (rollup)</option>`]
+    .concat(Object.keys(REGIONS).map(name => `<option value="${esc(name)}">${esc(name)}</option>`));
+  sel.innerHTML = opts.join('');
+}
+
+function changeGSSelection(value){
+  managerSelection = value;
+  try { localStorage.setItem('gs_cmd_manager_selection', value); } catch(e){}
+  recomputeMyStops();
+  loadData();
+  renderAll();
+}
+
 function logout(){
-  currentUser=null;pinEntry='';
+  currentUser=null;pinEntry='';managerSelection=null;
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app').style.display='none';
+  document.getElementById('gs-selector-wrap').classList.remove('show');
   updateDots();
 }
 
