@@ -722,6 +722,56 @@ const CALC_DEFAULTS = {
 };
 let calcCurrent = null; // scenario being edited in-memory
 
+// Coefficient names recognized by Import Model. Anything else in the
+// Coefficients sheet is logged to console and skipped — same contract
+// as the spec.
+const CALC_COEFF_NAMES = [
+  'def_pct_of_diesel_default',
+  'def_price_per_gallon_default',
+  'inside_store_avg_gal_per_txn',
+  'inside_store_avg_ring',
+  'default_diesel_price_retail',
+  'default_diesel_price_costplus',
+  'default_retail_discount',
+  'default_costplus_discount',
+  'processor_fee_pct_default'
+];
+
+// Flat-sheet scenario import format. One row per scenario; column header
+// → dotted path into a scenario object. We deviate from the spec's
+// "one sheet per scenario" idea here because flat sheets are trivial
+// to author in Excel and parse deterministically.
+const SCENARIO_FIELDS = [
+  { col:'Name',          path:'name',                          type:'string' },
+  { col:'Stop ID',       path:'stopId',                        type:'string' },
+  { col:'Fleet',         path:'fleet',                         type:'string' },
+  { col:'Notes',         path:'notes',                         type:'string' },
+  { col:'R_Cur_Disc',    path:'retail.current.discount',       type:'number' },
+  { col:'R_Cur_Gal',     path:'retail.current.gallons',        type:'number' },
+  { col:'R_Cur_Price',   path:'retail.current.price',          type:'number' },
+  { col:'R_Pot_Disc',    path:'retail.potential.discount',     type:'number' },
+  { col:'R_Pot_Gal',     path:'retail.potential.gallons',      type:'number' },
+  { col:'R_Pot_Price',   path:'retail.potential.price',        type:'number' },
+  { col:'R_DEF_Pct',     path:'retail.def.pct',                type:'number' },
+  { col:'R_DEF_Gal',     path:'retail.def.gallons',            type:'number' },
+  { col:'R_DEF_Price',   path:'retail.def.price',              type:'number' },
+  { col:'R_Ins_GalTxn',  path:'retail.inside.avgGalPerTxn',    type:'number' },
+  { col:'R_Ins_Txns',    path:'retail.inside.transactions',    type:'number' },
+  { col:'R_Ins_Ring',    path:'retail.inside.avgRing',         type:'number' },
+  { col:'C_Cur_Disc',    path:'costPlus.current.discount',     type:'number' },
+  { col:'C_Cur_Gal',     path:'costPlus.current.gallons',      type:'number' },
+  { col:'C_Cur_Price',   path:'costPlus.current.price',        type:'number' },
+  { col:'C_Pot_Disc',    path:'costPlus.potential.discount',   type:'number' },
+  { col:'C_Pot_Gal',     path:'costPlus.potential.gallons',    type:'number' },
+  { col:'C_Pot_Price',   path:'costPlus.potential.price',      type:'number' },
+  { col:'C_DEF_Pct',     path:'costPlus.def.pct',              type:'number' },
+  { col:'C_DEF_Gal',     path:'costPlus.def.gallons',          type:'number' },
+  { col:'C_DEF_Price',   path:'costPlus.def.price',            type:'number' },
+  { col:'C_Ins_GalTxn',  path:'costPlus.inside.avgGalPerTxn',  type:'number' },
+  { col:'C_Ins_Txns',    path:'costPlus.inside.transactions',  type:'number' },
+  { col:'C_Ins_Ring',    path:'costPlus.inside.avgRing',       type:'number' }
+];
+
 function loadData(){
   // In All-GS rollup mode, per-GS arrays stay empty — the master
   // dashboard reads each GS namespace via forEachGS instead.
@@ -1844,6 +1894,74 @@ function filterRates(){
 // CALCULATOR (Phase 4: side-by-side Retail-Minus / Cost-Plus,
 // saved scenarios, optional stop+fleet links)
 // ═══════════════════════════════════════════════════════
+// SheetJS is loaded on demand the first time a user clicks an Import
+// or template button so the cold-load cost stays out of the critical
+// path. Errors propagate so the caller can toast them.
+function ensureSheetJS(){
+  if(typeof window !== 'undefined' && typeof window.XLSX !== 'undefined') return Promise.resolve(window.XLSX);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('SheetJS loaded but XLSX is undefined'));
+    s.onerror = () => reject(new Error('SheetJS CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+function getCalcModel(){
+  try { return JSON.parse(localStorage.getItem('gs_cmd_calc_model') || 'null'); }
+  catch(e){ return null; }
+}
+
+// Returns CALC_DEFAULTS overlaid with imported coefficient values.
+// Unknown coefficient names were filtered out at import time, so this
+// just needs to map known names onto the right scenario fields.
+function getCalcDefaults(){
+  const defs = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  const model = getCalcModel();
+  if(!model || typeof model !== 'object') return defs;
+  const c = (model.coefficients && typeof model.coefficients === 'object') ? model.coefficients : {};
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+
+  const dprR = num(c.default_diesel_price_retail);
+  if(dprR !== null){ defs.retail.current.price = dprR; defs.retail.potential.price = dprR; }
+  const dprC = num(c.default_diesel_price_costplus);
+  if(dprC !== null){ defs.costPlus.current.price = dprC; defs.costPlus.potential.price = dprC; }
+
+  const drD = num(c.default_retail_discount);
+  if(drD !== null){ defs.retail.current.discount = drD; defs.retail.potential.discount = drD; }
+  const dcD = num(c.default_costplus_discount);
+  if(dcD !== null){ defs.costPlus.current.discount = dcD; defs.costPlus.potential.discount = dcD; }
+
+  const dPct = num(c.def_pct_of_diesel_default);
+  if(dPct !== null){ defs.retail.def.pct = dPct; defs.costPlus.def.pct = dPct; }
+  const dPrice = num(c.def_price_per_gallon_default);
+  if(dPrice !== null){ defs.retail.def.price = dPrice; defs.costPlus.def.price = dPrice; }
+
+  const inGal = num(c.inside_store_avg_gal_per_txn);
+  if(inGal !== null){ defs.retail.inside.avgGalPerTxn = inGal; defs.costPlus.inside.avgGalPerTxn = inGal; }
+  const inRing = num(c.inside_store_avg_ring);
+  if(inRing !== null){ defs.retail.inside.avgRing = inRing; defs.costPlus.inside.avgRing = inRing; }
+
+  // processor_fee_pct_default is read into the model but the calculator
+  // does not yet net the processor fee out of Total Potential New
+  // Revenue. Keeping it in the recognized list so the import doesn't
+  // warn about it; will be used when net-margin display lands.
+  return defs;
+}
+
+// Walks a dotted path and assigns. Used by Import Scenarios to map a
+// flat row's columns onto the nested scenario object.
+function setPath(obj, path, val){
+  const parts = path.split('.');
+  let cur = obj;
+  for(let i = 0; i < parts.length - 1; i++){
+    if(!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = val;
+}
+
 function calcRowSales(group, row){
   // Sales contribution for a single row (main row OR a line item).
   // Group label decides which fields drive the math; unused fields on
@@ -1913,7 +2031,7 @@ function saveScenarios(arr){
 
 function ensureCalcCurrent(){
   if(calcCurrent) return;
-  calcCurrent = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  calcCurrent = getCalcDefaults();
   calcCurrent.name = '';
   calcCurrent.stopId = '';
   calcCurrent.fleet = '';
@@ -1925,6 +2043,10 @@ function renderCalculator(){
   const scenarios = getScenarios();
   const allMode = isAllGSMode();
   const dis = allMode ? 'disabled' : '';
+  const model = getCalcModel();
+  const modelBadge = (model && model._imported)
+    ? `Model: imported ${new Date(model._imported.date).toLocaleDateString()} by ${esc(model._imported.by||'?')}`
+    : 'No model imported — using built-in defaults';
 
   const stopOptions = ['<option value="">-- No stop --</option>']
     .concat(myStops.map(s => `<option value="${s.id}" ${s.id===calcCurrent.stopId?'selected':''}>${esc(s.name)} (${s.state})</option>`))
@@ -1967,6 +2089,27 @@ function renderCalculator(){
           <tbody>${savedRows}</tbody>
         </table>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd" style="justify-content:space-between">
+        <span>📥 Import / Templates</span>
+        <span style="font-size:.7em;color:var(--muted);font-weight:500">${esc(modelBadge)}</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${currentUser?.isManager ? `
+          <label class="btn btn-cyan" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📥 Import Model
+            <input type="file" accept=".xlsx,.xls" onchange="handleImportModel(this)" style="display:none">
+          </label>` : ''}
+        ${!allMode ? `
+          <label class="btn btn-cyan" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📥 Import Scenarios
+            <input type="file" accept=".xlsx,.xls" onchange="handleImportScenarios(this)" style="display:none">
+          </label>` : ''}
+        <button class="btn" onclick="downloadCoefficientTemplate()">⤓ Coefficients Template</button>
+        <button class="btn" onclick="downloadScenarioTemplate()">⤓ Scenarios Template</button>
+      </div>
+      ${allMode ? `<div style="font-size:.72em;color:var(--muted);margin-top:8px">Pick a specific GS in the topbar to enable Import Scenarios.</div>` : ''}
+      ${!currentUser?.isManager ? `<div style="font-size:.72em;color:var(--muted);margin-top:8px">Import Model is Manager-only. The current model seeds defaults for new scenarios.</div>` : ''}
     </div>
 
     <div class="card">
@@ -2089,6 +2232,169 @@ function renderCalcModelSide(key, title, side, allMode){
   `;
 }
 
+// ── Import / Export handlers (Phase 4b-2) ──
+// Manager-only Import Model: reads a "Coefficients" sheet (Name | Value)
+// and persists recognized coefficients to localStorage. Future scenarios
+// pick these up via getCalcDefaults().
+async function handleImportModel(input){
+  if(!currentUser?.isManager){ toast('Manager only'); return; }
+  const file = input.files && input.files[0];
+  if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheet = wb.Sheets['Coefficients'] || wb.Sheets[wb.SheetNames[0]];
+    if(!sheet){ toast('No "Coefficients" sheet found'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { header: 1, defval: null });
+    const coefficients = {};
+    let recognized = 0, unknown = 0;
+    for(const row of rows){
+      if(!Array.isArray(row) || row.length < 2) continue;
+      const name = String(row[0] || '').trim();
+      if(!name) continue;
+      const lower = name.toLowerCase();
+      if(lower === 'name' || lower === 'coefficient' || lower === '#') continue;
+      if(CALC_COEFF_NAMES.includes(name)){ coefficients[name] = row[1]; recognized++; }
+      else { console.warn('Import Model: unknown coefficient "' + name + '" — ignoring'); unknown++; }
+    }
+    if(!recognized){ toast('No recognized coefficients found'); return; }
+    const model = {
+      coefficients,
+      _imported: { date: new Date().toISOString(), by: currentUser?.name || 'Manager', filename: file.name }
+    };
+    localStorage.setItem('gs_cmd_calc_model', JSON.stringify(model));
+    // Re-seed calcCurrent only if the user is on a fresh untouched
+    // scenario. Otherwise their in-flight edits are preserved.
+    if(calcCurrent && !calcCurrent.id && !calcCurrent.name?.trim()){
+      calcCurrent = null;
+      ensureCalcCurrent();
+    }
+    toast('Model imported — ' + recognized + ' coefficients applied' + (unknown ? ' (' + unknown + ' unknown skipped)' : ''));
+    renderCalculator();
+  } catch(e){
+    console.error('Import Model error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally {
+    input.value = '';
+  }
+}
+
+// Import Scenarios: flat-sheet format. Picks the first sheet named
+// "Scenarios" (case-insensitive) or falls back to the first sheet in
+// the workbook. Each row → one scenario, layered on top of current
+// defaults; missing cells leave the default in place. Disabled in
+// Manager All-GS view since there is no namespace to write into.
+async function handleImportScenarios(input){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); input.value=''; return; }
+  const active = getActiveGS();
+  if(!active){ toast('Pick a specific GS first'); input.value=''; return; }
+  const file = input.files && input.files[0];
+  if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'scenarios') || wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    if(!sheet){ toast('No sheets found in workbook'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { defval: null });
+    if(!rows.length){ toast('No data rows in "' + sheetName + '"'); return; }
+    const existing = getScenarios();
+    const now = new Date().toISOString();
+    let added = 0;
+    rows.forEach((r, rowIdx) => {
+      const scn = getCalcDefaults();
+      let touched = false;
+      for(const f of SCENARIO_FIELDS){
+        const v = r[f.col];
+        if(v === null || v === undefined || v === '') continue;
+        if(f.type === 'number'){
+          const n = parseFloat(v);
+          if(isNaN(n)) continue;
+          setPath(scn, f.path, n);
+        } else {
+          setPath(scn, f.path, String(v));
+        }
+        touched = true;
+      }
+      if(!touched || !scn.name || !String(scn.name).trim()) return;
+      scn.id = 'scn_' + Date.now() + '_' + rowIdx;
+      scn.created = now;
+      scn.updated = now;
+      existing.push(scn);
+      added++;
+    });
+    if(!added){ toast('No valid scenarios found (rows need a Name)'); return; }
+    saveScenarios(existing);
+    toast('Imported ' + added + ' scenario' + (added === 1 ? '' : 's'));
+    renderCalculator();
+    renderDashboard();
+  } catch(e){
+    console.error('Import Scenarios error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally {
+    input.value = '';
+  }
+}
+
+// Coefficient template — single sheet "Coefficients" pre-populated
+// with every recognized name and a sensible sample value pulled from
+// CALC_DEFAULTS so the file is immediately usable.
+async function downloadCoefficientTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const sample = {
+      default_diesel_price_retail:    CALC_DEFAULTS.retail.current.price,
+      default_diesel_price_costplus:  CALC_DEFAULTS.costPlus.current.price,
+      default_retail_discount:        CALC_DEFAULTS.retail.current.discount,
+      default_costplus_discount:      CALC_DEFAULTS.costPlus.current.discount,
+      def_pct_of_diesel_default:      CALC_DEFAULTS.retail.def.pct,
+      def_price_per_gallon_default:   CALC_DEFAULTS.retail.def.price,
+      inside_store_avg_gal_per_txn:   CALC_DEFAULTS.retail.inside.avgGalPerTxn,
+      inside_store_avg_ring:          CALC_DEFAULTS.retail.inside.avgRing,
+      processor_fee_pct_default:      2.5
+    };
+    const aoa = [['Name', 'Value']];
+    for(const n of CALC_COEFF_NAMES) aoa.push([n, sample[n] !== undefined ? sample[n] : '']);
+    const ws = X.utils.aoa_to_sheet(aoa);
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Coefficients');
+    X.writeFile(wb, 'gs-cmd-coefficients-template.xlsx');
+  } catch(e){
+    console.error('Coefficients template error:', e);
+    toast('Template download failed: ' + (e.message || e));
+  }
+}
+
+// Scenarios template — one sample row using current defaults so the
+// user has every column header and a working example.
+async function downloadScenarioTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const defs = getCalcDefaults();
+    const sample = {};
+    for(const f of SCENARIO_FIELDS){
+      if(f.type === 'string'){
+        sample[f.col] = f.col === 'Name' ? 'Sample Scenario' : '';
+      } else {
+        const parts = f.path.split('.');
+        let v = defs;
+        for(const p of parts){ if(v) v = v[p]; }
+        sample[f.col] = (typeof v === 'number') ? v : '';
+      }
+    }
+    const headers = SCENARIO_FIELDS.map(f => f.col);
+    const ws = X.utils.json_to_sheet([sample], { header: headers });
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Scenarios');
+    X.writeFile(wb, 'gs-cmd-scenarios-template.xlsx');
+  } catch(e){
+    console.error('Scenarios template error:', e);
+    toast('Template download failed: ' + (e.message || e));
+  }
+}
+
 // ── Line item handlers ──
 // Add/remove cause a re-render so the new/removed row appears. Input
 // changes on existing line items just trigger calcRecalcOutputs() so we
@@ -2197,7 +2503,7 @@ function newCalcScenario(){
 function resetCalcDefaults(){
   if(!confirm('Reset all values on both sides to defaults? Saved scenarios are not affected.')) return;
   const keep = { id: calcCurrent?.id, name: calcCurrent?.name, stopId: calcCurrent?.stopId, fleet: calcCurrent?.fleet, notes: calcCurrent?.notes, created: calcCurrent?.created };
-  calcCurrent = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  calcCurrent = getCalcDefaults();
   Object.assign(calcCurrent, keep);
   renderCalculator();
 }
