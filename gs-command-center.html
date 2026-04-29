@@ -14,6 +14,13 @@
   --ff:'Segoe UI',system-ui,-apple-system,sans-serif;
   --fm:'Cascadia Code','Fira Code',monospace;
 }
+body.light-mode{
+  --bg:#f8fafc;--bg2:#ffffff;--bg3:#f1f5f9;--surface:#e2e8f0;
+  --border:#cbd5e1;--border2:#94a3b8;
+  --text:#0f172a;--dim:#475569;--muted:#64748b;
+  /* Accent palette stays saturated so KPI/chart colors still pop */
+}
+body.light-mode select option{background:#ffffff;color:#0f172a}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--ff);background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -150,10 +157,16 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .cal-day .cal-dot.dot-urgent{background:var(--red)}
 
 /* RATES TABLE */
-.rate-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px}
-.rate-card .proc{font-weight:800;font-size:.85em;margin-bottom:2px}
+.rate-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media(max-width:1200px){.rate-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:1000px){.rate-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.rate-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.rate-grid{grid-template-columns:1fr}}
+.rate-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-height:64px}
+.rate-grid .rate-card{margin-bottom:0}
+.rate-card .proc{font-weight:800;font-size:.85em;margin-bottom:2px;line-height:1.2}
 .rate-card .rate{font-size:.78em;color:var(--cyan);font-family:var(--fm)}
-.rate-card .note{font-size:.7em;color:var(--muted);margin-top:2px}
+.rate-card .note{font-size:.7em;color:var(--muted);margin-top:2px;line-height:1.3}
 
 /* CALCULATOR */
 .calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -292,6 +305,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     </div>
     <div class="topbar-user">
       <div><div class="name" id="tb-name"></div><div class="role" id="tb-role"></div></div>
+      <button class="btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark / light mode">🌙</button>
       <button class="btn" onclick="logout()">Logout</button>
     </div>
   </div>
@@ -919,6 +933,27 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 function openModal(id){document.getElementById(id).classList.add('show');}
 
+// ── Theme (dark default, persistent per-browser) ──
+function applyTheme(mode){
+  const day = mode === 'day';
+  document.body.classList.toggle('light-mode', day);
+  const btn = document.getElementById('theme-toggle');
+  if(btn) btn.textContent = day ? '☀️' : '🌙';
+  // Charts read tick/grid colors at render time — re-render so they
+  // pick up the swap. Skip when no one is logged in (boot path).
+  if(currentUser && typeof renderDashboard === 'function') renderDashboard();
+}
+function toggleTheme(){
+  const next = document.body.classList.contains('light-mode') ? 'night' : 'day';
+  try { localStorage.setItem('gs_cmd_theme', next); } catch(e){}
+  applyTheme(next);
+}
+(function initTheme(){
+  let saved = 'night';
+  try { saved = localStorage.getItem('gs_cmd_theme') || 'night'; } catch(e){}
+  applyTheme(saved);
+})();
+
 // ═══════════════════════════════════════════════════════
 // SORTABLE TABLES (Phase 5-1)
 // ═══════════════════════════════════════════════════════
@@ -1361,8 +1396,10 @@ function renderMasterDashboard(){
   if(typeof Chart !== 'undefined'){
     const list = Object.values(allByGS);
     const labels = list.map(g => g.gsName.split(' ')[0]); // first names — compact axis
-    const tickColor = '#94a3b8';
-    const gridColor = 'rgba(148,163,184,.08)';
+    const isLight = document.body.classList.contains('light-mode');
+    const tickColor = isLight ? '#475569' : '#94a3b8';
+    const gridColor = isLight ? 'rgba(15,23,42,.06)' : 'rgba(148,163,184,.08)';
+    const legendColor = isLight ? '#0f172a' : '#e2e8f0';
 
     _masterCharts.stops = new Chart(document.getElementById('chart-stops'), {
       type: 'bar',
@@ -1396,7 +1433,7 @@ function renderMasterDashboard(){
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#e2e8f0' } } },
+        plugins: { legend: { labels: { color: legendColor } } },
         scales: {
           x: { ticks: { color: tickColor }, grid: { color: gridColor } },
           y: { ticks: { color: tickColor, callback: v => '$' + (v/1000).toFixed(0) + 'k' }, grid: { color: gridColor }, beginAtZero: true }
@@ -2016,10 +2053,11 @@ function renderRates(){
 
   Object.entries(byProc).forEach(([proc,rates])=>{
     html+=`<div style="margin-bottom:14px"><div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:6px;padding:4px 8px;background:var(--bg3);border-radius:5px">${esc(proc)}</div>`;
+    html+=`<div class="rate-grid">`;
     rates.forEach(r=>{
       html+=`<div class="rate-card"><div class="proc">${esc(r.agg)}</div><div class="rate">${esc(r.rate)}</div>${r.note?'<div class="note">'+esc(r.note)+'</div>':''}</div>`;
     });
-    html+='</div>';
+    html+='</div></div>';
   });
   html+='</div></div>';
 
@@ -2197,7 +2235,9 @@ function renderCalculator(){
   ensureCalcCurrent();
   const scenarios = getScenarios();
   const allMode = isAllGSMode();
-  const dis = allMode ? 'disabled' : '';
+  // All-GS mode is now a fully editable scratchpad — only Save and
+  // Import Scenarios stay gated since those need a target namespace.
+  const dis = '';
   const model = getCalcModel();
   const modelBadge = (model && model._imported)
     ? `Model: imported ${new Date(model._imported.date).toLocaleDateString()} by ${esc(model._imported.by||'?')}`
@@ -2269,7 +2309,7 @@ function renderCalculator(){
 
     <div class="card">
       <div class="card-hd">🧮 Cost & Profit Calculator</div>
-      ${allMode ? `<div style="padding:14px;text-align:center;color:var(--muted);background:var(--bg3);border-radius:8px;margin-bottom:14px;font-size:.85em">In <b>All GS</b> view, the calculator is read-only. Pick a specific GS in the topbar dropdown to build or edit scenarios.</div>` : ''}
+      ${allMode ? `<div style="padding:10px 14px;color:var(--muted);background:var(--bg3);border-radius:8px;margin-bottom:14px;font-size:.78em;display:flex;align-items:center;gap:8px"><span>📝</span><span>You're in <b>All GS</b> view — the calculator is fully editable as a scratchpad. Pick a specific GS in the topbar to save or import scenarios.</span></div>` : ''}
 
       <div class="calc-scenario-hd">
         <div class="fg"><label>Scenario Name</label><input id="calc-name" value="${esc(calcCurrent.name||'')}" placeholder="e.g. ABC Trucking @ Stop #142" oninput="calcUpdateMeta()" ${dis}></div>
@@ -2279,16 +2319,16 @@ function renderCalculator(){
       <div class="fg" style="margin-bottom:14px"><label>Notes</label><textarea id="calc-notes" rows="2" placeholder="Context, follow-ups..." oninput="calcUpdateMeta()" ${dis}>${esc(calcCurrent.notes||'')}</textarea></div>
 
       <div class="calc-models">
-        ${renderCalcModelSide('retail',   'RETAIL - Model',  calcCurrent.retail,   allMode)}
-        ${renderCalcModelSide('costPlus', 'COST + Model',    calcCurrent.costPlus, allMode)}
+        ${renderCalcModelSide('retail',   'RETAIL - Model',  calcCurrent.retail)}
+        ${renderCalcModelSide('costPlus', 'COST + Model',    calcCurrent.costPlus)}
       </div>
 
-      ${!allMode ? `<div class="calc-actions">
-        <button class="btn btn-green" onclick="saveCurrentScenario()">💾 ${calcCurrent.id?'Update Scenario':'Save Scenario'}</button>
+      <div class="calc-actions">
+        <button class="btn btn-green" onclick="saveCurrentScenario()" ${allMode ? 'disabled title="Pick a specific GS in the topbar to save"' : ''}>💾 ${calcCurrent.id?'Update Scenario':'Save Scenario'}</button>
         <button class="btn btn-cyan" onclick="newCalcScenario()">+ New Scenario</button>
         <button class="btn" onclick="resetCalcDefaults()">↺ Reset Values to Defaults</button>
-        ${calcCurrent.id?`<span style="font-size:.78em;color:var(--muted);align-self:center;margin-left:auto">Editing: <b>${esc(calcCurrent.name||'(unnamed)')}</b></span>`:''}
-      </div>` : ''}
+        <span style="font-size:.72em;color:var(--muted);align-self:center;margin-left:auto">${allMode ? 'Scratchpad mode — pick a GS in the topbar to save' : (calcCurrent.id ? 'Editing: ' + esc(calcCurrent.name||'(unnamed)') : '')}</span>
+      </div>
     </div>
   `;
   calcRecalcOutputs();
@@ -2306,30 +2346,26 @@ const CALC_GROUP_FIELDS = {
   inside:    [{n:'avgGalPerTxn',label:'Gal/Txn',step:'1'},{n:'transactions',label:'# Txns',step:'1'},{n:'avgRing',label:'Avg Ring',step:'0.01'}]
 };
 
-function renderCalcLineItems(key, group, row, allMode){
-  const dis = allMode ? 'disabled' : '';
+function renderCalcLineItems(key, group, row /* allMode kept editable in scratchpad */){
   const items = Array.isArray(row.lineItems) ? row.lineItems : [];
   const fields = CALC_GROUP_FIELDS[group] || [];
   let html = items.map((li, idx) => `
     <div class="calc-line-row">
-      <input type="text" value="${esc(li.label||'')}" placeholder="Label (e.g. Tier 2)" oninput="calcLineMeta('${key}','${group}',${idx},'label',this.value)" ${dis}>
-      ${fields.map(f => `<input type="number" step="${f.step}" value="${li[f.n]||0}" title="${f.label}" oninput="calcLineChange('${key}','${group}',${idx},'${f.n}',this.value)" ${dis}>`).join('')}
-      ${allMode ? '<span></span>' : `<button class="calc-line-del" onclick="removeLineItem('${key}','${group}',${idx})" title="Remove">✕</button>`}
+      <input type="text" value="${esc(li.label||'')}" placeholder="Label (e.g. Tier 2)" oninput="calcLineMeta('${key}','${group}',${idx},'label',this.value)">
+      ${fields.map(f => `<input type="number" step="${f.step}" value="${li[f.n]||0}" title="${f.label}" oninput="calcLineChange('${key}','${group}',${idx},'${f.n}',this.value)">`).join('')}
+      <button class="calc-line-del" onclick="removeLineItem('${key}','${group}',${idx})" title="Remove">✕</button>
     </div>
   `).join('');
-  if(!allMode){
-    html += `<button class="calc-add-line" onclick="addLineItem('${key}','${group}')">+ Add line</button>`;
-  }
+  html += `<button class="calc-add-line" onclick="addLineItem('${key}','${group}')">+ Add line</button>`;
   return html;
 }
 
-function renderCalcModelSide(key, title, side, allMode){
-  const dis = allMode ? 'disabled' : '';
+function renderCalcModelSide(key, title, side /* allMode kept editable in scratchpad */){
   const dlabel = key === 'retail' ? 'Retail - Discount' : 'Cost + Discount';
   const subA = key === 'retail' ? 'Gallons / Current Retail - Discount' : 'Gallons / Current Cost + Discount';
   const subB = key === 'retail' ? 'New Gallons / Retail - Discount'      : 'New Gallons / Cost + Discount';
   const inp = (group, field, step, value) =>
-    `<input type="number" step="${step}" value="${value}" oninput="calcInputChange('${key}','${group}','${field}',this.value)" ${dis}>`;
+    `<input type="number" step="${step}" value="${value}" oninput="calcInputChange('${key}','${group}','${field}',this.value)">`;
   const out = (id) => `<input type="text" id="out-${key}-${id}" readonly>`;
 
   return `
@@ -2344,7 +2380,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('current','price','0.001',side.current.price)}</div>
           <div class="calc-cell output"><label>Diesel Sales</label>${out('currentDiesel')}</div>
         </div>
-        ${renderCalcLineItems(key, 'current', side.current, allMode)}
+        ${renderCalcLineItems(key, 'current', side.current)}
       </div>
 
       <div class="calc-section">
@@ -2355,7 +2391,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('potential','price','0.001',side.potential.price)}</div>
           <div class="calc-cell output"><label>Diesel Sales</label>${out('potentialDiesel')}</div>
         </div>
-        ${renderCalcLineItems(key, 'potential', side.potential, allMode)}
+        ${renderCalcLineItems(key, 'potential', side.potential)}
       </div>
 
       <div class="calc-section">
@@ -2366,7 +2402,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>DEF Price/gal</label>${inp('def','price','0.01',side.def.price)}</div>
           <div class="calc-cell output"><label>DEF Sales</label>${out('defSales')}</div>
         </div>
-        ${renderCalcLineItems(key, 'def', side.def, allMode)}
+        ${renderCalcLineItems(key, 'def', side.def)}
       </div>
 
       <div class="calc-section">
@@ -2377,7 +2413,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Avg inside store ring</label>${inp('inside','avgRing','0.01',side.inside.avgRing)}</div>
           <div class="calc-cell output"><label>Inside store sales</label>${out('insideSales')}</div>
         </div>
-        ${renderCalcLineItems(key, 'inside', side.inside, allMode)}
+        ${renderCalcLineItems(key, 'inside', side.inside)}
       </div>
 
       <div class="calc-total-row">
@@ -2737,7 +2773,7 @@ async function downloadCriticalTemplate(){
 // changes on existing line items just trigger calcRecalcOutputs() so we
 // don't churn the DOM on every keystroke.
 function addLineItem(side, group){
-  if(!calcCurrent || isAllGSMode()) return;
+  if(!calcCurrent) return;
   const row = calcCurrent[side][group];
   if(!row) return;
   if(!Array.isArray(row.lineItems)) row.lineItems = [];
@@ -2749,7 +2785,7 @@ function addLineItem(side, group){
 }
 
 function removeLineItem(side, group, idx){
-  if(!calcCurrent || isAllGSMode()) return;
+  if(!calcCurrent) return;
   const row = calcCurrent[side][group];
   if(!row || !Array.isArray(row.lineItems)) return;
   row.lineItems.splice(idx, 1);
