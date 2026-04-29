@@ -92,6 +92,14 @@ tr.clickable{cursor:pointer}
 tr.clickable:hover td{background:rgba(56,189,248,.06)}
 .num{text-align:right;font-family:var(--fm);font-size:.85em}
 
+/* SORTABLE TABLES */
+table.sortable thead th{cursor:pointer;user-select:none}
+table.sortable thead th[data-no-sort='1']{cursor:default}
+table.sortable thead th .sort-chev{display:inline-block;margin-left:4px;font-size:.85em;opacity:.3;transition:opacity .15s,color .15s}
+table.sortable thead th:hover .sort-chev{opacity:.6}
+table.sortable thead th .sort-chev.active{opacity:1;color:var(--cyan)}
+table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
+
 /* SEARCH */
 .search-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
 .search-bar input,.search-bar select{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:7px 12px;color:var(--text);font-size:.82em;font-family:var(--ff)}
@@ -902,6 +910,7 @@ function switchTab(id,el){
 // ═══════════════════════════════════════════════════════
 function renderAll(){
   renderDashboard();renderTerritory();renderCRM();renderCalendar();renderRates();renderCalculator();renderFuelIntro();renderCritical();
+  applySortability();
 }
 
 function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -909,6 +918,144 @@ function fG(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n);}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 function openModal(id){document.getElementById(id).classList.add('show');}
+
+// ═══════════════════════════════════════════════════════
+// SORTABLE TABLES (Phase 5-1)
+// ═══════════════════════════════════════════════════════
+// Single shared helper. Each known table gets an id; applySortability()
+// walks every entry in SORTABLE_TABLES and instruments any that are
+// currently in the DOM. Sort state per table persists in
+// localStorage['gs_cmd_sort_<key>'] so a refresh keeps the user's
+// chosen sort. Re-rendering a table replaces its DOM node — the helper
+// always re-applies saved state to the fresh rows.
+const SORTABLE_TABLES = {
+  'tbl-territory':       'territory',
+  'tbl-scenarios':       'scenarios',
+  'tbl-crm-tasks':       'crm-tasks',
+  'tbl-fuel-intro':      'fuel-intro',
+  'tbl-master-critical': 'master-critical',
+  'tbl-rates-cross':     'rates-cross'
+};
+
+function readCellValue(cell){
+  const text = (cell.textContent || '').trim();
+  if(!text) return '';
+  // Numeric — strip $, commas, %, plus/minus stays
+  const num = text.replace(/[$,\s]/g, '').replace(/%$/, '');
+  if(/^-?\d+(\.\d+)?$/.test(num)) return parseFloat(num);
+  // Date — ISO or ISO-like (YYYY-MM-DD or "M/D/YYYY")
+  if(/^\d{4}-\d{2}-\d{2}/.test(text) || /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text)){
+    const t = Date.parse(text);
+    if(!isNaN(t)) return t;
+  }
+  return text.toLowerCase();
+}
+
+function compareCells(a, b, dir){
+  const av = readCellValue(a);
+  const bv = readCellValue(b);
+  const sign = dir === 'desc' ? -1 : 1;
+  // Comparing numeric to string falls through to JS coercion which
+  // always says "string < number" — fine for our purposes.
+  if(av < bv) return -sign;
+  if(av > bv) return sign;
+  return 0;
+}
+
+function loadSortState(id){
+  try { return JSON.parse(localStorage.getItem('gs_cmd_sort_' + id) || 'null'); }
+  catch(e){ return null; }
+}
+function saveSortState(id, s){
+  try { localStorage.setItem('gs_cmd_sort_' + id, JSON.stringify(s)); } catch(e){}
+}
+function clearSortState(id){
+  try { localStorage.removeItem('gs_cmd_sort_' + id); } catch(e){}
+}
+
+function sortTableRows(tableEl, col, dir){
+  const tbody = tableEl.querySelector('tbody');
+  if(!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((rA, rB) => {
+    const a = rA.children[col];
+    const b = rB.children[col];
+    if(!a || !b) return 0;
+    return compareCells(a, b, dir);
+  });
+  for(const r of rows) tbody.appendChild(r);
+}
+
+function paintSortIndicator(tableEl, col, dir){
+  tableEl.querySelectorAll('thead th .sort-chev').forEach(c => {
+    c.textContent = '⇅';
+    c.classList.remove('active');
+  });
+  if(col >= 0 && dir){
+    const th = tableEl.querySelectorAll('thead th')[col];
+    const c = th && th.querySelector('.sort-chev');
+    if(c){
+      c.textContent = dir === 'asc' ? '▲' : '▼';
+      c.classList.add('active');
+    }
+  }
+}
+
+function cycleSort(tableEl, tableId, col){
+  const saved = loadSortState(tableId);
+  let next;
+  if(!saved || saved.col !== col)      next = { col, dir: 'asc' };
+  else if(saved.dir === 'asc')         next = { col, dir: 'desc' };
+  else                                 next = null; // tri-state: asc → desc → unsorted
+  if(next){
+    saveSortState(tableId, next);
+    sortTableRows(tableEl, next.col, next.dir);
+    paintSortIndicator(tableEl, next.col, next.dir);
+  } else {
+    clearSortState(tableId);
+    paintSortIndicator(tableEl, -1, null);
+    // Note: "unsorted" can't restore the original render order without
+    // re-rendering; the rows stay in their last-sorted order. Acceptable
+    // tri-state UX — the user can pick another column or another direction.
+  }
+}
+
+function makeTableSortable(tableEl, tableId){
+  if(!tableEl) return;
+  tableEl.classList.add('sortable');
+  // Attach handlers + chevron span once per table DOM node. Rendered
+  // tables get fresh nodes, so dataset.sortInit resets correctly.
+  if(tableEl.dataset.sortInit !== '1'){
+    tableEl.dataset.sortInit = '1';
+    const ths = tableEl.querySelectorAll('thead th');
+    ths.forEach((th, idx) => {
+      if(th.dataset.noSort === '1') return;
+      if(!th.querySelector('.sort-chev')){
+        const chev = document.createElement('span');
+        chev.className = 'sort-chev';
+        chev.textContent = '⇅';
+        th.appendChild(chev);
+      }
+      th.onclick = () => cycleSort(tableEl, tableId, idx);
+    });
+  }
+  // Always re-apply saved sort to the current rows — tbody contents
+  // can change without the table element being replaced.
+  const saved = loadSortState(tableId);
+  if(saved){
+    sortTableRows(tableEl, saved.col, saved.dir);
+    paintSortIndicator(tableEl, saved.col, saved.dir);
+  } else {
+    paintSortIndicator(tableEl, -1, null);
+  }
+}
+
+function applySortability(){
+  for(const [domId, sortKey] of Object.entries(SORTABLE_TABLES)){
+    const el = document.getElementById(domId);
+    if(el) makeTableSortable(el, sortKey);
+  }
+}
 
 function getLastContact(siteId){
   const logs=(activityLogs[siteId]||[]).filter(l=>l.type==='call');
@@ -1174,8 +1321,8 @@ function renderMasterDashboard(){
     <div class="card">
       <div class="card-hd">🚨 Network Critical Items (${allCritical.length})</div>
       ${allCritical.length ? `
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>GS</th><th>Stop</th><th>Reason</th><th>Created</th><th></th></tr></thead>
+        <div class="tbl-wrap"><table id="tbl-master-critical">
+          <thead><tr><th>GS</th><th>Stop</th><th>Reason</th><th>Created</th><th data-no-sort="1"></th></tr></thead>
           <tbody>${allCritical.map(c => {
             const stop = MEMBERS.find(m => m.id === c.siteId);
             const col = REGIONS[c._gs]?.color || 'var(--muted)';
@@ -1313,8 +1460,8 @@ function renderTerritory(){
           ${[...new Set(myStops.map(s=>s.state))].sort().map(st=>'<option>'+st+'</option>').join('')}
         </select>
       </div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>#</th><th>ID</th><th>Name</th><th>City/State</th><th>Type</th><th>Group</th><th>Phone</th><th>Manager</th><th>Last Contact</th><th>Actions</th></tr></thead>
+      <div class="tbl-wrap"><table id="tbl-territory">
+        <thead><tr><th data-no-sort="1">#</th><th>ID</th><th>Name</th><th>City/State</th><th>Type</th><th>Group</th><th>Phone</th><th>Manager</th><th>Last Contact</th><th data-no-sort="1">Actions</th></tr></thead>
         <tbody id="ter-tbody"></tbody>
       </table></div>
     </div>`;
@@ -1392,6 +1539,7 @@ function filterTerritory(){
           <button class="btn btn-yellow" onclick="event.stopPropagation();openTaskForSite('${s.id}')" style="font-size:.7em;padding:3px 8px">✅</button></td>
     </tr>`;
   }).join('');
+  applySortability();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1593,8 +1741,8 @@ function renderCRM(){
           <select id="task-filter-pri" onchange="renderCRM()"><option value="">All Priority</option><option value="high">High</option><option value="med">Medium</option><option value="low">Low</option></select>
           <select id="task-filter-cat" onchange="renderCRM()"><option value="">All Categories</option><option value="fuel">Fuel</option><option value="rewards">Rewards</option><option value="aggregator">Aggregator</option><option value="billing">Billing</option><option value="onboarding">Onboarding</option><option value="followup">Follow-up</option><option value="general">General</option></select>
         </div>
-        <div class="tbl-wrap"><table>
-          <thead><tr><th style="width:20px"></th><th>Task</th><th>Site</th><th>Priority</th><th>Status</th><th>Category</th><th>Due</th><th>Assigned</th><th></th></tr></thead>
+        <div class="tbl-wrap"><table id="tbl-crm-tasks">
+          <thead><tr><th style="width:20px" data-no-sort="1"></th><th>Task</th><th>Site</th><th>Priority</th><th>Status</th><th>Category</th><th>Due</th><th>Assigned</th><th data-no-sort="1"></th></tr></thead>
           <tbody>${allTasks.map(t=>{
             const s=MEMBERS.find(m=>m.id===t.siteId);
             const overdue=t.due&&new Date(t.due)<new Date()&&t.status!=='done';
@@ -1636,6 +1784,7 @@ function renderCRM(){
       </div>
     `:''}
   `;
+  applySortability();
 }
 
 function renderTaskCard(t){
@@ -1870,7 +2019,7 @@ function renderRates(){
 
   // Cross-reference
   html+=`<div class="card"><div class="card-hd">🔄 Processor Cross-Reference</div>
-    <div class="tbl-wrap"><table><thead><tr><th>Comdata</th><th>EFS</th><th>TCH</th><th>Fleet One</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table id="tbl-rates-cross"><thead><tr><th>Comdata</th><th>EFS</th><th>TCH</th><th>Fleet One</th></tr></thead><tbody>
       <tr><td>Admin Fee</td><td>TSD Logistics</td><td>Load Connex</td><td>Fleet One Edge</td></tr>
       <tr><td>Normal</td><td>RXO / XPO</td><td>Fleet One Edge</td><td>RTS Carrier Services</td></tr>
       <tr><td>Direct Bill</td><td>Load Connex</td><td>QPN</td><td>QPN</td></tr>
@@ -2079,12 +2228,12 @@ function renderCalculator(){
     <div class="card">
       <div class="card-hd">📊 Saved Scenarios (${scenarios.length})</div>
       <div class="tbl-wrap">
-        <table>
+        <table id="tbl-scenarios">
           <thead><tr>
             <th>Name</th>
             ${allMode?'<th>GS</th>':''}
             <th>Stop</th><th>Fleet</th><th>Updated</th>
-            <th class="num">Retail Total</th><th class="num">Cost+ Total</th><th></th>
+            <th class="num">Retail Total</th><th class="num">Cost+ Total</th><th data-no-sort="1"></th>
           </tr></thead>
           <tbody>${savedRows}</tbody>
         </table>
@@ -2137,6 +2286,7 @@ function renderCalculator(){
     </div>
   `;
   calcRecalcOutputs();
+  applySortability();
 }
 
 // Per-group field map shared by main row and line item rendering.
@@ -2562,8 +2712,8 @@ function renderFuelIntro(){
   document.getElementById('fuel-content').innerHTML=`
     <div class="card"><div class="card-hd">🔥 Fuel Introduction Calls — ${noContact.length} Stops Need Intro</div>
       <div style="font-size:.78em;color:var(--muted);margin-bottom:12px">Stops that have never received a call. Use this to manage fuel introduction outreach.</div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>#</th><th>Name</th><th>City/State</th><th>Type</th><th>Phone</th><th>Action</th></tr></thead>
+      <div class="tbl-wrap"><table id="tbl-fuel-intro">
+        <thead><tr><th data-no-sort="1">#</th><th>Name</th><th>City/State</th><th>Type</th><th>Phone</th><th data-no-sort="1">Action</th></tr></thead>
         <tbody>${noContact.map((s,i)=>`<tr class="clickable" onclick="openSiteDrawer('${s.id}')">
           <td class="num">${i+1}</td><td><b>${esc(s.name)}</b></td><td>${esc(s.city)}, ${s.state}</td>
           <td style="font-size:.78em">${esc(s.type)}</td><td style="font-size:.78em">${esc(s.phone)}</td>
