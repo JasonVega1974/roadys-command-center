@@ -92,6 +92,14 @@ tr.clickable{cursor:pointer}
 tr.clickable:hover td{background:rgba(56,189,248,.06)}
 .num{text-align:right;font-family:var(--fm);font-size:.85em}
 
+/* SORTABLE TABLES */
+table.sortable thead th{cursor:pointer;user-select:none}
+table.sortable thead th[data-no-sort='1']{cursor:default}
+table.sortable thead th .sort-chev{display:inline-block;margin-left:4px;font-size:.85em;opacity:.3;transition:opacity .15s,color .15s}
+table.sortable thead th:hover .sort-chev{opacity:.6}
+table.sortable thead th .sort-chev.active{opacity:1;color:var(--cyan)}
+table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
+
 /* SEARCH */
 .search-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
 .search-bar input,.search-bar select{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:7px 12px;color:var(--text);font-size:.82em;font-family:var(--ff)}
@@ -182,6 +190,14 @@ tr.clickable:hover td{background:rgba(56,189,248,.06)}
 .calc-total-row .lbl{font-weight:800;font-size:.85em;line-height:1.3}
 .calc-total-row .val{font-family:var(--fm);font-size:1.25em;font-weight:900;color:var(--cyan);white-space:nowrap}
 .calc-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.calc-line-row{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr auto;gap:4px;margin-top:4px;align-items:center}
+.calc-line-row input[type="text"]{background:rgba(148,163,184,.06);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:.78em;font-family:var(--ff)}
+.calc-line-row input[type="number"]{background:rgba(251,191,36,.04);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text);font-family:var(--fm);font-size:.78em;text-align:right}
+.calc-line-row input:focus{outline:none;border-color:var(--cyan)}
+.calc-line-del{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78em;line-height:1}
+.calc-line-del:hover{background:rgba(239,68,68,.2)}
+.calc-add-line{background:transparent;border:1px dashed var(--border2);color:var(--muted);border-radius:4px;padding:4px 10px;font-size:.7em;cursor:pointer;margin-top:6px;font-family:var(--ff)}
+.calc-add-line:hover{border-color:var(--cyan);color:var(--cyan)}
 
 /* FORM */
 .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px}
@@ -714,6 +730,56 @@ const CALC_DEFAULTS = {
 };
 let calcCurrent = null; // scenario being edited in-memory
 
+// Coefficient names recognized by Import Model. Anything else in the
+// Coefficients sheet is logged to console and skipped — same contract
+// as the spec.
+const CALC_COEFF_NAMES = [
+  'def_pct_of_diesel_default',
+  'def_price_per_gallon_default',
+  'inside_store_avg_gal_per_txn',
+  'inside_store_avg_ring',
+  'default_diesel_price_retail',
+  'default_diesel_price_costplus',
+  'default_retail_discount',
+  'default_costplus_discount',
+  'processor_fee_pct_default'
+];
+
+// Flat-sheet scenario import format. One row per scenario; column header
+// → dotted path into a scenario object. We deviate from the spec's
+// "one sheet per scenario" idea here because flat sheets are trivial
+// to author in Excel and parse deterministically.
+const SCENARIO_FIELDS = [
+  { col:'Name',          path:'name',                          type:'string' },
+  { col:'Stop ID',       path:'stopId',                        type:'string' },
+  { col:'Fleet',         path:'fleet',                         type:'string' },
+  { col:'Notes',         path:'notes',                         type:'string' },
+  { col:'R_Cur_Disc',    path:'retail.current.discount',       type:'number' },
+  { col:'R_Cur_Gal',     path:'retail.current.gallons',        type:'number' },
+  { col:'R_Cur_Price',   path:'retail.current.price',          type:'number' },
+  { col:'R_Pot_Disc',    path:'retail.potential.discount',     type:'number' },
+  { col:'R_Pot_Gal',     path:'retail.potential.gallons',      type:'number' },
+  { col:'R_Pot_Price',   path:'retail.potential.price',        type:'number' },
+  { col:'R_DEF_Pct',     path:'retail.def.pct',                type:'number' },
+  { col:'R_DEF_Gal',     path:'retail.def.gallons',            type:'number' },
+  { col:'R_DEF_Price',   path:'retail.def.price',              type:'number' },
+  { col:'R_Ins_GalTxn',  path:'retail.inside.avgGalPerTxn',    type:'number' },
+  { col:'R_Ins_Txns',    path:'retail.inside.transactions',    type:'number' },
+  { col:'R_Ins_Ring',    path:'retail.inside.avgRing',         type:'number' },
+  { col:'C_Cur_Disc',    path:'costPlus.current.discount',     type:'number' },
+  { col:'C_Cur_Gal',     path:'costPlus.current.gallons',      type:'number' },
+  { col:'C_Cur_Price',   path:'costPlus.current.price',        type:'number' },
+  { col:'C_Pot_Disc',    path:'costPlus.potential.discount',   type:'number' },
+  { col:'C_Pot_Gal',     path:'costPlus.potential.gallons',    type:'number' },
+  { col:'C_Pot_Price',   path:'costPlus.potential.price',      type:'number' },
+  { col:'C_DEF_Pct',     path:'costPlus.def.pct',              type:'number' },
+  { col:'C_DEF_Gal',     path:'costPlus.def.gallons',          type:'number' },
+  { col:'C_DEF_Price',   path:'costPlus.def.price',            type:'number' },
+  { col:'C_Ins_GalTxn',  path:'costPlus.inside.avgGalPerTxn',  type:'number' },
+  { col:'C_Ins_Txns',    path:'costPlus.inside.transactions',  type:'number' },
+  { col:'C_Ins_Ring',    path:'costPlus.inside.avgRing',       type:'number' }
+];
+
 function loadData(){
   // In All-GS rollup mode, per-GS arrays stay empty — the master
   // dashboard reads each GS namespace via forEachGS instead.
@@ -844,6 +910,7 @@ function switchTab(id,el){
 // ═══════════════════════════════════════════════════════
 function renderAll(){
   renderDashboard();renderTerritory();renderCRM();renderCalendar();renderRates();renderCalculator();renderFuelIntro();renderCritical();
+  applySortability();
 }
 
 function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -851,6 +918,144 @@ function fG(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n);}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 function openModal(id){document.getElementById(id).classList.add('show');}
+
+// ═══════════════════════════════════════════════════════
+// SORTABLE TABLES (Phase 5-1)
+// ═══════════════════════════════════════════════════════
+// Single shared helper. Each known table gets an id; applySortability()
+// walks every entry in SORTABLE_TABLES and instruments any that are
+// currently in the DOM. Sort state per table persists in
+// localStorage['gs_cmd_sort_<key>'] so a refresh keeps the user's
+// chosen sort. Re-rendering a table replaces its DOM node — the helper
+// always re-applies saved state to the fresh rows.
+const SORTABLE_TABLES = {
+  'tbl-territory':       'territory',
+  'tbl-scenarios':       'scenarios',
+  'tbl-crm-tasks':       'crm-tasks',
+  'tbl-fuel-intro':      'fuel-intro',
+  'tbl-master-critical': 'master-critical',
+  'tbl-rates-cross':     'rates-cross'
+};
+
+function readCellValue(cell){
+  const text = (cell.textContent || '').trim();
+  if(!text) return '';
+  // Numeric — strip $, commas, %, plus/minus stays
+  const num = text.replace(/[$,\s]/g, '').replace(/%$/, '');
+  if(/^-?\d+(\.\d+)?$/.test(num)) return parseFloat(num);
+  // Date — ISO or ISO-like (YYYY-MM-DD or "M/D/YYYY")
+  if(/^\d{4}-\d{2}-\d{2}/.test(text) || /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text)){
+    const t = Date.parse(text);
+    if(!isNaN(t)) return t;
+  }
+  return text.toLowerCase();
+}
+
+function compareCells(a, b, dir){
+  const av = readCellValue(a);
+  const bv = readCellValue(b);
+  const sign = dir === 'desc' ? -1 : 1;
+  // Comparing numeric to string falls through to JS coercion which
+  // always says "string < number" — fine for our purposes.
+  if(av < bv) return -sign;
+  if(av > bv) return sign;
+  return 0;
+}
+
+function loadSortState(id){
+  try { return JSON.parse(localStorage.getItem('gs_cmd_sort_' + id) || 'null'); }
+  catch(e){ return null; }
+}
+function saveSortState(id, s){
+  try { localStorage.setItem('gs_cmd_sort_' + id, JSON.stringify(s)); } catch(e){}
+}
+function clearSortState(id){
+  try { localStorage.removeItem('gs_cmd_sort_' + id); } catch(e){}
+}
+
+function sortTableRows(tableEl, col, dir){
+  const tbody = tableEl.querySelector('tbody');
+  if(!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((rA, rB) => {
+    const a = rA.children[col];
+    const b = rB.children[col];
+    if(!a || !b) return 0;
+    return compareCells(a, b, dir);
+  });
+  for(const r of rows) tbody.appendChild(r);
+}
+
+function paintSortIndicator(tableEl, col, dir){
+  tableEl.querySelectorAll('thead th .sort-chev').forEach(c => {
+    c.textContent = '⇅';
+    c.classList.remove('active');
+  });
+  if(col >= 0 && dir){
+    const th = tableEl.querySelectorAll('thead th')[col];
+    const c = th && th.querySelector('.sort-chev');
+    if(c){
+      c.textContent = dir === 'asc' ? '▲' : '▼';
+      c.classList.add('active');
+    }
+  }
+}
+
+function cycleSort(tableEl, tableId, col){
+  const saved = loadSortState(tableId);
+  let next;
+  if(!saved || saved.col !== col)      next = { col, dir: 'asc' };
+  else if(saved.dir === 'asc')         next = { col, dir: 'desc' };
+  else                                 next = null; // tri-state: asc → desc → unsorted
+  if(next){
+    saveSortState(tableId, next);
+    sortTableRows(tableEl, next.col, next.dir);
+    paintSortIndicator(tableEl, next.col, next.dir);
+  } else {
+    clearSortState(tableId);
+    paintSortIndicator(tableEl, -1, null);
+    // Note: "unsorted" can't restore the original render order without
+    // re-rendering; the rows stay in their last-sorted order. Acceptable
+    // tri-state UX — the user can pick another column or another direction.
+  }
+}
+
+function makeTableSortable(tableEl, tableId){
+  if(!tableEl) return;
+  tableEl.classList.add('sortable');
+  // Attach handlers + chevron span once per table DOM node. Rendered
+  // tables get fresh nodes, so dataset.sortInit resets correctly.
+  if(tableEl.dataset.sortInit !== '1'){
+    tableEl.dataset.sortInit = '1';
+    const ths = tableEl.querySelectorAll('thead th');
+    ths.forEach((th, idx) => {
+      if(th.dataset.noSort === '1') return;
+      if(!th.querySelector('.sort-chev')){
+        const chev = document.createElement('span');
+        chev.className = 'sort-chev';
+        chev.textContent = '⇅';
+        th.appendChild(chev);
+      }
+      th.onclick = () => cycleSort(tableEl, tableId, idx);
+    });
+  }
+  // Always re-apply saved sort to the current rows — tbody contents
+  // can change without the table element being replaced.
+  const saved = loadSortState(tableId);
+  if(saved){
+    sortTableRows(tableEl, saved.col, saved.dir);
+    paintSortIndicator(tableEl, saved.col, saved.dir);
+  } else {
+    paintSortIndicator(tableEl, -1, null);
+  }
+}
+
+function applySortability(){
+  for(const [domId, sortKey] of Object.entries(SORTABLE_TABLES)){
+    const el = document.getElementById(domId);
+    if(el) makeTableSortable(el, sortKey);
+  }
+}
 
 function getLastContact(siteId){
   const logs=(activityLogs[siteId]||[]).filter(l=>l.type==='call');
@@ -1116,8 +1321,8 @@ function renderMasterDashboard(){
     <div class="card">
       <div class="card-hd">🚨 Network Critical Items (${allCritical.length})</div>
       ${allCritical.length ? `
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>GS</th><th>Stop</th><th>Reason</th><th>Created</th><th></th></tr></thead>
+        <div class="tbl-wrap"><table id="tbl-master-critical">
+          <thead><tr><th>GS</th><th>Stop</th><th>Reason</th><th>Created</th><th data-no-sort="1"></th></tr></thead>
           <tbody>${allCritical.map(c => {
             const stop = MEMBERS.find(m => m.id === c.siteId);
             const col = REGIONS[c._gs]?.color || 'var(--muted)';
@@ -1255,8 +1460,8 @@ function renderTerritory(){
           ${[...new Set(myStops.map(s=>s.state))].sort().map(st=>'<option>'+st+'</option>').join('')}
         </select>
       </div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>#</th><th>ID</th><th>Name</th><th>City/State</th><th>Type</th><th>Group</th><th>Phone</th><th>Manager</th><th>Last Contact</th><th>Actions</th></tr></thead>
+      <div class="tbl-wrap"><table id="tbl-territory">
+        <thead><tr><th data-no-sort="1">#</th><th>ID</th><th>Name</th><th>City/State</th><th>Type</th><th>Group</th><th>Phone</th><th>Manager</th><th>Last Contact</th><th data-no-sort="1">Actions</th></tr></thead>
         <tbody id="ter-tbody"></tbody>
       </table></div>
     </div>`;
@@ -1334,16 +1539,50 @@ function filterTerritory(){
           <button class="btn btn-yellow" onclick="event.stopPropagation();openTaskForSite('${s.id}')" style="font-size:.7em;padding:3px 8px">✅</button></td>
     </tr>`;
   }).join('');
+  applySortability();
 }
 
 // ═══════════════════════════════════════════════════════
 // SITE DRAWER
 // ═══════════════════════════════════════════════════════
+function scenariosForStop(siteId){
+  // GS mode: read this GS's namespace. Manager All-GS: walk every GS
+  // namespace and tag each scenario with its source GS so the drawer
+  // can show provenance.
+  if(isAllGSMode()){
+    const all = [];
+    forEachGS((gsName, ns) => {
+      try {
+        const arr = JSON.parse(localStorage.getItem(ns('scenarios')) || '[]');
+        if(Array.isArray(arr)) arr.forEach(scn => { if(scn && scn.stopId === siteId) all.push({ ...scn, _gs: gsName }); });
+      } catch(e){}
+    });
+    return all;
+  }
+  const active = getActiveGS();
+  if(!active) return [];
+  try {
+    const arr = JSON.parse(localStorage.getItem(LS_KEY + active + '_scenarios') || '[]');
+    return Array.isArray(arr) ? arr.filter(scn => scn && scn.stopId === siteId) : [];
+  } catch(e){ return []; }
+}
+
+function openCalcScenarioFromDrawer(scnId, gsName){
+  closeDrawer();
+  const tabEl = document.querySelector('[data-tab="calculator"]');
+  switchTab('calculator', tabEl);
+  // openScenario in All-GS mode prompts to switch GS; in GS mode it
+  // just loads the scenario into the editor.
+  if(gsName) openScenario(scnId, gsName);
+  else openScenario(scnId);
+}
+
 function openSiteDrawer(siteId){
   const s=MEMBERS.find(m=>m.id===siteId);if(!s)return;
   const extras=siteExtras[siteId]||{};
   const logs=(activityLogs[siteId]||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const mgr=MANAGER_MAP[s.state]||'Unassigned';
+  const stopScenarios=scenariosForStop(siteId);
 
   document.getElementById('drawer-body').innerHTML=`
     <div class="drawer-hd">${esc(s.name)}</div>
@@ -1375,6 +1614,28 @@ function openSiteDrawer(siteId){
           <div class="val"><input style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:.85em;width:100%" value="${esc(extras.siteNotes||'')}" onchange="updateExtra('${siteId}','siteNotes',this.value)" placeholder="Notes..."></div>
         </div>
       </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>🧮 Calculations (${stopScenarios.length})</h4>
+      ${stopScenarios.length ? stopScenarios.map(scn => {
+        const rT = scn.retail   ? calcSide(scn.retail).totalNewRevenue   : 0;
+        const cT = scn.costPlus ? calcSide(scn.costPlus).totalNewRevenue : 0;
+        const gsTag = scn._gs ? `<span style="font-size:.68em;color:${REGIONS[scn._gs]?.color||'var(--muted)'};margin-left:6px">[${esc(scn._gs)}]</span>` : '';
+        const gsArg = scn._gs ? `,'${esc(scn._gs)}'` : '';
+        return `<div class="info-item" style="cursor:pointer;margin-bottom:6px" onclick="openCalcScenarioFromDrawer('${scn.id}'${gsArg})">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><b>${esc(scn.name||'(unnamed)')}</b>${gsTag}</div>
+            <span style="font-size:.7em;color:var(--muted)">${scn.updated?new Date(scn.updated).toLocaleDateString():''}</span>
+          </div>
+          ${scn.fleet ? `<div style="font-size:.72em;color:var(--muted);margin-top:1px">Fleet: ${esc(scn.fleet)}</div>` : ''}
+          <div style="font-size:.78em;margin-top:3px">
+            <span style="color:var(--cyan)">Retail $${rT.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+            <span style="color:var(--muted);margin:0 6px">·</span>
+            <span style="color:var(--purple)">Cost+ $${cT.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+          </div>
+        </div>`;
+      }).join('') : '<div style="font-size:.78em;color:var(--muted);padding:6px 0">No scenarios linked. Tie one in the Calculator tab.</div>'}
     </div>
 
     <div class="drawer-section">
@@ -1441,7 +1702,13 @@ function renderCRM(){
         <div class="crm-vt ${view==='list'?'active':''}" data-view="list" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📃 Task List</div>
         <div class="crm-vt ${view==='log'?'active':''}" data-view="log" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📜 Activity Log</div>
       </div>
-      <button class="btn btn-cyan" onclick="openNewTask()">+ New Task</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${!isAllGSMode() ? `<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">📥 Import CSV
+          <input type="file" accept=".csv,.xlsx,.xls" onchange="handleImportCRM(this)" style="display:none">
+        </label>` : ''}
+        <button class="btn" onclick="downloadCRMTemplate()" title="Download a sample CSV with the expected columns">⤓ Template</button>
+        <button class="btn btn-cyan" onclick="openNewTask()">+ New Task</button>
+      </div>
     </div>
 
     ${view==='board'?`
@@ -1480,8 +1747,8 @@ function renderCRM(){
           <select id="task-filter-pri" onchange="renderCRM()"><option value="">All Priority</option><option value="high">High</option><option value="med">Medium</option><option value="low">Low</option></select>
           <select id="task-filter-cat" onchange="renderCRM()"><option value="">All Categories</option><option value="fuel">Fuel</option><option value="rewards">Rewards</option><option value="aggregator">Aggregator</option><option value="billing">Billing</option><option value="onboarding">Onboarding</option><option value="followup">Follow-up</option><option value="general">General</option></select>
         </div>
-        <div class="tbl-wrap"><table>
-          <thead><tr><th style="width:20px"></th><th>Task</th><th>Site</th><th>Priority</th><th>Status</th><th>Category</th><th>Due</th><th>Assigned</th><th></th></tr></thead>
+        <div class="tbl-wrap"><table id="tbl-crm-tasks">
+          <thead><tr><th style="width:20px" data-no-sort="1"></th><th>Task</th><th>Site</th><th>Priority</th><th>Status</th><th>Category</th><th>Due</th><th>Assigned</th><th data-no-sort="1"></th></tr></thead>
           <tbody>${allTasks.map(t=>{
             const s=MEMBERS.find(m=>m.id===t.siteId);
             const overdue=t.due&&new Date(t.due)<new Date()&&t.status!=='done';
@@ -1523,6 +1790,7 @@ function renderCRM(){
       </div>
     `:''}
   `;
+  applySortability();
 }
 
 function renderTaskCard(t){
@@ -1757,7 +2025,7 @@ function renderRates(){
 
   // Cross-reference
   html+=`<div class="card"><div class="card-hd">🔄 Processor Cross-Reference</div>
-    <div class="tbl-wrap"><table><thead><tr><th>Comdata</th><th>EFS</th><th>TCH</th><th>Fleet One</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table id="tbl-rates-cross"><thead><tr><th>Comdata</th><th>EFS</th><th>TCH</th><th>Fleet One</th></tr></thead><tbody>
       <tr><td>Admin Fee</td><td>TSD Logistics</td><td>Load Connex</td><td>Fleet One Edge</td></tr>
       <tr><td>Normal</td><td>RXO / XPO</td><td>Fleet One Edge</td><td>RTS Carrier Services</td></tr>
       <tr><td>Direct Bill</td><td>Load Connex</td><td>QPN</td><td>QPN</td></tr>
@@ -1781,15 +2049,111 @@ function filterRates(){
 // CALCULATOR (Phase 4: side-by-side Retail-Minus / Cost-Plus,
 // saved scenarios, optional stop+fleet links)
 // ═══════════════════════════════════════════════════════
+// SheetJS is loaded on demand the first time a user clicks an Import
+// or template button so the cold-load cost stays out of the critical
+// path. Errors propagate so the caller can toast them.
+function ensureSheetJS(){
+  if(typeof window !== 'undefined' && typeof window.XLSX !== 'undefined') return Promise.resolve(window.XLSX);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('SheetJS loaded but XLSX is undefined'));
+    s.onerror = () => reject(new Error('SheetJS CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+function getCalcModel(){
+  try { return JSON.parse(localStorage.getItem('gs_cmd_calc_model') || 'null'); }
+  catch(e){ return null; }
+}
+
+// Returns CALC_DEFAULTS overlaid with imported coefficient values.
+// Unknown coefficient names were filtered out at import time, so this
+// just needs to map known names onto the right scenario fields.
+function getCalcDefaults(){
+  const defs = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  const model = getCalcModel();
+  if(!model || typeof model !== 'object') return defs;
+  const c = (model.coefficients && typeof model.coefficients === 'object') ? model.coefficients : {};
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+
+  const dprR = num(c.default_diesel_price_retail);
+  if(dprR !== null){ defs.retail.current.price = dprR; defs.retail.potential.price = dprR; }
+  const dprC = num(c.default_diesel_price_costplus);
+  if(dprC !== null){ defs.costPlus.current.price = dprC; defs.costPlus.potential.price = dprC; }
+
+  const drD = num(c.default_retail_discount);
+  if(drD !== null){ defs.retail.current.discount = drD; defs.retail.potential.discount = drD; }
+  const dcD = num(c.default_costplus_discount);
+  if(dcD !== null){ defs.costPlus.current.discount = dcD; defs.costPlus.potential.discount = dcD; }
+
+  const dPct = num(c.def_pct_of_diesel_default);
+  if(dPct !== null){ defs.retail.def.pct = dPct; defs.costPlus.def.pct = dPct; }
+  const dPrice = num(c.def_price_per_gallon_default);
+  if(dPrice !== null){ defs.retail.def.price = dPrice; defs.costPlus.def.price = dPrice; }
+
+  const inGal = num(c.inside_store_avg_gal_per_txn);
+  if(inGal !== null){ defs.retail.inside.avgGalPerTxn = inGal; defs.costPlus.inside.avgGalPerTxn = inGal; }
+  const inRing = num(c.inside_store_avg_ring);
+  if(inRing !== null){ defs.retail.inside.avgRing = inRing; defs.costPlus.inside.avgRing = inRing; }
+
+  // processor_fee_pct_default is read into the model but the calculator
+  // does not yet net the processor fee out of Total Potential New
+  // Revenue. Keeping it in the recognized list so the import doesn't
+  // warn about it; will be used when net-margin display lands.
+  return defs;
+}
+
+// Walks a dotted path and assigns. Used by Import Scenarios to map a
+// flat row's columns onto the nested scenario object.
+function setPath(obj, path, val){
+  const parts = path.split('.');
+  let cur = obj;
+  for(let i = 0; i < parts.length - 1; i++){
+    if(!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = val;
+}
+
+function calcRowSales(group, row){
+  // Sales contribution for a single row (main row OR a line item).
+  // Group label decides which fields drive the math; unused fields on
+  // a row are ignored, so a line item only needs to populate its
+  // sales-driving columns.
+  if(group === 'current' || group === 'potential'){
+    return (+row.gallons||0) * ((+row.price||0) - (+row.discount||0));
+  }
+  if(group === 'def'){
+    return (+row.gallons||0) * (+row.price||0);
+  }
+  if(group === 'inside'){
+    return (+row.transactions||0) * (+row.avgRing||0);
+  }
+  return 0;
+}
+
+function calcGroupTotal(side, group){
+  // Main row sales + sum of optional line items.
+  const main = side[group];
+  if(!main) return 0;
+  let total = calcRowSales(group, main);
+  if(Array.isArray(main.lineItems)){
+    for(const li of main.lineItems) total += calcRowSales(group, li);
+  }
+  return total;
+}
+
 function calcSide(side){
   // Same shape for both Retail-Minus and Cost-Plus columns. Discount is
   // subtracted from price for both — the column label reframes what the
   // "price" is (retail vs cost+markup), but the diesel-sales math is
   // identical for the customer-facing total.
-  const dieselCurrent   = (+side.current.gallons||0)   * ((+side.current.price||0)   - (+side.current.discount||0));
-  const dieselPotential = (+side.potential.gallons||0) * ((+side.potential.price||0) - (+side.potential.discount||0));
-  const defSales        = (+side.def.gallons||0)       * (+side.def.price||0);
-  const insideSales     = (+side.inside.transactions||0) * (+side.inside.avgRing||0);
+  const dieselCurrent   = calcGroupTotal(side, 'current');
+  const dieselPotential = calcGroupTotal(side, 'potential');
+  const defSales        = calcGroupTotal(side, 'def');
+  const insideSales     = calcGroupTotal(side, 'inside');
   const totalNewRevenue = dieselPotential + defSales + insideSales;
   return { dieselCurrent, dieselPotential, defSales, insideSales, totalNewRevenue };
 }
@@ -1822,7 +2186,7 @@ function saveScenarios(arr){
 
 function ensureCalcCurrent(){
   if(calcCurrent) return;
-  calcCurrent = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  calcCurrent = getCalcDefaults();
   calcCurrent.name = '';
   calcCurrent.stopId = '';
   calcCurrent.fleet = '';
@@ -1834,6 +2198,10 @@ function renderCalculator(){
   const scenarios = getScenarios();
   const allMode = isAllGSMode();
   const dis = allMode ? 'disabled' : '';
+  const model = getCalcModel();
+  const modelBadge = (model && model._imported)
+    ? `Model: imported ${new Date(model._imported.date).toLocaleDateString()} by ${esc(model._imported.by||'?')}`
+    : 'No model imported — using built-in defaults';
 
   const stopOptions = ['<option value="">-- No stop --</option>']
     .concat(myStops.map(s => `<option value="${s.id}" ${s.id===calcCurrent.stopId?'selected':''}>${esc(s.name)} (${s.state})</option>`))
@@ -1866,16 +2234,37 @@ function renderCalculator(){
     <div class="card">
       <div class="card-hd">📊 Saved Scenarios (${scenarios.length})</div>
       <div class="tbl-wrap">
-        <table>
+        <table id="tbl-scenarios">
           <thead><tr>
             <th>Name</th>
             ${allMode?'<th>GS</th>':''}
             <th>Stop</th><th>Fleet</th><th>Updated</th>
-            <th class="num">Retail Total</th><th class="num">Cost+ Total</th><th></th>
+            <th class="num">Retail Total</th><th class="num">Cost+ Total</th><th data-no-sort="1"></th>
           </tr></thead>
           <tbody>${savedRows}</tbody>
         </table>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd" style="justify-content:space-between">
+        <span>📥 Import / Templates</span>
+        <span style="font-size:.7em;color:var(--muted);font-weight:500">${esc(modelBadge)}</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${currentUser?.isManager ? `
+          <label class="btn btn-cyan" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📥 Import Model
+            <input type="file" accept=".xlsx,.xls" onchange="handleImportModel(this)" style="display:none">
+          </label>` : ''}
+        ${!allMode ? `
+          <label class="btn btn-cyan" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📥 Import Scenarios
+            <input type="file" accept=".xlsx,.xls" onchange="handleImportScenarios(this)" style="display:none">
+          </label>` : ''}
+        <button class="btn" onclick="downloadCoefficientTemplate()">⤓ Coefficients Template</button>
+        <button class="btn" onclick="downloadScenarioTemplate()">⤓ Scenarios Template</button>
+      </div>
+      ${allMode ? `<div style="font-size:.72em;color:var(--muted);margin-top:8px">Pick a specific GS in the topbar to enable Import Scenarios.</div>` : ''}
+      ${!currentUser?.isManager ? `<div style="font-size:.72em;color:var(--muted);margin-top:8px">Import Model is Manager-only. The current model seeds defaults for new scenarios.</div>` : ''}
     </div>
 
     <div class="card">
@@ -1903,6 +2292,35 @@ function renderCalculator(){
     </div>
   `;
   calcRecalcOutputs();
+  applySortability();
+}
+
+// Per-group field map shared by main row and line item rendering.
+// Order matches the visible column order. The first three are the
+// sales-driving inputs; the fourth column is reserved for the computed
+// output on the main row and a delete button on line items.
+const CALC_GROUP_FIELDS = {
+  current:   [{n:'discount',label:'Discount',step:'0.01'},{n:'gallons',label:'Gallons',step:'1'},{n:'price',label:'Price/gal',step:'0.001'}],
+  potential: [{n:'discount',label:'Discount',step:'0.01'},{n:'gallons',label:'Gallons',step:'1'},{n:'price',label:'Price/gal',step:'0.001'}],
+  def:       [{n:'pct',label:'%',step:'0.01'},{n:'gallons',label:'Gallons',step:'1'},{n:'price',label:'Price/gal',step:'0.01'}],
+  inside:    [{n:'avgGalPerTxn',label:'Gal/Txn',step:'1'},{n:'transactions',label:'# Txns',step:'1'},{n:'avgRing',label:'Avg Ring',step:'0.01'}]
+};
+
+function renderCalcLineItems(key, group, row, allMode){
+  const dis = allMode ? 'disabled' : '';
+  const items = Array.isArray(row.lineItems) ? row.lineItems : [];
+  const fields = CALC_GROUP_FIELDS[group] || [];
+  let html = items.map((li, idx) => `
+    <div class="calc-line-row">
+      <input type="text" value="${esc(li.label||'')}" placeholder="Label (e.g. Tier 2)" oninput="calcLineMeta('${key}','${group}',${idx},'label',this.value)" ${dis}>
+      ${fields.map(f => `<input type="number" step="${f.step}" value="${li[f.n]||0}" title="${f.label}" oninput="calcLineChange('${key}','${group}',${idx},'${f.n}',this.value)" ${dis}>`).join('')}
+      ${allMode ? '<span></span>' : `<button class="calc-line-del" onclick="removeLineItem('${key}','${group}',${idx})" title="Remove">✕</button>`}
+    </div>
+  `).join('');
+  if(!allMode){
+    html += `<button class="calc-add-line" onclick="addLineItem('${key}','${group}')">+ Add line</button>`;
+  }
+  return html;
 }
 
 function renderCalcModelSide(key, title, side, allMode){
@@ -1926,6 +2344,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('current','price','0.001',side.current.price)}</div>
           <div class="calc-cell output"><label>Diesel Sales</label>${out('currentDiesel')}</div>
         </div>
+        ${renderCalcLineItems(key, 'current', side.current, allMode)}
       </div>
 
       <div class="calc-section">
@@ -1936,6 +2355,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('potential','price','0.001',side.potential.price)}</div>
           <div class="calc-cell output"><label>Diesel Sales</label>${out('potentialDiesel')}</div>
         </div>
+        ${renderCalcLineItems(key, 'potential', side.potential, allMode)}
       </div>
 
       <div class="calc-section">
@@ -1946,6 +2366,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>DEF Price/gal</label>${inp('def','price','0.01',side.def.price)}</div>
           <div class="calc-cell output"><label>DEF Sales</label>${out('defSales')}</div>
         </div>
+        ${renderCalcLineItems(key, 'def', side.def, allMode)}
       </div>
 
       <div class="calc-section">
@@ -1956,6 +2377,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Avg inside store ring</label>${inp('inside','avgRing','0.01',side.inside.avgRing)}</div>
           <div class="calc-cell output"><label>Inside store sales</label>${out('insideSales')}</div>
         </div>
+        ${renderCalcLineItems(key, 'inside', side.inside, allMode)}
       </div>
 
       <div class="calc-total-row">
@@ -1964,6 +2386,392 @@ function renderCalcModelSide(key, title, side, allMode){
       </div>
     </div>
   `;
+}
+
+// ── Import / Export handlers (Phase 4b-2) ──
+// Manager-only Import Model: reads a "Coefficients" sheet (Name | Value)
+// and persists recognized coefficients to localStorage. Future scenarios
+// pick these up via getCalcDefaults().
+async function handleImportModel(input){
+  if(!currentUser?.isManager){ toast('Manager only'); return; }
+  const file = input.files && input.files[0];
+  if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheet = wb.Sheets['Coefficients'] || wb.Sheets[wb.SheetNames[0]];
+    if(!sheet){ toast('No "Coefficients" sheet found'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { header: 1, defval: null });
+    const coefficients = {};
+    let recognized = 0, unknown = 0;
+    for(const row of rows){
+      if(!Array.isArray(row) || row.length < 2) continue;
+      const name = String(row[0] || '').trim();
+      if(!name) continue;
+      const lower = name.toLowerCase();
+      if(lower === 'name' || lower === 'coefficient' || lower === '#') continue;
+      if(CALC_COEFF_NAMES.includes(name)){ coefficients[name] = row[1]; recognized++; }
+      else { console.warn('Import Model: unknown coefficient "' + name + '" — ignoring'); unknown++; }
+    }
+    if(!recognized){ toast('No recognized coefficients found'); return; }
+    const model = {
+      coefficients,
+      _imported: { date: new Date().toISOString(), by: currentUser?.name || 'Manager', filename: file.name }
+    };
+    localStorage.setItem('gs_cmd_calc_model', JSON.stringify(model));
+    // Re-seed calcCurrent only if the user is on a fresh untouched
+    // scenario. Otherwise their in-flight edits are preserved.
+    if(calcCurrent && !calcCurrent.id && !calcCurrent.name?.trim()){
+      calcCurrent = null;
+      ensureCalcCurrent();
+    }
+    toast('Model imported — ' + recognized + ' coefficients applied' + (unknown ? ' (' + unknown + ' unknown skipped)' : ''));
+    renderCalculator();
+  } catch(e){
+    console.error('Import Model error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally {
+    input.value = '';
+  }
+}
+
+// Import Scenarios: flat-sheet format. Picks the first sheet named
+// "Scenarios" (case-insensitive) or falls back to the first sheet in
+// the workbook. Each row → one scenario, layered on top of current
+// defaults; missing cells leave the default in place. Disabled in
+// Manager All-GS view since there is no namespace to write into.
+async function handleImportScenarios(input){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); input.value=''; return; }
+  const active = getActiveGS();
+  if(!active){ toast('Pick a specific GS first'); input.value=''; return; }
+  const file = input.files && input.files[0];
+  if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'scenarios') || wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    if(!sheet){ toast('No sheets found in workbook'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { defval: null });
+    if(!rows.length){ toast('No data rows in "' + sheetName + '"'); return; }
+    const existing = getScenarios();
+    const now = new Date().toISOString();
+    let added = 0;
+    rows.forEach((r, rowIdx) => {
+      const scn = getCalcDefaults();
+      let touched = false;
+      for(const f of SCENARIO_FIELDS){
+        const v = r[f.col];
+        if(v === null || v === undefined || v === '') continue;
+        if(f.type === 'number'){
+          const n = parseFloat(v);
+          if(isNaN(n)) continue;
+          setPath(scn, f.path, n);
+        } else {
+          setPath(scn, f.path, String(v));
+        }
+        touched = true;
+      }
+      if(!touched || !scn.name || !String(scn.name).trim()) return;
+      scn.id = 'scn_' + Date.now() + '_' + rowIdx;
+      scn.created = now;
+      scn.updated = now;
+      existing.push(scn);
+      added++;
+    });
+    if(!added){ toast('No valid scenarios found (rows need a Name)'); return; }
+    saveScenarios(existing);
+    toast('Imported ' + added + ' scenario' + (added === 1 ? '' : 's'));
+    renderCalculator();
+    renderDashboard();
+  } catch(e){
+    console.error('Import Scenarios error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally {
+    input.value = '';
+  }
+}
+
+// Coefficient template — single sheet "Coefficients" pre-populated
+// with every recognized name and a sensible sample value pulled from
+// CALC_DEFAULTS so the file is immediately usable.
+async function downloadCoefficientTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const sample = {
+      default_diesel_price_retail:    CALC_DEFAULTS.retail.current.price,
+      default_diesel_price_costplus:  CALC_DEFAULTS.costPlus.current.price,
+      default_retail_discount:        CALC_DEFAULTS.retail.current.discount,
+      default_costplus_discount:      CALC_DEFAULTS.costPlus.current.discount,
+      def_pct_of_diesel_default:      CALC_DEFAULTS.retail.def.pct,
+      def_price_per_gallon_default:   CALC_DEFAULTS.retail.def.price,
+      inside_store_avg_gal_per_txn:   CALC_DEFAULTS.retail.inside.avgGalPerTxn,
+      inside_store_avg_ring:          CALC_DEFAULTS.retail.inside.avgRing,
+      processor_fee_pct_default:      2.5
+    };
+    const aoa = [['Name', 'Value']];
+    for(const n of CALC_COEFF_NAMES) aoa.push([n, sample[n] !== undefined ? sample[n] : '']);
+    const ws = X.utils.aoa_to_sheet(aoa);
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Coefficients');
+    X.writeFile(wb, 'gs-cmd-coefficients-template.xlsx');
+  } catch(e){
+    console.error('Coefficients template error:', e);
+    toast('Template download failed: ' + (e.message || e));
+  }
+}
+
+// Scenarios template — one sample row using current defaults so the
+// user has every column header and a working example.
+async function downloadScenarioTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const defs = getCalcDefaults();
+    const sample = {};
+    for(const f of SCENARIO_FIELDS){
+      if(f.type === 'string'){
+        sample[f.col] = f.col === 'Name' ? 'Sample Scenario' : '';
+      } else {
+        const parts = f.path.split('.');
+        let v = defs;
+        for(const p of parts){ if(v) v = v[p]; }
+        sample[f.col] = (typeof v === 'number') ? v : '';
+      }
+    }
+    const headers = SCENARIO_FIELDS.map(f => f.col);
+    const ws = X.utils.json_to_sheet([sample], { header: headers });
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Scenarios');
+    X.writeFile(wb, 'gs-cmd-scenarios-template.xlsx');
+  } catch(e){
+    console.error('Scenarios template error:', e);
+    toast('Template download failed: ' + (e.message || e));
+  }
+}
+
+// ── CRM / Critical CSV import (Phase 5-2) ──
+// Both reuse the SheetJS lazy loader from Phase 4b-2; xlsx@0.18.5
+// reads CSV transparently. Stop matching is by site_id first, then a
+// normalized name match in MEMBERS. Ambiguous name matches (>1 hit)
+// are skipped and reported in the toast — the user can re-import with
+// site_id filled in to disambiguate.
+function _normName(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim(); }
+
+function _resolveStop(row){
+  // Returns { stop, ambiguous: bool }. stop is null when no match.
+  const idRaw = String(row.site_id || row['Site ID'] || row.id || '').trim();
+  if(idRaw){
+    const byId = MEMBERS.find(m => m.id === idRaw);
+    if(byId) return { stop: byId, ambiguous: false };
+  }
+  const nameInput = _normName(row.site_name || row['Site Name'] || row.name);
+  if(!nameInput) return { stop: null, ambiguous: false };
+  const matches = MEMBERS.filter(m => _normName(m.name) === nameInput);
+  if(matches.length === 1) return { stop: matches[0], ambiguous: false };
+  if(matches.length > 1)   return { stop: null, ambiguous: true };
+  return { stop: null, ambiguous: false };
+}
+
+async function handleImportCRM(input){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); input.value=''; return; }
+  if(!getActiveGS()){ toast('Pick a specific GS first'); input.value=''; return; }
+  const file = input.files && input.files[0]; if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if(!sheet){ toast('Empty workbook'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { defval: '' });
+    if(!rows.length){ toast('No data rows in CSV'); return; }
+
+    const validTypes = new Set(['call','task','note','followup','urgent']);
+    let added = 0, skippedDupe = 0, ambiguous = 0, noMatch = 0;
+    rows.forEach((r, idx) => {
+      const { stop, ambiguous: amb } = _resolveStop(r);
+      if(amb){ ambiguous++; return; }
+      if(!stop){ noMatch++; return; }
+
+      const subject = String(r.subject || r.Subject || '').trim();
+      if(!subject) return; // skip rows without a subject — nothing to log
+      const type = String(r.type || r.Type || 'note').toLowerCase().trim();
+      const finalType = validTypes.has(type) ? type : 'note';
+      const date = String(r.date || r.Date || '').trim() || new Date().toISOString();
+      const notes = String(r.notes || r.Notes || '').trim();
+      const contact = String(r.contact_name || r['Contact Name'] || '').trim();
+
+      // Dedupe by (siteId, date, subject) — same contract as the spec.
+      const existing = activityLogs[stop.id] || [];
+      if(existing.some(l => l.date === date && (l.subject||'') === subject)){ skippedDupe++; return; }
+
+      if(!activityLogs[stop.id]) activityLogs[stop.id] = [];
+      activityLogs[stop.id].push({
+        date, type: finalType, subject,
+        notes: contact ? (contact + (notes ? ' — ' + notes : '')) : notes,
+        id: 'log_' + Date.now() + '_' + idx
+      });
+      added++;
+    });
+
+    if(!added){
+      const parts = [];
+      if(skippedDupe) parts.push(skippedDupe + ' duplicate' + (skippedDupe===1?'':'s'));
+      if(ambiguous)   parts.push(ambiguous + ' ambiguous');
+      if(noMatch)     parts.push(noMatch + ' unmatched');
+      toast('No new logs added' + (parts.length ? ' (' + parts.join(', ') + ')' : ''));
+      return;
+    }
+    saveData();
+    let msg = 'Imported ' + added + ' log' + (added===1?'':'s');
+    if(skippedDupe) msg += ', ' + skippedDupe + ' dupes skipped';
+    if(ambiguous)   msg += ', ' + ambiguous + ' ambiguous';
+    if(noMatch)     msg += ', ' + noMatch + ' unmatched';
+    toast(msg);
+    renderCRM(); renderDashboard();
+  } catch(e){
+    console.error('Import CRM error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally { input.value = ''; }
+}
+
+async function handleImportCritical(input){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); input.value=''; return; }
+  if(!getActiveGS()){ toast('Pick a specific GS first'); input.value=''; return; }
+  const file = input.files && input.files[0]; if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if(!sheet){ toast('Empty workbook'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { defval: '' });
+    if(!rows.length){ toast('No data rows in CSV'); return; }
+
+    const validSev = new Set(['low','med','high']);
+    let added = 0, ambiguous = 0, noMatch = 0;
+    rows.forEach((r, idx) => {
+      const { stop, ambiguous: amb } = _resolveStop(r);
+      if(amb){ ambiguous++; return; }
+      if(!stop){ noMatch++; return; }
+
+      const title = String(r.title || r.Title || r.subject || '').trim();
+      const desc  = String(r.description || r.Description || r.notes || '').trim();
+      if(!title && !desc) return; // nothing to record
+      const sevRaw = String(r.severity || r.Severity || 'med').toLowerCase().trim();
+      const severity = validSev.has(sevRaw) ? sevRaw : 'med';
+      const due = String(r.due_date || r['Due Date'] || '').trim();
+      const reason = (title || '') + (desc ? (title?' — ':'') + desc : '') + (due ? ' (due ' + due + ')' : '');
+
+      criticalItems.push({
+        siteId: stop.id,
+        reason: reason.trim(),
+        severity,
+        created: new Date().toISOString(),
+        id: 'cr_' + Date.now() + '_' + idx
+      });
+      added++;
+    });
+
+    if(!added){
+      const parts = [];
+      if(ambiguous) parts.push(ambiguous + ' ambiguous');
+      if(noMatch)   parts.push(noMatch + ' unmatched');
+      toast('No new critical items' + (parts.length ? ' (' + parts.join(', ') + ')' : ''));
+      return;
+    }
+    saveData();
+    let msg = 'Imported ' + added + ' critical item' + (added===1?'':'s');
+    if(ambiguous) msg += ', ' + ambiguous + ' ambiguous';
+    if(noMatch)   msg += ', ' + noMatch + ' unmatched';
+    toast(msg);
+    renderCritical(); renderDashboard();
+  } catch(e){
+    console.error('Import Critical error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally { input.value = ''; }
+}
+
+async function downloadCRMTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const sample = [{
+      site_name: 'Example Truck Stop',
+      site_id: '',
+      date: new Date().toISOString().slice(0,16),
+      type: 'call',
+      subject: 'Intro call',
+      notes: 'Discussed pricing options.',
+      contact_name: 'John Smith'
+    }];
+    const headers = ['site_name','site_id','date','type','subject','notes','contact_name'];
+    const ws = X.utils.json_to_sheet(sample, { header: headers });
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Logs');
+    X.writeFile(wb, 'gs-cmd-crm-template.csv', { bookType: 'csv' });
+  } catch(e){ console.error(e); toast('Template failed: ' + (e.message||e)); }
+}
+
+async function downloadCriticalTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const sample = [{
+      site_name: 'Example Truck Stop',
+      site_id: '',
+      severity: 'high',
+      title: 'No payments received',
+      description: 'Account 30+ days past due.',
+      due_date: ''
+    }];
+    const headers = ['site_name','site_id','severity','title','description','due_date'];
+    const ws = X.utils.json_to_sheet(sample, { header: headers });
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Critical');
+    X.writeFile(wb, 'gs-cmd-critical-template.csv', { bookType: 'csv' });
+  } catch(e){ console.error(e); toast('Template failed: ' + (e.message||e)); }
+}
+
+// ── Line item handlers ──
+// Add/remove cause a re-render so the new/removed row appears. Input
+// changes on existing line items just trigger calcRecalcOutputs() so we
+// don't churn the DOM on every keystroke.
+function addLineItem(side, group){
+  if(!calcCurrent || isAllGSMode()) return;
+  const row = calcCurrent[side][group];
+  if(!row) return;
+  if(!Array.isArray(row.lineItems)) row.lineItems = [];
+  const blank = { label: '' };
+  for(const f of (CALC_GROUP_FIELDS[group]||[])) blank[f.n] = 0;
+  row.lineItems.push(blank);
+  calcUpdateMeta(); // capture in-flight scenario name/stop/fleet/notes before re-render
+  renderCalculator();
+}
+
+function removeLineItem(side, group, idx){
+  if(!calcCurrent || isAllGSMode()) return;
+  const row = calcCurrent[side][group];
+  if(!row || !Array.isArray(row.lineItems)) return;
+  row.lineItems.splice(idx, 1);
+  calcUpdateMeta();
+  renderCalculator();
+}
+
+function calcLineChange(side, group, idx, field, value){
+  if(!calcCurrent) return;
+  const row = calcCurrent[side][group];
+  if(!row || !Array.isArray(row.lineItems) || !row.lineItems[idx]) return;
+  const num = parseFloat(value);
+  row.lineItems[idx][field] = isNaN(num) ? 0 : num;
+  calcRecalcOutputs();
+}
+
+function calcLineMeta(side, group, idx, field, value){
+  if(!calcCurrent) return;
+  const row = calcCurrent[side][group];
+  if(!row || !Array.isArray(row.lineItems) || !row.lineItems[idx]) return;
+  row.lineItems[idx][field] = value;
+  // No recalc — label changes don't affect totals.
 }
 
 function calcInputChange(side, group, field, value){
@@ -2032,7 +2840,7 @@ function newCalcScenario(){
 function resetCalcDefaults(){
   if(!confirm('Reset all values on both sides to defaults? Saved scenarios are not affected.')) return;
   const keep = { id: calcCurrent?.id, name: calcCurrent?.name, stopId: calcCurrent?.stopId, fleet: calcCurrent?.fleet, notes: calcCurrent?.notes, created: calcCurrent?.created };
-  calcCurrent = JSON.parse(JSON.stringify(CALC_DEFAULTS));
+  calcCurrent = getCalcDefaults();
   Object.assign(calcCurrent, keep);
   renderCalculator();
 }
@@ -2091,8 +2899,8 @@ function renderFuelIntro(){
   document.getElementById('fuel-content').innerHTML=`
     <div class="card"><div class="card-hd">🔥 Fuel Introduction Calls — ${noContact.length} Stops Need Intro</div>
       <div style="font-size:.78em;color:var(--muted);margin-bottom:12px">Stops that have never received a call. Use this to manage fuel introduction outreach.</div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>#</th><th>Name</th><th>City/State</th><th>Type</th><th>Phone</th><th>Action</th></tr></thead>
+      <div class="tbl-wrap"><table id="tbl-fuel-intro">
+        <thead><tr><th data-no-sort="1">#</th><th>Name</th><th>City/State</th><th>Type</th><th>Phone</th><th data-no-sort="1">Action</th></tr></thead>
         <tbody>${noContact.map((s,i)=>`<tr class="clickable" onclick="openSiteDrawer('${s.id}')">
           <td class="num">${i+1}</td><td><b>${esc(s.name)}</b></td><td>${esc(s.city)}, ${s.state}</td>
           <td style="font-size:.78em">${esc(s.type)}</td><td style="font-size:.78em">${esc(s.phone)}</td>
@@ -2112,7 +2920,16 @@ function renderCritical(){
   badge.textContent=criticalItems.length;badge.style.display=criticalItems.length?'inline':'none';
 
   document.getElementById('crit-content').innerHTML=`
-    <div class="card"><div class="card-hd">🚨 Critical Attention Items (${criticalItems.length})</div>
+    <div class="card">
+      <div class="card-hd" style="justify-content:space-between">
+        <span>🚨 Critical Attention Items (${criticalItems.length})</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${!isAllGSMode() ? `<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:.75em">📥 Import CSV
+            <input type="file" accept=".csv,.xlsx,.xls" onchange="handleImportCritical(this)" style="display:none">
+          </label>` : ''}
+          <button class="btn" style="font-size:.75em" onclick="downloadCriticalTemplate()" title="Download a sample CSV with the expected columns">⤓ Template</button>
+        </div>
+      </div>
       ${criticalItems.length?criticalItems.map(c=>{
         const s=MEMBERS.find(m=>m.id===c.siteId);
         return `<div class="log-entry age-critical" style="cursor:pointer" onclick="openSiteDrawer('${c.siteId}')">
