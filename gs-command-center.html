@@ -1702,7 +1702,13 @@ function renderCRM(){
         <div class="crm-vt ${view==='list'?'active':''}" data-view="list" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📃 Task List</div>
         <div class="crm-vt ${view==='log'?'active':''}" data-view="log" onclick="this.parentElement.querySelectorAll('.crm-vt').forEach(v=>v.classList.remove('active'));this.classList.add('active');renderCRM()">📜 Activity Log</div>
       </div>
-      <button class="btn btn-cyan" onclick="openNewTask()">+ New Task</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${!isAllGSMode() ? `<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">📥 Import CSV
+          <input type="file" accept=".csv,.xlsx,.xls" onchange="handleImportCRM(this)" style="display:none">
+        </label>` : ''}
+        <button class="btn" onclick="downloadCRMTemplate()" title="Download a sample CSV with the expected columns">⤓ Template</button>
+        <button class="btn btn-cyan" onclick="openNewTask()">+ New Task</button>
+      </div>
     </div>
 
     ${view==='board'?`
@@ -2545,6 +2551,187 @@ async function downloadScenarioTemplate(){
   }
 }
 
+// ── CRM / Critical CSV import (Phase 5-2) ──
+// Both reuse the SheetJS lazy loader from Phase 4b-2; xlsx@0.18.5
+// reads CSV transparently. Stop matching is by site_id first, then a
+// normalized name match in MEMBERS. Ambiguous name matches (>1 hit)
+// are skipped and reported in the toast — the user can re-import with
+// site_id filled in to disambiguate.
+function _normName(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim(); }
+
+function _resolveStop(row){
+  // Returns { stop, ambiguous: bool }. stop is null when no match.
+  const idRaw = String(row.site_id || row['Site ID'] || row.id || '').trim();
+  if(idRaw){
+    const byId = MEMBERS.find(m => m.id === idRaw);
+    if(byId) return { stop: byId, ambiguous: false };
+  }
+  const nameInput = _normName(row.site_name || row['Site Name'] || row.name);
+  if(!nameInput) return { stop: null, ambiguous: false };
+  const matches = MEMBERS.filter(m => _normName(m.name) === nameInput);
+  if(matches.length === 1) return { stop: matches[0], ambiguous: false };
+  if(matches.length > 1)   return { stop: null, ambiguous: true };
+  return { stop: null, ambiguous: false };
+}
+
+async function handleImportCRM(input){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); input.value=''; return; }
+  if(!getActiveGS()){ toast('Pick a specific GS first'); input.value=''; return; }
+  const file = input.files && input.files[0]; if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if(!sheet){ toast('Empty workbook'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { defval: '' });
+    if(!rows.length){ toast('No data rows in CSV'); return; }
+
+    const validTypes = new Set(['call','task','note','followup','urgent']);
+    let added = 0, skippedDupe = 0, ambiguous = 0, noMatch = 0;
+    rows.forEach((r, idx) => {
+      const { stop, ambiguous: amb } = _resolveStop(r);
+      if(amb){ ambiguous++; return; }
+      if(!stop){ noMatch++; return; }
+
+      const subject = String(r.subject || r.Subject || '').trim();
+      if(!subject) return; // skip rows without a subject — nothing to log
+      const type = String(r.type || r.Type || 'note').toLowerCase().trim();
+      const finalType = validTypes.has(type) ? type : 'note';
+      const date = String(r.date || r.Date || '').trim() || new Date().toISOString();
+      const notes = String(r.notes || r.Notes || '').trim();
+      const contact = String(r.contact_name || r['Contact Name'] || '').trim();
+
+      // Dedupe by (siteId, date, subject) — same contract as the spec.
+      const existing = activityLogs[stop.id] || [];
+      if(existing.some(l => l.date === date && (l.subject||'') === subject)){ skippedDupe++; return; }
+
+      if(!activityLogs[stop.id]) activityLogs[stop.id] = [];
+      activityLogs[stop.id].push({
+        date, type: finalType, subject,
+        notes: contact ? (contact + (notes ? ' — ' + notes : '')) : notes,
+        id: 'log_' + Date.now() + '_' + idx
+      });
+      added++;
+    });
+
+    if(!added){
+      const parts = [];
+      if(skippedDupe) parts.push(skippedDupe + ' duplicate' + (skippedDupe===1?'':'s'));
+      if(ambiguous)   parts.push(ambiguous + ' ambiguous');
+      if(noMatch)     parts.push(noMatch + ' unmatched');
+      toast('No new logs added' + (parts.length ? ' (' + parts.join(', ') + ')' : ''));
+      return;
+    }
+    saveData();
+    let msg = 'Imported ' + added + ' log' + (added===1?'':'s');
+    if(skippedDupe) msg += ', ' + skippedDupe + ' dupes skipped';
+    if(ambiguous)   msg += ', ' + ambiguous + ' ambiguous';
+    if(noMatch)     msg += ', ' + noMatch + ' unmatched';
+    toast(msg);
+    renderCRM(); renderDashboard();
+  } catch(e){
+    console.error('Import CRM error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally { input.value = ''; }
+}
+
+async function handleImportCritical(input){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); input.value=''; return; }
+  if(!getActiveGS()){ toast('Pick a specific GS first'); input.value=''; return; }
+  const file = input.files && input.files[0]; if(!file) return;
+  try {
+    const X = await ensureSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if(!sheet){ toast('Empty workbook'); return; }
+    const rows = X.utils.sheet_to_json(sheet, { defval: '' });
+    if(!rows.length){ toast('No data rows in CSV'); return; }
+
+    const validSev = new Set(['low','med','high']);
+    let added = 0, ambiguous = 0, noMatch = 0;
+    rows.forEach((r, idx) => {
+      const { stop, ambiguous: amb } = _resolveStop(r);
+      if(amb){ ambiguous++; return; }
+      if(!stop){ noMatch++; return; }
+
+      const title = String(r.title || r.Title || r.subject || '').trim();
+      const desc  = String(r.description || r.Description || r.notes || '').trim();
+      if(!title && !desc) return; // nothing to record
+      const sevRaw = String(r.severity || r.Severity || 'med').toLowerCase().trim();
+      const severity = validSev.has(sevRaw) ? sevRaw : 'med';
+      const due = String(r.due_date || r['Due Date'] || '').trim();
+      const reason = (title || '') + (desc ? (title?' — ':'') + desc : '') + (due ? ' (due ' + due + ')' : '');
+
+      criticalItems.push({
+        siteId: stop.id,
+        reason: reason.trim(),
+        severity,
+        created: new Date().toISOString(),
+        id: 'cr_' + Date.now() + '_' + idx
+      });
+      added++;
+    });
+
+    if(!added){
+      const parts = [];
+      if(ambiguous) parts.push(ambiguous + ' ambiguous');
+      if(noMatch)   parts.push(noMatch + ' unmatched');
+      toast('No new critical items' + (parts.length ? ' (' + parts.join(', ') + ')' : ''));
+      return;
+    }
+    saveData();
+    let msg = 'Imported ' + added + ' critical item' + (added===1?'':'s');
+    if(ambiguous) msg += ', ' + ambiguous + ' ambiguous';
+    if(noMatch)   msg += ', ' + noMatch + ' unmatched';
+    toast(msg);
+    renderCritical(); renderDashboard();
+  } catch(e){
+    console.error('Import Critical error:', e);
+    toast('Import failed: ' + (e.message || e));
+  } finally { input.value = ''; }
+}
+
+async function downloadCRMTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const sample = [{
+      site_name: 'Example Truck Stop',
+      site_id: '',
+      date: new Date().toISOString().slice(0,16),
+      type: 'call',
+      subject: 'Intro call',
+      notes: 'Discussed pricing options.',
+      contact_name: 'John Smith'
+    }];
+    const headers = ['site_name','site_id','date','type','subject','notes','contact_name'];
+    const ws = X.utils.json_to_sheet(sample, { header: headers });
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Logs');
+    X.writeFile(wb, 'gs-cmd-crm-template.csv', { bookType: 'csv' });
+  } catch(e){ console.error(e); toast('Template failed: ' + (e.message||e)); }
+}
+
+async function downloadCriticalTemplate(){
+  try {
+    const X = await ensureSheetJS();
+    const sample = [{
+      site_name: 'Example Truck Stop',
+      site_id: '',
+      severity: 'high',
+      title: 'No payments received',
+      description: 'Account 30+ days past due.',
+      due_date: ''
+    }];
+    const headers = ['site_name','site_id','severity','title','description','due_date'];
+    const ws = X.utils.json_to_sheet(sample, { header: headers });
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Critical');
+    X.writeFile(wb, 'gs-cmd-critical-template.csv', { bookType: 'csv' });
+  } catch(e){ console.error(e); toast('Template failed: ' + (e.message||e)); }
+}
+
 // ── Line item handlers ──
 // Add/remove cause a re-render so the new/removed row appears. Input
 // changes on existing line items just trigger calcRecalcOutputs() so we
@@ -2733,7 +2920,16 @@ function renderCritical(){
   badge.textContent=criticalItems.length;badge.style.display=criticalItems.length?'inline':'none';
 
   document.getElementById('crit-content').innerHTML=`
-    <div class="card"><div class="card-hd">🚨 Critical Attention Items (${criticalItems.length})</div>
+    <div class="card">
+      <div class="card-hd" style="justify-content:space-between">
+        <span>🚨 Critical Attention Items (${criticalItems.length})</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${!isAllGSMode() ? `<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:.75em">📥 Import CSV
+            <input type="file" accept=".csv,.xlsx,.xls" onchange="handleImportCritical(this)" style="display:none">
+          </label>` : ''}
+          <button class="btn" style="font-size:.75em" onclick="downloadCriticalTemplate()" title="Download a sample CSV with the expected columns">⤓ Template</button>
+        </div>
+      </div>
       ${criticalItems.length?criticalItems.map(c=>{
         const s=MEMBERS.find(m=>m.id===c.siteId);
         return `<div class="log-entry age-critical" style="cursor:pointer" onclick="openSiteDrawer('${c.siteId}')">
