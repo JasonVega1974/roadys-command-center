@@ -1007,7 +1007,8 @@ const SORTABLE_TABLES = {
   'tbl-crm-tasks':       'crm-tasks',
   'tbl-fuel-intro':      'fuel-intro',
   'tbl-master-critical': 'master-critical',
-  'tbl-rates-cross':     'rates-cross'
+  'tbl-rates-cross':     'rates-cross',
+  'mystops-tbl':         'mystops'
 };
 
 function readCellValue(cell){
@@ -1242,7 +1243,7 @@ function renderMyStopsCard(stops){
       : (delta >= 0
           ? '<span class="trend-up">▲ '+delta.toFixed(1)+'%</span>'
           : '<span class="trend-down">▼ '+Math.abs(delta).toFixed(1)+'%</span>');
-    return `<tr class="clickable" data-sid="${s.id}" data-mtd="${mtd}" data-ytd="${ytd}" data-mom="${delta===null?-9999:delta}" onclick="openSiteDrawer(this.dataset.sid)">
+    return `<tr class="clickable" data-sid="${s.id}" onclick="openSiteDrawer(this.dataset.sid)">
       <td><b>${esc(s.name)}</b></td>
       <td>${esc(s.city||'—')}</td>
       <td>${esc(s.state||'—')}</td>
@@ -1255,12 +1256,12 @@ function renderMyStopsCard(stops){
     <div class="card-hd">📍 My Stops (${stops.length})</div>
     <div style="overflow-x:auto"><table class="mystops-table" id="mystops-tbl">
       <thead><tr>
-        <th data-sort="name">Name</th>
-        <th data-sort="city">City</th>
-        <th data-sort="state">State</th>
-        <th data-sort="mtd" style="text-align:right">MTD Gallons</th>
-        <th data-sort="ytd" style="text-align:right">YTD Gallons</th>
-        <th data-sort="mom" style="text-align:right">▲▼ MoM</th>
+        <th>Name</th>
+        <th>City</th>
+        <th>State</th>
+        <th style="text-align:right">MTD Gallons</th>
+        <th style="text-align:right">YTD Gallons</th>
+        <th style="text-align:right">▲▼ MoM</th>
       </tr></thead>
       <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No stops in your territory.</td></tr>'}</tbody>
     </table></div>
@@ -1345,35 +1346,7 @@ function renderPerGSDashboard(){
     ${renderMyStopsCard(stops)}
   `;
 
-  // Wire My Stops sort
-  (function(){
-    const tbl = document.getElementById('mystops-tbl');
-    if(!tbl) return;
-    let curSort = null, curDir = 1;
-    tbl.querySelectorAll('thead th[data-sort]').forEach(th => {
-      th.addEventListener('click', () => {
-        const key = th.dataset.sort;
-        if(curSort === key) curDir = -curDir;
-        else { curSort = key; curDir = 1; }
-        const tbody = tbl.tBodies[0];
-        const rows = Array.from(tbody.rows).filter(r => r.cells.length === 6);
-        const cellIdx = {name:0, city:1, state:2, mtd:3, ytd:4, mom:5}[key];
-        rows.sort((a,b) => {
-          let va, vb;
-          if(key === 'mtd' || key === 'ytd' || key === 'mom'){
-            va = +a.dataset[key]; vb = +b.dataset[key];
-          } else {
-            va = a.cells[cellIdx].textContent.trim().toLowerCase();
-            vb = b.cells[cellIdx].textContent.trim().toLowerCase();
-          }
-          if(va < vb) return -1*curDir;
-          if(va > vb) return  1*curDir;
-          return 0;
-        });
-        rows.forEach(r => tbody.appendChild(r));
-      });
-    });
-  })();
+  applySortability();
 }
 
 function renderMasterDashboard(){
@@ -1862,6 +1835,37 @@ function drawerFuelHTML(stopId){
   `;
 }
 
+function drawerCRMTasksHTML(stopId){
+  const stopTasks = (Array.isArray(tasks) ? tasks : [])
+    .filter(t => t && t.siteId === stopId)
+    .sort((a,b) => new Date(b.created || b.updated || 0) - new Date(a.created || a.updated || 0))
+    .slice(0, 5);
+  const statusColor = {todo:'var(--muted)', progress:'var(--cyan)', waiting:'var(--yellow)', done:'var(--green)'};
+  const statusLabel = {todo:'To Do', progress:'In Progress', waiting:'Waiting', done:'Done'};
+  const rows = stopTasks.map(t => {
+    const overdue = t.due && new Date(t.due) < new Date() && t.status !== 'done';
+    const sCol = statusColor[t.status] || 'var(--muted)';
+    const sLbl = statusLabel[t.status] || t.status || '';
+    return `<div style="padding:6px 8px;background:var(--bg);border-radius:4px;cursor:pointer;font-size:.78em" onclick="closeDrawer();editTask('${t.id}')">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <b>${esc(t.title||'(untitled)')}</b>
+        <span style="color:${sCol};font-weight:700;font-size:.86em;white-space:nowrap">${esc(sLbl)}</span>
+      </div>
+      <div style="font-size:.86em;color:var(--muted);margin-top:2px">
+        ${t.category?esc(t.category):''}${t.due?(t.category?' · ':'')+(overdue?'<span style="color:var(--red);font-weight:700">⚠ '+esc(t.due)+'</span>':esc(t.due)):''}${t.assignedTo?(t.due||t.category?' · ':'')+'→ '+esc(t.assignedTo):''}
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="drawer-card" style="border-left-color:var(--yellow)">
+      <div class="drawer-card-hd" style="color:var(--yellow)">📋 Recent CRM Tasks (${stopTasks.length})</div>
+      ${stopTasks.length
+        ? `<div style="display:flex;flex-direction:column;gap:4px">${rows}</div>`
+        : `<div style="font-size:.78em;color:var(--muted)">No tasks attached to this stop. <span style="cursor:pointer;text-decoration:underline;color:var(--cyan)" onclick="closeDrawer();openTaskForSite('${stopId}')">+ Add task</span></div>`}
+    </div>
+  `;
+}
+
 function drawerVendorStubHTML(stopId){
   let enrolledIds = [];
   try {
@@ -1975,6 +1979,8 @@ function openSiteDrawer(siteId){
     ${drawerFuelHTML(siteId)}
 
     ${drawerVendorStubHTML(siteId)}
+
+    ${drawerCRMTasksHTML(siteId)}
 
     <div class="drawer-section">
       <h4>🧮 Calculations (${stopScenarios.length})</h4>
