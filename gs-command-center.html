@@ -591,6 +591,101 @@ async function loadVPEnrollFromSupabase(){
     return null;
   }
 }
+
+// ── Shared-data readers (read-only mirrors of roadys_fuel/_kpi/_vp_enroll) ──
+// index.html wraps fuel and kpi data inside an envelope: roadys_fuel
+// stores {GD, NOTES, DOCS} and roadys_kpi stores {KD, VD}. We peel off
+// the envelope here so callers can use the inner objects directly.
+function loadFuelGD(){
+  const obj = loadShared('roadys_fuel');
+  return (obj && typeof obj === 'object' && obj.GD && typeof obj.GD === 'object') ? obj.GD : {};
+}
+function loadKpiKD(){
+  const obj = loadShared('roadys_kpi');
+  return (obj && typeof obj === 'object' && obj.KD && typeof obj.KD === 'object') ? obj.KD : {};
+}
+function loadVendorEnrolls(){
+  const obj = loadShared('roadys_vp_enroll');
+  return (obj && typeof obj === 'object') ? obj : {};
+}
+
+function currentMonthKey(){
+  // Matches index.html's GD/KD period keys exactly.
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+function fuelStatsForStops(stops){
+  // GD[stopId][periodKey] = { gallons, aggregators, fleets, rack }.
+  // We only sum the .gallons number — the structured aggregator/fleet
+  // detail is owned by the Fuelman page in index.html.
+  const GD = loadFuelGD();
+  const month = currentMonthKey();
+  const yearPrefix = month.slice(0,4) + '-';
+  let mtd = 0, ytd = 0, active = 0;
+  const perStop = [];
+  for(const s of stops){
+    const stopData = GD[s.id];
+    if(!stopData) continue;
+    const cur = (stopData[month]?.gallons) || 0;
+    if(cur > 0) active++;
+    mtd += cur;
+    let stopYtd = 0;
+    for(const k in stopData){
+      if(k.startsWith(yearPrefix)) stopYtd += (stopData[k]?.gallons || 0);
+    }
+    ytd += stopYtd;
+    if(cur > 0 || stopYtd > 0){
+      perStop.push({ id: s.id, name: s.name, city: s.city, state: s.state, mtd: cur, ytd: stopYtd });
+    }
+  }
+  perStop.sort((a,b) => b.mtd - a.mtd);
+  return { mtd, ytd, active, avg: active ? mtd/active : 0, perStop, hasData: Object.keys(GD).length > 0 };
+}
+
+function rewardsStatsNetwork(){
+  // KD['Rewards Revenue'][periodKey] = number. Network-level only —
+  // there is no per-stop or per-territory decomposition in source data,
+  // so this returns one figure that's the same for every territory view.
+  const KD = loadKpiKD();
+  const month = currentMonthKey();
+  const yearPrefix = month.slice(0,4) + '-';
+  const series = KD['Rewards Revenue'] || {};
+  const mtd = series[month] || 0;
+  let ytd = (KD['Rewards Revenue YTD']||{})[month];
+  if(typeof ytd !== 'number'){
+    ytd = 0;
+    for(const k in series){ if(k.startsWith(yearPrefix)) ytd += (series[k] || 0); }
+  }
+  return { mtd, ytd, hasData: Object.keys(KD).length > 0 };
+}
+
+function vendorStatsForStops(stops){
+  // VP_ENROLL[stopId][vendorId] = boolean. Vendor IDs are opaque to this
+  // file (the VP_VENDORS lookup lives in index.html); we surface counts
+  // and the top-by-stop-count IDs but not display names yet.
+  const VPE = loadVendorEnrolls();
+  let totalEnrollments = 0, stopsEnrolled = 0;
+  const byVendor = {};
+  for(const s of stops){
+    const stopVP = VPE[s.id];
+    if(!stopVP || typeof stopVP !== 'object') continue;
+    let stopHas = false;
+    for(const [vid, on] of Object.entries(stopVP)){
+      if(on){
+        totalEnrollments++;
+        byVendor[vid] = (byVendor[vid]||0) + 1;
+        stopHas = true;
+      }
+    }
+    if(stopHas) stopsEnrolled++;
+  }
+  const topVendors = Object.entries(byVendor)
+    .sort((a,b) => b[1] - a[1])
+    .slice(0,10)
+    .map(([id, count]) => ({ id, count }));
+  return { totalEnrollments, stopsEnrolled, topVendors, hasData: Object.keys(VPE).length > 0 };
+}
 let activityLogs = {};  // {siteId: [{date,type,subject,notes}]}
 let scheduledCalls = []; // [{siteId,date,time,contact,purpose}]
 let siteExtras = {};     // {siteId: {hasRewards,vendorPrograms,contacts,notes}}
@@ -866,6 +961,12 @@ function renderPerGSDashboard(){
   const noContact=stops.filter(s=>!(activityLogs[s.id]||[]).length).length;
   const headerName = getActiveGS() || currentUser?.name || '';
 
+  const fuelStats = fuelStatsForStops(stops);
+  const rewardsStats = rewardsStatsNetwork();
+  const vendorStats = vendorStatsForStops(stops);
+  const anySharedData = fuelStats.hasData || rewardsStats.hasData || vendorStats.hasData;
+  const fmtK = n => '$' + (n/1000).toLocaleString(undefined, {maximumFractionDigits:1}) + 'k';
+
   document.getElementById('dash-content').innerHTML=`
     <div class="card"><div class="card-hd">📊 Territory Overview — ${esc(headerName)}</div>
     <div class="kpi-row">
@@ -876,7 +977,7 @@ function renderPerGSDashboard(){
       <div class="kpi cyan"><div class="kpi-val">${upcoming}</div><div class="kpi-label">Upcoming Calls</div></div>
       <div class="kpi red"><div class="kpi-val">${overdue}</div><div class="kpi-label">Overdue (30d+)</div></div>
     </div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="card"><div class="card-hd">📍 By Site Type</div>
         ${Object.entries(types).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82em"><span>${esc(t)}</span><span style="font-weight:700;color:var(--cyan)">${c}</span></div>`).join('')}
       </div>
@@ -889,6 +990,42 @@ function renderPerGSDashboard(){
         </div>
       </div>
     </div>
+    ${anySharedData ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+        <div class="card">
+          <div class="card-hd">⛽ Fuel — Territory</div>
+          <div style="font-size:.82em;line-height:1.9">
+            <div>MTD Gallons: <b style="color:var(--cyan)">${fG(Math.round(fuelStats.mtd))}</b></div>
+            <div>YTD Gallons: <b style="color:var(--cyan)">${fG(Math.round(fuelStats.ytd))}</b></div>
+            <div>Active Stops: <b>${fuelStats.active}</b> of ${stops.length}</div>
+            <div>Avg / Active Stop: <b>${fG(Math.round(fuelStats.avg))}</b> gal</div>
+          </div>
+          <div style="font-size:.7em;color:var(--muted);margin-top:8px">Source: <code>roadys_fuel</code> · read-only mirror</div>
+        </div>
+        <div class="card">
+          <div class="card-hd">🎁 Rewards — Network</div>
+          <div style="font-size:.82em;line-height:1.9">
+            <div>MTD Revenue: <b style="color:var(--green)">${fmtK(rewardsStats.mtd)}</b></div>
+            <div>YTD Revenue: <b style="color:var(--green)">${fmtK(rewardsStats.ytd)}</b></div>
+          </div>
+          <div style="font-size:.7em;color:var(--muted);margin-top:8px">Reported network-wide — source data has no per-territory split.</div>
+        </div>
+        <div class="card">
+          <div class="card-hd">🤝 Vendor Programs — Territory</div>
+          <div style="font-size:.82em;line-height:1.9">
+            <div>Total Enrollments: <b style="color:var(--yellow)">${vendorStats.totalEnrollments}</b></div>
+            <div>Stops Enrolled: <b>${vendorStats.stopsEnrolled}</b> of ${stops.length}</div>
+            ${vendorStats.topVendors.length ? `<div>Top Vendor: <b>${esc(vendorStats.topVendors[0].id)}</b> · ${vendorStats.topVendors[0].count} stops</div>` : ''}
+          </div>
+          <div style="font-size:.7em;color:var(--muted);margin-top:8px">Source: <code>roadys_vp_enroll</code> · read-only mirror</div>
+        </div>
+      </div>
+    ` : `
+      <div class="card" style="text-align:center;color:var(--muted);font-size:.85em;padding:24px">
+        🔌 Fuel / Rewards / Vendor mirrors are empty in this browser.<br>
+        Open <code>index.html</code> in another tab on this device to populate the shared data.
+      </div>
+    `}
   `;
 }
 
@@ -925,6 +1062,10 @@ function renderMasterDashboard(){
   allActivity.sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
   const recent50 = allActivity.slice(0, 50);
   const fmtK = n => '$' + (n/1000).toLocaleString(undefined, {maximumFractionDigits:1}) + 'k';
+  const networkFuel    = fuelStatsForStops(allStops);
+  const networkRewards = rewardsStatsNetwork();
+  const networkVendor  = vendorStatsForStops(allStops);
+  const noSharedData   = !networkFuel.hasData && !networkRewards.hasData && !networkVendor.hasData;
 
   document.getElementById('dash-content').innerHTML = `
     <div class="card">
@@ -938,8 +1079,11 @@ function renderMasterDashboard(){
         <div class="kpi purple"><div class="kpi-val" style="font-size:1.15em">${fmtK(totalCostPlusPotential)}</div><div class="kpi-label">Cost+ Potential</div></div>
         <div class="kpi red"><div class="kpi-val">${totalCritical}</div><div class="kpi-label">Critical Items</div></div>
         <div class="kpi orange"><div class="kpi-val">${totalRecentLogs}</div><div class="kpi-label">Logs (30d)</div></div>
+        <div class="kpi cyan"><div class="kpi-val">${fG(networkFuel.mtd)}</div><div class="kpi-label">Fuel Gal MTD</div></div>
+        <div class="kpi green"><div class="kpi-val" style="font-size:1.15em">${fmtK(networkRewards.mtd)}</div><div class="kpi-label">Rewards MTD</div></div>
+        <div class="kpi yellow"><div class="kpi-val">${networkVendor.totalEnrollments}</div><div class="kpi-label">Vendor Enrolls</div></div>
       </div>
-      <div style="font-size:.7em;color:var(--muted);text-align:right">Fuel / Rewards / Vendor Programs rollups land in Phase 3 — they pull from index.html shared data.</div>
+      <div style="font-size:.7em;color:var(--muted);text-align:right">${noSharedData ? '🔌 No fuel / rewards / vendor data found in this browser. Open <code>index.html</code> in another tab to populate.' : 'Fuel / Rewards / Vendor are read-only mirrors of index.html data.'}</div>
     </div>
 
     <div class="card">
