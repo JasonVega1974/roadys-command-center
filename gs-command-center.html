@@ -182,6 +182,14 @@ tr.clickable:hover td{background:rgba(56,189,248,.06)}
 .calc-total-row .lbl{font-weight:800;font-size:.85em;line-height:1.3}
 .calc-total-row .val{font-family:var(--fm);font-size:1.25em;font-weight:900;color:var(--cyan);white-space:nowrap}
 .calc-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.calc-line-row{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr auto;gap:4px;margin-top:4px;align-items:center}
+.calc-line-row input[type="text"]{background:rgba(148,163,184,.06);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:.78em;font-family:var(--ff)}
+.calc-line-row input[type="number"]{background:rgba(251,191,36,.04);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text);font-family:var(--fm);font-size:.78em;text-align:right}
+.calc-line-row input:focus{outline:none;border-color:var(--cyan)}
+.calc-line-del{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78em;line-height:1}
+.calc-line-del:hover{background:rgba(239,68,68,.2)}
+.calc-add-line{background:transparent;border:1px dashed var(--border2);color:var(--muted);border-radius:4px;padding:4px 10px;font-size:.7em;cursor:pointer;margin-top:6px;font-family:var(--ff)}
+.calc-add-line:hover{border-color:var(--cyan);color:var(--cyan)}
 
 /* FORM */
 .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px}
@@ -1339,11 +1347,44 @@ function filterTerritory(){
 // ═══════════════════════════════════════════════════════
 // SITE DRAWER
 // ═══════════════════════════════════════════════════════
+function scenariosForStop(siteId){
+  // GS mode: read this GS's namespace. Manager All-GS: walk every GS
+  // namespace and tag each scenario with its source GS so the drawer
+  // can show provenance.
+  if(isAllGSMode()){
+    const all = [];
+    forEachGS((gsName, ns) => {
+      try {
+        const arr = JSON.parse(localStorage.getItem(ns('scenarios')) || '[]');
+        if(Array.isArray(arr)) arr.forEach(scn => { if(scn && scn.stopId === siteId) all.push({ ...scn, _gs: gsName }); });
+      } catch(e){}
+    });
+    return all;
+  }
+  const active = getActiveGS();
+  if(!active) return [];
+  try {
+    const arr = JSON.parse(localStorage.getItem(LS_KEY + active + '_scenarios') || '[]');
+    return Array.isArray(arr) ? arr.filter(scn => scn && scn.stopId === siteId) : [];
+  } catch(e){ return []; }
+}
+
+function openCalcScenarioFromDrawer(scnId, gsName){
+  closeDrawer();
+  const tabEl = document.querySelector('[data-tab="calculator"]');
+  switchTab('calculator', tabEl);
+  // openScenario in All-GS mode prompts to switch GS; in GS mode it
+  // just loads the scenario into the editor.
+  if(gsName) openScenario(scnId, gsName);
+  else openScenario(scnId);
+}
+
 function openSiteDrawer(siteId){
   const s=MEMBERS.find(m=>m.id===siteId);if(!s)return;
   const extras=siteExtras[siteId]||{};
   const logs=(activityLogs[siteId]||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const mgr=MANAGER_MAP[s.state]||'Unassigned';
+  const stopScenarios=scenariosForStop(siteId);
 
   document.getElementById('drawer-body').innerHTML=`
     <div class="drawer-hd">${esc(s.name)}</div>
@@ -1375,6 +1416,28 @@ function openSiteDrawer(siteId){
           <div class="val"><input style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:.85em;width:100%" value="${esc(extras.siteNotes||'')}" onchange="updateExtra('${siteId}','siteNotes',this.value)" placeholder="Notes..."></div>
         </div>
       </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>🧮 Calculations (${stopScenarios.length})</h4>
+      ${stopScenarios.length ? stopScenarios.map(scn => {
+        const rT = scn.retail   ? calcSide(scn.retail).totalNewRevenue   : 0;
+        const cT = scn.costPlus ? calcSide(scn.costPlus).totalNewRevenue : 0;
+        const gsTag = scn._gs ? `<span style="font-size:.68em;color:${REGIONS[scn._gs]?.color||'var(--muted)'};margin-left:6px">[${esc(scn._gs)}]</span>` : '';
+        const gsArg = scn._gs ? `,'${esc(scn._gs)}'` : '';
+        return `<div class="info-item" style="cursor:pointer;margin-bottom:6px" onclick="openCalcScenarioFromDrawer('${scn.id}'${gsArg})">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><b>${esc(scn.name||'(unnamed)')}</b>${gsTag}</div>
+            <span style="font-size:.7em;color:var(--muted)">${scn.updated?new Date(scn.updated).toLocaleDateString():''}</span>
+          </div>
+          ${scn.fleet ? `<div style="font-size:.72em;color:var(--muted);margin-top:1px">Fleet: ${esc(scn.fleet)}</div>` : ''}
+          <div style="font-size:.78em;margin-top:3px">
+            <span style="color:var(--cyan)">Retail $${rT.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+            <span style="color:var(--muted);margin:0 6px">·</span>
+            <span style="color:var(--purple)">Cost+ $${cT.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+          </div>
+        </div>`;
+      }).join('') : '<div style="font-size:.78em;color:var(--muted);padding:6px 0">No scenarios linked. Tie one in the Calculator tab.</div>'}
     </div>
 
     <div class="drawer-section">
@@ -1781,15 +1844,43 @@ function filterRates(){
 // CALCULATOR (Phase 4: side-by-side Retail-Minus / Cost-Plus,
 // saved scenarios, optional stop+fleet links)
 // ═══════════════════════════════════════════════════════
+function calcRowSales(group, row){
+  // Sales contribution for a single row (main row OR a line item).
+  // Group label decides which fields drive the math; unused fields on
+  // a row are ignored, so a line item only needs to populate its
+  // sales-driving columns.
+  if(group === 'current' || group === 'potential'){
+    return (+row.gallons||0) * ((+row.price||0) - (+row.discount||0));
+  }
+  if(group === 'def'){
+    return (+row.gallons||0) * (+row.price||0);
+  }
+  if(group === 'inside'){
+    return (+row.transactions||0) * (+row.avgRing||0);
+  }
+  return 0;
+}
+
+function calcGroupTotal(side, group){
+  // Main row sales + sum of optional line items.
+  const main = side[group];
+  if(!main) return 0;
+  let total = calcRowSales(group, main);
+  if(Array.isArray(main.lineItems)){
+    for(const li of main.lineItems) total += calcRowSales(group, li);
+  }
+  return total;
+}
+
 function calcSide(side){
   // Same shape for both Retail-Minus and Cost-Plus columns. Discount is
   // subtracted from price for both — the column label reframes what the
   // "price" is (retail vs cost+markup), but the diesel-sales math is
   // identical for the customer-facing total.
-  const dieselCurrent   = (+side.current.gallons||0)   * ((+side.current.price||0)   - (+side.current.discount||0));
-  const dieselPotential = (+side.potential.gallons||0) * ((+side.potential.price||0) - (+side.potential.discount||0));
-  const defSales        = (+side.def.gallons||0)       * (+side.def.price||0);
-  const insideSales     = (+side.inside.transactions||0) * (+side.inside.avgRing||0);
+  const dieselCurrent   = calcGroupTotal(side, 'current');
+  const dieselPotential = calcGroupTotal(side, 'potential');
+  const defSales        = calcGroupTotal(side, 'def');
+  const insideSales     = calcGroupTotal(side, 'inside');
   const totalNewRevenue = dieselPotential + defSales + insideSales;
   return { dieselCurrent, dieselPotential, defSales, insideSales, totalNewRevenue };
 }
@@ -1905,6 +1996,34 @@ function renderCalculator(){
   calcRecalcOutputs();
 }
 
+// Per-group field map shared by main row and line item rendering.
+// Order matches the visible column order. The first three are the
+// sales-driving inputs; the fourth column is reserved for the computed
+// output on the main row and a delete button on line items.
+const CALC_GROUP_FIELDS = {
+  current:   [{n:'discount',label:'Discount',step:'0.01'},{n:'gallons',label:'Gallons',step:'1'},{n:'price',label:'Price/gal',step:'0.001'}],
+  potential: [{n:'discount',label:'Discount',step:'0.01'},{n:'gallons',label:'Gallons',step:'1'},{n:'price',label:'Price/gal',step:'0.001'}],
+  def:       [{n:'pct',label:'%',step:'0.01'},{n:'gallons',label:'Gallons',step:'1'},{n:'price',label:'Price/gal',step:'0.01'}],
+  inside:    [{n:'avgGalPerTxn',label:'Gal/Txn',step:'1'},{n:'transactions',label:'# Txns',step:'1'},{n:'avgRing',label:'Avg Ring',step:'0.01'}]
+};
+
+function renderCalcLineItems(key, group, row, allMode){
+  const dis = allMode ? 'disabled' : '';
+  const items = Array.isArray(row.lineItems) ? row.lineItems : [];
+  const fields = CALC_GROUP_FIELDS[group] || [];
+  let html = items.map((li, idx) => `
+    <div class="calc-line-row">
+      <input type="text" value="${esc(li.label||'')}" placeholder="Label (e.g. Tier 2)" oninput="calcLineMeta('${key}','${group}',${idx},'label',this.value)" ${dis}>
+      ${fields.map(f => `<input type="number" step="${f.step}" value="${li[f.n]||0}" title="${f.label}" oninput="calcLineChange('${key}','${group}',${idx},'${f.n}',this.value)" ${dis}>`).join('')}
+      ${allMode ? '<span></span>' : `<button class="calc-line-del" onclick="removeLineItem('${key}','${group}',${idx})" title="Remove">✕</button>`}
+    </div>
+  `).join('');
+  if(!allMode){
+    html += `<button class="calc-add-line" onclick="addLineItem('${key}','${group}')">+ Add line</button>`;
+  }
+  return html;
+}
+
 function renderCalcModelSide(key, title, side, allMode){
   const dis = allMode ? 'disabled' : '';
   const dlabel = key === 'retail' ? 'Retail - Discount' : 'Cost + Discount';
@@ -1926,6 +2045,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('current','price','0.001',side.current.price)}</div>
           <div class="calc-cell output"><label>Diesel Sales</label>${out('currentDiesel')}</div>
         </div>
+        ${renderCalcLineItems(key, 'current', side.current, allMode)}
       </div>
 
       <div class="calc-section">
@@ -1936,6 +2056,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Diesel Price/gal</label>${inp('potential','price','0.001',side.potential.price)}</div>
           <div class="calc-cell output"><label>Diesel Sales</label>${out('potentialDiesel')}</div>
         </div>
+        ${renderCalcLineItems(key, 'potential', side.potential, allMode)}
       </div>
 
       <div class="calc-section">
@@ -1946,6 +2067,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>DEF Price/gal</label>${inp('def','price','0.01',side.def.price)}</div>
           <div class="calc-cell output"><label>DEF Sales</label>${out('defSales')}</div>
         </div>
+        ${renderCalcLineItems(key, 'def', side.def, allMode)}
       </div>
 
       <div class="calc-section">
@@ -1956,6 +2078,7 @@ function renderCalcModelSide(key, title, side, allMode){
           <div class="calc-cell input"><label>Avg inside store ring</label>${inp('inside','avgRing','0.01',side.inside.avgRing)}</div>
           <div class="calc-cell output"><label>Inside store sales</label>${out('insideSales')}</div>
         </div>
+        ${renderCalcLineItems(key, 'inside', side.inside, allMode)}
       </div>
 
       <div class="calc-total-row">
@@ -1964,6 +2087,48 @@ function renderCalcModelSide(key, title, side, allMode){
       </div>
     </div>
   `;
+}
+
+// ── Line item handlers ──
+// Add/remove cause a re-render so the new/removed row appears. Input
+// changes on existing line items just trigger calcRecalcOutputs() so we
+// don't churn the DOM on every keystroke.
+function addLineItem(side, group){
+  if(!calcCurrent || isAllGSMode()) return;
+  const row = calcCurrent[side][group];
+  if(!row) return;
+  if(!Array.isArray(row.lineItems)) row.lineItems = [];
+  const blank = { label: '' };
+  for(const f of (CALC_GROUP_FIELDS[group]||[])) blank[f.n] = 0;
+  row.lineItems.push(blank);
+  calcUpdateMeta(); // capture in-flight scenario name/stop/fleet/notes before re-render
+  renderCalculator();
+}
+
+function removeLineItem(side, group, idx){
+  if(!calcCurrent || isAllGSMode()) return;
+  const row = calcCurrent[side][group];
+  if(!row || !Array.isArray(row.lineItems)) return;
+  row.lineItems.splice(idx, 1);
+  calcUpdateMeta();
+  renderCalculator();
+}
+
+function calcLineChange(side, group, idx, field, value){
+  if(!calcCurrent) return;
+  const row = calcCurrent[side][group];
+  if(!row || !Array.isArray(row.lineItems) || !row.lineItems[idx]) return;
+  const num = parseFloat(value);
+  row.lineItems[idx][field] = isNaN(num) ? 0 : num;
+  calcRecalcOutputs();
+}
+
+function calcLineMeta(side, group, idx, field, value){
+  if(!calcCurrent) return;
+  const row = calcCurrent[side][group];
+  if(!row || !Array.isArray(row.lineItems) || !row.lineItems[idx]) return;
+  row.lineItems[idx][field] = value;
+  // No recalc — label changes don't affect totals.
 }
 
 function calcInputChange(side, group, field, value){
