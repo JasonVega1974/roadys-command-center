@@ -122,6 +122,37 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .drawer-sub{font-size:.78em;color:var(--muted);margin-bottom:14px}
 .drawer-section{margin-top:16px}
 .drawer-section h4{font-size:.78em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:8px}
+.drawer-card{margin-top:14px;padding:12px;background:var(--bg3);border-radius:6px;border-left:3px solid var(--accent)}
+.drawer-card.purple{border-left-color:var(--purple)}
+.drawer-card.cyan{border-left-color:var(--cyan)}
+.drawer-card.green{border-left-color:var(--green)}
+.drawer-card-hd{font-size:.62em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.drawer-card.purple .drawer-card-hd{color:var(--purple)}
+.drawer-card.cyan .drawer-card-hd{color:var(--cyan)}
+.drawer-card.green .drawer-card-hd{color:var(--green)}
+.fuel-tile-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.fuel-tile{background:var(--bg);padding:10px;border-radius:5px}
+.fuel-tile-lbl{font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.fuel-tile-val{font-size:1.05em;font-weight:800;color:var(--text);margin-top:3px}
+.fuel-tile-trend{font-size:.68em;margin-top:4px}
+.fuel-tile-ytd{font-size:.6em;color:var(--muted);margin-top:2px}
+.trend-up{color:var(--green)}
+.trend-down{color:var(--red)}
+.stop-search-wrap{position:relative;flex:0 0 240px}
+.stop-search-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:.82em}
+.stop-search-input:focus{outline:none;border-color:var(--cyan)}
+.stop-search-results{position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;max-height:300px;overflow-y:auto;z-index:300;display:none;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.stop-search-results.show{display:block}
+.stop-search-row{padding:8px 10px;cursor:pointer;font-size:.82em;border-bottom:1px solid var(--border)}
+.stop-search-row:last-child{border-bottom:0}
+.stop-search-row:hover,.stop-search-row.active{background:var(--bg3)}
+.stop-search-row .ssn{font-weight:700}
+.stop-search-row .sss{font-size:.72em;color:var(--muted);margin-left:6px}
+.mystops-table{width:100%;border-collapse:collapse;font-size:.82em}
+.mystops-table th{text-align:left;padding:6px 8px;font-size:.7em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);background:var(--bg3);cursor:pointer;user-select:none}
+.mystops-table td{padding:6px 8px;border-bottom:1px solid var(--border)}
+.mystops-table tr:hover td{background:var(--bg3)}
+.mystops-table tr.clickable{cursor:pointer}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .info-item{font-size:.78em;padding:6px 8px;background:var(--bg3);border-radius:5px}
 .info-item .lbl{color:var(--muted);font-size:.85em}
@@ -302,6 +333,10 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     <div class="gs-selector-wrap" id="gs-selector-wrap">
       <label for="gs-selector">Viewing:</label>
       <select id="gs-selector" class="gs-selector" onchange="changeGSSelection(this.value)"></select>
+    </div>
+    <div class="stop-search-wrap" id="stop-search-wrap">
+      <input type="text" id="stop-search-input" class="stop-search-input" placeholder="🔍 Find stop..." autocomplete="off" oninput="onStopSearchInput()" onfocus="onStopSearchInput()" onblur="setTimeout(closeStopSearch, 150)" onkeydown="onStopSearchKey(event)">
+      <div class="stop-search-results" id="stop-search-results"></div>
     </div>
     <div class="topbar-user">
       <div><div class="name" id="tb-name"></div><div class="role" id="tb-role"></div></div>
@@ -721,6 +756,7 @@ let scheduledCalls = []; // [{siteId,date,time,contact,purpose}]
 let siteExtras = {};     // {siteId: {hasRewards,vendorPrograms,contacts,notes}}
 let criticalItems = [];  // [{siteId,reason,created}]
 let tasks = [];           // [{id,title,siteId,priority,status,due,category,assignedTo,notes,created,updated}]
+let stopdata = {};       // {siteId: {membershipCost,siteMgrName,siteMgrEmail,siteMgrPhone,notes:[],visits:[]}}
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
 
@@ -799,7 +835,7 @@ function loadData(){
   // dashboard reads each GS namespace via forEachGS instead.
   const active = getActiveGS();
   if(!active){
-    activityLogs={}; scheduledCalls=[]; siteExtras={}; criticalItems=[]; tasks=[];
+    activityLogs={}; scheduledCalls=[]; siteExtras={}; criticalItems=[]; tasks=[]; stopdata={};
     return;
   }
   const k = LS_KEY + active;
@@ -808,6 +844,7 @@ function loadData(){
   try{siteExtras=JSON.parse(localStorage.getItem(k+'_extras')||'{}');}catch(e){siteExtras={};}
   try{criticalItems=JSON.parse(localStorage.getItem(k+'_critical')||'[]');}catch(e){criticalItems=[];}
   try{tasks=JSON.parse(localStorage.getItem(k+'_tasks')||'[]');}catch(e){tasks=[];}
+  try{stopdata=JSON.parse(localStorage.getItem(k+'_stopdata')||'{}');}catch(e){stopdata={};}
 }
 function saveData(){
   // No-op in All-GS rollup mode — there is no namespace to write into.
@@ -819,6 +856,7 @@ function saveData(){
   localStorage.setItem(k+'_extras',JSON.stringify(siteExtras));
   localStorage.setItem(k+'_critical',JSON.stringify(criticalItems));
   localStorage.setItem(k+'_tasks',JSON.stringify(tasks));
+  localStorage.setItem(k+'_stopdata',JSON.stringify(stopdata));
 }
 
 // ═══════════════════════════════════════════════════════
@@ -969,7 +1007,8 @@ const SORTABLE_TABLES = {
   'tbl-crm-tasks':       'crm-tasks',
   'tbl-fuel-intro':      'fuel-intro',
   'tbl-master-critical': 'master-critical',
-  'tbl-rates-cross':     'rates-cross'
+  'tbl-rates-cross':     'rates-cross',
+  'mystops-tbl':         'mystops'
 };
 
 function readCellValue(cell){
@@ -1191,6 +1230,44 @@ function renderDashboard(){
   else renderPerGSDashboard();
 }
 
+function renderMyStopsCard(stops){
+  const m = currentMonthKey();
+  const pm = priorMonthKey(m);
+  const rows = stops.map(s => {
+    const mtd = stopTotalGallons(s.id, m);
+    const prior = stopTotalGallons(s.id, pm);
+    const ytd = ytdGallonsForStop(s.id, m, 'total');
+    const delta = (prior > 0) ? ((mtd-prior)/prior)*100 : null;
+    const trendCell = (delta === null)
+      ? '<span style="color:var(--muted)">—</span>'
+      : (delta >= 0
+          ? '<span class="trend-up">▲ '+delta.toFixed(1)+'%</span>'
+          : '<span class="trend-down">▼ '+Math.abs(delta).toFixed(1)+'%</span>');
+    return `<tr class="clickable" data-sid="${s.id}" onclick="openSiteDrawer(this.dataset.sid)">
+      <td><b>${esc(s.name)}</b></td>
+      <td>${esc(s.city||'—')}</td>
+      <td>${esc(s.state||'—')}</td>
+      <td style="text-align:right">${Math.round(mtd).toLocaleString()}</td>
+      <td style="text-align:right">${Math.round(ytd).toLocaleString()}</td>
+      <td style="text-align:right">${trendCell}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="card" style="margin-top:14px">
+    <div class="card-hd">📍 My Stops (${stops.length})</div>
+    <div style="overflow-x:auto"><table class="mystops-table" id="mystops-tbl">
+      <thead><tr>
+        <th>Name</th>
+        <th>City</th>
+        <th>State</th>
+        <th style="text-align:right">MTD Gallons</th>
+        <th style="text-align:right">YTD Gallons</th>
+        <th style="text-align:right">▲▼ MoM</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No stops in your territory.</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
 function renderPerGSDashboard(){
   const stops=myStops;
   const types={};stops.forEach(s=>{types[s.type]=(types[s.type]||0)+1;});
@@ -1266,7 +1343,10 @@ function renderPerGSDashboard(){
         Open <code>index.html</code> in another tab on this device to populate the shared data.
       </div>
     `}
+    ${renderMyStopsCard(stops)}
   `;
+
+  applySortability();
 }
 
 function renderMasterDashboard(){
@@ -1614,6 +1694,247 @@ function openCalcScenarioFromDrawer(scnId, gsName){
   else openScenario(scnId);
 }
 
+// ─── Stop Deep-Dive helpers (Phase 1) ────────────────────────────────
+function stopFleetGallons(stopId, m){
+  try {
+    const GD = loadFuelGD();
+    const fl = GD[stopId]?.[m]?.fleets;
+    if(!Array.isArray(fl)) return 0;
+    return fl.reduce((s,f)=>s+(+f.gallons||0),0);
+  } catch(e){ return 0; }
+}
+function stopAggregatorGallons(stopId, m){
+  try {
+    const GD = loadFuelGD();
+    const ag = GD[stopId]?.[m]?.aggregators;
+    if(!Array.isArray(ag)) return 0;
+    return ag.reduce((s,a)=>s+(+a.gallons||0),0);
+  } catch(e){ return 0; }
+}
+function stopTotalGallons(stopId, m){
+  try {
+    const GD = loadFuelGD();
+    return +(GD[stopId]?.[m]?.gallons||0);
+  } catch(e){ return 0; }
+}
+function fmtTrendPill(curr, prior, label){
+  if(!prior || prior <= 0) return '<span style="color:var(--muted)">— '+label+'</span>';
+  const delta = ((curr - prior) / prior) * 100;
+  const sign = delta >= 0 ? '▲' : '▼';
+  const cls = delta >= 0 ? 'trend-up' : 'trend-down';
+  return '<span class="'+cls+'">'+sign+' '+Math.abs(delta).toFixed(1)+'% '+label+'</span>';
+}
+function priorMonthKey(m){
+  const [y,mo] = m.split('-').map(Number);
+  const d = new Date(y, mo-2, 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function priorYearMonthKey(m){
+  const [y,mo] = m.split('-').map(Number);
+  return (y-1) + '-' + String(mo).padStart(2,'0');
+}
+function ytdGallonsForStop(stopId, m, kind /* 'total'|'fleet'|'agg' */){
+  const [y, mo] = m.split('-').map(Number);
+  let sum = 0;
+  for(let i = 1; i <= mo; i++){
+    const k = y + '-' + String(i).padStart(2,'0');
+    if(kind === 'fleet') sum += stopFleetGallons(stopId, k);
+    else if(kind === 'agg') sum += stopAggregatorGallons(stopId, k);
+    else sum += stopTotalGallons(stopId, k);
+  }
+  return sum;
+}
+function loadStopRecord(stopId){
+  if(!stopdata[stopId]) stopdata[stopId] = {membershipCost:'', siteMgrName:'', siteMgrEmail:'', siteMgrPhone:'', notes:[], visits:[]};
+  return stopdata[stopId];
+}
+function saveStopRecord(stopId, partial){
+  const rec = loadStopRecord(stopId);
+  Object.assign(rec, partial);
+  saveData();
+}
+
+function drawerMembershipHTML(stopId){
+  const rec = loadStopRecord(stopId);
+  const inS = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;color:var(--text);font-size:.82em;width:100%';
+  return `
+    <div class="drawer-card purple">
+      <div class="drawer-card-hd">💳 Membership &amp; Site Contact</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label style="display:block">
+          <span style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Membership Cost / mo</span>
+          <input id="sd-mem-${stopId}" style="${inS};margin-top:3px" value="${esc(rec.membershipCost||'')}" placeholder="$0.00" onblur="onMembershipChange('${stopId}', 'membershipCost', this.value)"/>
+        </label>
+        <label style="display:block">
+          <span style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Site Manager</span>
+          <input id="sd-mgrname-${stopId}" style="${inS};margin-top:3px" value="${esc(rec.siteMgrName||'')}" placeholder="Name" onblur="onMembershipChange('${stopId}', 'siteMgrName', this.value)"/>
+        </label>
+        <label style="display:block">
+          <span style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Email</span>
+          <input id="sd-mgremail-${stopId}" type="email" style="${inS};margin-top:3px" value="${esc(rec.siteMgrEmail||'')}" placeholder="email@stop.com" onblur="onMembershipChange('${stopId}', 'siteMgrEmail', this.value)"/>
+        </label>
+        <label style="display:block">
+          <span style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Phone</span>
+          <input id="sd-mgrphone-${stopId}" style="${inS};margin-top:3px" value="${esc(rec.siteMgrPhone||'')}" placeholder="(555) 555-5555" onblur="onMembershipChange('${stopId}', 'siteMgrPhone', this.value)"/>
+        </label>
+      </div>
+    </div>
+  `;
+}
+function onMembershipChange(stopId, field, val){
+  saveStopRecord(stopId, {[field]: val});
+  toast('Saved');
+}
+
+function drawerFuelHTML(stopId){
+  const m = currentMonthKey();
+  const pm = priorMonthKey(m);
+  const py = priorYearMonthKey(m);
+  const monthLbl = (() => {
+    const [y, mo] = m.split('-').map(Number);
+    return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo-1] + ' ' + y;
+  })();
+  const total = stopTotalGallons(stopId, m);
+  const totalP = stopTotalGallons(stopId, pm);
+  const totalY = stopTotalGallons(stopId, py);
+  const totalYTD = ytdGallonsForStop(stopId, m, 'total');
+  const fleet = stopFleetGallons(stopId, m);
+  const fleetP = stopFleetGallons(stopId, pm);
+  const fleetY = stopFleetGallons(stopId, py);
+  const fleetYTD = ytdGallonsForStop(stopId, m, 'fleet');
+  const agg = stopAggregatorGallons(stopId, m);
+  const aggP = stopAggregatorGallons(stopId, pm);
+  const aggY = stopAggregatorGallons(stopId, py);
+  const aggYTD = ytdGallonsForStop(stopId, m, 'agg');
+  const fmtN = n => Math.round(n).toLocaleString();
+  return `
+    <div class="drawer-card cyan">
+      <div class="drawer-card-hd">⛽ Fuel Business — ${monthLbl}</div>
+      <div class="fuel-tile-grid">
+        <div class="fuel-tile">
+          <div class="fuel-tile-lbl">Total Gallons</div>
+          <div class="fuel-tile-val">${fmtN(total)}</div>
+          <div class="fuel-tile-trend">${fmtTrendPill(total,totalP,'MoM')} · ${fmtTrendPill(total,totalY,'YoY')}</div>
+          <div class="fuel-tile-ytd">YTD: ${fmtN(totalYTD)} gal</div>
+        </div>
+        <div class="fuel-tile">
+          <div class="fuel-tile-lbl">Fleet Gallons</div>
+          <div class="fuel-tile-val">${fmtN(fleet)}</div>
+          <div class="fuel-tile-trend">${fmtTrendPill(fleet,fleetP,'MoM')} · ${fmtTrendPill(fleet,fleetY,'YoY')}</div>
+          <div class="fuel-tile-ytd">YTD: ${fmtN(fleetYTD)} gal</div>
+        </div>
+        <div class="fuel-tile">
+          <div class="fuel-tile-lbl">Aggregator Gallons</div>
+          <div class="fuel-tile-val">${fmtN(agg)}</div>
+          <div class="fuel-tile-trend">${fmtTrendPill(agg,aggP,'MoM')} · ${fmtTrendPill(agg,aggY,'YoY')}</div>
+          <div class="fuel-tile-ytd">YTD: ${fmtN(aggYTD)} gal</div>
+        </div>
+      </div>
+      ${(!total && !fleet && !agg) ? '<div style="font-size:.7em;color:var(--muted);margin-top:8px">No fuel data in <code>roadys_fuel</code> for this stop. Open <code>index.html</code> in another tab to populate.</div>' : ''}
+    </div>
+  `;
+}
+
+function drawerCRMTasksHTML(stopId){
+  const stopTasks = (Array.isArray(tasks) ? tasks : [])
+    .filter(t => t && t.siteId === stopId)
+    .sort((a,b) => new Date(b.created || b.updated || 0) - new Date(a.created || a.updated || 0))
+    .slice(0, 5);
+  const statusColor = {todo:'var(--muted)', progress:'var(--cyan)', waiting:'var(--yellow)', done:'var(--green)'};
+  const statusLabel = {todo:'To Do', progress:'In Progress', waiting:'Waiting', done:'Done'};
+  const rows = stopTasks.map(t => {
+    const overdue = t.due && new Date(t.due) < new Date() && t.status !== 'done';
+    const sCol = statusColor[t.status] || 'var(--muted)';
+    const sLbl = statusLabel[t.status] || t.status || '';
+    return `<div style="padding:6px 8px;background:var(--bg);border-radius:4px;cursor:pointer;font-size:.78em" onclick="closeDrawer();editTask('${t.id}')">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <b>${esc(t.title||'(untitled)')}</b>
+        <span style="color:${sCol};font-weight:700;font-size:.86em;white-space:nowrap">${esc(sLbl)}</span>
+      </div>
+      <div style="font-size:.86em;color:var(--muted);margin-top:2px">
+        ${t.category?esc(t.category):''}${t.due?(t.category?' · ':'')+(overdue?'<span style="color:var(--red);font-weight:700">⚠ '+esc(t.due)+'</span>':esc(t.due)):''}${t.assignedTo?(t.due||t.category?' · ':'')+'→ '+esc(t.assignedTo):''}
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="drawer-card" style="border-left-color:var(--yellow)">
+      <div class="drawer-card-hd" style="color:var(--yellow)">📋 Recent CRM Tasks (${stopTasks.length})</div>
+      ${stopTasks.length
+        ? `<div style="display:flex;flex-direction:column;gap:4px">${rows}</div>`
+        : `<div style="font-size:.78em;color:var(--muted)">No tasks attached to this stop. <span style="cursor:pointer;text-decoration:underline;color:var(--cyan)" onclick="closeDrawer();openTaskForSite('${stopId}')">+ Add task</span></div>`}
+    </div>
+  `;
+}
+
+function drawerVendorStubHTML(stopId){
+  let enrolledIds = [];
+  try {
+    const VPE = loadVendorEnrolls();  // existing helper, returns {stopId:{vendorId:bool}}
+    const stopVP = VPE[stopId];
+    if(stopVP && typeof stopVP === 'object'){
+      enrolledIds = Object.keys(stopVP).filter(vid => stopVP[vid] === true);
+    }
+  } catch(e){}
+  const rows = enrolledIds.length
+    ? enrolledIds.map(vid => `<div style="padding:6px 8px;background:var(--bg);border-radius:4px;font-size:.78em;font-family:monospace">${esc(vid)}</div>`).join('')
+    : '<div style="font-size:.78em;color:var(--muted)">No enrolled vendor programs in <code>roadys_vp_enroll</code>.</div>';
+  return `
+    <div class="drawer-card green">
+      <div class="drawer-card-hd">🏢 Vendor Programs (${enrolledIds.length} enrolled)</div>
+      <div style="display:flex;flex-direction:column;gap:4px">${rows}</div>
+      <div style="font-size:.66em;color:var(--muted);margin-top:8px">Vendor names &amp; contact details sync from <code>vendors.html</code> in Phase 2.</div>
+    </div>
+  `;
+}
+
+function searchableStopsForUser(){
+  if(typeof networkStops === 'function' && currentUser && currentUser.isManager){
+    return networkStops();
+  }
+  return Array.isArray(myStops) ? myStops : [];
+}
+function onStopSearchInput(){
+  const q = (document.getElementById('stop-search-input').value || '').trim().toLowerCase();
+  const box = document.getElementById('stop-search-results');
+  if(!q){ box.classList.remove('show'); box.innerHTML = ''; return; }
+  const stops = searchableStopsForUser();
+  const matches = stops.filter(s => {
+    const name = (s.name||'').toLowerCase();
+    const id   = (s.id||'').toLowerCase();
+    const city = (s.city||'').toLowerCase();
+    return name.includes(q) || id.includes(q) || city.includes(q);
+  }).slice(0, 8);
+  if(!matches.length){
+    box.innerHTML = '<div class="stop-search-row" style="color:var(--muted)">No matches</div>';
+  } else {
+    box.innerHTML = matches.map((s,i) => `<div class="stop-search-row${i===0?' active':''}" data-sid="${s.id}" onmousedown="onStopSearchPick('${s.id}')">
+      <span class="ssn">${esc(s.name)}</span><span class="sss">${esc(s.id)} · ${esc(s.city||'')} ${esc(s.state||'')}</span>
+    </div>`).join('');
+  }
+  box.classList.add('show');
+}
+function onStopSearchPick(stopId){
+  closeStopSearch();
+  document.getElementById('stop-search-input').value = '';
+  openSiteDrawer(stopId);
+}
+function closeStopSearch(){
+  const box = document.getElementById('stop-search-results');
+  if(box){ box.classList.remove('show'); box.innerHTML = ''; }
+}
+function onStopSearchKey(ev){
+  const box = document.getElementById('stop-search-results');
+  if(!box || !box.classList.contains('show')) return;
+  const rows = Array.from(box.querySelectorAll('.stop-search-row[data-sid]'));
+  if(!rows.length) return;
+  let idx = rows.findIndex(r => r.classList.contains('active'));
+  if(idx < 0) idx = 0;
+  if(ev.key === 'ArrowDown'){ ev.preventDefault(); rows[idx]?.classList.remove('active'); idx = (idx+1)%rows.length; rows[idx].classList.add('active'); }
+  else if(ev.key === 'ArrowUp'){ ev.preventDefault(); rows[idx]?.classList.remove('active'); idx = (idx-1+rows.length)%rows.length; rows[idx].classList.add('active'); }
+  else if(ev.key === 'Enter'){ ev.preventDefault(); const sid = rows[idx]?.dataset.sid; if(sid) onStopSearchPick(sid); }
+  else if(ev.key === 'Escape'){ closeStopSearch(); }
+}
+
 function openSiteDrawer(siteId){
   const s=MEMBERS.find(m=>m.id===siteId);if(!s)return;
   const extras=siteExtras[siteId]||{};
@@ -1652,6 +1973,14 @@ function openSiteDrawer(siteId){
         </div>
       </div>
     </div>
+
+    ${drawerMembershipHTML(siteId)}
+
+    ${drawerFuelHTML(siteId)}
+
+    ${drawerVendorStubHTML(siteId)}
+
+    ${drawerCRMTasksHTML(siteId)}
 
     <div class="drawer-section">
       <h4>🧮 Calculations (${stopScenarios.length})</h4>
@@ -1835,7 +2164,7 @@ function renderTaskCard(t){
   const overdue=t.due&&new Date(t.due)<new Date()&&t.status!=='done';
   return '<div class="task-item task-pri-'+t.priority+'" data-tid="'+t.id+'" onclick="editTask(this.dataset.tid)">'+
     '<div class="task-title">'+esc(t.title)+'</div>'+
-    (t.siteId?'<div class="task-site">'+esc(s?.name||t.siteId)+'</div>':'')+
+    (t.siteId?'<div class="task-site"><span style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;color:var(--cyan)" onclick="event.stopPropagation();openSiteDrawer(\''+t.siteId+'\')">'+esc(s?.name||t.siteId)+'</span></div>':'')+
     '<div class="task-meta">'+
       '<span class="task-status ts-'+t.status+'">'+(t.status==='todo'?'To Do':t.status==='progress'?'In Progress':t.status==='waiting'?'Waiting':'Done')+'</span>'+
       (t.category?'<span>'+esc(t.category)+'</span>':'')+
