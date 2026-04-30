@@ -867,9 +867,9 @@ function rewardsStatsNetwork(){
 }
 
 function vendorStatsForStops(stops){
-  // VP_ENROLL[stopId][vendorId] = boolean. Vendor IDs are opaque to this
-  // file (the VP_VENDORS lookup lives in index.html); we surface counts
-  // and the top-by-stop-count IDs but not display names yet.
+  // VP_ENROLL[stopId][vendorId] = boolean. Phase 2 added the vendor master
+  // bridge (loadVendorMaster), so each topVendors[] entry now also gets
+  // .name and .program attached for display in the Per-GS Vendor card.
   const VPE = loadVendorEnrolls();
   let totalEnrollments = 0, stopsEnrolled = 0;
   const byVendor = {};
@@ -1480,7 +1480,7 @@ function renderPerGSDashboard(){
             <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
               <div style="font-size:.74em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Top Programs</div>
               ${vendorStats.topVendors.slice(0,5).map(v => `<div style="display:flex;justify-content:space-between;font-size:.84em"><span>${esc(v.name)}${v.program?' <span style="color:var(--muted);font-size:.86em">('+esc(v.program)+')</span>':''}</span><span style="color:var(--yellow);font-weight:700">${v.count}</span></div>`).join('')}
-              ${vendorStats.topVendors.length>5 ? `<div style="font-size:.72em;color:var(--cyan);margin-top:3px;cursor:pointer" onclick="this.parentElement.querySelectorAll('.tv-extra').forEach(e=>e.style.display='block');this.style.display='none'">+ Show all ${vendorStats.topVendors.length} programs</div>` : ''}
+              ${vendorStats.topVendors.length>5 ? `<div style="font-size:.72em;color:var(--cyan);margin-top:3px;cursor:pointer" onclick="this.parentElement.querySelectorAll('.tv-extra').forEach(e=>e.style.display='flex');this.style.display='none'">+ Show all ${vendorStats.topVendors.length} programs</div>` : ''}
               ${vendorStats.topVendors.slice(5).map(v => `<div class="tv-extra" style="display:none;justify-content:space-between;font-size:.84em"><span>${esc(v.name)}${v.program?' <span style="color:var(--muted);font-size:.86em">('+esc(v.program)+')</span>':''}</span><span style="color:var(--yellow);font-weight:700">${v.count}</span></div>`).join('')}
             </div>` : ''}
           </div>
