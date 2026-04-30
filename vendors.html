@@ -2225,6 +2225,9 @@ function loadProgDetails(){
 }
 function saveProgDetails(){try{localStorage.setItem('roadys_program_details',JSON.stringify(progDetails));}catch(e){}}
 loadProgDetails();
+// Bridge: mirror vendor master data to a shared localStorage key so
+// gs-command-center.html can read fresher data after vendors.html has been opened.
+try { localStorage.setItem('roadys_vp_vendors', JSON.stringify({VP_VENDORS, progDetails, _ts: Date.now()})); } catch(e){}
 
 function pdField(idx,key,val,opts={}){
   const id=`pd-${idx}-${key}`;
