@@ -2381,18 +2381,22 @@ function drawerVendorOpportunityHTML(stopId){
   };
   const totalPotential = opps.reduce((sum, o) => sum + o.savings, 0);
   const fmtMoney = n => '$'+Math.round(n).toLocaleString();
-  const rows = opps.map(o => {
+  const TOP_N = 10;
+  const renderRow = (o, isExtra) => {
     const pc = programColor[o.program] || 'var(--muted)';
     const savingsLabel = o.savings > 0 ? 'avg '+fmtMoney(o.savings)+'/mo' : (o.contact ? 'savings vary' : 'avg unknown');
     const hasDetails = !!o.contact;
-    return `<div class="opp-row" ${hasDetails?`onclick="toggleVendorDetails('opp-${o.vid}', this)"`:''} style="${hasDetails?'':'cursor:default'}">
+    const wrapClass = isExtra ? ' opp-extra-row' : '';
+    const wrapStyle = isExtra ? 'display:none;' : '';
+    const detailsClass = isExtra ? ' opp-extra-row' : '';
+    return `<div class="opp-row${wrapClass}" style="${wrapStyle}${hasDetails?'':'cursor:default'}" ${hasDetails?`onclick="toggleVendorDetails('opp-${o.vid}', this)"`:''}>
       <div style="flex:1">
         <span><b>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
       </div>
       <span class="opp-savings">${savingsLabel}</span>
       ${hasDetails ? '<span style="color:var(--muted);font-size:.86em;margin-left:6px">→</span>' : ''}
     </div>
-    ${hasDetails ? `<div class="vd-details" id="vd-opp-${esc(o.vid)}" style="display:none;margin:0 0 4px 8px;padding:6px 10px;border-left:2px solid var(--border);font-size:.82em;line-height:1.5;background:var(--bg)">
+    ${hasDetails ? `<div class="vd-details${detailsClass}" id="vd-opp-${esc(o.vid)}" style="display:none;margin:0 0 4px 8px;padding:6px 10px;border-left:2px solid var(--border);font-size:.82em;line-height:1.5;background:var(--bg)">
       ${o.contact.email ? `<div>📧 <a href="mailto:${esc(o.contact.email)}" style="color:var(--cyan)">${esc(o.contact.email)}</a></div>` : ''}
       ${o.contact.savings ? `<div><b>Savings:</b> ${esc(o.contact.savings)}</div>` : ''}
       ${o.contact.rebateStructure ? `<div><b>Rebate:</b> ${esc(o.contact.rebateStructure)}</div>` : ''}
@@ -2400,14 +2404,34 @@ function drawerVendorOpportunityHTML(stopId){
       ${o.contact.notes ? `<div style="margin-top:4px;color:var(--muted);font-size:.92em"><b>Why enroll:</b> ${esc(String(o.contact.notes).slice(0,300))}${String(o.contact.notes).length>300?'…':''}</div>` : ''}
       <div style="margin-top:6px"><a href="vendors.html" target="_blank" style="color:var(--cyan)">Enroll on vendors.html →</a></div>
     </div>` : ''}`;
-  }).join('');
+  };
+  const visible = opps.slice(0, TOP_N).map(o => renderRow(o, false)).join('');
+  const extras = opps.slice(TOP_N).map(o => renderRow(o, true)).join('');
+  const extraCount = opps.length - TOP_N;
+  const toggleBtn = extraCount > 0
+    ? `<div class="opp-toggle" data-count="${extraCount}" onclick="toggleOppExpand(this)" style="cursor:pointer;color:var(--cyan);font-size:.78em;font-weight:700;padding:4px 0;text-align:center;border-top:1px dashed var(--border);margin-top:4px">+ Show ${extraCount} more</div>`
+    : '';
   return `
     <div class="drawer-card amber">
       <div class="drawer-card-hd">🎯 Opportunity — Vendors NOT Enrolled (${opps.length} missed)</div>
-      <div style="display:flex;flex-direction:column;gap:4px">${rows}</div>
+      <div class="opp-list" style="display:flex;flex-direction:column;gap:4px">${visible}${extras}${toggleBtn}</div>
       ${totalPotential > 0 ? `<div class="roi-foot">Total potential savings if enrolled: <b style="color:var(--yellow)">${fmtMoney(totalPotential)}/mo</b><br>Excludes vendors without quantified savings.</div>` : ''}
     </div>
   `;
+}
+function toggleOppExpand(btn){
+  const list = btn.parentElement;
+  const expanded = list.classList.toggle('opp-expanded');
+  list.querySelectorAll('.opp-extra-row').forEach(el => {
+    if(expanded){
+      // Vendor rows use flex; details divs default to none — restore both.
+      el.style.display = el.classList.contains('opp-row') ? 'flex' : '';
+    } else {
+      el.style.display = 'none';
+    }
+  });
+  const count = btn.dataset.count || '0';
+  btn.textContent = expanded ? '− Show fewer' : '+ Show ' + count + ' more';
 }
 
 // ─── Phase 3 helpers: ROI Calculator ──────────────────────────────────
