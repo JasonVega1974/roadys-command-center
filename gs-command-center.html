@@ -154,6 +154,67 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .import-preview-tbl{width:100%;border-collapse:collapse;font-size:.78em;margin-top:10px}
 .import-preview-tbl th,.import-preview-tbl td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:left}
 .import-preview-tbl th{font-size:.66em;text-transform:uppercase;color:var(--muted)}
+/* Phase 4 — Stop Detail Page */
+#p-stop-detail .container{padding:14px 16px}
+.sd-header{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--cyan);border-radius:6px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.sd-header .sd-name{font-size:1.05em;font-weight:800;margin-left:12px}
+.sd-header .sd-meta{font-size:.74em;color:var(--muted);margin-left:8px}
+.sd-actions{display:flex;gap:6px}
+.sd-actions .btn{font-size:.72em}
+.sd-section-label{font-size:.65em;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;font-weight:700}
+.sd-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.sd-kpi{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--cyan);border-radius:5px;padding:10px}
+.sd-kpi.green{border-left-color:var(--green)}
+.sd-kpi.purple{border-left-color:var(--purple)}
+.sd-kpi.amber{border-left-color:var(--yellow)}
+.sd-kpi-lbl{font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.sd-kpi-val{font-size:1.15em;font-weight:800;margin-top:2px}
+.sd-kpi-sub{font-size:.66em;margin-top:3px;color:var(--muted)}
+.sd-detail-grid{display:grid;grid-template-columns:1fr 2fr;gap:14px}
+.sd-col{display:flex;flex-direction:column;gap:10px}
+.revprofit-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px}
+.revprofit-tile{background:var(--bg);padding:8px 10px;border-radius:4px}
+.revprofit-tile-lbl{font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.revprofit-tile-val{font-size:1em;font-weight:800;margin-top:3px}
+.revprofit-summary{font-size:.84em;margin-top:10px;padding:8px 10px;background:var(--bg);border-radius:4px}
+.revprofit-summary b{color:var(--green)}
+.revprofit-toggle{display:inline-block;cursor:pointer;color:var(--cyan);font-size:.78em;font-weight:700;padding:6px 0;margin-top:6px}
+.revprofit-monthly-tbl{display:none;width:100%;border-collapse:collapse;font-size:.78em;margin-top:8px}
+.revprofit-monthly-tbl.show{display:table}
+.revprofit-monthly-tbl th{text-align:left;padding:5px 8px;font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.revprofit-monthly-tbl td{padding:4px 8px;border-bottom:1px solid var(--border)}
+.revprofit-monthly-tbl tr.current td{font-weight:800;background:var(--bg)}
+.sd-loc-row{display:flex;justify-content:space-between;padding:3px 0;font-size:.82em;border-bottom:1px solid var(--border)}
+.sd-loc-row:last-child{border-bottom:0}
+.sd-loc-row .lbl{color:var(--muted)}
+.sd-rack{background:var(--bg);padding:8px 10px;border-radius:4px;margin-top:6px}
+.sd-rack .sd-loc-row{font-size:.78em}
+.sd-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.sd-chart-wrap{background:var(--bg);border-radius:4px;padding:10px;height:240px;position:relative}
+.sd-chart-wrap canvas{max-height:200px}
+.disc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:6px}
+.disc-card{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:4px;padding:8px 10px;font-size:.78em}
+.disc-card.alert{border-left-color:var(--red)}
+.disc-card .disc-name{font-weight:700;font-size:.92em}
+.disc-card .disc-meta{font-size:.78em;color:var(--muted);margin-top:2px}
+.disc-card .disc-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;font-size:.78em}
+.disc-card .disc-stat-lbl{color:var(--muted);font-size:.86em}
+.disc-card .disc-stat-val{font-weight:700}
+.sd-history-tbl{width:100%;border-collapse:collapse;font-size:.82em;margin-top:6px}
+.sd-history-tbl th{text-align:left;padding:5px 8px;font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);background:var(--bg3)}
+.sd-history-tbl td{padding:5px 8px;border-bottom:1px solid var(--border)}
+.sd-history-tbl tr.current td{font-weight:800;background:var(--bg)}
+@media print {
+  .topbar, .tabs, #site-drawer, #stopdata-import-modal, .sd-actions, #toast { display: none !important; }
+  body, .panel, .container { background: #fff !important; color: #000 !important; }
+  .panel { display: none !important; }
+  #p-stop-detail { display: block !important; }
+  #p-stop-detail .container { max-width: 100% !important; padding: 0 !important; }
+  .drawer-card, .card, .sd-kpi, .disc-card { page-break-inside: avoid; box-shadow: none !important; border: 1px solid #999 !important; }
+  .sd-detail-grid { grid-template-columns: 1fr !important; }
+  .sd-charts-grid { grid-template-columns: 1fr 1fr !important; }
+  .sd-chart-wrap { height: 200px !important; }
+}
 .fuel-tile-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .fuel-tile{background:var(--bg);padding:10px;border-radius:5px}
 .fuel-tile-lbl{font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
@@ -378,6 +439,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     <div class="tab" data-tab="calculator" onclick="switchTab('calculator',this)">🧮 Calculator</div>
     <div class="tab" data-tab="fuel-intro" onclick="switchTab('fuel-intro',this)">🔥 Fuel Intro</div>
     <div class="tab" data-tab="critical" onclick="switchTab('critical',this)">🚨 Critical<span class="badge" id="crit-badge" style="display:none">0</span></div>
+    <div class="tab" data-tab="stop-detail" id="tab-stop-detail" style="display:none" onclick="switchTab('stop-detail',this)">📊 Stop Detail</div>
   </div>
 
   <!-- ═══ DASHBOARD ═══ -->
@@ -403,10 +465,14 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 
   <!-- ═══ CRITICAL ═══ -->
   <div class="panel" id="p-critical"><div class="container" id="crit-content"></div></div>
+
+  <!-- ═══ STOP DETAIL PAGE (Phase 4) ═══ -->
+  <div class="panel" id="p-stop-detail"><div class="container" id="stop-detail-content"></div></div>
 </div>
 
 <!-- SITE DETAIL DRAWER -->
 <div id="site-drawer">
+  <button class="btn" id="drawer-fullpage-btn" onclick="drawerOpenFullPage()" style="position:absolute;top:14px;right:54px;font-size:.72em;padding:4px 10px" title="Open full page">🗗 Full Page</button>
   <button class="drawer-close" onclick="closeDrawer()">&times;</button>
   <div id="drawer-body"></div>
 </div>
@@ -1098,6 +1164,7 @@ function initGSSelector(){
 }
 
 function changeGSSelection(value){
+  if(_stopDetailActiveStopId !== null) closeStopDetailPage(true);
   managerSelection = value;
   try { localStorage.setItem('gs_cmd_manager_selection', value); } catch(e){}
   calcCurrent = null;
@@ -2641,8 +2708,599 @@ function closeStopDataModal(){
   if(m){ m.classList.remove('show'); }
 }
 
+// ─── Phase 4: Stop Detail Page ────────────────────────────────────────
+let _stopDetailActiveStopId = null;
+let _stopDetailReturnTab = null;
+const REV_PER_GAL_GS = 0.05;
+const COST_PER_GAL_GS = 0.02;
+function estRevenueGS(gallons, rack){ return (+gallons || 0) * REV_PER_GAL_GS; }
+function estProfitGS(gallons, rack){  return (+gallons || 0) * (REV_PER_GAL_GS - COST_PER_GAL_GS); }
+
+function openStopDetailPage(stopId){
+  if(!MEMBERS.find(m => m.id === stopId)) return;
+  // Stash current tab so we can return to it
+  const currentTab = document.querySelector('.tab.active')?.dataset?.tab;
+  if(currentTab && currentTab !== 'stop-detail') _stopDetailReturnTab = currentTab;
+  _stopDetailActiveStopId = stopId;
+  const tabEl = document.getElementById('tab-stop-detail');
+  if(tabEl) tabEl.style.display = '';
+  switchTab('stop-detail', tabEl);
+  renderStopDetailPage(stopId);
+}
+function closeStopDetailPage(suppressDrawer){
+  const tabEl = document.getElementById('tab-stop-detail');
+  if(tabEl) tabEl.style.display = 'none';
+  const ret = _stopDetailReturnTab || 'dashboard';
+  const retEl = document.querySelector(`.tab[data-tab="${ret}"]`);
+  switchTab(ret, retEl);
+  const sid = _stopDetailActiveStopId;
+  _stopDetailActiveStopId = null;
+  _stopDetailReturnTab = null;
+  if(sid && !suppressDrawer) openSiteDrawer(sid);
+}
+function renderStopDetailPage(stopId){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop){ document.getElementById('stop-detail-content').innerHTML = ''; return; }
+  // Phase 4 fires the value-prop fetch on first open (matches drawer)
+  if(typeof loadValueProps === 'function' && !_vpCache){
+    loadValueProps().then(() => {
+      if(_stopDetailActiveStopId === stopId) renderStopDetailPage(stopId);
+    });
+  }
+  document.getElementById('stop-detail-content').innerHTML = `
+    ${pageHeaderHTML(stopId)}
+    ${pageKpiHeroHTML(stopId)}
+    <div class="sd-detail-grid">
+      <div class="sd-col">
+        ${pageLocationDetailsHTML(stopId)}
+        ${drawerMembershipHTML(stopId)}
+        ${drawerRewardsHTML(stopId)}
+        ${drawerValuePropHTML(stopId)}
+        ${pageRackHTML(stopId)}
+        ${pageActivityLogHTML(stopId)}
+      </div>
+      <div class="sd-col">
+        ${pageRevProfitHTML(stopId)}
+        ${drawerFuelHTML(stopId)}
+        ${pageChartsHTML(stopId)}
+        ${drawerVendorStubHTML(stopId)}
+        ${drawerVendorOpportunityHTML(stopId)}
+        ${pageDiscountsHTML(stopId)}
+        ${drawerROIHTML(stopId)}
+        ${drawerCRMTasksHTML(stopId)}
+        ${pageCalculationsHTML(stopId)}
+        ${pageHistoryTableHTML(stopId)}
+      </div>
+    </div>
+  `;
+  // Charts render after innerHTML — Task 7 will populate
+  if(typeof renderStopDetailCharts === 'function') renderStopDetailCharts(stopId);
+}
+
+// ─── Stub helpers — replaced in Tasks 3-9 ──
+function pageHeaderHTML(stopId){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop) return '';
+  // Compute network rank by MTD gallons
+  const m = currentMonthKey();
+  const ranked = MEMBERS.slice().map(s => ({id: s.id, g: stopTotalGallons(s.id, m)})).sort((a,b) => b.g - a.g);
+  const rank = ranked.findIndex(r => r.id === stopId) + 1;
+  const total = ranked.length;
+  const gsName = MANAGER_MAP[stop.state] || 'Unassigned';
+  return `
+    <div class="sd-header">
+      <div style="display:flex;align-items:center;flex-wrap:wrap">
+        <button class="btn" onclick="closeStopDetailPage()" style="font-size:.72em">← Back</button>
+        <span class="sd-name">${esc(stop.name)}</span>
+        <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)} · Network rank #${rank} of ${total}</span>
+      </div>
+      <div class="sd-actions">
+        <button class="btn" onclick="printStopDetail()">🖨 Print Report</button>
+        <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
+      </div>
+    </div>
+  `;
+}
+function pageKpiHeroHTML(stopId){
+  const m = currentMonthKey();
+  const pm = priorMonthKey(m);
+  const totalMtd = stopTotalGallons(stopId, m);
+  const totalPrior = stopTotalGallons(stopId, pm);
+  const totalYtd = ytdGallonsForStop(stopId, m, 'total');
+  const revMtd = estRevenueGS(totalMtd);
+  const revPrior = estRevenueGS(totalPrior);
+  const revYtd = estRevenueGS(totalYtd);
+  const profitMtd = estProfitGS(totalMtd);
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const fmt$ = n => '$' + Math.round(+n||0).toLocaleString();
+  const fmt$k = n => { const v = Math.round(+n||0); return v >= 1000 ? '$' + (v/1000).toFixed(1) + 'k' : fmt$(v); };
+  // Pull GD record for aggregator/fleet counts
+  let aggCount = 0, fleetCount = 0, aggGal = 0, fleetGal = 0;
+  try {
+    const GD = loadFuelGD();
+    const rec = GD[stopId]?.[m];
+    if(rec){
+      aggCount = (rec.aggregators||[]).length;
+      fleetCount = (rec.fleets||[]).length;
+      aggGal = (rec.aggregators||[]).reduce((s,a)=>s+(+a.gallons||0),0);
+      fleetGal = (rec.fleets||[]).reduce((s,f)=>s+(+f.gallons||0),0);
+    }
+  } catch(e){}
+  // Vendor counts
+  const VPE = loadVendorEnrolls();
+  const stopVP = VPE[stopId];
+  const enrolledCount = (stopVP && typeof stopVP === 'object')
+    ? Object.values(stopVP).filter(v => v === true).length
+    : 0;
+  const opps = vendorOpportunityForStop(stopId);
+  const missedTop = Math.min(opps.length, 10);
+  // Rewards redemption rate
+  const rec = loadStopRecord(stopId);
+  const adds = (typeof rec.rewardsYtdAdds === 'number') ? rec.rewardsYtdAdds : null;
+  const redeems = (typeof rec.rewardsYtdRedeems === 'number') ? rec.rewardsYtdRedeems : null;
+  const redemptionRate = (adds != null && redeems != null && adds > 0) ? ((redeems/adds)*100) : null;
+  const redemptionLabel = redemptionRate != null ? redemptionRate.toFixed(1) + '%' : '—';
+  const redemptionSub = (adds != null && redeems != null) ? `YTD adds ${fmt$k(adds)} · redeems ${fmt$k(redeems)}` : 'set on Rewards card';
+  // ROI
+  const roi = computeStopROI(stopId);
+  const netCurrentLbl = roi.netCurrent != null ? fmt$(roi.netCurrent) + (roi.netCurrent > 0 ? ' ✓' : ' ✗') : '—';
+  const netPotLbl = roi.netPotential != null ? 'Potential: ' + fmt$(roi.netPotential) + (roi.netPotential > 0 ? ' ✓' : '') : '—';
+  // Membership chips
+  const memChips = [];
+  if(rec.priceFileFeeRemoved) memChips.push('PFF removed');
+  if(rec.acceptsFuelman) memChips.push('Fuelman ✓');
+  if(rec.acceptsRcheck) memChips.push('R-Check ✓');
+  const memLabel = rec.membershipCost ? esc(rec.membershipCost) : '—';
+  const trendPill = (cur, prior) => {
+    if(!prior || prior <= 0) return '<span style="color:var(--muted)">—</span>';
+    const d = ((cur - prior) / prior) * 100;
+    return `<span style="color:${d>=0?'var(--green)':'var(--red)'}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% MoM</span>`;
+  };
+  return `
+    <div class="sd-section-label">📊 At-a-Glance — ${(() => { const [y,mo]=m.split('-').map(Number); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo-1]+' '+y; })()}</div>
+    <div class="sd-kpi-grid">
+      <div class="sd-kpi"><div class="sd-kpi-lbl">Total Gallons MTD</div><div class="sd-kpi-val">${fmtN(totalMtd)}</div><div class="sd-kpi-sub">${trendPill(totalMtd, totalPrior)} · YTD ${fmtN(totalYtd)}</div></div>
+      <div class="sd-kpi green"><div class="sd-kpi-lbl">Est. Revenue MTD</div><div class="sd-kpi-val">${fmt$(revMtd)}</div><div class="sd-kpi-sub">${trendPill(revMtd, revPrior)} · YTD ${fmt$k(revYtd)}</div></div>
+      <div class="sd-kpi purple"><div class="sd-kpi-lbl">Est. Profit MTD</div><div class="sd-kpi-val" style="color:var(--green)">${fmt$(profitMtd)}</div><div class="sd-kpi-sub">$${(REV_PER_GAL_GS-COST_PER_GAL_GS).toFixed(4)} margin/gal</div></div>
+      <div class="sd-kpi amber"><div class="sd-kpi-lbl">Net to Site (ROI)</div><div class="sd-kpi-val" style="color:${roi.netCurrent != null && roi.netCurrent > 0 ? 'var(--green)' : (roi.netCurrent != null ? 'var(--red)' : 'var(--muted)')}">${netCurrentLbl}</div><div class="sd-kpi-sub">${netPotLbl}</div></div>
+      <div class="sd-kpi"><div class="sd-kpi-lbl">Aggregators / Fleets</div><div class="sd-kpi-val">${aggCount} / ${fleetCount}</div><div class="sd-kpi-sub">${fmtN(aggGal)} gal agg · ${fmtN(fleetGal)} gal fleet</div></div>
+      <div class="sd-kpi amber"><div class="sd-kpi-lbl">Vendor Programs</div><div class="sd-kpi-val">${enrolledCount} enrolled</div><div class="sd-kpi-sub"><span style="color:var(--yellow)">${missedTop} missed (top 10)</span></div></div>
+      <div class="sd-kpi amber"><div class="sd-kpi-lbl">Rewards Redemption</div><div class="sd-kpi-val" style="color:${redemptionRate != null && redemptionRate >= 60 ? 'var(--green)' : (redemptionRate != null && redemptionRate >= 30 ? 'var(--yellow)' : 'var(--muted)')}">${redemptionLabel}</div><div class="sd-kpi-sub">${redemptionSub}</div></div>
+      <div class="sd-kpi purple"><div class="sd-kpi-lbl">Membership · Programs</div><div class="sd-kpi-val">${memLabel}</div><div class="sd-kpi-sub">${memChips.length ? memChips.join(' · ') : 'no programs flagged'}</div></div>
+    </div>
+  `;
+}
+function pageLocationDetailsHTML(stopId){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop) return '';
+  const m = currentMonthKey();
+  const ranked = MEMBERS.slice().map(s => ({id: s.id, g: stopTotalGallons(s.id, m)})).sort((a,b) => b.g - a.g);
+  const rank = ranked.findIndex(r => r.id === stopId) + 1;
+  const groupColor = stop.group === "Roady's" ? 'var(--cyan)' : (stop.group === 'PTP' ? 'var(--orange)' : 'var(--muted)');
+  return `
+    <div class="drawer-card purple">
+      <div class="drawer-card-hd">📍 Location Details</div>
+      <div class="sd-loc-row"><span class="lbl">Roady's ID</span><span>${esc(stop.id)}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Company</span><span>${esc(stop.company||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Name</span><span>${esc(stop.name||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Address</span><span style="font-size:.92em">${esc(stop.street||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">City / State</span><span>${esc(stop.city||'—')}, ${esc(stop.state||'—')} ${esc(stop.zip||'')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Exit / Highway</span><span>${esc(stop.exit||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Phone</span><span>${stop.phone ? `<a href="tel:${esc(stop.phone)}" style="color:var(--cyan)">${esc(stop.phone)}</a>` : '—'}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Group</span><span style="color:${groupColor};font-weight:700">${esc(stop.group||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Type</span><span>${esc(stop.type||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Status</span><span style="color:${stop.status==='active'?'var(--green)':'var(--muted)'}">${esc(stop.status||'—')}</span></div>
+      <div class="sd-loc-row"><span class="lbl">Network Rank</span><span><b>#${rank}</b> of ${ranked.length}</span></div>
+    </div>
+  `;
+}
+function pageRackHTML(stopId){
+  let rack = {};
+  try {
+    const GD = loadFuelGD();
+    rack = GD[stopId]?.[currentMonthKey()]?.rack || {};
+  } catch(e){}
+  const fmtRate = n => (typeof n === 'number' && !isNaN(n)) ? '$' + n.toFixed(4) : '—';
+  return `
+    <div class="drawer-card amber">
+      <div class="drawer-card-hd">⛽ Rack Information</div>
+      <div class="sd-rack">
+        <div class="sd-loc-row"><span class="lbl">Rack Index</span><span>${esc(rack.rack_index||'—')}</span></div>
+        <div class="sd-loc-row"><span class="lbl">OPIS ID</span><span>${esc(rack.opis_id||'—')}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Index Type</span><span>${esc(rack.index_type||'—')}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Freight Rate</span><span>${fmtRate(rack.freight)}/gal</span></div>
+        <div class="sd-loc-row"><span class="lbl">Federal Tax</span><span>${fmtRate(rack.federal_tax)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">State Excise Tax</span><span>${fmtRate(rack.state_excise)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">State Sales Tax</span><span>${rack.state_sales_tax !== undefined ? rack.state_sales_tax + '%' : '—'}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Misc. Tax</span><span>${rack.misc_tax !== undefined ? '$' + rack.misc_tax : '—'}</span></div>
+      </div>
+    </div>
+  `;
+}
+function pageRevProfitHTML(stopId){
+  const m = currentMonthKey();
+  const [y, currentMo] = m.split('-').map(Number);
+  const monthLabel = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][currentMo-1] + ' ' + y;
+  const totalMtd = stopTotalGallons(stopId, m);
+  const revMtd = estRevenueGS(totalMtd);
+  const profitMtd = estProfitGS(totalMtd);
+  let rack = {};
+  try {
+    const GD = loadFuelGD();
+    rack = GD[stopId]?.[m]?.rack || {};
+  } catch(e){}
+  const freight = (typeof rack.freight === 'number' && !isNaN(rack.freight)) ? rack.freight : 0.0675;
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const fmt$ = n => '$' + Math.round(+n||0).toLocaleString();
+  // Build Jan-through-current-month rows
+  const rows = [];
+  for(let mi = 1; mi <= currentMo; mi++){
+    const mk = y + '-' + String(mi).padStart(2, '0');
+    const g = stopTotalGallons(stopId, mk);
+    const r = estRevenueGS(g);
+    const p = estProfitGS(g);
+    const isCur = (mi === currentMo);
+    const moLbl = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mi-1] + ' ' + y;
+    rows.push(`<tr${isCur ? ' class="current"' : ''}>
+      <td>${moLbl}</td>
+      <td>${g > 0 ? fmtN(g) : '—'}</td>
+      <td style="color:var(--green)">${g > 0 ? fmt$(r) : '—'}</td>
+      <td style="color:${p >= 0 ? 'var(--green)' : 'var(--red)'}">${g > 0 ? fmt$(p) : '—'}</td>
+      <td style="color:var(--muted)">${g > 0 ? '$' + REV_PER_GAL_GS.toFixed(4) : '—'}</td>
+    </tr>`);
+  }
+  return `
+    <div class="drawer-card green">
+      <div class="drawer-card-hd">💰 Revenue &amp; Profitability — ${esc(monthLabel)}</div>
+      <div class="revprofit-tiles">
+        <div class="revprofit-tile"><div class="revprofit-tile-lbl">Rev / Gallon (est.)</div><div class="revprofit-tile-val" style="color:var(--green)">$${REV_PER_GAL_GS.toFixed(4)}</div></div>
+        <div class="revprofit-tile"><div class="revprofit-tile-lbl">Cost / Gallon (est.)</div><div class="revprofit-tile-val" style="color:var(--red)">$${COST_PER_GAL_GS.toFixed(4)}</div></div>
+        <div class="revprofit-tile"><div class="revprofit-tile-lbl">Net / Gallon</div><div class="revprofit-tile-val" style="color:var(--cyan)">$${(REV_PER_GAL_GS-COST_PER_GAL_GS).toFixed(4)}</div></div>
+        <div class="revprofit-tile"><div class="revprofit-tile-lbl">Freight Rate</div><div class="revprofit-tile-val">$${freight.toFixed(4)}</div></div>
+      </div>
+      <div class="revprofit-summary">
+        <b>${esc(monthLabel)}:</b> ${fmtN(totalMtd)} gal · ${fmt$(revMtd)} revenue · ${fmt$(profitMtd)} profit
+      </div>
+      <div class="revprofit-toggle" onclick="toggleRevProfitMonthly(this)">+ Show monthly breakdown</div>
+      <table class="revprofit-monthly-tbl">
+        <thead><tr><th>Period</th><th>Gallons</th><th>Est Revenue</th><th>Est Profit</th><th>Rev/Gal</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+function toggleRevProfitMonthly(btn){
+  const tbl = btn.parentElement.querySelector('.revprofit-monthly-tbl');
+  if(!tbl) return;
+  const expanded = tbl.classList.toggle('show');
+  btn.textContent = expanded ? '− Hide monthly breakdown' : '+ Show monthly breakdown';
+}
+function pageChartsHTML(stopId){
+  return `
+    <div class="drawer-card amber">
+      <div class="drawer-card-hd">📈 Trends</div>
+      <div class="sd-charts-grid">
+        <div class="sd-chart-wrap">
+          <div style="font-size:.7em;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:700">6-Month Gallons</div>
+          <canvas id="sd-chart-gallons"></canvas>
+        </div>
+        <div class="sd-chart-wrap">
+          <div style="font-size:.7em;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Fleets / Aggregators · Current Month</div>
+          <canvas id="sd-chart-mix"></canvas>
+        </div>
+      </div>
+    </div>
+  `;
+}
+let _sdGallonsChart = null;
+let _sdMixChart = null;
+function renderStopDetailCharts(stopId){
+  const m = currentMonthKey();
+  const [y, mo] = m.split('-').map(Number);
+  // Build last 6 months including current
+  const labels = [];
+  const gallons = [];
+  for(let i = 5; i >= 0; i--){
+    const d = new Date(y, mo - 1 - i, 1);
+    const ml = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    labels.push(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear().toString().slice(2));
+    gallons.push(stopTotalGallons(stopId, ml));
+  }
+  // Gallons line chart
+  if(_sdGallonsChart){ try { _sdGallonsChart.destroy(); } catch(e){} _sdGallonsChart = null; }
+  const c1 = document.getElementById('sd-chart-gallons');
+  if(c1 && typeof Chart !== 'undefined'){
+    _sdGallonsChart = new Chart(c1, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Gallons', data: gallons, borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,.1)', tension: .3, fill: true }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { color: '#94a3b8' } }, x: { ticks: { color: '#94a3b8' } } } }
+    });
+  }
+  // Fleets/Aggregators doughnut
+  if(_sdMixChart){ try { _sdMixChart.destroy(); } catch(e){} _sdMixChart = null; }
+  let aggList = [], fleetList = [], directG = 0;
+  try {
+    const GD = loadFuelGD();
+    const rec = GD[stopId]?.[m];
+    if(rec){
+      aggList = (rec.aggregators||[]).map(a => ({label: (a.name||'').split(' ').slice(0,2).join(' ') || 'Agg', value: +a.gallons||0}));
+      fleetList = (rec.fleets||[]).map(f => ({label: f.name||'Fleet', value: +f.gallons||0}));
+      const aggSum = aggList.reduce((s,x)=>s+x.value,0);
+      const fleetSum = fleetList.reduce((s,x)=>s+x.value,0);
+      const total = +rec.gallons || 0;
+      directG = Math.max(0, total - aggSum - fleetSum);
+    }
+  } catch(e){}
+  const c2 = document.getElementById('sd-chart-mix');
+  if(c2 && typeof Chart !== 'undefined'){
+    const aggGroup = aggList.reduce((s,x)=>s+x.value,0);
+    const fleetGroup = fleetList.reduce((s,x)=>s+x.value,0);
+    _sdMixChart = new Chart(c2, {
+      type: 'doughnut',
+      data: { labels: ['Aggregators', 'Fleets', 'Direct'], datasets: [{ data: [aggGroup, fleetGroup, directG], backgroundColor: ['rgba(34,211,238,.7)', 'rgba(16,185,129,.7)', 'rgba(251,146,60,.7)'], borderColor: 'transparent' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 } } } } }
+    });
+  }
+}
+function pageDiscountsHTML(stopId){
+  let aggList = [], fleetList = [];
+  try {
+    const GD = loadFuelGD();
+    const rec = GD[stopId]?.[currentMonthKey()];
+    if(rec){
+      aggList = rec.aggregators || [];
+      fleetList = rec.fleets || [];
+    }
+  } catch(e){}
+  if(!aggList.length && !fleetList.length){
+    return `
+      <div class="drawer-card amber">
+        <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet</div>
+        <div style="font-size:.78em;color:var(--muted)">No aggregator or fleet records on file for this period. Add discount programs in <code>index.html</code>'s Fuelman page.</div>
+      </div>
+    `;
+  }
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const aggCards = aggList.map(a => {
+    const cp = +a.cost_plus || 0;
+    const rm = +a.retail_minus || 0;
+    const net = cp + rm;
+    const profitable = net >= 0;
+    return `
+      <div class="disc-card${profitable ? '' : ' alert'}">
+        <div class="disc-name">${esc(a.name||'—')}</div>
+        <div class="disc-meta">ID: ${esc(a.id||'—')} · ${esc(a.processor||'—')} · Aggregator</div>
+        <div class="disc-stats">
+          <div><div class="disc-stat-lbl">Gallons</div><div class="disc-stat-val">${fmtN(a.gallons)}</div></div>
+          <div><div class="disc-stat-lbl">Cost Plus</div><div class="disc-stat-val">${cp > 0 ? '+$'+cp.toFixed(4) : (cp === 0 ? 'None' : '$'+cp.toFixed(4))}</div></div>
+          <div><div class="disc-stat-lbl">Retail Minus</div><div class="disc-stat-val">${rm < 0 ? '$'+rm.toFixed(4) : (rm === 0 ? 'None' : '+$'+rm.toFixed(4))}</div></div>
+          <div><div class="disc-stat-lbl">Net / Gallon</div><div class="disc-stat-val" style="color:${profitable ? 'var(--green)' : 'var(--red)'}">${profitable ? '+' : ''}$${net.toFixed(4)}</div></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  const fleetCards = fleetList.map(f => `
+    <div class="disc-card">
+      <div class="disc-name">${esc(f.name||'—')}</div>
+      <div class="disc-meta">ID: ${esc(f.id||'—')} · ${esc(f.processor||'—')} · Fleet</div>
+      <div class="disc-stats">
+        <div><div class="disc-stat-lbl">Gallons</div><div class="disc-stat-val">${fmtN(f.gallons)}</div></div>
+        <div><div class="disc-stat-lbl">Type</div><div class="disc-stat-val">Fleet Account</div></div>
+      </div>
+    </div>
+  `).join('');
+  return `
+    <div class="drawer-card amber">
+      <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet (${aggList.length} agg · ${fleetList.length} fleet)</div>
+      <div class="disc-grid">
+        ${aggCards}
+        ${fleetCards}
+      </div>
+    </div>
+  `;
+}
+function pageHistoryTableHTML(stopId){
+  const m = currentMonthKey();
+  const [y, currentMo] = m.split('-').map(Number);
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  // Last 6 months including current
+  const months = [];
+  for(let i = 5; i >= 0; i--){
+    const d = new Date(y, currentMo - 1 - i, 1);
+    months.push({
+      key: d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'),
+      label: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear()
+    });
+  }
+  let GD = {};
+  try { GD = loadFuelGD(); } catch(e){}
+  const rows = months.map((mo, i) => {
+    const d = GD[stopId]?.[mo.key] || {};
+    const gal = +d.gallons || 0;
+    // Compare against the row above (i-1) which is the prior month
+    const prior = i > 0 ? (+(GD[stopId]?.[months[i-1].key]?.gallons) || 0) : null;
+    const aggCount = (d.aggregators||[]).length;
+    const fleetCount = (d.fleets||[]).length;
+    const aggNames = (d.aggregators||[]).map(a => (a.name||'').split(' ')[0]).filter(Boolean).slice(0,3).join(', ');
+    let changeLbl = '—';
+    let changeColor = 'var(--muted)';
+    if(prior != null && prior > 0){
+      const pct = ((gal - prior) / prior) * 100;
+      changeLbl = `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%`;
+      changeColor = pct >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+    const isCur = (i === months.length - 1);
+    return `<tr${isCur ? ' class="current"' : ''}>
+      <td>${esc(mo.label)}</td>
+      <td>${gal > 0 ? fmtN(gal) : '—'}</td>
+      <td style="color:${changeColor}">${changeLbl}</td>
+      <td>${aggCount}</td>
+      <td>${fleetCount}</td>
+      <td style="font-size:.86em;color:var(--muted)">${esc(aggNames || '—')}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="drawer-card">
+      <div class="drawer-card-hd">📊 6-Month History</div>
+      <table class="sd-history-tbl">
+        <thead><tr><th>Period</th><th>Gallons</th><th>Change</th><th>Agg #</th><th>Fleet #</th><th>Aggregators</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+function pageActivityLogHTML(stopId){
+  const logs = (activityLogs[stopId]||[]).slice().sort((a,b) => new Date(b.date) - new Date(a.date));
+  const rows = logs.length ? logs.map(l => `
+    <div class="log-entry ${ageClass(ageDays(l.date))}">
+      <span class="log-date">${new Date(l.date).toLocaleString()}</span>
+      <span class="log-type type-${l.type}">${l.type.toUpperCase()}</span>
+      <div class="log-body"><b>${esc(l.subject)}</b>${l.notes?' — '+esc(l.notes):''}</div>
+    </div>
+  `).join('') : '<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82em">No activity logged. Click + Add to start.</div>';
+  return `
+    <div class="drawer-card">
+      <div class="drawer-card-hd" style="display:flex;justify-content:space-between;align-items:center">
+        <span>📋 Activity Log (${logs.length})</span>
+        <span style="display:flex;gap:6px">
+          <button class="btn btn-green" onclick="addLog('${esc(stopId)}')" style="font-size:.72em;padding:4px 10px">+ Add</button>
+          <button class="btn btn-cyan" onclick="scheduleCall('${esc(stopId)}')" style="font-size:.72em;padding:4px 10px">📅 Schedule</button>
+          <button class="btn btn-red" onclick="addCritical('${esc(stopId)}')" style="font-size:.72em;padding:4px 10px">🚨 Flag</button>
+        </span>
+      </div>
+      <div style="margin-top:8px;max-height:300px;overflow-y:auto">${rows}</div>
+    </div>
+  `;
+}
+function pageCalculationsHTML(stopId){
+  const stopScenarios = scenariosForStop(stopId);
+  if(!stopScenarios.length){
+    return `
+      <div class="drawer-card">
+        <div class="drawer-card-hd">🧮 Calculations (0)</div>
+        <div style="font-size:.78em;color:var(--muted);padding:6px 0">No scenarios linked. Tie one in the Calculator tab.</div>
+      </div>
+    `;
+  }
+  const rows = stopScenarios.map(scn => {
+    const rT = scn.retail   ? calcSide(scn.retail).totalNewRevenue   : 0;
+    const cT = scn.costPlus ? calcSide(scn.costPlus).totalNewRevenue : 0;
+    const gsTag = scn._gs ? `<span style="font-size:.68em;color:${REGIONS[scn._gs]?.color||'var(--muted)'};margin-left:6px">[${esc(scn._gs)}]</span>` : '';
+    const gsArg = scn._gs ? `,'${esc(scn._gs)}'` : '';
+    return `<div class="info-item" style="cursor:pointer;margin-bottom:6px" onclick="openCalcScenarioFromDrawer('${esc(scn.id)}'${gsArg})">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><b>${esc(scn.name||'(unnamed)')}</b>${gsTag}</div>
+        <span style="font-size:.7em;color:var(--muted)">${scn.updated?new Date(scn.updated).toLocaleDateString():''}</span>
+      </div>
+      ${scn.fleet ? `<div style="font-size:.72em;color:var(--muted);margin-top:1px">Fleet: ${esc(scn.fleet)}</div>` : ''}
+      <div style="font-size:.78em;margin-top:3px">
+        <span style="color:var(--cyan)">Retail $${rT.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+        <span style="color:var(--muted);margin:0 6px">·</span>
+        <span style="color:var(--purple)">Cost+ $${cT.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="drawer-card">
+      <div class="drawer-card-hd">🧮 Calculations (${stopScenarios.length})</div>
+      ${rows}
+    </div>
+  `;
+}
+function exportStopDetailCSV(stopId){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop){ toast('Stop not found'); return; }
+  const m = currentMonthKey();
+  const [y, currentMo] = m.split('-').map(Number);
+  const monthLabel = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][currentMo-1] + ' ' + y;
+  const rec = loadStopRecord(stopId);
+  const roi = computeStopROI(stopId);
+  const totalMtd = stopTotalGallons(stopId, m);
+  const totalYtd = ytdGallonsForStop(stopId, m, 'total');
+  const revMtd = estRevenueGS(totalMtd);
+  const revYtd = estRevenueGS(totalYtd);
+  const profitMtd = estProfitGS(totalMtd);
+  // CSV cell escape (RFC 4180): wrap in double quotes, escape inner quotes
+  const cell = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const row = arr => arr.map(cell).join(',');
+  const lines = [];
+  // Header
+  lines.push(row(['Stop', stop.id, stop.name, stop.city||'', stop.state||'', monthLabel]));
+  lines.push('');
+  // KPIs
+  lines.push(row(['KPI', 'Value']));
+  lines.push(row(['Total Gallons MTD', totalMtd]));
+  lines.push(row(['Total Gallons YTD', totalYtd]));
+  lines.push(row(['Est. Revenue MTD', revMtd.toFixed(2)]));
+  lines.push(row(['Est. Revenue YTD', revYtd.toFixed(2)]));
+  lines.push(row(['Est. Profit MTD', profitMtd.toFixed(2)]));
+  lines.push(row(['Membership Cost', rec.membershipCost || '']));
+  lines.push(row(['Price File Fee Removed', rec.priceFileFeeRemoved ? 'Yes' : 'No']));
+  lines.push(row(['Accepts Fuelman', rec.acceptsFuelman ? 'Yes' : 'No']));
+  lines.push(row(['Accepts R-Check', rec.acceptsRcheck ? 'Yes' : 'No']));
+  lines.push(row(['YTD Total Gallons (manual)', rec.ytdTotalGallons != null ? rec.ytdTotalGallons : '']));
+  lines.push(row(['Rewards YTD Adds', rec.rewardsYtdAdds != null ? rec.rewardsYtdAdds : '']));
+  lines.push(row(['Rewards YTD Redeems', rec.rewardsYtdRedeems != null ? rec.rewardsYtdRedeems : '']));
+  lines.push(row(['ROI Net Current', roi.netCurrent != null ? roi.netCurrent.toFixed(2) : '']));
+  lines.push(row(['ROI Net Potential', roi.netPotential != null ? roi.netPotential.toFixed(2) : '']));
+  lines.push('');
+  // Revenue & Profitability monthly
+  lines.push(row(['Revenue & Profitability', 'Period', 'Gallons', 'Revenue', 'Profit', 'RevPerGal']));
+  for(let mi = 1; mi <= currentMo; mi++){
+    const mk = y + '-' + String(mi).padStart(2, '0');
+    const g = stopTotalGallons(stopId, mk);
+    const moLbl = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mi-1] + ' ' + y;
+    lines.push(row(['', moLbl, g, estRevenueGS(g).toFixed(2), estProfitGS(g).toFixed(2), REV_PER_GAL_GS.toFixed(4)]));
+  }
+  lines.push('');
+  // Vendor enrollment
+  const VPE = loadVendorEnrolls();
+  const stopVP = VPE[stopId];
+  if(stopVP && typeof stopVP === 'object'){
+    const master = loadVendorMaster();
+    const enrolledIds = Object.keys(stopVP).filter(vid => stopVP[vid] === true);
+    lines.push(row(['Vendor Programs Enrolled', 'Vendor ID', 'Name', 'Program', 'Avg Savings']));
+    for(const vid of enrolledIds){
+      const v = master.VP_VENDORS.find(x => x.id === vid);
+      const c = master.progDetails.find(p => p.vid === vid);
+      lines.push(row(['', vid, v?.name || '—', v?.program || '—', c?.avgSavings || '—']));
+    }
+    lines.push('');
+  }
+  // Vendor opportunity (top 10)
+  const opps = vendorOpportunityForStop(stopId).slice(0, 10);
+  if(opps.length){
+    lines.push(row(['Vendor Opportunity (Top 10)', 'Vendor ID', 'Name', 'Program', 'Avg Savings ($/mo)']));
+    for(const o of opps){
+      lines.push(row(['', o.vid, o.name, o.program, o.savings || 0]));
+    }
+  }
+  const csv = lines.join('\r\n');
+  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = stopId + '-' + m + '-detail.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 100);
+  toast('Exported ' + a.download);
+}
+function printStopDetail(){ window.print(); }
+
+let _drawerActiveStopId = null;
+function drawerOpenFullPage(){
+  const sid = _drawerActiveStopId;
+  if(!sid){ toast('No stop active'); return; }
+  closeDrawer();
+  openStopDetailPage(sid);
+}
 function openSiteDrawer(siteId){
   const s=MEMBERS.find(m=>m.id===siteId);if(!s)return;
+  _drawerActiveStopId = siteId;
   // Phase 3: kick off async value-prop fetch on first drawer open this session
   if(!_vpCache) { loadValueProps().then(() => { if(document.getElementById('site-drawer')?.classList.contains('open')) openSiteDrawer(siteId); }); }
   const extras=siteExtras[siteId]||{};
@@ -2731,7 +3389,7 @@ function openSiteDrawer(siteId){
   `;
   document.getElementById('site-drawer').classList.add('open');
 }
-function closeDrawer(){document.getElementById('site-drawer').classList.remove('open');}
+function closeDrawer(){_drawerActiveStopId = null; document.getElementById('site-drawer').classList.remove('open');}
 
 function toggleExtra(siteId,field,val){
   if(!siteExtras[siteId])siteExtras[siteId]={};
