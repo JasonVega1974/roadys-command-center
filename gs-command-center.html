@@ -462,6 +462,17 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .visit-modal-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
 .visit-modal-row .fg{flex:1;min-width:120px}
 .visit-modal-row label.cb{display:flex;align-items:center;gap:6px;font-size:.78em;font-weight:600;color:var(--text);cursor:pointer;padding-bottom:7px}
+/* Phase 8.1 — Supabase Auth login form */
+.auth-form{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.auth-input{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--ff);font-size:.9em;width:100%}
+.auth-input:focus{outline:none;border-color:var(--cyan)}
+.auth-send{background:var(--accent);color:var(--bg);border:none;border-radius:8px;padding:10px 16px;font-weight:700;font-size:.88em;cursor:pointer;font-family:var(--ff);transition:all .15s}
+.auth-send:hover:not(:disabled){background:var(--cyan)}
+.auth-send:disabled{opacity:.5;cursor:not-allowed}
+.auth-status{font-size:.78em;color:var(--muted);min-height:20px;line-height:1.4}
+.auth-status.success{color:var(--green)}
+.auth-status.err{color:var(--red)}
+.auth-help{font-size:.7em;color:var(--muted);margin-top:6px;line-height:1.4}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -472,10 +483,13 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
   <div class="login-box">
     <div class="login-logo">ROADY'S</div>
     <div style="font-size:.82em;font-weight:700;margin-bottom:2px">Growth Strategist Command Center</div>
-    <div class="login-sub">Enter your PIN to continue</div>
-    <div class="pin-dots" id="pin-dots"></div>
-    <div class="pin-pad" id="pin-pad"></div>
-    <div class="login-error" id="login-error"></div>
+    <div class="login-sub">Sign in with your email</div>
+    <form class="auth-form" id="auth-form" onsubmit="event.preventDefault();sendMagicLink()">
+      <input type="email" class="auth-input" id="auth-email" placeholder="you@example.com" autocomplete="email" required>
+      <button type="submit" class="auth-send" id="auth-send-btn">Send magic link</button>
+      <div class="auth-status" id="auth-status"></div>
+    </form>
+    <div class="auth-help">We'll email you a link to sign in. Check your inbox after clicking — link is single-use and expires after 60 minutes.</div>
   </div>
 </div>
 
@@ -788,15 +802,140 @@ const REGIONS = {
   'Steph Leslie':        {states:['CO','ID','KS','MT','NE','ND','OK','SD','TX','WY'], color:'#00C8FF', label:'Central'}
 };
 
-const GS_PINS = {
-  '1001':{name:'Logan Resinkin',role:'Growth Strategist'},
-  '1002':{name:'Burt Newman',role:'Growth Strategist'},
-  '1003':{name:'Maria Coleman',role:'Growth Strategist'},
-  '1004':{name:'Shannon Bumbalough',role:'Growth Strategist'},
-  '1005':{name:'Stefanie Ritter',role:'Growth Strategist'},
-  '1006':{name:'Steph Leslie',role:'Growth Strategist'},
-  '9999':{name:'Manager',role:'Manager — All Territories',isManager:true}
-};
+// ─── Phase 8.1: Supabase Auth ─────────────────────────────────────────
+// Replaces the old PIN-based GS_PINS table. Users are now managed in
+// public.users (Supabase) and matched to currentUser by auth UID.
+let _authSendCooldownTimer = null;
+let _supabaseClient = null;
+
+function getSupabaseAuthClient(){
+  // Singleton wrapper around the existing getRoadysSB() helper.
+  if(_supabaseClient) return _supabaseClient;
+  _supabaseClient = getRoadysSB();
+  return _supabaseClient;
+}
+
+function showLoginScreen(){
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  const status = document.getElementById('auth-status');
+  if(status){ status.textContent = ''; status.className = 'auth-status'; }
+  const btn = document.getElementById('auth-send-btn');
+  if(btn){ btn.disabled = false; btn.textContent = 'Send magic link'; }
+  if(_authSendCooldownTimer){ clearTimeout(_authSendCooldownTimer); _authSendCooldownTimer = null; }
+}
+
+async function sendMagicLink(){
+  const emailEl = document.getElementById('auth-email');
+  const status = document.getElementById('auth-status');
+  const btn = document.getElementById('auth-send-btn');
+  const email = (emailEl?.value || '').trim().toLowerCase();
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    status.textContent = 'Enter a valid email address.';
+    status.className = 'auth-status err';
+    return;
+  }
+  const sb = getSupabaseAuthClient();
+  if(!sb){ status.textContent = 'Auth service unavailable. Reload the page.'; status.className = 'auth-status err'; return; }
+  btn.disabled = true; btn.textContent = 'Sending...';
+  status.textContent = '';
+  status.className = 'auth-status';
+  try {
+    // emailRedirectTo defaults to the current page if omitted, which is
+    // what we want — the link bounces back to gs-command-center.html.
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href.split('#')[0] }
+    });
+    if(error) throw error;
+    status.textContent = 'Magic link sent — check your email.';
+    status.className = 'auth-status success';
+    btn.textContent = 'Sent (resend in 60s)';
+    // 60-second client-side debounce to discourage spam-clicks. Supabase
+    // also rate-limits at 1/min server-side.
+    _authSendCooldownTimer = setTimeout(() => {
+      btn.disabled = false; btn.textContent = 'Send magic link';
+    }, 60000);
+  } catch(e){
+    status.textContent = 'Could not send magic link: ' + (e.message || e);
+    status.className = 'auth-status err';
+    btn.disabled = false;
+    btn.textContent = 'Send magic link';
+  }
+}
+
+async function fetchUserRow(authUid){
+  const sb = getSupabaseAuthClient();
+  if(!sb) return null;
+  const { data, error } = await sb.from('users').select('*').eq('id', authUid).maybeSingle();
+  if(error){ console.warn('fetchUserRow error:', error.message); return null; }
+  return data || null;
+}
+
+function mapAuthUserToCurrentUser(userRow){
+  // Translate the public.users row into the currentUser shape the rest
+  // of the app already expects (.name, .role, .isManager).
+  const isManager = userRow.role === 'manager';
+  return {
+    id:        userRow.id,
+    email:     userRow.email,
+    full_name: userRow.full_name || userRow.email,
+    name:      userRow.full_name || userRow.email,                          // back-compat: was set from PIN map
+    role:      isManager ? 'Manager — All Territories' : 'Growth Strategist', // display string
+    isManager,
+    gs_name:   userRow.gs_name || null
+  };
+}
+
+async function onAuthReady(session){
+  // session may be null (signed out) or an object (signed in).
+  if(!session){ showLoginScreen(); return; }
+  const userRow = await fetchUserRow(session.user.id);
+  if(!userRow){
+    // Auth succeeded but no public.users row — not authorized.
+    const status = document.getElementById('auth-status');
+    if(status){ status.textContent = 'This email is not authorized. Contact your manager.'; status.className = 'auth-status err'; }
+    try { await getSupabaseAuthClient()?.auth.signOut(); } catch(e){}
+    showLoginScreen();
+    return;
+  }
+  if(userRow.active === false){
+    const status = document.getElementById('auth-status');
+    if(status){ status.textContent = 'This account is inactive. Contact your manager.'; status.className = 'auth-status err'; }
+    try { await getSupabaseAuthClient()?.auth.signOut(); } catch(e){}
+    showLoginScreen();
+    return;
+  }
+  // Sanity-check gs_name against REGIONS so a typo at seed time is loud.
+  if(userRow.gs_name && !REGIONS[userRow.gs_name]){
+    console.warn('Phase 8.1: users.gs_name "' + userRow.gs_name + '" does not match a REGIONS key — localStorage data for this user will not resolve.');
+  }
+  finalizeLogin(mapAuthUserToCurrentUser(userRow));
+}
+
+async function bootSupabaseAuth(){
+  // Eager-load supabase-js, hook auth state, kick the first session check.
+  // Replaces the synchronous initLogin() entry point.
+  try { await ensureSupabaseLib(); } catch(e){
+    document.getElementById('auth-status').textContent = 'Could not load auth library. Check your network.';
+    document.getElementById('auth-status').className = 'auth-status err';
+    return;
+  }
+  const sb = getSupabaseAuthClient();
+  if(!sb){
+    document.getElementById('auth-status').textContent = 'Auth service unavailable.';
+    document.getElementById('auth-status').className = 'auth-status err';
+    return;
+  }
+  // Listen for sign-in / sign-out events. Magic-link redirects fire SIGNED_IN.
+  sb.auth.onAuthStateChange((event, session) => {
+    if(event === 'SIGNED_IN' || event === 'INITIAL_SESSION') onAuthReady(session);
+    else if(event === 'SIGNED_OUT') showLoginScreen();
+  });
+  // Initial check — covers the "already-signed-in / cold reload" case.
+  const { data } = await sb.auth.getSession();
+  onAuthReady(data?.session || null);
+}
 
 const PROCESSOR_RATES = [
   {agg:'Mudflap',proc:'Tablet/Visa',rate:'1.50%',note:''},
@@ -972,8 +1111,11 @@ let managerSelection = null;
 function getActiveGS(){
   // GS name string (a REGIONS key) when scoped to one GS;
   // null in Manager All-GS mode (or when no one is logged in).
+  // Phase 8.1: non-managers resolve via users.gs_name (was currentUser.name
+  // under the old PIN scheme — values were identical in practice but
+  // gs_name is the proper field).
   if(!currentUser) return null;
-  if(!currentUser.isManager) return currentUser.name;
+  if(!currentUser.isManager) return currentUser.gs_name || null;
   return managerSelection && managerSelection !== ALL_GS ? managerSelection : null;
 }
 
@@ -1304,41 +1446,7 @@ function saveData(){
 // ═══════════════════════════════════════════════════════
 // LOGIN
 // ═══════════════════════════════════════════════════════
-let pinEntry = '';
-function initLogin(){
-  const dots = document.getElementById('pin-dots');
-  dots.innerHTML = [0,1,2,3].map(()=>'<div class="pin-dot"></div>').join('');
-  const pad = document.getElementById('pin-pad');
-  pad.innerHTML = [1,2,3,4,5,6,7,8,9,'C',0,'→'].map(k=>{
-    const cls = (k==='C'||k==='→')?'pin-key fn':'pin-key';
-    return `<div class="${cls}" onclick="pinPress('${k}')">${k==='→'?'Enter':k==='C'?'Clear':k}</div>`;
-  }).join('');
-}
-function pinPress(k){
-  const err = document.getElementById('login-error');
-  err.textContent = '';
-  if(k==='C'){pinEntry='';updateDots();return;}
-  if(k==='→'){
-    const user = GS_PINS[pinEntry];
-    if(user){loginAs(user);}
-    else{err.textContent='Invalid PIN';pinEntry='';updateDots();}
-    return;
-  }
-  if(pinEntry.length<4){pinEntry+=k;updateDots();}
-  if(pinEntry.length===4){
-    setTimeout(()=>{
-      const user=GS_PINS[pinEntry];
-      if(user){loginAs(user);}
-      else{err.textContent='Invalid PIN';pinEntry='';updateDots();}
-    },200);
-  }
-}
-function updateDots(){
-  document.querySelectorAll('.pin-dot').forEach((d,i)=>{
-    d.classList.toggle('filled',i<pinEntry.length);
-  });
-}
-function loginAs(user){
+function finalizeLogin(user){
   currentUser=user;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
@@ -1390,12 +1498,15 @@ function changeGSSelection(value){
   renderAll();
 }
 
-function logout(){
-  currentUser=null;pinEntry='';managerSelection=null;
-  document.getElementById('login-screen').style.display='flex';
+async function logout(){
+  // Phase 8.1: end the Supabase session, then reset client state.
+  // The auth state listener will fire SIGNED_OUT and call showLoginScreen.
+  try { await getSupabaseAuthClient()?.auth.signOut(); } catch(e){ console.warn('logout signOut error:', e); }
+  currentUser=null;
+  managerSelection=null;
   document.getElementById('app').style.display='none';
   document.getElementById('gs-selector-wrap').classList.remove('show');
-  updateDots();
+  showLoginScreen();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -5940,7 +6051,7 @@ function resolveCritical(id){
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
-initLogin();
+bootSupabaseAuth();
 </script>
 <!-- PHASE 3: STOP DATA CSV IMPORT MODAL -->
 <div id="stopdata-import-modal" onclick="if(event.target.id==='stopdata-import-modal')closeStopDataModal()">
