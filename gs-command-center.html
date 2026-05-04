@@ -446,6 +446,22 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .notes-toggle{display:inline-block;cursor:pointer;color:var(--cyan);font-size:.78em;font-weight:700;padding:6px 0;margin-top:4px}
 .notes-extra{display:none}
 .notes-list.expanded .notes-extra{display:block}
+/* Phase 7 — Schedule Visit */
+.visit-card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-top:6px;font-size:.82em}
+.visit-card.past{opacity:.65}
+.visit-meta{font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.visit-body{margin-top:3px;line-height:1.4}
+.visit-loc{font-size:.78em;color:var(--muted);margin-top:2px}
+.visit-actions{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.visit-actions .btn{font-size:.68em;padding:3px 8px}
+.visit-empty{font-size:.78em;color:var(--muted);font-style:italic;padding:6px 0}
+.visit-toggle{display:inline-block;cursor:pointer;color:var(--cyan);font-size:.78em;font-weight:700;padding:6px 0;margin-top:4px}
+.visit-past-extra{display:none}
+.visit-list.expanded .visit-past-extra{display:block}
+.cal-day .cal-dot.dot-visit{background:var(--purple)}
+.visit-modal-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.visit-modal-row .fg{flex:1;min-width:120px}
+.visit-modal-row label.cb{display:flex;align-items:center;gap:6px;font-size:.78em;font-weight:600;color:var(--text);cursor:pointer;padding-bottom:7px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -563,6 +579,27 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="btn" onclick="closeModal('sched-modal')">Cancel</button>
       <button class="btn btn-green" onclick="saveSchedule()">Schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCHEDULE VISIT MODAL (Phase 7) -->
+<div class="overlay" id="visit-modal">
+  <div class="modal">
+    <h3>📅 Schedule Visit</h3>
+    <input type="hidden" id="visit-site-id">
+    <div class="visit-modal-row">
+      <div class="fg"><label>Date</label><input type="date" id="visit-date"></div>
+      <div class="fg" id="visit-time-wrap"><label>Time</label><input type="time" id="visit-time" value="10:00"></div>
+      <div class="fg" id="visit-duration-wrap"><label>Duration (min)</label><input type="number" id="visit-duration" value="60" min="15" step="15"></div>
+      <label class="cb"><input type="checkbox" id="visit-allday" onchange="toggleVisitAllDay(this.checked)"> All-day visit</label>
+    </div>
+    <div class="fg" style="margin-bottom:10px"><label>Location</label><input id="visit-location" placeholder="Auto-filled from stop"></div>
+    <div class="fg" style="margin-bottom:10px"><label>Purpose</label><textarea id="visit-purpose" rows="2" placeholder="Reason for visit..."></textarea></div>
+    <div class="fg" style="margin-bottom:14px"><label>Contact on-site (optional)</label><input id="visit-contact" placeholder="Who to meet..."></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('visit-modal')">Cancel</button>
+      <button class="btn btn-green" onclick="saveVisit()">💾 Save Visit</button>
     </div>
   </div>
 </div>
@@ -3377,6 +3414,7 @@ function renderStopDetailPage(stopId){
         ${drawerValuePropHTML(stopId)}
         ${pageRackHTML(stopId)}
         ${pageActivityLogHTML(stopId)}
+        ${pageVisitsHTML(stopId)}
         ${pageNotesHTML(stopId)}
       </div>
       <div class="sd-col">
@@ -3417,6 +3455,7 @@ function pageHeaderHTML(stopId){
       <div class="sd-actions">
         <button class="btn" onclick="copyShareSummary('${esc(stopId)}')">📋 Copy</button>
         <button class="btn" onclick="emailShareSummary('${esc(stopId)}')">📧 Email</button>
+        ${isAllGSMode() ? '' : `<button class="btn btn-cyan" onclick="scheduleVisit('${esc(stopId)}','page')">📅 Schedule Visit</button>`}
         <button class="btn" onclick="printStopDetail()">🖨 Print Report</button>
         <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
       </div>
@@ -4222,6 +4261,11 @@ function openSiteDrawer(siteId){
     </div>
 
     <div class="drawer-section">
+      <h4>📅 Upcoming Visits (${(() => { const rec=loadStopRecord(siteId); const today=new Date(); const tk=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0'); return (rec.visits||[]).filter(v=>v.date>=tk).length; })()})</h4>
+      ${visitsListHTML(siteId, {surface:'drawer'})}
+    </div>
+
+    <div class="drawer-section">
       <h4>📝 Notes (${(loadStopRecord(siteId).notes||[]).length})</h4>
       ${notesEntriesHTML(siteId, {surface:'drawer'})}
     </div>
@@ -4484,6 +4528,316 @@ function saveLog(){
   toast('Activity logged');
 }
 
+// ─── Phase 7: Schedule Visit — datetime + ICS utilities ───────────────
+// Origin surface for Save dispatch: 'drawer' | 'page' | 'calendar'.
+let _visitOriginSurface = 'drawer';
+
+function padIcsDigits(d){
+  const pad = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate())
+    + 'T' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + 'Z';
+}
+
+function visitToUtcRange(visit){
+  // Returns { startUtc, endUtc, isAllDay } in compact iCal-style strings.
+  // Timed: '20260511T140000Z'. All-day: '20260511' (DTEND exclusive).
+  if(visit.allDay){
+    const [y, mo, da] = visit.date.split('-').map(Number);
+    const start = new Date(y, mo-1, da);
+    const end   = new Date(y, mo-1, da + 1);
+    const fmtDateOnly = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    return { startUtc: fmtDateOnly(start), endUtc: fmtDateOnly(end), isAllDay: true };
+  }
+  // Parse local 'YYYY-MM-DDTHH:MM' as a local Date — timezone offset is then
+  // baked into the toUTC* methods automatically.
+  const localStart = new Date(visit.date + 'T' + (visit.time||'10:00') + ':00');
+  if(isNaN(localStart.getTime())) return { startUtc: '', endUtc: '', isAllDay: false };
+  const dur = Math.max(15, parseInt(visit.durationMin||60, 10));
+  const localEnd = new Date(localStart.getTime() + dur * 60000);
+  return { startUtc: padIcsDigits(localStart), endUtc: padIcsDigits(localEnd), isAllDay: false };
+}
+
+function escapeIcsText(s){
+  // RFC 5545 §3.3.11 TEXT escaping. Order matters: backslash first.
+  return String(s == null ? '' : s)
+    .replace(/\r/g, '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\n/g, '\\n');
+}
+
+function foldIcsLine(line){
+  // RFC 5545 §3.1: lines longer than 75 octets MUST be folded with a
+  // CRLF + leading single space (continuation marker). Approximate
+  // 75-char chunks; our content is rarely multibyte.
+  if(line.length <= 75) return line;
+  const parts = [];
+  parts.push(line.slice(0, 75));
+  let i = 75;
+  while(i < line.length){
+    parts.push(' ' + line.slice(i, i + 74));
+    i += 74;
+  }
+  return parts.join('\r\n');
+}
+
+function scheduleVisit(siteId, surface){
+  if(isAllGSMode()){ toast('Pick a specific GS to schedule a visit'); return; }
+  _visitOriginSurface = surface || 'drawer';
+  const stop = MEMBERS.find(m => m.id === siteId);
+  document.getElementById('visit-site-id').value = siteId;
+  // Default date: today + 7 days
+  const d = new Date(); d.setDate(d.getDate() + 7);
+  document.getElementById('visit-date').value = d.toISOString().slice(0,10);
+  document.getElementById('visit-time').value = '10:00';
+  document.getElementById('visit-duration').value = '60';
+  document.getElementById('visit-allday').checked = false;
+  toggleVisitAllDay(false);
+  const loc = stop ? [stop.street, stop.city, stop.state, stop.zip].filter(x => x && String(x).trim()).join(', ') : '';
+  document.getElementById('visit-location').value = loc;
+  document.getElementById('visit-purpose').value = '';
+  document.getElementById('visit-contact').value = '';
+  openModal('visit-modal');
+}
+
+function toggleVisitAllDay(checked){
+  const tw = document.getElementById('visit-time-wrap');
+  const dw = document.getElementById('visit-duration-wrap');
+  if(tw) tw.style.display = checked ? 'none' : '';
+  if(dw) dw.style.display = checked ? 'none' : '';
+}
+
+function saveVisit(){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); return; }
+  const siteId   = document.getElementById('visit-site-id').value;
+  const date     = document.getElementById('visit-date').value;
+  const time     = document.getElementById('visit-time').value;
+  const duration = parseInt(document.getElementById('visit-duration').value, 10) || 60;
+  const allDay   = document.getElementById('visit-allday').checked;
+  const location = document.getElementById('visit-location').value.trim();
+  const purpose  = document.getElementById('visit-purpose').value.trim();
+  const contact  = document.getElementById('visit-contact').value.trim();
+  if(!date){ toast('Date required'); return; }
+  if(!purpose){ toast('Purpose required'); return; }
+  const rec = loadStopRecord(siteId);
+  if(!Array.isArray(rec.visits)) rec.visits = [];
+  rec.visits.push({
+    id: 'visit_' + Date.now(),
+    date,
+    time: allDay ? null : time,
+    durationMin: allDay ? null : duration,
+    allDay,
+    purpose,
+    contactName: contact,
+    location,
+    author: getActiveGS() || 'Manager',
+    created: new Date().toISOString()
+  });
+  saveData();
+  closeModal('visit-modal');
+  toast('Visit scheduled for ' + date + (allDay ? '' : ' ' + time));
+  // Re-render originating surface
+  if(_visitOriginSurface === 'page' && typeof renderStopDetailPage === 'function') renderStopDetailPage(siteId);
+  else if(_visitOriginSurface === 'calendar' && typeof renderCalendar === 'function') renderCalendar();
+  else if(typeof openSiteDrawer === 'function') openSiteDrawer(siteId);
+}
+
+function cancelVisit(siteId, visitId, surface){
+  if(isAllGSMode()){ toast('Pick a specific GS first'); return; }
+  if(!confirm('Cancel this visit?')) return;
+  const rec = loadStopRecord(siteId);
+  if(!Array.isArray(rec.visits)) return;
+  rec.visits = rec.visits.filter(v => v.id !== visitId);
+  saveData();
+  toast('Visit cancelled');
+  if(surface === 'page' && typeof renderStopDetailPage === 'function') renderStopDetailPage(siteId);
+  else if(surface === 'calendar' && typeof renderCalendar === 'function') renderCalendar();
+  else if(typeof openSiteDrawer === 'function') openSiteDrawer(siteId);
+}
+
+function buildIcsForVisit(stop, visit){
+  const range = visitToUtcRange(visit);
+  if(!range.startUtc || !range.endUtc) return '';
+  const stopName = stop ? stop.name : visit.location || 'Stop visit';
+  const summary = 'Visit: ' + stopName;
+  const descParts = [visit.purpose || ''];
+  if(visit.contactName) descParts.push('', 'Contact: ' + visit.contactName);
+  descParts.push('', 'Generated by Roady\'s GS Command Center');
+  const description = descParts.join('\n');
+  const dtstamp = padIcsDigits(new Date());
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Roady\'s GS Command Center//Phase 7//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:visit-' + visit.id + '@gs-cmd-center.local',
+    'DTSTAMP:' + dtstamp,
+    range.isAllDay ? ('DTSTART;VALUE=DATE:' + range.startUtc) : ('DTSTART:' + range.startUtc),
+    range.isAllDay ? ('DTEND;VALUE=DATE:' + range.endUtc)     : ('DTEND:' + range.endUtc),
+    'SUMMARY:' + escapeIcsText(summary),
+    'LOCATION:' + escapeIcsText(visit.location || ''),
+    'DESCRIPTION:' + escapeIcsText(description),
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ];
+  return lines.map(foldIcsLine).join('\r\n') + '\r\n';
+}
+
+function buildGoogleCalUrlForVisit(stop, visit){
+  const range = visitToUtcRange(visit);
+  if(!range.startUtc || !range.endUtc) return '';
+  const stopName = stop ? stop.name : visit.location || 'Stop visit';
+  const text = 'Visit: ' + stopName;
+  const detailParts = [visit.purpose || ''];
+  if(visit.contactName) detailParts.push('', 'Contact: ' + visit.contactName);
+  detailParts.push('', 'Generated by Roady\'s GS Command Center');
+  const details = detailParts.join('\n');
+  // Google's `dates=` param: '20260511T140000Z/20260511T150000Z' for timed
+  // events, or 'YYYYMMDD/YYYYMMDD' for all-day (exclusive end).
+  const dates = range.startUtc + '/' + range.endUtc;
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text,
+    dates,
+    details,
+    location: visit.location || '',
+    trp: 'false'
+  });
+  return 'https://calendar.google.com/calendar/render?' + params.toString();
+}
+
+function downloadIcs(siteId, visitId){
+  const stop = MEMBERS.find(m => m.id === siteId);
+  const rec = loadStopRecord(siteId);
+  const visit = (rec.visits || []).find(v => v.id === visitId);
+  if(!visit){ toast('Visit not found'); return; }
+  const ics = buildIcsForVisit(stop, visit);
+  if(!ics){ toast('Invalid visit datetime'); return; }
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  // Defensive: strip filesystem-unsafe chars from the stop ID
+  const safeId = (siteId || 'stop').replace(/[\/\\:*?"<>|]/g, '');
+  a.href = url;
+  a.download = safeId + '-' + visit.date + '.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 100);
+  toast('Downloaded ' + a.download);
+}
+
+function openGoogleCalendar(siteId, visitId){
+  const stop = MEMBERS.find(m => m.id === siteId);
+  const rec = loadStopRecord(siteId);
+  const visit = (rec.visits || []).find(v => v.id === visitId);
+  if(!visit){ toast('Visit not found'); return; }
+  const url = buildGoogleCalUrlForVisit(stop, visit);
+  if(!url){ toast('Invalid visit datetime'); return; }
+  window.open(url, '_blank', 'noopener');
+}
+
+function visitsListHTML(stopId, opts){
+  // opts.surface = 'drawer' | 'page' — controls which Save dispatch the
+  // schedule button uses. Manager All-GS mode hides the schedule button
+  // and per-visit Cancel chips; Google + .ics actions stay available.
+  const surface = (opts && opts.surface) || 'drawer';
+  const allMode = isAllGSMode();
+  const rec = loadStopRecord(stopId);
+  const visits = Array.isArray(rec.visits) ? rec.visits.slice() : [];
+  // Ascending by start datetime
+  const sortKey = v => v.date + 'T' + (v.time || '00:00');
+  visits.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  // Split future vs past — past = strictly before today's local date
+  const todayKey = (() => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  })();
+  const future = visits.filter(v => v.date >= todayKey);
+  const past   = visits.filter(v => v.date <  todayKey);
+
+  const fmtRow = (v, isPast) => {
+    const timeLine = v.allDay ? 'All day' : ((v.time || '—') + ' · ' + (v.durationMin || 60) + ' min');
+    const actions = [];
+    actions.push(`<button class="btn" onclick="openGoogleCalendar('${esc(stopId)}','${esc(v.id)}')">🗓 Google</button>`);
+    actions.push(`<button class="btn" onclick="downloadIcs('${esc(stopId)}','${esc(v.id)}')">⬇️ .ics</button>`);
+    if(!allMode && !isPast){
+      actions.push(`<button class="btn btn-red" onclick="cancelVisit('${esc(stopId)}','${esc(v.id)}','${surface}')">✕ Cancel</button>`);
+    }
+    if(isPast){
+      const subj = 'Visit on ' + v.date + ' — ' + (v.purpose || '');
+      const noteSeed = 'Original purpose: ' + (v.purpose || '');
+      actions.push(`<button class="btn" onclick="logPastVisit('${esc(stopId)}','${esc(subj)}','${esc(noteSeed)}')">📝 Log this</button>`);
+    }
+    return `<div class="visit-card${isPast ? ' past' : ''}">
+      <div class="visit-meta">${esc(v.date)} · ${esc(timeLine)}</div>
+      <div class="visit-body">${esc(v.purpose||'')}</div>
+      ${v.contactName ? `<div class="visit-loc">Contact: ${esc(v.contactName)}</div>` : ''}
+      ${v.location ? `<div class="visit-loc">📍 ${esc(v.location)}</div>` : ''}
+      <div class="visit-actions">${actions.join('')}</div>
+    </div>`;
+  };
+
+  let html = '';
+  if(!allMode){
+    html += `<div style="margin-bottom:8px"><button class="btn btn-cyan" onclick="scheduleVisit('${esc(stopId)}','${surface}')" style="font-size:.74em">+ Schedule Visit</button></div>`;
+  }
+  if(!future.length && !past.length){
+    html += `<div class="visit-empty">No upcoming visits.${allMode ? '' : ' Click + Schedule Visit to plan one.'}</div>`;
+  } else {
+    if(future.length){
+      html += `<div class="visit-list">${future.map(v => fmtRow(v, false)).join('')}</div>`;
+    } else {
+      html += `<div class="visit-empty">No upcoming visits.${allMode ? '' : ' Click + Schedule Visit to plan one.'}</div>`;
+    }
+    if(past.length){
+      const pastHTML = past.slice().reverse().map(v => fmtRow(v, true)).join('');
+      html += `<div class="visit-list">
+        <div class="visit-toggle" onclick="togglePastVisits(this)" data-count="${past.length}">+ Show ${past.length} past visit${past.length===1?'':'s'}</div>
+        <div class="visit-past-extra">${pastHTML}</div>
+      </div>`;
+    }
+  }
+  return html;
+}
+
+function togglePastVisits(btn){
+  const list = btn.parentElement;
+  if(!list) return;
+  const expanded = list.classList.toggle('expanded');
+  const count = btn.dataset.count || '0';
+  btn.textContent = expanded ? '− Hide past visits' : ('+ Show ' + count + ' past visit' + (count==='1' ? '' : 's'));
+}
+
+function logPastVisit(stopId, subject, notesSeed){
+  // Open the existing addLog modal with subject + notes pre-filled.
+  // The user reviews and clicks Save in the existing flow.
+  if(typeof addLog === 'function') addLog(stopId);
+  setTimeout(() => {
+    const subjEl = document.getElementById('log-subject');
+    const notesEl = document.getElementById('log-notes');
+    if(subjEl) subjEl.value = subject;
+    if(notesEl) notesEl.value = notesSeed;
+  }, 0);
+}
+
+function pageVisitsHTML(stopId){
+  const rec = loadStopRecord(stopId);
+  const todayKey = (() => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  })();
+  const upcoming = (rec.visits || []).filter(v => v.date >= todayKey).length;
+  return `
+    <div class="drawer-card">
+      <div class="drawer-card-hd">📅 Upcoming Visits (${upcoming})</div>
+      ${visitsListHTML(stopId, {surface:'page'})}
+    </div>
+  `;
+}
+
 function scheduleCall(siteId){
   document.getElementById('sched-site-id').value=siteId;
   const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
@@ -4526,9 +4880,40 @@ function renderCalendar(){
   const daysInMonth=last.getDate();
   const monthName=first.toLocaleString('default',{month:'long',year:'numeric'});
 
+  // Phase 7 — collect every visit across the active GS namespace(s).
+  // Returns { stopId, visit, gs }, sorted by start datetime ascending.
+  function _collectAllVisits(){
+    const out = [];
+    const allMode = isAllGSMode();
+    const collectFromNS = (key, gs) => {
+      try {
+        const sd = JSON.parse(localStorage.getItem(key) || '{}') || {};
+        for(const [stopId, rec] of Object.entries(sd)){
+          if(!rec || !Array.isArray(rec.visits)) continue;
+          for(const v of rec.visits) out.push({ stopId, visit: v, gs });
+        }
+      } catch(e){}
+    };
+    if(allMode){
+      forEachGS((gsName, ns) => collectFromNS(ns('stopdata'), gsName));
+    } else {
+      const active = getActiveGS();
+      if(active) collectFromNS(LS_KEY + active + '_stopdata', active);
+    }
+    out.sort((a,b) => (a.visit.date + 'T' + (a.visit.time||'00:00')).localeCompare(b.visit.date + 'T' + (b.visit.time||'00:00')));
+    return out;
+  }
+
+  const allVisits = _collectAllVisits();
+
   // Get events for this month
   const monthCalls=scheduledCalls.filter(c=>{const d=new Date(c.date);return d.getMonth()===calMonth&&d.getFullYear()===calYear;});
   const callDays=new Set(monthCalls.map(c=>new Date(c.date).getDate()));
+  const monthVisits=allVisits.filter(x => {
+    const [y, mo] = x.visit.date.split('-').map(Number);
+    return (y === calYear) && (mo === calMonth + 1);
+  });
+  const visitDays=new Set(monthVisits.map(x => parseInt(x.visit.date.split('-')[2], 10)));
 
   let calHTML=`<div class="card"><div class="card-hd" style="justify-content:space-between">
     <span>📅 ${monthName}</span>
@@ -4545,7 +4930,11 @@ function renderCalendar(){
   for(let d=1;d<=daysInMonth;d++){
     const isToday=(d===now.getDate()&&calMonth===now.getMonth()&&calYear===now.getFullYear());
     const hasCall=callDays.has(d);
-    calHTML+=`<div class="cal-day${isToday?' today':''}">${d}${hasCall?'<span class="cal-dot dot-call"></span>':''}</div>`;
+    const hasVisit=visitDays.has(d);
+    let dots = '';
+    if(hasCall) dots += '<span class="cal-dot dot-call"></span>';
+    if(hasVisit) dots += '<span class="cal-dot dot-visit"></span>';
+    calHTML+=`<div class="cal-day${isToday?' today':''}">${d}${dots}</div>`;
   }
   calHTML+='</div></div>';
 
@@ -4565,6 +4954,39 @@ function renderCalendar(){
     calHTML+='<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82em">No upcoming calls scheduled.</div>';
   }
   calHTML+='</div>';
+
+  // Phase 7 — Upcoming Visits card
+  const todayKey = (() => {
+    const dd = new Date();
+    return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+  })();
+  const upcomingVisits = allVisits.filter(x => x.visit.date >= todayKey);
+  const allMode = isAllGSMode();
+  calHTML+=`<div class="card"><div class="card-hd">📍 Upcoming Visits (${upcomingVisits.length})</div>`;
+  if(upcomingVisits.length){
+    calHTML+=upcomingVisits.slice(0,20).map(x=>{
+      const s=MEMBERS.find(m=>m.id===x.stopId);
+      const tlbl = x.visit.allDay ? 'All day' : (x.visit.time + ' · ' + (x.visit.durationMin||60) + ' min');
+      const gsTag = allMode ? `<span style="font-size:.7em;color:var(--muted);margin-left:6px">[${esc(x.gs)}]</span>` : '';
+      return `<div class="log-entry age-fresh" style="cursor:pointer" onclick="openSiteDrawer('${esc(x.stopId)}')">
+        <span class="log-date">${esc(x.visit.date)} ${esc(tlbl)}</span>
+        <span style="font-size:.78em;color:var(--purple);margin-left:6px">${esc(s?.name||x.stopId)}</span>${gsTag}
+        <div class="log-body">${esc(x.visit.purpose||'')}${x.visit.contactName?' · <b>Contact:</b> '+esc(x.visit.contactName):''}</div>
+        <div class="visit-actions" style="margin-top:6px">
+          <button class="btn" onclick="event.stopPropagation();openGoogleCalendar('${esc(x.stopId)}','${esc(x.visit.id)}')">🗓 Google</button>
+          <button class="btn" onclick="event.stopPropagation();downloadIcs('${esc(x.stopId)}','${esc(x.visit.id)}')">⬇️ .ics</button>
+          ${allMode ? '' : `<button class="btn btn-red" onclick="event.stopPropagation();cancelVisit('${esc(x.stopId)}','${esc(x.visit.id)}','calendar')">✕ Cancel</button>`}
+        </div>
+      </div>`;
+    }).join('');
+    if(upcomingVisits.length > 20){
+      calHTML+=`<div style="font-size:.72em;color:var(--muted);text-align:center;padding:6px">Showing first 20 of ${upcomingVisits.length}</div>`;
+    }
+  } else {
+    calHTML+='<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82em">No upcoming visits scheduled.</div>';
+  }
+  calHTML+='</div>';
+
   document.getElementById('cal-content').innerHTML=calHTML;
 }
 
