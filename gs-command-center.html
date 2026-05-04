@@ -433,6 +433,19 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .add-mgr-form.show{display:block}
 .add-mgr-form .form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
 .add-mgr-form select[multiple]{min-height:120px;min-width:200px}
+/* Phase 6 — Notes panel */
+.notes-list{display:flex;flex-direction:column;gap:0;margin-top:8px}
+.notes-entry{padding:8px 0;border-top:1px solid var(--border);font-size:.82em}
+.notes-entry:first-child{border-top:0}
+.notes-entry-meta{font-size:.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.notes-entry-body{margin-top:4px;white-space:pre-wrap;line-height:1.4}
+.notes-empty{font-size:.78em;color:var(--muted);font-style:italic;padding:6px 0}
+.notes-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-family:var(--ff);font-size:.84em;resize:vertical;min-height:60px}
+.notes-input:focus{outline:none;border-color:var(--cyan)}
+.notes-save-row{display:flex;justify-content:flex-end;margin-top:6px}
+.notes-toggle{display:inline-block;cursor:pointer;color:var(--cyan);font-size:.78em;font-weight:700;padding:6px 0;margin-top:4px}
+.notes-extra{display:none}
+.notes-list.expanded .notes-extra{display:block}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -3364,6 +3377,7 @@ function renderStopDetailPage(stopId){
         ${drawerValuePropHTML(stopId)}
         ${pageRackHTML(stopId)}
         ${pageActivityLogHTML(stopId)}
+        ${pageNotesHTML(stopId)}
       </div>
       <div class="sd-col">
         ${pageRevProfitHTML(stopId)}
@@ -3401,6 +3415,8 @@ function pageHeaderHTML(stopId){
         <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)} · Network rank #${rank} of ${total}</span>
       </div>
       <div class="sd-actions">
+        <button class="btn" onclick="copyShareSummary('${esc(stopId)}')">📋 Copy</button>
+        <button class="btn" onclick="emailShareSummary('${esc(stopId)}')">📧 Email</button>
         <button class="btn" onclick="printStopDetail()">🖨 Print Report</button>
         <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
       </div>
@@ -3904,6 +3920,218 @@ function drawerOpenFullPage(){
   closeDrawer();
   openStopDetailPage(sid);
 }
+// ─── Phase 6: Share Results ───────────────────────────────────────────
+function formatMonthLabel(monthKey){
+  const [y, mo] = monthKey.split('-').map(Number);
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo-1] + ' ' + y;
+}
+
+function buildShareSummary(stopId){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop) return '';
+  const m = currentMonthKey();
+  const pm = priorMonthKey(m);
+  const monthLbl = formatMonthLabel(m);
+  const gsName = MANAGER_MAP[stop.state] || 'Unassigned';
+
+  const totalMtd = stopTotalGallons(stopId, m);
+  const totalPrior = stopTotalGallons(stopId, pm);
+  const totalYtd = ytdGallonsForStop(stopId, m, 'total');
+  const revMtd = estRevenueGS(totalMtd);
+  const profitMtd = estProfitGS(totalMtd);
+
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const fmt$ = n => '$' + Math.round(+n||0).toLocaleString();
+  const fmtMillions = n => {
+    const v = Math.round(+n||0);
+    return v >= 1000000 ? (v/1000000).toFixed(2) + 'M'
+         : v >= 1000    ? (v/1000).toFixed(1) + 'k'
+         : String(v);
+  };
+  const trendStr = (cur, prior) => {
+    if(!prior || prior <= 0) return '';
+    const d = ((cur - prior) / prior) * 100;
+    return ' (' + (d >= 0 ? '▲' : '▼') + ' ' + Math.abs(d).toFixed(1) + '% MoM)';
+  };
+
+  // Aggregator / fleet counts from current-month GD record
+  let aggCount = 0, fleetCount = 0;
+  try {
+    const GD = loadFuelGD();
+    const rec = GD[stopId]?.[m];
+    if(rec){
+      aggCount = (rec.aggregators||[]).length;
+      fleetCount = (rec.fleets||[]).length;
+    }
+  } catch(e){}
+
+  // Vendor enrolled count + missed top-10 count
+  const VPE = loadVendorEnrolls();
+  const stopVP = VPE[stopId];
+  const enrolledCount = (stopVP && typeof stopVP === 'object')
+    ? Object.values(stopVP).filter(v => v === true).length
+    : 0;
+  const missedCount = Math.min(vendorOpportunityForStop(stopId).length, 10);
+
+  // ROI
+  const roi = computeStopROI(stopId);
+  const roiCurrent = roi.netCurrent != null ? fmt$(roi.netCurrent) + '/mo current' : '—';
+  const roiPotential = roi.netPotential != null ? fmt$(roi.netPotential) + '/mo potential' : '—';
+
+  // Last contact
+  const lc = getLastContact(stopId);
+  let lastContactLine;
+  if(!lc){
+    lastContactLine = 'Last contact: no contact logged';
+  } else {
+    const days = ageDays(lc.date);
+    const ageStr = days === 0 ? 'today' : days === 1 ? '1d ago' : days + 'd ago';
+    const subj = lc.subject ? ' — ' + (lc.type ? lc.type + ' with ' : '') + lc.subject : '';
+    lastContactLine = 'Last contact: ' + ageStr + subj;
+  }
+
+  return [
+    `${stop.name} (${stop.id}) — ${stop.city || ''}, ${stop.state || ''}`,
+    `GS: ${gsName} · ${monthLbl}`,
+    '',
+    `Gallons: ${fmtN(totalMtd)} MTD · ${fmtMillions(totalYtd)} YTD${trendStr(totalMtd, totalPrior)}`,
+    `Revenue (est): ${fmt$(revMtd)} MTD`,
+    `Profit (est):  ${fmt$(profitMtd)} MTD`,
+    `ROI net:       ${roiCurrent} · ${roiPotential}`,
+    '',
+    `Aggregators: ${aggCount} · Fleets: ${fleetCount}`,
+    `Vendor programs: ${enrolledCount} enrolled · ${missedCount} missed (top 10)`,
+    lastContactLine,
+    '',
+    '— Sent from GS Command Center'
+  ].join('\n');
+}
+
+function copyShareSummary(stopId){
+  const text = buildShareSummary(stopId);
+  if(!text){ toast('Stop not found'); return; }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(
+      () => toast('Summary copied to clipboard'),
+      () => copyShareSummaryFallback(text)
+    );
+  } else {
+    copyShareSummaryFallback(text);
+  }
+}
+
+function copyShareSummaryFallback(text){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+  document.body.removeChild(ta);
+  toast(ok ? 'Summary copied to clipboard' : 'Copy failed — select text and copy manually');
+}
+
+function emailShareSummary(stopId){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop){ toast('Stop not found'); return; }
+  const month = formatMonthLabel(currentMonthKey());
+  const subject = `${stop.name} — ${month} snapshot`;
+  const body = buildShareSummary(stopId);
+  const url = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  window.location.href = url;
+}
+
+// ─── Phase 6: Notes panel ─────────────────────────────────────────────
+function notesEntriesHTML(stopId, opts){
+  // opts.surface = 'drawer' | 'page'  — used to namespace the textarea id
+  const surface = (opts && opts.surface) || 'page';
+  const rec = loadStopRecord(stopId);
+  const notes = Array.isArray(rec.notes) ? rec.notes : [];
+  const allMode = isAllGSMode();
+  const TOP_N = 10;
+  const inputId = `notes-input-${surface}-${stopId}`;
+  const composeRow = allMode ? '' : `
+    <textarea class="notes-input" id="${inputId}" rows="3" placeholder="Add a note for this stop..."></textarea>
+    <div class="notes-save-row">
+      <button class="btn btn-cyan" onclick="addNoteFromInput('${esc(stopId)}','${surface}')" style="font-size:.74em">💾 Save Note</button>
+    </div>
+  `;
+  const fmtTs = iso => {
+    if(!iso) return '—';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '—';
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  };
+  const renderEntry = (n, isExtra) => `<div class="notes-entry${isExtra ? ' notes-extra' : ''}">
+    <div class="notes-entry-meta">${fmtTs(n.date)} · ${esc(n.author||'—')}</div>
+    <div class="notes-entry-body">${esc(n.body||'')}</div>
+  </div>`;
+  let listHTML = '';
+  if(!notes.length){
+    listHTML = `<div class="notes-empty">No notes yet.${allMode ? '' : ' Use the box above to start.'}</div>`;
+  } else {
+    const visible = notes.slice(0, TOP_N).map(n => renderEntry(n, false)).join('');
+    const extras = notes.slice(TOP_N).map(n => renderEntry(n, true)).join('');
+    const extraCount = notes.length - TOP_N;
+    const toggle = extraCount > 0
+      ? `<div class="notes-toggle" data-count="${extraCount}" onclick="toggleNotesExpand(this)">+ Show all ${extraCount} more</div>`
+      : '';
+    listHTML = `<div class="notes-list">${visible}${extras}${toggle}</div>`;
+  }
+  return composeRow + listHTML;
+}
+
+function pageNotesHTML(stopId){
+  const rec = loadStopRecord(stopId);
+  const count = Array.isArray(rec.notes) ? rec.notes.length : 0;
+  return `
+    <div class="drawer-card">
+      <div class="drawer-card-hd">📝 Notes (${count})</div>
+      ${notesEntriesHTML(stopId, {surface:'page'})}
+    </div>
+  `;
+}
+
+function addNoteFromInput(stopId, surface){
+  if(isAllGSMode()){ toast('Pick a specific GS to add notes'); return; }
+  const inputId = `notes-input-${surface}-${stopId}`;
+  const ta = document.getElementById(inputId);
+  if(!ta) return;
+  const body = (ta.value || '').trim();
+  if(!body){ toast('Empty note'); return; }
+  const rec = loadStopRecord(stopId);
+  if(!Array.isArray(rec.notes)) rec.notes = [];
+  rec.notes.unshift({
+    id: 'note_' + Date.now(),
+    date: new Date().toISOString(),
+    author: getActiveGS() || 'Manager',
+    body
+  });
+  saveData();
+  ta.value = '';
+  toast('Note added');
+  // Re-render whichever surface this came from. The drawer and the
+  // Stop Detail Page own their own DOM, so we re-render only the one
+  // the user is interacting with — not both.
+  if(surface === 'drawer'){
+    if(typeof openSiteDrawer === 'function') openSiteDrawer(stopId);
+  } else {
+    if(typeof renderStopDetailPage === 'function') renderStopDetailPage(stopId);
+  }
+}
+
+function toggleNotesExpand(btn){
+  const list = btn.parentElement;
+  if(!list) return;
+  const expanded = list.classList.toggle('expanded');
+  const count = btn.dataset.count || '0';
+  btn.textContent = expanded ? '− Show fewer' : '+ Show all ' + count + ' more';
+}
+
 function openSiteDrawer(siteId){
   const s=MEMBERS.find(m=>m.id===siteId);if(!s)return;
   _drawerActiveStopId = siteId;
@@ -3991,6 +4219,11 @@ function openSiteDrawer(siteId){
           <div class="log-body"><b>${esc(l.subject)}</b>${l.notes?' — '+esc(l.notes):''}</div>
         </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82em">No activity logged. Click + Add to start.</div>'}
       </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>📝 Notes (${(loadStopRecord(siteId).notes||[]).length})</h4>
+      ${notesEntriesHTML(siteId, {surface:'drawer'})}
     </div>
   `;
   document.getElementById('site-drawer').classList.add('open');
