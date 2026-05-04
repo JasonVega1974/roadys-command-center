@@ -168,7 +168,7 @@ All inline edits auto-save via `saveManagerOverrides()`. The 💾 Save All butto
 - `mgrToggleEdit(eid, gs)`, `mgrAddStateTo(gs, eid)`, `mgrRemoveState(gs, st, eid)`, `mgrSaveCard(gs, eid)`, `mgrEditName(oldName)`, `mgrRemoveMgr(gs)` — per-card actions (verbatim ports from `index.html` with persistence hook added).
 - `mgrAddManager()` — toolbar add.
 - `mgrSaveAll()`, `mgrImportConfig()`, `mgrExportConfig()`, `mgrResetDefaults()` — toolbar actions.
-- `saveManagerOverrides()` — single point of localStorage write; also calls `populateGSSelector()` to refresh the topbar dropdown.
+- `saveManagerOverrides()` — single point of localStorage write; also calls the existing `initGSSelector()` to refresh the topbar dropdown.
 - `loadManagerOverrides()` — single point of localStorage read; called once at app init.
 
 ---
