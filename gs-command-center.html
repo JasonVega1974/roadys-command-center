@@ -6350,7 +6350,33 @@ function resolveCritical(id){
 // INIT
 // ═══════════════════════════════════════════════════════
 bootSupabaseAuth();
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+  const supabase = createClient(
+    'https://YOUR_PROJECT.supabase.co',
+    'YOUR_ANON_KEY'
+  )
+
+  // 🔑 Check if user is already logged in
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    console.log('Not logged in → send to login screen')
+    // 👇 change this if your login page is different
+    window.location.href = 'index.html'
+  } else {
+    console.log('✅ Logged in as:', session.user.email)
+  }
+
+  // 🔄 Listen for magic link login event
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN') {
+      console.log('🎉 Signed in!', session.user.email)
+    }
+  })
 </script>
+
 <!-- PHASE 3: STOP DATA CSV IMPORT MODAL -->
 <div id="stopdata-import-modal" onclick="if(event.target.id==='stopdata-import-modal')closeStopDataModal()">
   <div class="import-modal-card">
@@ -6367,4 +6393,3 @@ bootSupabaseAuth();
   </div>
 </div>
 </body>
-</html>
