@@ -623,6 +623,15 @@ textarea:focus { border-color: var(--accent); }
       </div>
     </div>
 
+    <!-- Fleet Cards Accepted (Phase 9) -->
+    <div class="section">
+      <div class="section-hdr"><h3>💳 Fleet Cards Accepted</h3></div>
+      <div class="section-body">
+        <div id="fleet-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px"></div>
+        <div class="comment-row"><label>Comments</label><textarea id="fleet-cards-comments" oninput="markDirty()" rows="2"></textarea></div>
+      </div>
+    </div>
+
     <!-- Gallon Report -->
     <div class="section">
       <div class="section-hdr"><h3>📊 Gallon Report (3-month lookback)</h3></div>
@@ -1090,6 +1099,30 @@ const AMENITY_ITEMS = ['DEF available — how many dispensers','# of gas pumps',
 const CURRENT_VENDORS = ['All Over Media','DAS','Ecolab','Entegra','Sysco','Heartland','Lynco','Farmer Brothers','Coca-Cola / CCNA','Global Payments (Heartland)','Iowa Smokehouse','ATM'];
 const CONSIDER_VENDORS = ['Sysco','Heartland','DAS or Lynco','Entegra','Ecolab','Aramark','Coke','ATM','Farmer Bros Coffee','All Over Media','Truck Parking','Other 1','Other 2','Other 3','Other 4','Other 5'];
 
+// Phase 9 — Fleet Cards. gs-command-center.html writes the canonical
+// list to localStorage['roadys_fleet_cards']; this inline fallback is
+// used when the bridge key is absent (e.g. user opens site-visit.html
+// directly without first loading gs-command-center.html).
+let FLEET_CARDS = [
+  { id: 'fuelman',     label: 'Fuelman' },
+  { id: 'rcheck',      label: 'R-Check' },
+  { id: 'comdata',     label: 'Comdata' },
+  { id: 'efs',         label: 'EFS / WEX EFS' },
+  { id: 'tchek',       label: 'T-Chek (TCH)' },
+  { id: 'fleet_one',   label: 'Fleet One' },
+  { id: 'wex',         label: 'WEX' },
+  { id: 'voyager',     label: 'Voyager' },
+  { id: 'mudflap',     label: 'Mudflap' },
+  { id: 'atob',        label: 'AtoB' },
+  { id: 'pilot_fj',    label: 'Pilot / Flying J Fleet' },
+  { id: 'ta_petro',    label: 'TA / Petro UltraONE' },
+  { id: 'shell_fleet', label: 'Shell Fleet' }
+];
+try {
+  const bridged = JSON.parse(localStorage.getItem('roadys_fleet_cards') || 'null');
+  if (Array.isArray(bridged) && bridged.length) FLEET_CARDS = bridged;
+} catch(e){}
+
 // ── STATE ──────────────────────────────────────────────
 let ynState = {};
 let dirty = false;
@@ -1111,6 +1144,66 @@ function buildAggRows(){
       <input type="text" id="${id}-b" oninput="markDirty()">`;
     c.appendChild(d);
   });
+}
+
+// Phase 9 — build the Fleet Cards Accepted checkbox grid
+function buildFleetCardRows(){
+  const c = document.getElementById('fleet-cards-grid');
+  if(!c) return;
+  c.innerHTML = FLEET_CARDS.map(fc => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:.84em;padding:6px 8px;background:var(--bg2);border-radius:4px;cursor:pointer">
+      <input type="checkbox" id="fleet-card-${fc.id}" oninput="markDirty()">
+      <span>${fc.label}</span>
+    </label>
+  `).join('');
+}
+
+// Phase 9 — apply a prefill payload from gs-command-center.html.
+// Single-use: caller deletes localStorage['roadys_sitevisit_prefill'] after.
+function applyPrefill(payload){
+  if(!payload || typeof payload !== 'object') return;
+  // Flat ID → value map
+  if(payload.fields && typeof payload.fields === 'object'){
+    for(const [id, val] of Object.entries(payload.fields)){
+      const el = document.getElementById(id);
+      if(el) el.value = (val == null ? '' : val);
+    }
+  }
+  // Aggregator discounts — name-match against AGGREGATORS list
+  if(Array.isArray(payload.aggregatorDiscounts)){
+    for(const ad of payload.aggregatorDiscounts){
+      const matchName = (ad.name || '').toLowerCase();
+      const hit = AGGREGATORS.find(a => matchName.includes(a.toLowerCase()) || a.toLowerCase().includes(matchName));
+      if(!hit){ console.warn('Phase 9: aggregator name "' + ad.name + '" not in AGGREGATORS — skipping'); continue; }
+      const slug = 'agg-' + hit.replace(/\W+/g,'-').toLowerCase();
+      const r = document.getElementById(slug + '-r');
+      const c = document.getElementById(slug + '-c');
+      const b = document.getElementById(slug + '-b');
+      if(r && ad.retailMinus != null) r.value = ad.retailMinus;
+      if(c && ad.costPlus    != null) c.value = ad.costPlus;
+      if(b && ad.betterOf    != null) b.value = ad.betterOf;
+    }
+  }
+  // Current vendors — toggle the corresponding YN buttons to "yes"
+  // YN id pattern from buildVendorTable: 'current-vendors-body-<i>-active'
+  if(Array.isArray(payload.currentVendors)){
+    for(const v of payload.currentVendors){
+      const matchName = (v || '').toLowerCase();
+      const idx = CURRENT_VENDORS.findIndex(cv => matchName.includes(cv.toLowerCase()) || cv.toLowerCase().includes(matchName));
+      if(idx < 0){ console.warn('Phase 9: vendor name "' + v + '" not in CURRENT_VENDORS — skipping'); continue; }
+      const ynId = 'current-vendors-body-' + idx + '-active';
+      const yesBtn = document.querySelector(`.yn-btn.yes[onclick*="'${ynId}'"]`);
+      if(yesBtn) yesBtn.click();
+    }
+  }
+  // Fleet cards — set checkbox states
+  if(payload.fleetCards && typeof payload.fleetCards === 'object'){
+    for(const [id, on] of Object.entries(payload.fleetCards)){
+      const cb = document.getElementById('fleet-card-' + id);
+      if(cb) cb.checked = !!on;
+    }
+  }
+  dirty = true; // pre-filled values count as a dirty draft
 }
 
 function buildYNSection(containerId, items, prefix){
@@ -1239,7 +1332,14 @@ function saveVisit(){
   const id = currentVisitId || 'visit-'+Date.now();
   currentVisitId = id;
   const visits = loadVisits();
-  visits[id] = { id, member, date, data, saved: new Date().toISOString() };
+  // Phase 9 — preserve stopId across resaves. Sources, in priority order:
+  //   1. existing record's stopId (when re-saving an opened review)
+  //   2. URL ?stop= param (set by gs-command-center.html when launching)
+  //   3. hdr-id field as a last resort (manual entry)
+  const existingStopId = visits[id] && visits[id].stopId;
+  const urlStopId = (new URLSearchParams(location.search)).get('stop');
+  const stopId = existingStopId || urlStopId || (data['hdr-id'] || '').trim() || null;
+  visits[id] = { id, member, date, data, saved: new Date().toISOString(), stopId };
   localStorage.setItem('roadys_site_visits', JSON.stringify(visits));
   dirty = false;
   renderVisitList();
@@ -1347,6 +1447,7 @@ function toast(msg){
 // ── INIT ────────────────────────────────────────────────
 (function init(){
   buildAggRows();
+  buildFleetCardRows();
   buildYNSection('signage-rows', SIGNAGE_ITEMS, 'sign');
   buildYNSection('restroom-rows', RESTROOM_ITEMS, 'rest');
   buildYNSection('shower-rows', SHOWER_ITEMS, 'shower');
@@ -1355,6 +1456,27 @@ function toast(msg){
   buildVendorTable('consider-vendors-body', CONSIDER_VENDORS, false);
   document.getElementById('hdr-date').value = new Date().toISOString().slice(0,10);
   renderVisitList();
+
+  // Phase 9 — prefill detection (URL params + transient localStorage payload)
+  try {
+    const params = new URLSearchParams(location.search);
+    const reviewId = params.get('reviewId');
+    const stopParam = params.get('stop');
+    let prefill = null;
+    try { prefill = JSON.parse(localStorage.getItem('roadys_sitevisit_prefill') || 'null'); }
+    catch(e){ prefill = null; }
+    localStorage.removeItem('roadys_sitevisit_prefill'); // single-use
+
+    if (reviewId) {
+      loadVisit(reviewId);
+    } else if (prefill) {
+      applyPrefill(prefill);
+    } else if (stopParam) {
+      // Minimal fallback: just stamp the Stop ID
+      const idEl = document.getElementById('hdr-id');
+      if (idEl) idEl.value = stopParam;
+    }
+  } catch(e){ console.warn('Phase 9 prefill error:', e); }
 })();
 </script>
 </body>
