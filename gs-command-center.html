@@ -521,6 +521,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     <div class="tab" data-tab="calculator" onclick="switchTab('calculator',this)">🧮 Calculator</div>
     <div class="tab" data-tab="fuel-intro" onclick="switchTab('fuel-intro',this)">🔥 Fuel Intro</div>
     <div class="tab" data-tab="critical" onclick="switchTab('critical',this)">🚨 Critical<span class="badge" id="crit-badge" style="display:none">0</span></div>
+    <div class="tab" data-tab="site-reviews" onclick="switchTab('site-reviews',this)">📋 Site Reviews</div>
     <div class="tab" data-tab="stop-detail" id="tab-stop-detail" style="display:none" onclick="switchTab('stop-detail',this)">📊 Stop Detail</div>
   </div>
 
@@ -547,6 +548,9 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 
   <!-- ═══ CRITICAL ═══ -->
   <div class="panel" id="p-critical"><div class="container" id="crit-content"></div></div>
+
+  <!-- ═══ SITE REVIEWS (Phase 9) ═══ -->
+  <div class="panel" id="p-site-reviews"><div class="container" id="site-reviews-content"></div></div>
 
   <!-- ═══ STOP DETAIL PAGE (Phase 4) ═══ -->
   <div class="panel" id="p-stop-detail"><div class="container" id="stop-detail-content"></div></div>
@@ -972,6 +976,27 @@ const PROCESSOR_RATES = [
   {agg:'Ten-4',proc:'Cardless',rate:'2.50%',note:''},
   {agg:'On Ramp',proc:'Cardless',rate:'1.25% / $2.00 Flat',note:''}
 ];
+
+// ─── Phase 9: Fleet Cards master list ─────────────────────────────────
+// Mirrors what site-visit.html shows in its new Fleet Cards Accepted
+// section. Bridge below writes this to localStorage so site-visit.html
+// reads the canonical list (with its own inline copy as fallback).
+const FLEET_CARDS = [
+  { id: 'fuelman',     label: 'Fuelman' },
+  { id: 'rcheck',      label: 'R-Check' },
+  { id: 'comdata',     label: 'Comdata' },
+  { id: 'efs',         label: 'EFS / WEX EFS' },
+  { id: 'tchek',       label: 'T-Chek (TCH)' },
+  { id: 'fleet_one',   label: 'Fleet One' },
+  { id: 'wex',         label: 'WEX' },
+  { id: 'voyager',     label: 'Voyager' },
+  { id: 'mudflap',     label: 'Mudflap' },
+  { id: 'atob',        label: 'AtoB' },
+  { id: 'pilot_fj',    label: 'Pilot / Flying J Fleet' },
+  { id: 'ta_petro',    label: 'TA / Petro UltraONE' },
+  { id: 'shell_fleet', label: 'Shell Fleet' }
+];
+try { localStorage.setItem('roadys_fleet_cards', JSON.stringify(FLEET_CARDS)); } catch(e){}
 
 // ═══════════════════════════════════════════════════
 // PHASE 5: USA TERRITORY MAP DATA
@@ -1524,7 +1549,7 @@ function switchTab(id,el){
 // RENDER ALL
 // ═══════════════════════════════════════════════════════
 function renderAll(){
-  renderDashboard();renderTerritory();renderCRM();renderCalendar();renderRates();renderCalculator();renderFuelIntro();renderCritical();
+  renderDashboard();renderTerritory();renderCRM();renderCalendar();renderRates();renderCalculator();renderFuelIntro();renderCritical();renderSiteReviews();
   applySortability();
 }
 
@@ -2815,6 +2840,27 @@ function drawerMembershipHTML(stopId){
             <span>Accepts <b>R-Check</b></span>
           </label>
         </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:700">Fleet Cards Accepted</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">
+            ${(() => {
+              const afc = rec.acceptsFleetCards || {};
+              // Legacy fallback: derive from existing booleans if new map is empty
+              if(!afc.fuelman && rec.acceptsFuelman) afc.fuelman = true;
+              if(!afc.rcheck  && rec.acceptsRcheck)  afc.rcheck  = true;
+              const allMode = isAllGSMode();
+              return FLEET_CARDS.map(fc => {
+                const on = !!afc[fc.id];
+                const cursor = allMode ? 'default' : 'pointer';
+                const onclick = allMode ? '' : ` onclick="toggleFleetCard('${esc(stopId)}','${esc(fc.id)}')"`;
+                const style = on
+                  ? 'background:rgba(34,211,238,.15);color:var(--cyan);border:1px solid rgba(34,211,238,.4)'
+                  : 'background:var(--bg);color:var(--muted);border:1px solid var(--border)';
+                return `<span${onclick} style="${style};padding:3px 8px;border-radius:4px;font-size:.74em;cursor:${cursor};user-select:none">${esc(fc.label)}${on?' ✓':''}</span>`;
+              }).join('');
+            })()}
+          </div>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;align-items:end">
         <label style="display:block">
@@ -3526,6 +3572,7 @@ function renderStopDetailPage(stopId){
         ${pageRackHTML(stopId)}
         ${pageActivityLogHTML(stopId)}
         ${pageVisitsHTML(stopId)}
+        ${pagePastReviewsHTML(stopId)}
         ${pageNotesHTML(stopId)}
       </div>
       <div class="sd-col">
@@ -3566,6 +3613,7 @@ function pageHeaderHTML(stopId){
       <div class="sd-actions">
         <button class="btn" onclick="copyShareSummary('${esc(stopId)}')">📋 Copy</button>
         <button class="btn" onclick="emailShareSummary('${esc(stopId)}')">📧 Email</button>
+        <button class="btn btn-cyan" onclick="startSiteReview('${esc(stopId)}')">📋 Site Review</button>
         ${isAllGSMode() ? '' : `<button class="btn btn-cyan" onclick="scheduleVisit('${esc(stopId)}','page')">📅 Schedule Visit</button>`}
         <button class="btn" onclick="printStopDetail()">🖨 Print Report</button>
         <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
@@ -4280,6 +4328,256 @@ function toggleNotesExpand(btn){
   const expanded = list.classList.toggle('expanded');
   const count = btn.dataset.count || '0';
   btn.textContent = expanded ? '− Show fewer' : '+ Show all ' + count + ' more';
+}
+
+// ─── Phase 9: Site Review integration ─────────────────────────────────
+// Build a one-shot prefill payload from a stop's existing data and
+// hand off to site-visit.html via a transient localStorage key.
+
+function siteReviewsForStop(stopId){
+  // Returns reviews from roadys_site_visits tagged with this stopId,
+  // sorted newest-saved first.
+  let visits = {};
+  try { visits = JSON.parse(localStorage.getItem('roadys_site_visits') || '{}') || {}; } catch(e){}
+  return Object.values(visits)
+    .filter(v => v && v.stopId === stopId)
+    .sort((a,b) => (b.saved||'').localeCompare(a.saved||''));
+}
+
+function allSiteReviews(){
+  let visits = {};
+  try { visits = JSON.parse(localStorage.getItem('roadys_site_visits') || '{}') || {}; } catch(e){}
+  return Object.values(visits).sort((a,b) => (b.saved||'').localeCompare(a.saved||''));
+}
+
+function buildSiteReviewPrefill(stopId){
+  // Translate the stop's data into the field-ID map site-visit.html expects.
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop) return null;
+  const rec = loadStopRecord(stopId);
+  const m = currentMonthKey();
+
+  const fields = {
+    'hdr-member': stop.id + ': ' + (stop.name || ''),
+    'hdr-id':     stop.id,
+    'hdr-date':   new Date().toISOString().slice(0,10),
+    'hdr-with':   rec.siteMgrName || '',
+    'hdr-by':     (currentUser && (currentUser.full_name || currentUser.name)) || '',
+    'hdr-addr':   [stop.street, stop.city, stop.state, stop.zip].filter(x => x && String(x).trim()).join(', ') + (stop.phone ? ' · ' + stop.phone : '')
+  };
+
+  // Gallon report — last 3 months from roadys_fuel
+  const m1 = priorMonthKey(m);
+  const m2 = priorMonthKey(m1);
+  const m3 = priorMonthKey(m2);
+  const g1 = stopTotalGallons(stopId, m1);
+  const g2 = stopTotalGallons(stopId, m2);
+  const g3 = stopTotalGallons(stopId, m3);
+  const avg = Math.round((g1 + g2 + g3) / 3);
+  fields['gal-1mo'] = g1 ? Math.round(g1) : '';
+  fields['gal-2mo'] = g2 ? Math.round(g2) : '';
+  fields['gal-3mo'] = g3 ? Math.round(g3) : '';
+  fields['gal-avg'] = avg || '';
+
+  // Rack info — current month
+  let rack = {};
+  try { const GD = loadFuelGD(); rack = GD[stopId]?.[m]?.rack || {}; } catch(e){}
+  fields['rack-city']    = rack.rack_index || '';
+  fields['rack-freight'] = rack.freight     != null ? rack.freight     : '';
+  fields['rack-fed']     = rack.federal_tax != null ? rack.federal_tax : '';
+  fields['rack-state']   = rack.state_excise!= null ? rack.state_excise: '';
+  fields['rack-env']     = rack.misc_tax    != null ? rack.misc_tax    : '';
+  fields['rack-load']    = ''; // not in our schema
+
+  // Rewards YTD
+  if(rec.rewardsYtdAdds    != null) fields['rwd-adds-2025']    = rec.rewardsYtdAdds;
+  if(rec.rewardsYtdRedeems != null) fields['rwd-redeems-2025'] = rec.rewardsYtdRedeems;
+  if(rec.rewardsYtdAdds && rec.rewardsYtdRedeems){
+    fields['rwd-rate-2025'] = ((rec.rewardsYtdRedeems / rec.rewardsYtdAdds) * 100).toFixed(1) + '%';
+  }
+
+  // Aggregator discounts — current month
+  const aggregatorDiscounts = [];
+  try {
+    const GD = loadFuelGD();
+    const aggs = GD[stopId]?.[m]?.aggregators || [];
+    for(const a of aggs){
+      aggregatorDiscounts.push({
+        name: a.name || '',
+        retailMinus: a.retail_minus != null ? a.retail_minus : '',
+        costPlus:    a.cost_plus    != null ? a.cost_plus    : '',
+        betterOf:    ''
+      });
+    }
+  } catch(e){}
+
+  // Current vendors enrolled
+  const currentVendors = [];
+  try {
+    const VPE = loadVendorEnrolls();
+    const stopVP = VPE[stopId];
+    if(stopVP && typeof stopVP === 'object'){
+      const master = loadVendorMaster();
+      for(const [vid, on] of Object.entries(stopVP)){
+        if(!on) continue;
+        const v = master.VP_VENDORS.find(x => x.id === vid);
+        if(v && v.name) currentVendors.push(v.name);
+      }
+    }
+  } catch(e){}
+
+  // Fleet cards — derive from stopdata.acceptsFleetCards (with legacy fallback)
+  const fleetCards = {};
+  const afc = rec.acceptsFleetCards || {};
+  for(const fc of FLEET_CARDS){
+    fleetCards[fc.id] = !!afc[fc.id];
+  }
+  // Legacy: bring across acceptsFuelman / acceptsRcheck booleans if the new map is empty
+  if(!afc.fuelman && rec.acceptsFuelman) fleetCards.fuelman = true;
+  if(!afc.rcheck  && rec.acceptsRcheck)  fleetCards.rcheck  = true;
+
+  return {
+    stopId,
+    reviewId: null,
+    fields,
+    aggregatorDiscounts,
+    currentVendors,
+    fleetCards
+  };
+}
+
+function startSiteReview(stopId){
+  const payload = buildSiteReviewPrefill(stopId);
+  if(!payload){ toast('Stop not found'); return; }
+  try { localStorage.setItem('roadys_sitevisit_prefill', JSON.stringify(payload)); }
+  catch(e){ toast('Could not stage prefill: ' + (e.message||e)); return; }
+  // Bridge the canonical FLEET_CARDS list (idempotent — written at boot too).
+  try { localStorage.setItem('roadys_fleet_cards', JSON.stringify(FLEET_CARDS)); } catch(e){}
+  window.open('site-visit.html?stop=' + encodeURIComponent(stopId), '_blank', 'noopener');
+}
+
+function openSiteReview(reviewId){
+  // Open an existing saved review (no fresh prefill).
+  window.open('site-visit.html?reviewId=' + encodeURIComponent(reviewId), '_blank', 'noopener');
+}
+
+function pagePastReviewsHTML(stopId){
+  const reviews = siteReviewsForStop(stopId);
+  const fmtDateRel = iso => {
+    if(!iso) return '—';
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if(days < 1) return 'today';
+    if(days < 7) return days + 'd ago';
+    if(days < 30) return Math.floor(days/7) + 'w ago';
+    if(days < 365) return Math.floor(days/30) + 'mo ago';
+    return Math.floor(days/365) + 'y ago';
+  };
+  if(!reviews.length){
+    return `
+      <div class="drawer-card">
+        <div class="drawer-card-hd">📋 Past Site Reviews (0)</div>
+        <div style="font-size:.78em;color:var(--muted);padding:6px 0">No site reviews on file. Click <b>📋 Site Review</b> on the header to start one.</div>
+      </div>
+    `;
+  }
+  const rows = reviews.map(r => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--bg);border-radius:4px;margin-bottom:4px;font-size:.82em">
+      <div>
+        <b>${esc(r.date || '—')}</b>
+        <span style="color:var(--muted);margin-left:8px;font-size:.86em">saved ${esc(fmtDateRel(r.saved))}</span>
+      </div>
+      <button class="btn btn-cyan" onclick="openSiteReview('${esc(r.id)}')" style="font-size:.7em;padding:3px 8px">Open →</button>
+    </div>
+  `).join('');
+  return `
+    <div class="drawer-card">
+      <div class="drawer-card-hd">📋 Past Site Reviews (${reviews.length})</div>
+      ${rows}
+    </div>
+  `;
+}
+
+function renderSiteReviews(){
+  const el = document.getElementById('site-reviews-content');
+  if(!el) return;
+  const all = allSiteReviews();
+  const allMode = isAllGSMode();
+  const myStopIds = new Set(myStops.map(s => s.id));
+  // Scope: GS sees reviews for their stops + legacy reviews with no stopId.
+  // Manager All-GS sees everything.
+  const scoped = allMode
+    ? all
+    : all.filter(r => !r.stopId || myStopIds.has(r.stopId));
+
+  const fmtDateRel = iso => {
+    if(!iso) return '—';
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if(days < 1) return 'today';
+    if(days < 7) return days + 'd ago';
+    if(days < 30) return Math.floor(days/7) + 'w ago';
+    if(days < 365) return Math.floor(days/30) + 'mo ago';
+    return Math.floor(days/365) + 'y ago';
+  };
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-hd" style="justify-content:space-between">
+        <span>📋 Site Reviews (${scoped.length}${allMode ? ' across network' : ' in your territory'})</span>
+        <div style="display:flex;gap:6px">
+          <input id="site-rev-search" placeholder="Search member / stop ID..." oninput="renderSiteReviews()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:.82em;min-width:220px">
+        </div>
+      </div>
+      <div style="font-size:.72em;color:var(--muted);margin-bottom:10px">
+        Click a row to open the review in a new tab. Reviews are saved network-wide; this list is scoped to ${allMode ? 'every territory' : 'your assigned stops'}.
+      </div>
+      <div id="site-reviews-list-wrap"></div>
+    </div>
+  `;
+
+  const q = (document.getElementById('site-rev-search')?.value || '').toLowerCase().trim();
+  const filtered = q
+    ? scoped.filter(r =>
+        (r.member || '').toLowerCase().includes(q) ||
+        (r.stopId || '').toLowerCase().includes(q))
+    : scoped;
+
+  const wrap = document.getElementById('site-reviews-list-wrap');
+  if(!filtered.length){
+    wrap.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:.82em">No reviews match.</div>';
+    return;
+  }
+  wrap.innerHTML = `<div class="tbl-wrap"><table id="tbl-site-reviews"><thead><tr>
+    <th>Date</th><th>Member</th><th>Stop ID</th>${allMode?'<th>GS</th>':''}<th>Saved</th><th data-no-sort="1"></th>
+  </tr></thead><tbody>${filtered.map(r => {
+    const stop = r.stopId ? MEMBERS.find(s => s.id === r.stopId) : null;
+    const gs = stop ? (MANAGER_MAP[stop.state] || '—') : '—';
+    return `<tr class="clickable" onclick="openSiteReview('${esc(r.id)}')">
+      <td>${esc(r.date || '—')}</td>
+      <td><b>${esc(r.member || '—')}</b></td>
+      <td style="font-size:.78em;color:var(--muted)">${esc(r.stopId || '—')}</td>
+      ${allMode?`<td style="font-size:.78em">${esc(gs)}</td>`:''}
+      <td style="font-size:.78em;color:var(--muted)">${esc(fmtDateRel(r.saved))}</td>
+      <td><button class="btn btn-cyan" onclick="event.stopPropagation();openSiteReview('${esc(r.id)}')" style="font-size:.7em;padding:3px 8px">Open →</button></td>
+    </tr>`;
+  }).join('')}</tbody></table></div>`;
+  applySortability();
+}
+
+// Phase 9 — Membership card chip toggle for fleet cards
+function toggleFleetCard(stopId, cardId){
+  if(isAllGSMode()){ toast('Pick a specific GS to edit'); return; }
+  const rec = loadStopRecord(stopId);
+  if(!rec.acceptsFleetCards) rec.acceptsFleetCards = {};
+  rec.acceptsFleetCards[cardId] = !rec.acceptsFleetCards[cardId];
+  // Sync legacy booleans for the two cards that have them
+  if(cardId === 'fuelman') rec.acceptsFuelman = !!rec.acceptsFleetCards.fuelman;
+  if(cardId === 'rcheck')  rec.acceptsRcheck  = !!rec.acceptsFleetCards.rcheck;
+  saveData();
+  // Re-render whichever surface is open (drawer always has this card)
+  if(typeof renderStopDetailPage === 'function' && _stopDetailActiveStopId === stopId) renderStopDetailPage(stopId);
+  if(typeof openSiteDrawer === 'function' && _drawerActiveStopId === stopId) openSiteDrawer(stopId);
 }
 
 function openSiteDrawer(siteId){
