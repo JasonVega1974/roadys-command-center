@@ -862,7 +862,6 @@ tr.search-hide{display:none!important;}
     <div class="page" id="pg-master">
       <div class="sec-hdr"><div class="sec-title">EXECUTIVE SUMMARY</div><span class="badge ba" id="master-period">Nov 2025</span></div>
       <div class="kpi-grid" id="master-kpis"></div>
-      <div class="sr" id="master-status"></div>
     </div>
 
     <!-- ══ GS METRICS ══ -->
@@ -3575,140 +3574,67 @@ function ecTab(id,el){
 // KPI PAGES
 // ═══════════════════════════════════════════════
 function renderMaster(){
-  const m=getM(), p=pm(m);
+  const m=getM(), p=pm(m), ym=py(m);
   document.getElementById('master-period').textContent=periodLabel(m);
 
-  // ── Helpers ──────────────────────────────────────────────────────
-  // Render one row inside a rich card. If key+mo are provided, the value is
-  // click-to-edit and writes back to KD[key][mo] via dashCellEdit().
-  const dcRow=(label,val,fmt,key,mo)=>{
-    const editable=!!(key&&mo);
-    const attrs=editable?` data-key="${(key+'').replace(/"/g,'&quot;')}" data-mo="${mo}" onclick="dashCellEdit(this)" title="Click to edit"`:'';
-    const cls='dc-val'+(editable?' dc-edit':'');
-    return `<div class="dc-row"><span class="dc-lbl">${label}</span><span class="${cls}"${attrs}>${kpiFmt(val,fmt||'')}</span></div>`;
-  };
-  const richCard=(title,headlineVal,headlineFmt,headlineColor,subRowsHTML)=>
-    `<div class="kc"><div class="kc-lbl">${title}</div>`+
-    `<div class="kc-val"${headlineColor?` style="color:${headlineColor}"`:''}>${kpiFmt(headlineVal,headlineFmt||'')}</div>`+
-    `<div class="dc-list">${subRowsHTML}</div></div>`;
+  // Force every card to use the green ".kc up" treatment. kpiKC's first
+  // wrapper div carries the up/dn/fl class based on MoM direction; we
+  // overwrite it to keep the dashboard a uniform green at-a-glance.
+  const greenCard=(...args)=>kpiKC(...args).replace(/^<div class="kc \w+"/,'<div class="kc up"');
 
-  // ── 1) MEMBERSHIP — total members + breakdown + onboarded/offboarded YTD ──
-  const trk=gv('Number of Truck Stops / Travel Centers',m);
-  const fst=gv('Number of Fuel Stops',m);
-  const svc=gv('Number of Service Centers',m);
-  const cst=gv('Number of C-Stores',m);
-  const total=gv('Total Members',m); // auto-counted from MEMBERS
-  const onbYTD=ytdKpi('Locations Onboarded',m);
-  const offYTD=ytdKpi('Locations Off boarded',m);
-  const memberSubs=
-    dcRow('Truck Stops',trk,'')+
-    dcRow('Fuel Stops',fst,'')+
-    dcRow('Service Centers',svc,'')+
-    dcRow('C-Stores',cst,'')+
-    dcRow('Onboarded YTD',onbYTD,'','Locations Onboarded',m)+
-    dcRow('Offboarded YTD',offYTD,'','Locations Off boarded',m);
-  const membershipCard=richCard('Membership',total,'',null,memberSubs);
+  // ── 1) MEMBERSHIP — total active members (auto-counted from MEMBERS) ──
+  const memNow = gv('Total Members', m);
+  const memPrev = p ? gv('Total Members', p) : null;
+  const memYr = ym ? gv('Total Members', ym) : null;
 
-  // ── 2) REWARDS — locations using rewards + adds + redeems + rate + expired + app users ──
-  const rewLocs=gv('# of Active Rewards Locations',m);
-  const rewAdds=gv('Issued Points (Add Dollars)',m);
-  const rewRedeems=gv('Redeemed Points',m);
-  const rewRate=gv('Redemption Rate',m); // stored as decimal 0..1
-  const rewExpired=gv('Expired Points Revenue',m);
-  const rewApp=gv('Rewards App Registrations',m);
-  const rewardsSubs=
-    dcRow('Total Adds',rewAdds,'$','Issued Points (Add Dollars)',m)+
-    dcRow('Total Redeems',rewRedeems,'$','Redeemed Points',m)+
-    dcRow('Redemption Rate',rewRate,'%','Redemption Rate',m)+
-    dcRow('Expired Points',rewExpired,'$','Expired Points Revenue',m)+
-    dcRow('# App Users',rewApp,'','Rewards App Registrations',m);
-  const rewardsCard=richCard('Rewards',rewLocs,'',null,rewardsSubs);
+  // ── 2) REWARDS — locations participating in the rewards program ──
+  const rwNow = gv('# of Active Rewards Locations', m);
+  const rwPrev = p ? gv('# of Active Rewards Locations', p) : null;
+  const rwYr = ym ? gv('# of Active Rewards Locations', ym) : null;
+  const rwYTD = ytdKpi('# of Active Rewards Locations', m);
 
-  // ── 3) VENDOR PROGRAMS — total deployed across the network + top 10 ──
-  // VP_ENROLL is { stopId: { vendorId: true|false } }; sum true entries per vendor.
-  let vendorCounts={};
+  // ── 3) VENDOR PROGRAMS — unique vendors deployed across the network.
+  // VP_ENROLL is the canonical enrollment store written by vendors.html.
+  let vendorCount = 0;
   try {
-    if(typeof VP_ENROLL!=='undefined'&&VP_ENROLL){
-      Object.values(VP_ENROLL).forEach(stop=>{
-        if(!stop||typeof stop!=='object')return;
-        Object.entries(stop).forEach(([vid,on])=>{ if(on) vendorCounts[vid]=(vendorCounts[vid]||0)+1; });
+    if(typeof VP_ENROLL !== 'undefined' && VP_ENROLL){
+      const set = new Set();
+      Object.values(VP_ENROLL).forEach(stop => {
+        if(stop && typeof stop === 'object'){
+          Object.entries(stop).forEach(([vid, on]) => { if(on) set.add(vid); });
+        }
       });
+      vendorCount = set.size;
     }
   } catch(e){}
-  // Map vendor IDs → display names
-  const vendorName=vid=>{
-    try {
-      if(typeof VP_VENDORS!=='undefined'&&Array.isArray(VP_VENDORS)){
-        const v=VP_VENDORS.find(x=>x.id===vid);
-        if(v) return v.name;
-      }
-    } catch(e){}
-    return vid;
-  };
-  const totalDeployed=Object.values(vendorCounts).reduce((s,n)=>s+n,0);
-  const top10=Object.entries(vendorCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const vendorSubs=top10.length
-    ? top10.map(([vid,n])=>`<div class="dc-row"><span class="dc-lbl">${vendorName(vid).replace(/</g,'&lt;')}</span><span class="dc-val">${n}</span></div>`).join('')
-    : '<div class="dc-row" style="font-style:italic;color:var(--muted)"><span>No enrollment data</span></div>';
-  const vendorCard=richCard('Vendor Programs',totalDeployed,'',null,vendorSubs);
 
-  // ── 4) FUEL — total gallons + breakdown by source (all editable KPI keys) ──
-  const totGal=gv('Total Gallons',m);
-  const fuelSubs=
-    dcRow('Legacy Aggregator',gv('Legacy Aggregator Gallons',m),'','Legacy Aggregator Gallons',m)+
-    dcRow('New Aggregator',gv('New Aggregator Gallons',m),'','New Aggregator Gallons',m)+
-    dcRow('Fleet',gv('Fleet Gallons',m),'','Fleet Gallons',m)+
-    dcRow('Fuelman',gv('Fuelman Gallons',m),'','Fuelman Gallons',m)+
-    dcRow('R-Check',gv('R-Check Gallons',m),'','R-Check Gallons',m);
-  const fuelCard='<div class="kc"><div class="kc-lbl">Fuel</div>'+
-    `<div class="kc-val dc-edit" data-key="Total Gallons" data-mo="${m}" onclick="dashCellEdit(this)" title="Click to edit">${kpiFmt(totGal,'')}</div>`+
-    `<div class="dc-list">${fuelSubs}</div></div>`;
+  // ── 4) FUEL — total gallons across the network for the period ──
+  // totalGallons() sums GD[stopId][m].gallons, the same data used by the
+  // Fuelman page and roadys_fuel localStorage mirror.
+  const fuelNow = totalGallons(m);
+  const fuelPrev = p ? totalGallons(p) : null;
+  const fuelYr = ym ? totalGallons(ym) : null;
+  const fuelYTD = MOS.filter(mo=>mo.slice(0,4)===m.slice(0,4)&&mo<=m).reduce((s,mo)=>s+totalGallons(mo),0);
 
-  // ── 5) NETWORK RETENTION ──
-  let rrM=null;try{if(typeof implSites!=='undefined'&&implSites&&typeof implCalcMetrics==='function')rrM=implCalcMetrics();}catch(e){}
-  let retentionCard;
+  // ── 5) NETWORK RETENTION — derived from the implementation tracker ──
+  let rrM = null;
+  try { if(typeof implSites !== 'undefined' && implSites && typeof implCalcMetrics === 'function') rrM = implCalcMetrics(); } catch(e){}
+  let retentionCardHTML;
   if(rrM){
-    const rrRate=parseFloat(rrM.ytdOffRate);
-    const rrColor=rrRate<5?'#10B981':rrRate<10?'#F59E0B':'#EF4444';
-    const rrPct=(100-rrRate).toFixed(1);
-    const netSign=rrM.ytdNet>=0?'+':'';
-    const retSubs=
-      `<div class="dc-row"><span class="dc-lbl">Network Total</span><span class="dc-val">${rrM.networkTotal}</span></div>`+
-      `<div class="dc-row"><span class="dc-lbl">YTD Onboarded</span><span class="dc-val" style="color:#10B981">${rrM.ytdOnboard}</span></div>`+
-      `<div class="dc-row"><span class="dc-lbl">YTD Offboarded</span><span class="dc-val" style="color:#EF4444">${rrM.ytdOffboard}</span></div>`+
-      `<div class="dc-row"><span class="dc-lbl">YTD Net</span><span class="dc-val" style="color:${rrM.ytdNet>=0?'#10B981':'#EF4444'}">${netSign}${rrM.ytdNet}</span></div>`+
-      `<div class="dc-row"><span class="dc-lbl">YTD Churn Rate</span><span class="dc-val">${rrM.ytdOffRate}%</span></div>`;
-    retentionCard='<div class="kc"><div class="kc-lbl">Network Retention</div>'+
-      `<div class="kc-val" style="color:${rrColor}">${rrPct}%</div>`+
-      `<div class="dc-list">${retSubs}</div></div>`;
+    const rrRate = parseFloat(rrM.ytdOffRate);
+    const retentionDecimal = (100 - rrRate) / 100;
+    const sub = `${rrM.networkTotal} stops · YTD net ${rrM.ytdNet >= 0 ? '+' : ''}${rrM.ytdNet}`;
+    retentionCardHTML = greenCard('Network Retention', retentionDecimal, '%', null, sub, false, null, null);
   } else {
-    retentionCard='<div class="kc"><div class="kc-lbl">Network Retention</div>'+
-      '<div class="kc-val">—</div>'+
-      '<div class="dc-list"><div class="dc-row" style="font-style:italic;color:var(--muted)"><span>Implementation tracker unavailable</span></div></div></div>';
+    retentionCardHTML = greenCard('Network Retention', null, '', null, 'Implementation tracker unavailable', false, null, null);
   }
 
-  // ── Render row 1: 5 cards ──
-  document.getElementById('master-kpis').innerHTML=
-    membershipCard+rewardsCard+vendorCard+fuelCard+retentionCard;
-
-  // ── Status row: Truck Stops / Fuel Stops / Service Centers / C-Stores ──
-  document.getElementById('master-status').innerHTML=[
-    {n:'Truck Stops',k:'Number of Truck Stops / Travel Centers',c:'#00C8FF'},
-    {n:'Fuel Stops',k:'Number of Fuel Stops',c:'#00D68F'},
-    {n:'Service Centers',k:'Number of Service Centers',c:'#7C3AED'},
-    {n:'C-Stores',k:'Number of C-Stores',c:'#FF6B35'},
-  ].map(s=>{
-    const hasManual = KD[s.k]?.[m]!==undefined && KD[s.k]?.[m]!==null;
-    const isAuto = !hasManual && !!MEMBER_AUTO_KEYS[s.k];
-    const val = gv(s.k, m);
-    let staleLbl = '';
-    if(val===null&&!isAuto){
-      const avail = MOS.filter(mo=>(KD[s.k]?.[mo]!==undefined&&KD[s.k]?.[mo]!==null));
-      if(avail.length){const lastMo=avail[avail.length-1];staleLbl=` <span style="font-size:.7em;color:var(--muted)">(${lastMo})</span>`; return `<div class="si"><div class="sd" style="background:${s.c}"></div><div><div class="sn">${s.n}</div><div class="sv">${kpiFmt(KD[s.k][lastMo],'')}${staleLbl}</div></div></div>`;}
-    }
-    const srcLbl = isAuto ? ` <span style="font-size:.7em;color:var(--muted)" title="Live count from member list">●live</span>` : '';
-    return `<div class="si"><div class="sd" style="background:${s.c}"></div><div><div class="sn">${s.n}</div><div class="sv">${kpiFmt(val,'')}${srcLbl}</div></div></div>`;
-  }).join('');
+  document.getElementById('master-kpis').innerHTML =
+    greenCard('Membership',     memNow,       '', memPrev,  '',                                false, null,    memYr) +
+    greenCard('Rewards',        rwNow,        '', rwPrev,   'Active rewards locations',        false, rwYTD,   rwYr) +
+    greenCard('Vendor Programs',vendorCount,  '', null,     'Unique vendors deployed',         false, null,    null) +
+    greenCard('Fuel',           fuelNow,      '', fuelPrev, 'Total gallons (network)',         false, fuelYTD, fuelYr) +
+    retentionCardHTML;
 }
 
 // Recalculate Monthly Vendor Program Revenue as sum of all Program Income lines + Program Rebate-Lynco + Rebates-Bill Divvy
