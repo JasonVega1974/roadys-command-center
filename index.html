@@ -350,15 +350,19 @@ tr.search-hide{display:none!important;}
 .dc-edit{cursor:pointer;border-bottom:1px dashed transparent;}
 .dc-edit:hover{border-bottom-color:var(--accent);color:var(--accent);}
 .dc-editing input{font-family:var(--ff);}
-/* Add-row / delete-row controls */
+/* Add-row / delete-row / edit-row controls. All gated behind
+   body.dash-edit-mode (the rules at the bottom of this block) so
+   the read-only dashboard stays uncluttered. */
 .dc-row-add{margin-top:6px;text-align:center;}
 .dc-add-btn{background:transparent;border:1px dashed var(--border);color:var(--muted);padding:3px 10px;border-radius:4px;font-size:.7em;cursor:pointer;font-family:inherit;}
 .dc-add-btn:hover{border-color:var(--accent);color:var(--accent);}
-.dc-custom-row{position:relative;}
-.dc-row-del{position:absolute;right:-2px;top:0;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1em;line-height:1;padding:0 4px;opacity:0;transition:opacity .15s;}
-.dc-custom-row:hover .dc-row-del{opacity:.7;}
-.dc-row-del:hover{color:var(--red);opacity:1!important;}
-/* Add-card placeholder + delete-card button */
+.dc-custom-row{position:relative;padding-right:36px;}
+.dc-row-del,.dc-row-edit{position:absolute;top:0;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.95em;line-height:1;padding:0 4px;opacity:.6;transition:all .15s;}
+.dc-row-edit{right:18px;}
+.dc-row-del{right:0;}
+.dc-row-edit:hover{color:var(--accent);opacity:1;}
+.dc-row-del:hover{color:var(--red);opacity:1;}
+/* Add-card placeholder + delete/edit-card buttons */
 .dc-add-card-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--border)!important;background:transparent!important;cursor:pointer;min-height:160px;transition:all .15s;}
 .dc-add-card-placeholder:hover{border-color:var(--accent)!important;background:rgba(0,200,255,.04)!important;}
 .dc-add-card-plus{font-size:2.4em;color:var(--muted);line-height:1;}
@@ -366,8 +370,21 @@ tr.search-hide{display:none!important;}
 .dc-add-card-placeholder:hover .dc-add-card-plus,
 .dc-add-card-placeholder:hover .dc-add-card-label{color:var(--accent);}
 .dc-custom-card{position:relative;}
-.dc-card-del{position:absolute;top:8px;right:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1.1em;line-height:1;padding:2px 6px;border-radius:4px;opacity:.5;transition:all .15s;}
+.dc-card-del,.dc-card-edit{position:absolute;top:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1em;line-height:1;padding:2px 6px;border-radius:4px;opacity:.6;transition:all .15s;}
+.dc-card-edit{right:32px;}
+.dc-card-del{right:8px;}
+.dc-card-edit:hover{color:var(--accent);background:rgba(0,200,255,.08);opacity:1;}
 .dc-card-del:hover{color:var(--red);background:rgba(255,71,87,.08);opacity:1;}
+/* Edit-mode toggle: hide all add / edit / delete affordances
+   unless the user has explicitly turned on Edit Layout. */
+body:not(.dash-edit-mode) .dc-row-add,
+body:not(.dash-edit-mode) .dc-row-del,
+body:not(.dash-edit-mode) .dc-row-edit,
+body:not(.dash-edit-mode) .dc-card-del,
+body:not(.dash-edit-mode) .dc-card-edit,
+body:not(.dash-edit-mode) .dc-add-card-placeholder{display:none!important;}
+body:not(.dash-edit-mode) .dc-custom-row{padding-right:0;}
+body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);}
 
 /* SECTION HEADERS */
 .sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
@@ -878,7 +895,7 @@ tr.search-hide{display:none!important;}
 
     <!-- ══ MASTER DASHBOARD (KPI Executive Summary) ══ -->
     <div class="page" id="pg-master">
-      <div class="sec-hdr"><div class="sec-title">EXECUTIVE SUMMARY</div><span class="badge ba" id="master-period">Nov 2025</span></div>
+      <div class="sec-hdr"><div class="sec-title">EXECUTIVE SUMMARY</div><span class="badge ba" id="master-period">Nov 2025</span><button class="btn dash-edit-toggle" id="dash-edit-toggle" onclick="dashToggleEditMode()" style="margin-left:auto;font-size:.75em" title="Toggle edit mode for adding / editing / deleting rows and cards">&#9998; Edit Layout</button></div>
       <div class="kpi-grid" id="master-kpis"></div>
     </div>
 
@@ -2636,6 +2653,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
     }
   } catch(e){ console.warn('default period:', e); }
 
+  // Restore the dashboard edit-mode toggle from localStorage so the
+  // user's choice persists across refreshes.
+  if(typeof dashApplyEditModeClass === 'function') dashApplyEditModeClass();
+
   getRoadysSB();
   if(typeof vpLoadFromSupabase === 'function')   vpLoadFromSupabase();
   if(typeof kpiLoadFromSupabase === 'function')  kpiLoadFromSupabase();
@@ -4090,6 +4111,28 @@ function saveDashCustom(state){
   try { localStorage.setItem('roadys_dash_custom_cards', JSON.stringify(state.cards || [])); } catch(e){}
 }
 
+// Edit-mode state. Persisted in localStorage so the user's choice
+// survives a refresh. CSS gates the +/✎/× affordances behind
+// body.dash-edit-mode so the read-only view is uncluttered.
+function isDashEditMode(){
+  try { return localStorage.getItem('roadys_dash_edit_mode') === '1'; } catch(e){ return false; }
+}
+function dashApplyEditModeClass(){
+  const on = isDashEditMode();
+  document.body.classList.toggle('dash-edit-mode', on);
+  const btn = document.getElementById('dash-edit-toggle');
+  if(btn){
+    btn.innerHTML = on ? '&#10003; Done Editing' : '&#9998; Edit Layout';
+    btn.classList.toggle('btn-accent', on);
+  }
+}
+function dashToggleEditMode(){
+  const next = !isDashEditMode();
+  try { localStorage.setItem('roadys_dash_edit_mode', next ? '1' : '0'); } catch(e){}
+  dashApplyEditModeClass();
+  toast(next ? 'Edit mode ON — add / edit / delete rows and cards' : 'Edit mode OFF');
+}
+
 // Render the user-added rows for a given cardId (plus the per-card
 // "+ Add Row" button). Hover shows the × delete affordance per row.
 function customRowsHTML(cardId, m){
@@ -4105,6 +4148,7 @@ function customRowsHTML(cardId, m){
     return `<div class="dc-row dc-custom-row">`+
       `<span class="dc-lbl">${lblEsc}</span>`+
       `<span class="dc-val${editable?' dc-edit':''}"${editAttrs(r.key, m)}>${kpiFmt(val, r.fmt||'')}</span>`+
+      `<button class="dc-row-edit" title="Edit row label / key / format" onclick="dashEditRow('${cardId}',${i})">&#9998;</button>`+
       `<button class="dc-row-del" title="Delete this row" onclick="dashRemoveRow('${cardId}',${i})">×</button>`+
       `</div>`;
   }).join('');
@@ -4129,6 +4173,7 @@ function customCardsHTML(m){
     const titleEsc = (c.title||'(untitled)').replace(/</g,'&lt;');
     const subEsc = (c.subtitle||'').replace(/</g,'&lt;');
     return `<div class="kc up dc-custom-card">`+
+      `<button class="dc-card-edit" title="Edit card title / headline / sub-title" onclick="dashEditCard('${c.id}')">&#9998;</button>`+
       `<button class="dc-card-del" title="Delete this card" onclick="dashRemoveCard('${c.id}')">×</button>`+
       `<div class="kc-lbl">${titleEsc}</div>`+
       `<div class="${headlineCls}"${editAttrs}>${kpiFmt(headlineVal, c.headlineFmt||'')}</div>`+
@@ -4170,6 +4215,24 @@ function dashRemoveRow(cardId, idx){
     if(typeof renderMaster === 'function') renderMaster();
   }
 }
+function dashEditRow(cardId, idx){
+  const state = loadDashCustom();
+  const row = state.rows?.[cardId]?.[idx];
+  if(!row){ toast('Row not found'); return; }
+  // Three prompts. Cancel on any returns null and aborts the edit.
+  const newLabel = prompt('Row label:', row.label || '');
+  if(newLabel === null) return;
+  const newKey = prompt('KPI key (data source):', row.key || '');
+  if(newKey === null) return;
+  const newFmt = prompt('Format ($ / % / %n / blank for count):', row.fmt || '');
+  if(newFmt === null) return;
+  row.label = (newLabel || '').trim() || row.label;
+  row.key   = (newKey   || '').trim() || row.key;
+  row.fmt   = (newFmt   || '').trim();
+  saveDashCustom(state);
+  if(typeof renderMaster === 'function') renderMaster();
+  toast('Row updated');
+}
 function dashAddCard(){
   const title = (prompt('Card title (e.g. "Driver Engagement"):') || '').trim();
   if(!title) return;
@@ -4190,6 +4253,26 @@ function dashRemoveCard(cardId){
   if(state.rows[cardId]) delete state.rows[cardId];
   saveDashCustom(state);
   if(typeof renderMaster === 'function') renderMaster();
+}
+function dashEditCard(cardId){
+  const state = loadDashCustom();
+  const card = (state.cards || []).find(c => c.id === cardId);
+  if(!card){ toast('Card not found'); return; }
+  const newTitle = prompt('Card title:', card.title || '');
+  if(newTitle === null) return;
+  const newHeadlineKey = prompt('Headline KPI key (blank for none):', card.headlineKey || '');
+  if(newHeadlineKey === null) return;
+  const newHeadlineFmt = prompt('Headline format ($ / % / %n / blank):', card.headlineFmt || '');
+  if(newHeadlineFmt === null) return;
+  const newSubtitle = prompt('Sub-title (blank for none):', card.subtitle || '');
+  if(newSubtitle === null) return;
+  card.title       = (newTitle       || '').trim() || card.title;
+  card.headlineKey = (newHeadlineKey || '').trim();
+  card.headlineFmt = (newHeadlineFmt || '').trim();
+  card.subtitle    = (newSubtitle    || '').trim();
+  saveDashCustom(state);
+  if(typeof renderMaster === 'function') renderMaster();
+  toast('Card updated');
 }
 
 function pgFinancial(){
