@@ -3622,9 +3622,17 @@ function renderMaster(){
     return (stored !== undefined && stored !== null) ? stored : computed;
   };
 
+  // Compute the network retention rate once — it's now folded into the
+  // Membership card as a sub-line (the standalone Network Retention card
+  // is gone). Stored as decimal 0..1; override key wins when present.
+  let _rrM = null;
+  try { if(typeof implSites !== 'undefined' && implSites && typeof implCalcMetrics === 'function') _rrM = implCalcMetrics(); } catch(e){}
+  const retentionComputed = _rrM ? (100 - parseFloat(_rrM.ytdOffRate)) / 100 : null;
+  const retentionVal = overrideOr('Network Retention Rate (Override)', retentionComputed);
+
   // ── 1) MEMBERSHIP — rich card.
   // Headline: Total Members (auto-counted; click overrides via KD).
-  // Sub-lines: per-type / per-group counts + YTD onboarding / offboarding.
+  // Sub-lines: per-type / per-group counts + YTD on/offboarding + retention.
   const memNow = gv('Total Members', m);
   const memberSubs =
     subRow('Truck Stops',     gv('Number of Truck Stops / Travel Centers', m), '', 'Number of Truck Stops / Travel Centers', m) +
@@ -3632,13 +3640,28 @@ function renderMaster(){
     subRow('Service Centers', gv('Number of Service Centers', m),              '', 'Number of Service Centers', m) +
     subRow("Roady's Lite",    gv("Number of Roady's Lite", m),                 '', "Number of Roady's Lite", m) +
     subRow('YTD Onboardings', ytdKpi('Locations Onboarded', m),                '', 'Locations Onboarded', m) +
-    subRow('YTD Offboardings',ytdKpi('Locations Off boarded', m),              '', 'Locations Off boarded', m);
+    subRow('YTD Offboardings',ytdKpi('Locations Off boarded', m),              '', 'Locations Off boarded', m) +
+    subRow('Retention Rate',  retentionVal, '%', 'Network Retention Rate (Override)', m);
   const membershipCard = dashCard('Membership', memNow, '', 'Total Members', null, memberSubs);
 
-  // ── 2) REWARDS — # of Active Rewards Locations (KD value, directly editable).
-  const rwNow = gv('# of Active Rewards Locations', m);
+  // ── 2) REWARDS — headline = # of Active Rewards Locations.
+  // Sub-lines: YTD adds, YTD redeems, YTD redemption rate (computed),
+  // total app users. Editable lines write to the underlying month KPI;
+  // YTD recomputes from monthly entries on next render.
+  const rwNow      = gv('# of Active Rewards Locations', m);
+  const ytdAdds    = ytdKpi('Issued Points (Add Dollars)', m);
+  const ytdRedeems = ytdKpi('Redeemed Points', m);
+  // Redemption Rate YTD = redeems / adds. Display-only — clearing
+  // monthly adds/redeems is the way to "edit" this number.
+  const ytdRate    = (ytdAdds && ytdAdds > 0) ? (ytdRedeems / ytdAdds) : null;
+  const appUsers   = gv('Rewards App Registrations', m);
+  const rewardsSubs =
+    subRow('YTD Rewards Adds',     ytdAdds,    '$', 'Issued Points (Add Dollars)', m) +
+    subRow('YTD Rewards Redeems',  ytdRedeems, '$', 'Redeemed Points', m) +
+    subRow('YTD Redemption Rate',  ytdRate,    '%', null, null) +
+    subRow('Total App Users',      appUsers,   '',  'Rewards App Registrations', m);
   const rewardsCard = dashCard('Rewards', rwNow, '', '# of Active Rewards Locations',
-    'Active rewards locations', null);
+    'Active rewards locations', rewardsSubs);
 
   // ── 3) VENDOR PROGRAMS — total deployments + top 9 vendors.
   // VP_ENROLL is the canonical store written by vendors.html. The override key
@@ -3672,43 +3695,41 @@ function renderMaster(){
     'Vendor Programs Total (Override)',
     'Total Network VP Deployed', vendorSubsHTML);
 
-  // ── 4) FUEL — total gallons + Legacy/New/Fuelman/R-Check breakdown.
-  const totGalComputed = totalGallons(m);
-  const totGal = overrideOr('Total Gallons (Override)', totGalComputed);
-  let legacyAgg = 0, newAgg = 0, fuelmanG = 0, rcheckG = 0;
+  // ── 4) FUEL — YTD totals only. Headline + sub-lines all sum across
+  // Jan→selected-month of the current year. Override keys are
+  // independent of the per-month overrides so edits to Fuelman page
+  // months don't fight with a one-off YTD number set on the dashboard.
+  const yearMonths = MOS.filter(mo => mo.slice(0,4) === m.slice(0,4) && mo <= m);
+  const totGalYTD = yearMonths.reduce((s, mo) => s + totalGallons(mo), 0);
+  let legacyAggYTD = 0, newAggYTD = 0, fuelmanYTD = 0, rcheckYTD = 0;
   try {
-    Object.values(GD).forEach(sd => {
-      const rec = sd[m]; if(!rec) return;
-      (rec.aggregators||[]).forEach(a => {
-        const name = (a.name||'').trim();
-        const gal = +a.gallons || 0;
-        if(/fuelman/i.test(name))      fuelmanG += gal;
-        else if(/r[-\s]?check/i.test(name)) rcheckG += gal;
-        else if(LEGACY_AGG_PROCESSORS.has(a.processor)) legacyAgg += gal;
-        else newAgg += gal;
+    yearMonths.forEach(mo => {
+      Object.values(GD).forEach(sd => {
+        const rec = sd[mo]; if(!rec) return;
+        (rec.aggregators||[]).forEach(a => {
+          const name = (a.name||'').trim();
+          const gal = +a.gallons || 0;
+          if(/fuelman/i.test(name))           fuelmanYTD  += gal;
+          else if(/r[-\s]?check/i.test(name)) rcheckYTD   += gal;
+          else if(LEGACY_AGG_PROCESSORS.has(a.processor)) legacyAggYTD += gal;
+          else                                newAggYTD   += gal;
+        });
       });
     });
   } catch(e){}
+  const totGalDisplay = overrideOr('Total Gallons YTD (Override)', totGalYTD);
   const fuelSubsHTML =
-    subRow('Legacy Aggregators', overrideOr('Legacy Aggregator Gallons', legacyAgg), '', 'Legacy Aggregator Gallons', m) +
-    subRow('New Aggregators',    overrideOr('New Aggregator Gallons',    newAgg),    '', 'New Aggregator Gallons',    m) +
-    subRow('Fuelman',            overrideOr('Fuelman Gallons',           fuelmanG),  '', 'Fuelman Gallons',           m) +
-    subRow('R-Check',            overrideOr('R-Check Gallons',           rcheckG),   '', 'R-Check Gallons',           m);
-  const fuelCard = dashCard('Fuel', totGal, '', 'Total Gallons (Override)', 'Total Gallons', fuelSubsHTML);
+    subRow('YTD Legacy Aggregators', overrideOr('Legacy Aggregator Gallons YTD (Override)', legacyAggYTD), '', 'Legacy Aggregator Gallons YTD (Override)', m) +
+    subRow('YTD New Aggregators',    overrideOr('New Aggregator Gallons YTD (Override)',    newAggYTD),    '', 'New Aggregator Gallons YTD (Override)',    m) +
+    subRow('YTD Fuelman',            overrideOr('Fuelman Gallons YTD (Override)',           fuelmanYTD),   '', 'Fuelman Gallons YTD (Override)',           m) +
+    subRow('YTD R-Check',            overrideOr('R-Check Gallons YTD (Override)',           rcheckYTD),    '', 'R-Check Gallons YTD (Override)',           m);
+  const fuelCard = dashCard('Fuel', totGalDisplay, '', 'Total Gallons YTD (Override)', 'YTD Total Gallons', fuelSubsHTML);
 
-  // ── 5) NETWORK RETENTION — derived from implCalcMetrics; manual override stored as decimal 0..1.
-  let rrM = null;
-  try { if(typeof implSites !== 'undefined' && implSites && typeof implCalcMetrics === 'function') rrM = implCalcMetrics(); } catch(e){}
-  const retentionComputed = rrM ? (100 - parseFloat(rrM.ytdOffRate)) / 100 : null;
-  const retentionVal = overrideOr('Network Retention Rate (Override)', retentionComputed);
-  const retentionSub = rrM
-    ? `${rrM.networkTotal} stops · YTD net ${rrM.ytdNet >= 0 ? '+' : ''}${rrM.ytdNet}`
-    : 'Implementation tracker unavailable';
-  const retentionCard = dashCard('Network Retention', retentionVal, '%',
-    'Network Retention Rate (Override)', retentionSub, null);
+  // Network Retention card removed — its rate now lives as a sub-line
+  // on the Membership card.
 
   document.getElementById('master-kpis').innerHTML =
-    membershipCard + rewardsCard + vendorCard + fuelCard + retentionCard;
+    membershipCard + rewardsCard + vendorCard + fuelCard;
 }
 
 // Recalculate Monthly Vendor Program Revenue as sum of all Program Income lines + Program Rebate-Lynco + Rebates-Bill Divvy
