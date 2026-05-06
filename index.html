@@ -13769,9 +13769,10 @@ async function vpLoadFromSupabase(){
     sbShowSyncing('⟳ Loading vendor enrollments...');
     const {data,error}=await sb.from('vp_enroll').select('stop_id, vendor_id, enrolled');
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
+    // Merge cloud → local (don't wipe local-only enrollments).
+    // Same rationale as kpi_data / fuel_data: a wholesale replace
+    // silently destroys local enrollments that haven't been pushed yet.
     if(data && data.length){
-      // Replace VP_ENROLL with the cloud snapshot. One row per (stop, vendor).
-      VP_ENROLL = {};
       data.forEach(r => {
         if(!r.stop_id || !r.vendor_id) return;
         if(!VP_ENROLL[r.stop_id]) VP_ENROLL[r.stop_id] = {};
@@ -13830,31 +13831,38 @@ async function kpiLoadFromSupabase(){
       if(data.length < _SB_PAGE_SIZE) break;
       from += _SB_PAGE_SIZE;
     }
+    // ── Merge cloud → local (don't wipe local-only cells) ─────────
+    // Why merge instead of replace: during the migration period, local
+    // localStorage often has more data than the cloud (initial seed
+    // hasn't completed, or another browser hasn't pushed yet). A
+    // wholesale replace silently destroys cells that aren't in the
+    // cloud snapshot. Merging means cloud values override local on
+    // overlap, but cells that exist only locally are preserved — and
+    // the scheduled flush below pushes them up so other devices see
+    // them on the next refresh.
+    let cloudCells = 0;
     if(allRows.length){
-      // Cloud has KPI data — replace local KD wholesale.
-      const next = {};
       allRows.forEach(r => {
         if(!r.metric_key || !r.month) return;
-        if(!next[r.metric_key]) next[r.metric_key] = {};
-        next[r.metric_key][r.month] = +r.value;
+        if(!KD[r.metric_key]) KD[r.metric_key] = {};
+        KD[r.metric_key][r.month] = +r.value;
+        cloudCells++;
       });
-      KD = next;
-      // Write to localStorage directly (avoid saveData() — that would
-      // schedule another flush back up).
       try { localStorage.setItem('roadys_kpi', JSON.stringify({KD, VD})); } catch(e){}
-      sbHideSyncing(true);
       _supabaseRerender();
-      return true;
     }
-    // Cloud empty: if local has data, seed it up so other devices see it.
-    const localHasData = Object.keys(KD).some(k => Object.keys(KD[k]||{}).length > 0);
-    if(localHasData){
-      console.log('[Supabase] kpi_data empty; seeding from local cache (' +
-        Object.keys(KD).length + ' keys)...');
-      flushKDToSupabase();
+    // After merge: count what's local-only and push everything back up
+    // if there's anything cloud doesn't have. Covers seed-from-empty
+    // and recover-from-partial-cloud cases in one branch.
+    let localCells = 0;
+    Object.values(KD).forEach(months => { localCells += Object.keys(months || {}).length; });
+    if(localCells > cloudCells){
+      console.log('[Supabase] kpi_data: local has ' + (localCells - cloudCells) +
+        ' cells not yet in cloud; pushing...');
+      scheduleSupabaseFlush();
     }
     sbHideSyncing(true);
-    return false;
+    return cloudCells > 0;
   } catch(e){
     console.warn('kpiLoadFromSupabase:', e);
     sbHideSyncing(false);
@@ -13916,39 +13924,41 @@ async function fuelLoadFromSupabase(){
       if(data.length < _SB_PAGE_SIZE) break;
       from += _SB_PAGE_SIZE;
     }
+    // ── Merge cloud → local (don't wipe local-only stop/month records) ──
+    // Same rationale as kpiLoadFromSupabase: replace would silently
+    // destroy stop+month records that haven't been pushed yet. Merge
+    // overlays cloud onto local, then schedules a flush for any
+    // local-only records.
+    let cloudRecs = 0;
     if(allRows.length){
-      const next = {};
       allRows.forEach(r => {
         if(!r.stop_id || !r.month) return;
-        if(!next[r.stop_id]) next[r.stop_id] = {};
-        next[r.stop_id][r.month] = {
+        if(!GD[r.stop_id]) GD[r.stop_id] = {};
+        GD[r.stop_id][r.month] = {
           gallons:     +r.gallons || 0,
           aggregators: Array.isArray(r.aggregators) ? r.aggregators : [],
           fleets:      Array.isArray(r.fleets) ? r.fleets : [],
           rack:        (r.rack && typeof r.rack === 'object') ? r.rack : {}
         };
+        cloudRecs++;
       });
-      GD = next;
-      // Write the full roadys_fuel envelope (saveData() would also write
-      // KD which we already wrote above — and would re-trigger a flush).
       try {
         localStorage.setItem('roadys_fuel', JSON.stringify({
           GD, NOTES,
           DOCS: Object.fromEntries(Object.entries(DOCS||{}).map(([k,v]) => [k, (v||[]).map(d => ({name:d.name,size:d.size,uploaded:d.uploaded}))]))
         }));
       } catch(e){}
-      sbHideSyncing(true);
       _supabaseRerender();
-      return true;
     }
-    const localHasData = Object.keys(GD).some(sid => Object.keys(GD[sid]||{}).length > 0);
-    if(localHasData){
-      console.log('[Supabase] fuel_data empty; seeding from local cache (' +
-        Object.keys(GD).length + ' stops)...');
-      flushGDToSupabase();
+    let localRecs = 0;
+    Object.values(GD).forEach(months => { localRecs += Object.keys(months || {}).length; });
+    if(localRecs > cloudRecs){
+      console.log('[Supabase] fuel_data: local has ' + (localRecs - cloudRecs) +
+        ' stop+month records not yet in cloud; pushing...');
+      scheduleSupabaseFlush();
     }
     sbHideSyncing(true);
-    return false;
+    return cloudRecs > 0;
   } catch(e){
     console.warn('fuelLoadFromSupabase:', e);
     sbHideSyncing(false);
