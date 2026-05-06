@@ -843,7 +843,7 @@ tr.search-hide{display:none!important;}
         <option value="2025-11">Nov 2025</option>
         <option value="2025-12">Dec 2025</option>
         <option value="2026-01">Jan 2026</option>
-        <option value="2026-02" selected>Feb 2026</option>
+        <option value="2026-02">Feb 2026</option>
         <option value="2026-03">Mar 2026</option>
         <option value="2026-04">Apr 2026</option>
         <option value="2026-05">May 2026</option>
@@ -2617,6 +2617,25 @@ function getRoadysSB(){
 // Loads are async + non-blocking — UI renders from localStorage cache
 // first, then re-renders when cloud data lands.
 document.addEventListener('DOMContentLoaded', ()=>{
+  // Default the period selector to LAST calendar month — financial data
+  // typically lags by a month, so opening in May should show April.
+  // Falls back to the latest available option if prior-month is out
+  // of range (e.g. Jan 2027 when MOS ends at Dec 2026).
+  try {
+    const sel = document.getElementById('ms');
+    if(sel){
+      const now = new Date();
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const target = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+      const opts = Array.from(sel.options).map(o => o.value);
+      const value = opts.includes(target) ? target : opts[opts.length - 1];
+      if(sel.value !== value){
+        sel.value = value;
+        if(typeof updateAll === 'function') updateAll();
+      }
+    }
+  } catch(e){ console.warn('default period:', e); }
+
   getRoadysSB();
   if(typeof vpLoadFromSupabase === 'function')   vpLoadFromSupabase();
   if(typeof kpiLoadFromSupabase === 'function')  kpiLoadFromSupabase();
