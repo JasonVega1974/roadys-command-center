@@ -368,6 +368,15 @@ tr.search-hide{display:none!important;}
 
 /* TABLES */
 .tw{overflow-x:auto;margin-bottom:20px;}
+/* Financials P&L: bounded scroll container so the metric/period header can stick.
+   max-height keeps the horizontal scrollbar near the viewport so the user
+   doesn't have to scroll the whole page down to find it. */
+.tw-fin{overflow:auto;max-height:70vh;border:1px solid var(--border);border-radius:8px;}
+.dt-fin thead th{position:sticky;top:0;z-index:3;background:var(--surface2);}
+.dt-fin thead th:first-child{left:0;z-index:4;}
+.dt-fin tbody td:first-child{position:sticky;left:0;background:var(--surface);z-index:1;}
+.fin-tbl-toolbar{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center;}
+.fin-scroll-btn{font-size:.74em!important;padding:5px 10px!important;}
 .dt{width:100%;border-collapse:collapse;font-size:.88em;}
 .dt th{background:var(--surface2);color:var(--muted);font-size:.78em;letter-spacing:.08em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
 .dt td{padding:8px 12px;border-bottom:1px solid rgba(30,42,69,.5);color:var(--text);}
@@ -795,18 +804,6 @@ tr.search-hide{display:none!important;}
     <div class="topbar-title" id="ptitle">Executive Summary</div>
     <div class="topbar-period">
       <select id="ms" onchange="updateAll()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:.78em;cursor:pointer;">
-        <option value="2024-01">Jan 2024</option>
-        <option value="2024-02">Feb 2024</option>
-        <option value="2024-03">Mar 2024</option>
-        <option value="2024-04">Apr 2024</option>
-        <option value="2024-05">May 2024</option>
-        <option value="2024-06">Jun 2024</option>
-        <option value="2024-07">Jul 2024</option>
-        <option value="2024-08">Aug 2024</option>
-        <option value="2024-09">Sep 2024</option>
-        <option value="2024-10">Oct 2024</option>
-        <option value="2024-11">Nov 2024</option>
-        <option value="2024-12">Dec 2024</option>
         <option value="2025-01">Jan 2025</option>
         <option value="2025-02">Feb 2025</option>
         <option value="2025-03">Mar 2025</option>
@@ -914,8 +911,14 @@ tr.search-hide{display:none!important;}
     <div class="page" id="pg-kpi-financial">
       <div class="sec-hdr"><div class="sec-title">FINANCIAL PERFORMANCE</div><span class="badge" id="fin-badge">—</span><label class="btn btn-accent" style="cursor:pointer;margin-left:auto;font-size:.75em" title="Import QuickBooks P&amp;L CSV">&#128229; Import P&amp;L CSV<input type="file" accept=".csv" style="display:none" onchange="importPLcsv(this)"/></label></div>
       <div class="kpi-grid" id="fin-kpis"></div>
+      <div class="kpi-grid" id="fin-kpis-row2"></div>
       <div class="cg2" id="fin-charts"></div>
-      <div class="tw" onclick="(function(e){var td=e.target.closest('td.pl-edit-cell');if(td)plCellEdit(td);})(event)"><table class="dt" id="fin-tbl"></table></div>
+      <div class="fin-tbl-toolbar">
+        <button class="btn fin-scroll-btn" onclick="finScroll(-600)" title="Scroll left">&laquo; Left</button>
+        <button class="btn fin-scroll-btn" onclick="finScrollToCurrent()" title="Jump to current month">Jump to Current</button>
+        <button class="btn fin-scroll-btn" onclick="finScroll(600)" title="Scroll right">Right &raquo;</button>
+      </div>
+      <div class="tw tw-fin" id="fin-tbl-wrap" onclick="(function(e){var td=e.target.closest('td.pl-edit-cell');if(td)plCellEdit(td);})(event)"><table class="dt dt-fin" id="fin-tbl"></table></div>
     </div>
 
     <!-- ══ KPI: MEMBERSHIP ══ -->
@@ -2595,9 +2598,9 @@ const MEMBERS = [{"id": "R03650", "company": "115 Truck Stop, Inc.", "type": "Tr
 // ═══════════════════════════════════════════════
 // MONTHS
 // ═══════════════════════════════════════════════
-const MOS = ['2024-01','2024-02','2024-03','2024-04','2024-05','2024-06','2024-07','2024-08','2024-09','2024-10','2024-11','2024-12','2025-01','2025-02','2025-03','2025-04','2025-05','2025-06','2025-07','2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
-const LBLS = ['Jan 24','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec 24','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec 25','Jan 26','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec 26'];
-const LBLF = ['Jan 2024','Feb 2024','Mar 2024','Apr 2024','May 2024','Jun 2024','Jul 2024','Aug 2024','Sep 2024','Oct 2024','Nov 2024','Dec 2024','Jan 2025','Feb 2025','Mar 2025','Apr 2025','May 2025','Jun 2025','Jul 2025','Aug 2025','Sep 2025','Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026','Apr 2026','May 2026','Jun 2026','Jul 2026','Aug 2026','Sep 2026','Oct 2026','Nov 2026','Dec 2026'];
+const MOS = ['2025-01','2025-02','2025-03','2025-04','2025-05','2025-06','2025-07','2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+const LBLS = ['Jan 2025','Feb 2025','Mar 2025','Apr 2025','May 2025','Jun 2025','Jul 2025','Aug 2025','Sep 2025','Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026','Apr 2026','May 2026','Jun 2026','Jul 2026','Aug 2026','Sep 2026','Oct 2026','Nov 2026','Dec 2026'];
+const LBLF = ['Jan 2025','Feb 2025','Mar 2025','Apr 2025','May 2025','Jun 2025','Jul 2025','Aug 2025','Sep 2025','Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026','Apr 2026','May 2026','Jun 2026','Jul 2026','Aug 2026','Sep 2026','Oct 2026','Nov 2026','Dec 2026'];
 
 // ═══════════════════════════════════════════════
 // DATA MODEL
@@ -3893,13 +3896,31 @@ function pgFinancial(){
 
   const niYTD_LY_full=ym?MOS.filter(mo=>mo.slice(0,4)===ym.slice(0,4)&&mo<=ym).reduce((s,mo)=>s+kpiNI(mo),0):null;
   document.getElementById('fin-kpis').innerHTML=
+    '<div style="grid-column:1/-1;font-size:.7em;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);padding:4px 0 0">P&amp;L Summary</div>'+
     kpiKC('Gross Income',gv('Income',m),'$',p?gv('Income',p):null,'',false,ytdKpi('Income',m),gvy('Income',m))+
     kpiKC('COGS',gv('COGS',m),'$',p?gv('COGS',p):null,'',true,ytdKpi('COGS',m),gvy('COGS',m))+
-    kpiKC('Gross Profit',gp,'$',gpP,'',false,ytdKpi('Income',m)-ytdKpi('COGS',m),ym?(gv('Income',ym)||0)-(gv('COGS',ym)||0):null)+
     kpiKC('Operating Expense',gv('Operating Expense',m),'$',p?gv('Operating Expense',p):null,'',true,ytdKpi('Operating Expense',m),gvy('Operating Expense',m))+
     kpiKC('Payroll Expense',gv('Payroll Expense',m),'$',p?gv('Payroll Expense',p):null,'',true,ytdKpi('Payroll Expense',m),gvy('Payroll Expense',m))+
-    kpiKC('Net Income',nin,'$',ninP,'',false,niYTD,ninY)+
-    kpiKC('Net Margin',mar,'%3',null,'',false,null,null);
+    kpiKC('Net Income',nin,'$',ninP,'',false,niYTD,ninY);
+
+  // ── Row 2: Revenue source cards (mirror of Dashboard) ──
+  const fuelNet=mo=>(gv('Settlement Income Fuelman',mo)||0)-(gv('COGS - FuelMan',mo)||0)+
+    (gv('Settlement Income R-Check',mo)||0)-(gv('COGS - R-Check',mo)||0)+
+    (gv('Aggregator Income - Settlement',mo)||0)-(gv('COGS   Aggregator',mo)||0);
+  const fuelRev=fuelNet(m);
+  const fuelRevP=p?fuelNet(p):null;
+  const fuelRevY=ym?fuelNet(ym):null;
+  const fuelRevYTD=MOS.slice(0,MOS.indexOf(m)+1).filter(mo=>mo.slice(0,4)===m.slice(0,4)).reduce((s,mo)=>s+fuelNet(mo),0);
+  const rewRev=mo=>(gv('Rewards Revenue',mo))!==null?gv('Rewards Revenue',mo):
+    ((gv('Rewards Inc Rewards Program Fee',mo)||0)+(gv('Rewards Inc Rewards-Expired Points',mo)||0)+(gv('Rewards Inc Rewards Points',mo)||0));
+  const activeRewLocs=gv('# of Active Rewards Locations',m);
+  const rewSubLine=activeRewLocs!=null?`Fees + Expired Points · <b style="color:var(--accent)">${kpiFmt(activeRewLocs,'')}</b> active locations`:'Fees + Expired Points';
+  document.getElementById('fin-kpis-row2').innerHTML=
+    '<div style="grid-column:1/-1;font-size:.7em;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);padding:4px 0 0">Revenue</div>'+
+    kpiKC('Membership',gv('Membership Gross Revenue',m),'$',p?gv('Membership Gross Revenue',p):null,'',false,ytdKpi('Membership Gross Revenue',m),gvy('Membership Gross Revenue',m))+
+    kpiKC('Rewards',rewRev(m),'$',p?rewRev(p):null,rewSubLine,false,ytdKpi('Rewards Revenue',m),gvy('Rewards Revenue',m))+
+    kpiKC('Vendor Programs',gv('Monthly Vendor Program Revenue',m),'$',p?gv('Monthly Vendor Program Revenue',p):null,'',false,ytdKpi('Monthly Vendor Program Revenue',m),gvy('Monthly Vendor Program Revenue',m))+
+    kpiKC('Fuel Revenue',fuelRev,'$',fuelRevP,'Fuelman + R-Check + Aggregator (Net)',false,fuelRevYTD,fuelRevY);
 
   const tk=v=>'$'+(v/1000).toFixed(0)+'K';
   // ── Single wide chart: Monthly Net Income (P&L-derived) ──
@@ -4011,6 +4032,31 @@ function pgFinancial(){
     plNIRow()+plNIYTDRow();
 
   document.getElementById('fin-tbl').innerHTML=kpiTblHdr()+`<tbody>${tbody}</tbody>`;
+}
+
+// ── Financials horizontal scroll helpers ──
+// Manual scroll keeps the user out of the bottom-of-table scroll bar.
+// "Jump to Current" finds the column header for the active period
+// and scrolls it into view, mid-container.
+function finScroll(delta){
+  const w=document.getElementById('fin-tbl-wrap');
+  if(w) w.scrollBy({left:delta,behavior:'smooth'});
+}
+function finScrollToCurrent(){
+  const w=document.getElementById('fin-tbl-wrap');
+  if(!w) return;
+  const tbl=document.getElementById('fin-tbl');
+  if(!tbl) return;
+  const m=getM();
+  const idx=MOS.indexOf(m);
+  if(idx<0) return;
+  // First column is the metric label, so target column index = idx + 1
+  const th=tbl.querySelectorAll('thead th')[idx+1];
+  if(!th) return;
+  const containerRect=w.getBoundingClientRect();
+  const cellRect=th.getBoundingClientRect();
+  const target=w.scrollLeft+(cellRect.left-containerRect.left)-(containerRect.width/2)+(cellRect.width/2);
+  w.scrollTo({left:Math.max(0,target),behavior:'smooth'});
 }
 
 function pgMembership(){
