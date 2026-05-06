@@ -2593,11 +2593,19 @@ function getRoadysSB(){
   }
   return roadysSB;
 }
-// Initialize eagerly on load. Also kick off the vendor-enrollments
-// Supabase fetch — runs async, refreshes the dashboard on completion.
+// Initialize Supabase eagerly on load, then kick off the cross-device
+// data sync: load all three of vp_enroll / kpi_data / fuel_data, and
+// subscribe to realtime so other users' edits flow in mid-session.
+// Loads are async + non-blocking — UI renders from localStorage cache
+// first, then re-renders when cloud data lands.
 document.addEventListener('DOMContentLoaded', ()=>{
   getRoadysSB();
-  if(typeof vpLoadFromSupabase === 'function') vpLoadFromSupabase();
+  if(typeof vpLoadFromSupabase === 'function')   vpLoadFromSupabase();
+  if(typeof kpiLoadFromSupabase === 'function')  kpiLoadFromSupabase();
+  if(typeof fuelLoadFromSupabase === 'function') fuelLoadFromSupabase();
+  if(typeof subscribeKpiRealtime === 'function')  subscribeKpiRealtime();
+  if(typeof subscribeFuelRealtime === 'function') subscribeFuelRealtime();
+  if(typeof subscribeVpRealtime === 'function')   subscribeVpRealtime();
 });
 
 // ═══════════════════════════════════════════════
@@ -3944,6 +3952,9 @@ function plCellEdit(td) {
     const v = inp.value.trim();
     if(v === '' || isNaN(parseFloat(v))) {
       if(KD[key]) delete KD[key][mo];
+      // Tombstone so the debounced Supabase flush issues a DELETE,
+      // not just an upsert that leaves the stale row in the cloud.
+      if(typeof kpiMarkCellDeleted === 'function') kpiMarkCellDeleted(key, mo);
     } else {
       if(!KD[key]) KD[key] = {};
       KD[key][mo] = parseFloat(v);
@@ -3982,8 +3993,11 @@ function dashCellEdit(el){
     if(done)return; done=true;
     el.classList.remove('dc-editing');
     const v=inp.value.trim();
-    if(v===''||isNaN(parseFloat(v))){ if(KD[key]) delete KD[key][mo]; }
-    else { if(!KD[key]) KD[key]={}; KD[key][mo]=parseFloat(v); }
+    if(v===''||isNaN(parseFloat(v))){
+      if(KD[key]) delete KD[key][mo];
+      // Tombstone so debounced Supabase flush propagates the delete.
+      if(typeof kpiMarkCellDeleted === 'function') kpiMarkCellDeleted(key, mo);
+    } else { if(!KD[key]) KD[key]={}; KD[key][mo]=parseFloat(v); }
     saveData();
     setTimeout(()=>{ renderMaster(); },0);
     toast('Updated — '+key+' / '+mo);
@@ -13782,6 +13796,297 @@ async function vpLoadFromSupabase(){
     sbHideSyncing(false);
     return false;
   }
+}
+
+// ══════════════════════════════════════
+//  KPI DATA (KD) — SUPABASE SYNC
+// ══════════════════════════════════════
+// kpi_data schema: (metric_key text, month text, value numeric,
+//                   updated_at timestamptz, primary key (metric_key, month))
+// Hydrate KD from Supabase, then debounced-flush local writes back up.
+// Realtime subscription keeps every open tab in sync mid-session.
+
+// Pagination ceiling per Supabase select; KD has ~3.5k cells today,
+// well under one page, but loop in case it grows.
+const _SB_PAGE_SIZE = 1000;
+
+// Tracks (metric_key, month) tombstones so a debounced flush issues
+// Supabase deletes for cells the user explicitly cleared locally —
+// otherwise upsert-only flush would leave the old value in the cloud.
+const _kpiDeletedCells = new Set();
+function kpiMarkCellDeleted(key, mo){ _kpiDeletedCells.add(key + '||' + mo); }
+
+async function kpiLoadFromSupabase(){
+  const sb = getRoadysSB(); if(!sb) return false;
+  try {
+    sbShowSyncing('⟳ Loading KPI data...');
+    let allRows = [];
+    let from = 0;
+    while(true){
+      const {data, error} = await sb.from('kpi_data').select('metric_key, month, value').range(from, from + _SB_PAGE_SIZE - 1);
+      if(error) throw new Error(error.message || JSON.stringify(error));
+      if(!data || !data.length) break;
+      allRows = allRows.concat(data);
+      if(data.length < _SB_PAGE_SIZE) break;
+      from += _SB_PAGE_SIZE;
+    }
+    if(allRows.length){
+      // Cloud has KPI data — replace local KD wholesale.
+      const next = {};
+      allRows.forEach(r => {
+        if(!r.metric_key || !r.month) return;
+        if(!next[r.metric_key]) next[r.metric_key] = {};
+        next[r.metric_key][r.month] = +r.value;
+      });
+      KD = next;
+      // Write to localStorage directly (avoid saveData() — that would
+      // schedule another flush back up).
+      try { localStorage.setItem('roadys_kpi', JSON.stringify({KD, VD})); } catch(e){}
+      sbHideSyncing(true);
+      _supabaseRerender();
+      return true;
+    }
+    // Cloud empty: if local has data, seed it up so other devices see it.
+    const localHasData = Object.keys(KD).some(k => Object.keys(KD[k]||{}).length > 0);
+    if(localHasData){
+      console.log('[Supabase] kpi_data empty; seeding from local cache (' +
+        Object.keys(KD).length + ' keys)...');
+      flushKDToSupabase();
+    }
+    sbHideSyncing(true);
+    return false;
+  } catch(e){
+    console.warn('kpiLoadFromSupabase:', e);
+    sbHideSyncing(false);
+    return false;
+  }
+}
+
+async function flushKDToSupabase(){
+  const sb = getRoadysSB(); if(!sb) return;
+  // 1) Process tombstones first.
+  if(_kpiDeletedCells.size){
+    const dels = Array.from(_kpiDeletedCells);
+    _kpiDeletedCells.clear();
+    for(const tag of dels){
+      const [key, mo] = tag.split('||');
+      try { await sb.from('kpi_data').delete().eq('metric_key', key).eq('month', mo); }
+      catch(e){ console.warn('kpi delete failed:', e); }
+    }
+  }
+  // 2) Upsert all present cells. Chunked to keep request payload sane.
+  const rows = [];
+  Object.entries(KD).forEach(([key, months]) => {
+    Object.entries(months || {}).forEach(([mo, val]) => {
+      if(val === null || val === undefined) return;
+      rows.push({ metric_key: key, month: mo, value: +val });
+    });
+  });
+  if(!rows.length) return;
+  for(let i = 0; i < rows.length; i += 500){
+    const chunk = rows.slice(i, i + 500);
+    try {
+      const {error} = await sb.from('kpi_data').upsert(chunk, {onConflict: 'metric_key,month'});
+      if(error){ console.warn('kpi upsert chunk failed:', error); break; }
+    } catch(e){ console.warn('kpi upsert exception:', e); break; }
+  }
+}
+
+// ══════════════════════════════════════
+//  FUEL DATA (GD) — SUPABASE SYNC
+// ══════════════════════════════════════
+// fuel_data schema: (stop_id text, month text, gallons numeric,
+//                    aggregators jsonb, fleets jsonb, rack jsonb,
+//                    updated_at timestamptz, primary key (stop_id, month))
+
+const _fuelDeletedRecords = new Set();
+function fuelMarkRecordDeleted(sid, mo){ _fuelDeletedRecords.add(sid + '||' + mo); }
+
+async function fuelLoadFromSupabase(){
+  const sb = getRoadysSB(); if(!sb) return false;
+  try {
+    sbShowSyncing('⟳ Loading fuel data...');
+    let allRows = [];
+    let from = 0;
+    while(true){
+      const {data, error} = await sb.from('fuel_data').select('stop_id, month, gallons, aggregators, fleets, rack').range(from, from + _SB_PAGE_SIZE - 1);
+      if(error) throw new Error(error.message || JSON.stringify(error));
+      if(!data || !data.length) break;
+      allRows = allRows.concat(data);
+      if(data.length < _SB_PAGE_SIZE) break;
+      from += _SB_PAGE_SIZE;
+    }
+    if(allRows.length){
+      const next = {};
+      allRows.forEach(r => {
+        if(!r.stop_id || !r.month) return;
+        if(!next[r.stop_id]) next[r.stop_id] = {};
+        next[r.stop_id][r.month] = {
+          gallons:     +r.gallons || 0,
+          aggregators: Array.isArray(r.aggregators) ? r.aggregators : [],
+          fleets:      Array.isArray(r.fleets) ? r.fleets : [],
+          rack:        (r.rack && typeof r.rack === 'object') ? r.rack : {}
+        };
+      });
+      GD = next;
+      // Write the full roadys_fuel envelope (saveData() would also write
+      // KD which we already wrote above — and would re-trigger a flush).
+      try {
+        localStorage.setItem('roadys_fuel', JSON.stringify({
+          GD, NOTES,
+          DOCS: Object.fromEntries(Object.entries(DOCS||{}).map(([k,v]) => [k, (v||[]).map(d => ({name:d.name,size:d.size,uploaded:d.uploaded}))]))
+        }));
+      } catch(e){}
+      sbHideSyncing(true);
+      _supabaseRerender();
+      return true;
+    }
+    const localHasData = Object.keys(GD).some(sid => Object.keys(GD[sid]||{}).length > 0);
+    if(localHasData){
+      console.log('[Supabase] fuel_data empty; seeding from local cache (' +
+        Object.keys(GD).length + ' stops)...');
+      flushGDToSupabase();
+    }
+    sbHideSyncing(true);
+    return false;
+  } catch(e){
+    console.warn('fuelLoadFromSupabase:', e);
+    sbHideSyncing(false);
+    return false;
+  }
+}
+
+async function flushGDToSupabase(){
+  const sb = getRoadysSB(); if(!sb) return;
+  if(_fuelDeletedRecords.size){
+    const dels = Array.from(_fuelDeletedRecords);
+    _fuelDeletedRecords.clear();
+    for(const tag of dels){
+      const [sid, mo] = tag.split('||');
+      try { await sb.from('fuel_data').delete().eq('stop_id', sid).eq('month', mo); }
+      catch(e){ console.warn('fuel delete failed:', e); }
+    }
+  }
+  const rows = [];
+  Object.entries(GD).forEach(([sid, months]) => {
+    Object.entries(months || {}).forEach(([mo, rec]) => {
+      if(!rec || typeof rec !== 'object') return;
+      rows.push({
+        stop_id:     sid,
+        month:       mo,
+        gallons:     +rec.gallons || 0,
+        aggregators: rec.aggregators || [],
+        fleets:      rec.fleets || [],
+        rack:        rec.rack || {}
+      });
+    });
+  });
+  if(!rows.length) return;
+  for(let i = 0; i < rows.length; i += 200){
+    const chunk = rows.slice(i, i + 200);
+    try {
+      const {error} = await sb.from('fuel_data').upsert(chunk, {onConflict: 'stop_id,month'});
+      if(error){ console.warn('fuel upsert chunk failed:', error); break; }
+    } catch(e){ console.warn('fuel upsert exception:', e); break; }
+  }
+}
+
+// ══════════════════════════════════════
+//  DEBOUNCED FLUSH ON saveData()
+// ══════════════════════════════════════
+// saveData() is the single choke point for both roadys_kpi and roadys_fuel
+// localStorage writes. Wrapping it lets us schedule a Supabase push
+// without touching the dozens of edit / import call sites individually.
+// Multiple saves within the debounce window collapse to one network burst.
+let _supabaseFlushTimer = null;
+const _SUPABASE_FLUSH_DELAY_MS = 1500;
+function scheduleSupabaseFlush(){
+  if(_supabaseFlushTimer) clearTimeout(_supabaseFlushTimer);
+  _supabaseFlushTimer = setTimeout(() => {
+    _supabaseFlushTimer = null;
+    Promise.all([flushKDToSupabase(), flushGDToSupabase()]).catch(e => console.warn('flush:', e));
+  }, _SUPABASE_FLUSH_DELAY_MS);
+}
+// Wrap saveData once. The original is re-defined on every page load
+// (top-level function declaration), so guard with a flag to avoid
+// double-wrapping on accidental re-eval.
+if(typeof window !== 'undefined' && typeof saveData === 'function' && !saveData._sbWrapped){
+  const _origSaveData = saveData;
+  // eslint-disable-next-line no-global-assign
+  saveData = function(){
+    _origSaveData.apply(this, arguments);
+    scheduleSupabaseFlush();
+  };
+  saveData._sbWrapped = true;
+}
+
+// ══════════════════════════════════════
+//  REALTIME SUBSCRIPTIONS
+// ══════════════════════════════════════
+// Echo guard: when WE write a value, Supabase realtime fires the same
+// payload back to us. Skip if local already matches — avoids re-render
+// thrash. Diff is shallow but sufficient for the cell-level updates.
+function _supabaseRerender(){
+  if(_supabaseRerender._timer) clearTimeout(_supabaseRerender._timer);
+  _supabaseRerender._timer = setTimeout(() => {
+    try { if(document.getElementById('master-kpis')) renderMaster(); } catch(e){}
+    try { if(document.getElementById('pg-kpi-financial')?.classList.contains('active')) pgFinancial(); } catch(e){}
+    try { if(document.getElementById('pg-master')?.classList.contains('active')) renderMaster(); } catch(e){}
+  }, 250);
+}
+
+let _kpiRtChannel = null, _fuelRtChannel = null, _vpRtChannel = null;
+function subscribeKpiRealtime(){
+  const sb = getRoadysSB(); if(!sb || _kpiRtChannel) return;
+  _kpiRtChannel = sb.channel('kpi_data_changes')
+    .on('postgres_changes', {event: '*', schema: 'public', table: 'kpi_data'}, payload => {
+      const r = payload.new || payload.old; if(!r || !r.metric_key || !r.month) return;
+      if(payload.eventType === 'DELETE'){
+        if(KD[r.metric_key]) delete KD[r.metric_key][r.month];
+      } else {
+        const cur = KD[r.metric_key]?.[r.month];
+        if(cur === +r.value) return; // echo of our own write
+        if(!KD[r.metric_key]) KD[r.metric_key] = {};
+        KD[r.metric_key][r.month] = +r.value;
+      }
+      _supabaseRerender();
+    })
+    .subscribe();
+}
+function subscribeFuelRealtime(){
+  const sb = getRoadysSB(); if(!sb || _fuelRtChannel) return;
+  _fuelRtChannel = sb.channel('fuel_data_changes')
+    .on('postgres_changes', {event: '*', schema: 'public', table: 'fuel_data'}, payload => {
+      const r = payload.new || payload.old; if(!r || !r.stop_id || !r.month) return;
+      if(payload.eventType === 'DELETE'){
+        if(GD[r.stop_id]) delete GD[r.stop_id][r.month];
+      } else {
+        if(!GD[r.stop_id]) GD[r.stop_id] = {};
+        GD[r.stop_id][r.month] = {
+          gallons:     +r.gallons || 0,
+          aggregators: Array.isArray(r.aggregators) ? r.aggregators : [],
+          fleets:      Array.isArray(r.fleets) ? r.fleets : [],
+          rack:        (r.rack && typeof r.rack === 'object') ? r.rack : {}
+        };
+      }
+      _supabaseRerender();
+    })
+    .subscribe();
+}
+function subscribeVpRealtime(){
+  const sb = getRoadysSB(); if(!sb || _vpRtChannel) return;
+  _vpRtChannel = sb.channel('vp_enroll_changes')
+    .on('postgres_changes', {event: '*', schema: 'public', table: 'vp_enroll'}, payload => {
+      const r = payload.new || payload.old; if(!r || !r.stop_id || !r.vendor_id) return;
+      if(payload.eventType === 'DELETE'){
+        if(VP_ENROLL[r.stop_id]) delete VP_ENROLL[r.stop_id][r.vendor_id];
+      } else {
+        if(!VP_ENROLL[r.stop_id]) VP_ENROLL[r.stop_id] = {};
+        VP_ENROLL[r.stop_id][r.vendor_id] = r.enrolled !== false;
+      }
+      _supabaseRerender();
+    })
+    .subscribe();
 }
 
 // ══════════════════════════════════════
