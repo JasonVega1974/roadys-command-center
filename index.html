@@ -350,6 +350,24 @@ tr.search-hide{display:none!important;}
 .dc-edit{cursor:pointer;border-bottom:1px dashed transparent;}
 .dc-edit:hover{border-bottom-color:var(--accent);color:var(--accent);}
 .dc-editing input{font-family:var(--ff);}
+/* Add-row / delete-row controls */
+.dc-row-add{margin-top:6px;text-align:center;}
+.dc-add-btn{background:transparent;border:1px dashed var(--border);color:var(--muted);padding:3px 10px;border-radius:4px;font-size:.7em;cursor:pointer;font-family:inherit;}
+.dc-add-btn:hover{border-color:var(--accent);color:var(--accent);}
+.dc-custom-row{position:relative;}
+.dc-row-del{position:absolute;right:-2px;top:0;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1em;line-height:1;padding:0 4px;opacity:0;transition:opacity .15s;}
+.dc-custom-row:hover .dc-row-del{opacity:.7;}
+.dc-row-del:hover{color:var(--red);opacity:1!important;}
+/* Add-card placeholder + delete-card button */
+.dc-add-card-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--border)!important;background:transparent!important;cursor:pointer;min-height:160px;transition:all .15s;}
+.dc-add-card-placeholder:hover{border-color:var(--accent)!important;background:rgba(0,200,255,.04)!important;}
+.dc-add-card-plus{font-size:2.4em;color:var(--muted);line-height:1;}
+.dc-add-card-label{font-size:.78em;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;}
+.dc-add-card-placeholder:hover .dc-add-card-plus,
+.dc-add-card-placeholder:hover .dc-add-card-label{color:var(--accent);}
+.dc-custom-card{position:relative;}
+.dc-card-del{position:absolute;top:8px;right:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1.1em;line-height:1;padding:2px 6px;border-radius:4px;opacity:.5;transition:all .15s;}
+.dc-card-del:hover{color:var(--red);background:rgba(255,71,87,.08);opacity:1;}
 
 /* SECTION HEADERS */
 .sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
@@ -3645,49 +3663,49 @@ function renderMaster(){
   const retentionVal = overrideOr('Network Retention Rate (Override)', retentionComputed);
 
   // ── 1) MEMBERSHIP — rich card.
-  // Headline: Total Members (auto-counted; click overrides via KD).
-  // Sub-lines: per-type / per-group counts + YTD on/offboarding + retention.
-  // YTD aggregate lines are display-only — clicking them used to edit the
-  // current month's KD entry, which silently overwrote imported monthly
-  // data with a YTD-magnitude number. Edits should happen on the source
-  // KPI page (Rewards / Membership / Bizdev), which shows monthly columns.
+  // Every line is editable. YTD aggregate lines store user-entered
+  // values under an *override* KD key (e.g. 'Locations Onboarded YTD
+  // (Override)') instead of writing into a single month's cell — that
+  // way edits don't silently destroy your imported monthly data on the
+  // source KPI tab. overrideOr() prefers the manual override when set
+  // and falls back to the computed YTD sum when not.
   const memNow = gv('Total Members', m);
+  const onbYTD = overrideOr('Locations Onboarded YTD (Override)',  ytdKpi('Locations Onboarded', m));
+  const offYTD = overrideOr('Locations Off boarded YTD (Override)', ytdKpi('Locations Off boarded', m));
   const memberSubs =
     subRow('Truck Stops',     gv('Number of Truck Stops / Travel Centers', m), '', 'Number of Truck Stops / Travel Centers', m) +
     subRow('C-Stores',        gv('Number of C-Stores', m),                     '', 'Number of C-Stores', m) +
     subRow('Service Centers', gv('Number of Service Centers', m),              '', 'Number of Service Centers', m) +
     subRow("Roady's Lite",    gv("Number of Roady's Lite", m),                 '', "Number of Roady's Lite", m) +
-    subRow('YTD Onboardings', ytdKpi('Locations Onboarded', m),                '', null, null) +
-    subRow('YTD Offboardings',ytdKpi('Locations Off boarded', m),              '', null, null) +
-    subRow('Retention Rate',  retentionVal, '%n', 'Network Retention Rate (Override)', m);
-  const membershipCard = dashCard('Membership', memNow, '', 'Total Members', null, memberSubs);
+    subRow('YTD Onboardings', onbYTD,  '', 'Locations Onboarded YTD (Override)',  m) +
+    subRow('YTD Offboardings',offYTD,  '', 'Locations Off boarded YTD (Override)', m) +
+    subRow('Retention Rate',  retentionVal, '%n', 'Network Retention Rate (Override)', m) +
+    customRowsHTML('membership', m);
+  const membershipCard = wrapCard('membership', dashCard('Membership', memNow, '', 'Total Members', null, memberSubs));
 
   // ── 2) REWARDS — headline = # of Active Rewards Locations.
   // Sub-lines: YTD adds, YTD redeems, YTD redemption rate (computed),
   // total app users. Editable lines write to the underlying month KPI;
   // YTD recomputes from monthly entries on next render.
+  // Every line editable; YTD aggregates use override keys so edits
+  // don't clobber imported monthly data on the source Rewards KPI tab.
   const rwNow      = gv('# of Active Rewards Locations', m);
-  const ytdAdds    = ytdKpi('Issued Points (Add Dollars)', m);
-  const ytdRedeems = ytdKpi('Redeemed Points', m);
-  // Redemption Rate YTD = redeems / adds. Display-only — clearing
-  // monthly adds/redeems is the way to "edit" this number.
+  const ytdAdds    = overrideOr('Rewards Adds YTD (Override)',    ytdKpi('Issued Points (Add Dollars)', m));
+  const ytdRedeems = overrideOr('Rewards Redeems YTD (Override)', ytdKpi('Redeemed Points', m));
+  const ytdExpired = overrideOr('Rewards Expired YTD (Override)', ytdKpi('Expired Points Revenue', m));
+  // Redemption rate is computed from the (possibly overridden) adds/redeems
+  // so a manual YTD edit flows through to the rate automatically.
   const ytdRate    = (ytdAdds && ytdAdds > 0) ? (ytdRedeems / ytdAdds) : null;
-  const ytdExpired = ytdKpi('Expired Points Revenue', m);
   const appUsers   = gv('Rewards App Registrations', m);
-  // YTD aggregate lines (Adds / Redeems / Expired) are display-only here.
-  // Editing them would write a YTD-magnitude number into a single month's
-  // KPI cell, silently overwriting your imported monthly data. Use the
-  // Rewards KPI tab for monthly entry — YTD on this card recomputes
-  // automatically from those monthly values. Total App Users is a
-  // current-month value (cumulative count), so direct edit is fine.
   const rewardsSubs =
-    subRow('YTD Rewards Adds',         ytdAdds,    '$', null, null) +
-    subRow('YTD Rewards Redeems',      ytdRedeems, '$', null, null) +
-    subRow('YTD Redemption Rate',      ytdRate,    '%', null, null) +
-    subRow('YTD Expired Points',       ytdExpired, '$', null, null) +
-    subRow('Total App Users',          appUsers,   '',  'Rewards App Registrations', m);
-  const rewardsCard = dashCard('Rewards', rwNow, '', '# of Active Rewards Locations',
-    'Active rewards locations', rewardsSubs);
+    subRow('YTD Rewards Adds',     ytdAdds,    '$', 'Rewards Adds YTD (Override)',    m) +
+    subRow('YTD Rewards Redeems',  ytdRedeems, '$', 'Rewards Redeems YTD (Override)', m) +
+    subRow('YTD Redemption Rate',  ytdRate,    '%', null, null) +  // computed
+    subRow('YTD Expired Points',   ytdExpired, '$', 'Rewards Expired YTD (Override)', m) +
+    subRow('Total App Users',      appUsers,   '',  'Rewards App Registrations',      m) +
+    customRowsHTML('rewards', m);
+  const rewardsCard = wrapCard('rewards', dashCard('Rewards', rwNow, '', '# of Active Rewards Locations',
+    'Active rewards locations', rewardsSubs));
 
   // ── 3) VENDOR PROGRAMS — total deployments + top 9 vendors.
   // VP_ENROLL is the canonical store written by vendors.html. The override key
@@ -3714,12 +3732,13 @@ function renderMaster(){
   const totalDeployedComputed = Object.values(vendorCounts).reduce((s,n) => s+n, 0);
   const totalDeployed = overrideOr('Vendor Programs Total (Override)', totalDeployedComputed);
   const top9 = Object.entries(vendorCounts).sort((a,b) => b[1]-a[1]).slice(0,9);
-  const vendorSubsHTML = top9.length
+  const vendorSubsHTML = (top9.length
     ? top9.map(([vid,n]) => subRow(vendorName(vid), n, '')).join('')
-    : '<div class="dc-row" style="font-style:italic;color:var(--muted)"><span>No vendor enrollment data — populate via vendors.html</span></div>';
-  const vendorCard = dashCard('Vendor Programs', totalDeployed, '',
+    : '<div class="dc-row" style="font-style:italic;color:var(--muted)"><span>No vendor enrollment data — populate via vendors.html</span></div>')
+    + customRowsHTML('vendor', m);
+  const vendorCard = wrapCard('vendor', dashCard('Vendor Programs', totalDeployed, '',
     'Vendor Programs Total (Override)',
-    'Total Network VP Deployed', vendorSubsHTML);
+    'Total Network VP Deployed', vendorSubsHTML));
 
   // ── 4) FUEL — YTD totals only. Headline + sub-lines all sum across
   // Jan→selected-month of the current year. Override keys are
@@ -3748,14 +3767,17 @@ function renderMaster(){
     subRow('YTD Legacy Aggregators', overrideOr('Legacy Aggregator Gallons YTD (Override)', legacyAggYTD), '', 'Legacy Aggregator Gallons YTD (Override)', m) +
     subRow('YTD New Aggregators',    overrideOr('New Aggregator Gallons YTD (Override)',    newAggYTD),    '', 'New Aggregator Gallons YTD (Override)',    m) +
     subRow('YTD Fuelman',            overrideOr('Fuelman Gallons YTD (Override)',           fuelmanYTD),   '', 'Fuelman Gallons YTD (Override)',           m) +
-    subRow('YTD R-Check',            overrideOr('R-Check Gallons YTD (Override)',           rcheckYTD),    '', 'R-Check Gallons YTD (Override)',           m);
-  const fuelCard = dashCard('Fuel', totGalDisplay, '', 'Total Gallons YTD (Override)', 'YTD Total Gallons', fuelSubsHTML);
+    subRow('YTD R-Check',            overrideOr('R-Check Gallons YTD (Override)',           rcheckYTD),    '', 'R-Check Gallons YTD (Override)',           m) +
+    customRowsHTML('fuel', m);
+  const fuelCard = wrapCard('fuel', dashCard('Fuel', totGalDisplay, '', 'Total Gallons YTD (Override)', 'YTD Total Gallons', fuelSubsHTML));
 
   // Network Retention card removed — its rate now lives as a sub-line
   // on the Membership card.
 
   document.getElementById('master-kpis').innerHTML =
-    membershipCard + rewardsCard + vendorCard + fuelCard;
+    membershipCard + rewardsCard + vendorCard + fuelCard +
+    customCardsHTML(m) +
+    addCardPlaceholderHTML();
 }
 
 // Recalculate Monthly Vendor Program Revenue as sum of all Program Income lines + Program Rebate-Lynco + Rebates-Bill Divvy
@@ -4025,6 +4047,130 @@ function dashCellEdit(el){
     if(e.key==='Enter') inp.blur();
     if(e.key==='Escape'){ done=true; el.classList.remove('dc-editing'); el.innerHTML=orig; }
   });
+}
+
+// ════════════════════════════════════════════════════════════
+//  Customizable dashboard layout (add row / add card)
+// ════════════════════════════════════════════════════════════
+// Each card on the Executive Summary can have user-defined extra rows;
+// the user can also add brand-new cards. Both persist to localStorage:
+//   roadys_dash_custom_rows  : { cardId: [ {label, key, fmt}, ... ] }
+//   roadys_dash_custom_cards : [ {id, title, subtitle, headlineKey, headlineFmt, rows: [...]} ]
+// The KPI keys referenced here are written to KD via the standard
+// dashCellEdit click-to-edit path, which round-trips to Supabase via
+// the saveData wrap. Custom layout itself is local-only for now —
+// can be promoted to a Supabase 'dashboard_config' table later.
+function loadDashCustom(){
+  let rows={}, cards=[];
+  try { rows  = JSON.parse(localStorage.getItem('roadys_dash_custom_rows')  || '{}') || {}; } catch(e){}
+  try { cards = JSON.parse(localStorage.getItem('roadys_dash_custom_cards') || '[]') || []; } catch(e){}
+  return {rows, cards};
+}
+function saveDashCustom(state){
+  try { localStorage.setItem('roadys_dash_custom_rows',  JSON.stringify(state.rows  || {})); } catch(e){}
+  try { localStorage.setItem('roadys_dash_custom_cards', JSON.stringify(state.cards || [])); } catch(e){}
+}
+
+// Render the user-added rows for a given cardId (plus the per-card
+// "+ Add Row" button). Hover shows the × delete affordance per row.
+function customRowsHTML(cardId, m){
+  const {rows} = loadDashCustom();
+  const list = rows[cardId] || [];
+  const editAttrs = (key, mo) => key && mo
+    ? ` data-key="${(key+'').replace(/"/g,'&quot;')}" data-mo="${mo}" onclick="dashCellEdit(this)" title="Click to edit"`
+    : '';
+  const rowsHTML = list.map((r, i) => {
+    const val = r.key ? gv(r.key, m) : null;
+    const lblEsc = (r.label||'').replace(/</g,'&lt;');
+    const editable = !!r.key;
+    return `<div class="dc-row dc-custom-row">`+
+      `<span class="dc-lbl">${lblEsc}</span>`+
+      `<span class="dc-val${editable?' dc-edit':''}"${editAttrs(r.key, m)}>${kpiFmt(val, r.fmt||'')}</span>`+
+      `<button class="dc-row-del" title="Delete this row" onclick="dashRemoveRow('${cardId}',${i})">×</button>`+
+      `</div>`;
+  }).join('');
+  const addBtn = `<div class="dc-row-add"><button class="dc-add-btn" onclick="dashAddRow('${cardId}')" title="Add a row">+ Add Row</button></div>`;
+  return rowsHTML + addBtn;
+}
+
+// Wrap a standard-card HTML string in the same outer container the
+// custom cards use, so + / × controls align consistently.
+function wrapCard(cardId, innerHTML){ return innerHTML; }
+
+// Render every user-added card after the standard four.
+function customCardsHTML(m){
+  const {cards} = loadDashCustom();
+  if(!cards.length) return '';
+  return cards.map(c => {
+    const headlineVal = c.headlineKey ? gv(c.headlineKey, m) : null;
+    const editAttrs = c.headlineKey
+      ? ` data-key="${(c.headlineKey+'').replace(/"/g,'&quot;')}" data-mo="${m}" onclick="dashCellEdit(this)" title="Click to edit"`
+      : '';
+    const headlineCls = 'kc-val' + (c.headlineKey ? ' dc-edit' : '');
+    const titleEsc = (c.title||'(untitled)').replace(/</g,'&lt;');
+    const subEsc = (c.subtitle||'').replace(/</g,'&lt;');
+    return `<div class="kc up dc-custom-card">`+
+      `<button class="dc-card-del" title="Delete this card" onclick="dashRemoveCard('${c.id}')">×</button>`+
+      `<div class="kc-lbl">${titleEsc}</div>`+
+      `<div class="${headlineCls}"${editAttrs}>${kpiFmt(headlineVal, c.headlineFmt||'')}</div>`+
+      (c.subtitle?`<div class="kc-sub" style="margin-top:6px;font-weight:600">${subEsc}</div>`:'')+
+      `<div class="dc-list">${customRowsHTML(c.id, m)}</div>`+
+    `</div>`;
+  }).join('');
+}
+
+// "+" placeholder card always rendered last in the grid.
+function addCardPlaceholderHTML(){
+  return `<div class="kc dc-add-card-placeholder" onclick="dashAddCard()" title="Add a new card">`+
+    `<div class="dc-add-card-plus">+</div>`+
+    `<div class="dc-add-card-label">Add Card</div>`+
+  `</div>`;
+}
+
+// Action handlers — minimal prompt-based UX. Modal upgrade later.
+function dashAddRow(cardId){
+  const label = (prompt('Row label (e.g. "Active Drivers"):') || '').trim();
+  if(!label) return;
+  const key = (prompt('KPI key — the data source.\nUse an existing key (case-sensitive) or type a new one to create it:') || '').trim();
+  if(!key) return;
+  const fmt = (prompt('Format:\n  $    — dollars (e.g. 12345 → $12,345)\n  %    — decimal as percent (0.5 → 50%)\n  %n   — value as percent (98.1 → 98.1%)\n  count — plain number (default)\n\nEnter format ($ / % / %n / blank for count):') || '').trim();
+  const state = loadDashCustom();
+  if(!state.rows[cardId]) state.rows[cardId] = [];
+  state.rows[cardId].push({label, key, fmt});
+  saveDashCustom(state);
+  if(typeof renderMaster === 'function') renderMaster();
+  toast('Row added — click the value to enter a number');
+}
+function dashRemoveRow(cardId, idx){
+  if(!confirm('Delete this row from the dashboard? (KPI data is kept; only the row config is removed.)')) return;
+  const state = loadDashCustom();
+  if(state.rows[cardId]){
+    state.rows[cardId].splice(idx, 1);
+    if(!state.rows[cardId].length) delete state.rows[cardId];
+    saveDashCustom(state);
+    if(typeof renderMaster === 'function') renderMaster();
+  }
+}
+function dashAddCard(){
+  const title = (prompt('Card title (e.g. "Driver Engagement"):') || '').trim();
+  if(!title) return;
+  const headlineKey = (prompt('Headline KPI key (data source for the big number).\nLeave blank for a card with only sub-rows.') || '').trim();
+  const headlineFmt = headlineKey ? ((prompt('Headline format ($ / % / %n / blank):') || '').trim()) : '';
+  const subtitle = (prompt('Sub-title under the headline (optional):') || '').trim();
+  const state = loadDashCustom();
+  const newId = 'custom_' + Date.now();
+  state.cards.push({id: newId, title, subtitle, headlineKey, headlineFmt, rows: []});
+  saveDashCustom(state);
+  if(typeof renderMaster === 'function') renderMaster();
+  toast('Card added — click + Add Row inside it to populate');
+}
+function dashRemoveCard(cardId){
+  if(!confirm('Delete this card from the dashboard? (KPI data is kept; only the card config is removed.)')) return;
+  const state = loadDashCustom();
+  state.cards = (state.cards || []).filter(c => c.id !== cardId);
+  if(state.rows[cardId]) delete state.rows[cardId];
+  saveDashCustom(state);
+  if(typeof renderMaster === 'function') renderMaster();
 }
 
 function pgFinancial(){
