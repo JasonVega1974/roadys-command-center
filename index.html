@@ -3493,6 +3493,8 @@ const MEMBER_AUTO_KEYS = {
     MEMBERS.filter(x=>x.status==='active'&&/service center/i.test(x.type)).length)||null,
   'Number of C-Stores': m => (typeof MEMBERS==='undefined'?null:
     MEMBERS.filter(x=>x.status==='active'&&/c-store/i.test(x.type)).length)||null,
+  "Number of Roady's Lite": m => (typeof MEMBERS==='undefined'?null:
+    MEMBERS.filter(x=>x.status==='active'&&x.group==="Roady's Lite").length)||null,
   'Total Members': m => (typeof MEMBERS==='undefined'?null:
     MEMBERS.filter(x=>x.status==='active'&&x.group&&x.group!=='None'&&x.group!=='').length)||null,
 };
@@ -3585,34 +3587,58 @@ function renderMaster(){
   const m=getM(), p=pm(m), ym=py(m);
   document.getElementById('master-period').textContent=periodLabel(m);
 
-  // Force every card to the green ".kc up" treatment for an at-a-glance dashboard.
-  const greenCard=(...args)=>kpiKC(...args).replace(/^<div class="kc \w+"/,'<div class="kc up"');
+  // ── HTML helpers ────────────────────────────────────────────────
+  // dcEditAttrs builds the data-key/data-mo/onclick wiring for any element
+  // that should open dashCellEdit on click. Returns an attribute fragment
+  // (with leading space) plus the dc-edit class.
+  const dcEditAttrs = (key, mo) => key && mo
+    ? ` data-key="${(key+'').replace(/"/g,'&quot;')}" data-mo="${mo}" onclick="dashCellEdit(this)" title="Click to edit · clear value to revert to auto"`
+    : '';
+  const subRow = (label, val, fmt, editKey, mo) => {
+    const editable = !!(editKey && mo);
+    return `<div class="dc-row"><span class="dc-lbl">${(label+'').replace(/</g,'&lt;')}</span>`+
+      `<span class="dc-val${editable?' dc-edit':''}"${dcEditAttrs(editKey, mo)}>${kpiFmt(val,fmt||'')}</span></div>`;
+  };
+  // Unified card: title + editable headline + optional sub-title + breakdown list.
+  // Force ".kc up" so every card is uniform green per the user's spec.
+  const dashCard = (title, headlineVal, headlineFmt, headlineKey, subTitle, subRowsHTML) => {
+    const editable = !!headlineKey;
+    const headlineHTML = `<div class="kc-val${editable?' dc-edit':''}"${dcEditAttrs(headlineKey, m)}>${kpiFmt(headlineVal,headlineFmt||'')}</div>`;
+    return `<div class="kc up"><div class="kc-lbl">${title}</div>`+
+      headlineHTML+
+      (subTitle?`<div class="kc-sub" style="margin-top:6px;font-weight:600">${subTitle}</div>`:'')+
+      (subRowsHTML?`<div class="dc-list">${subRowsHTML}</div>`:'')+
+      `</div>`;
+  };
+  // Pick override KPI value if present, otherwise fall back to a computed value.
+  // Both card-specific keys live alongside other KPI keys in KD so they round-trip
+  // with saveData() and the inline-edit pattern.
+  const overrideOr = (overrideKey, computed) => {
+    const stored = KD[overrideKey]?.[m];
+    return (stored !== undefined && stored !== null) ? stored : computed;
+  };
 
-  // Rich-card builder: same header/value layout as kpiKC, plus a breakdown list.
-  const subRow=(label,val,fmt)=>
-    `<div class="dc-row"><span class="dc-lbl">${(label+'').replace(/</g,'&lt;')}</span>`+
-    `<span class="dc-val">${kpiFmt(val,fmt||'')}</span></div>`;
-  const richGreenCard=(title,headlineVal,headlineFmt,subTitle,subRowsHTML)=>
-    `<div class="kc up"><div class="kc-lbl">${title}</div>`+
-    `<div class="kc-val">${kpiFmt(headlineVal,headlineFmt||'')}</div>`+
-    (subTitle?`<div class="kc-sub" style="margin-top:6px;font-weight:600">${subTitle}</div>`:'')+
-    (subRowsHTML?`<div class="dc-list">${subRowsHTML}</div>`:'')+
-    `</div>`;
-
-  // ── 1) MEMBERSHIP — total active members (auto-counted from MEMBERS) ──
+  // ── 1) MEMBERSHIP — rich card.
+  // Headline: Total Members (auto-counted; click overrides via KD).
+  // Sub-lines: per-type / per-group counts + YTD onboarding / offboarding.
   const memNow = gv('Total Members', m);
-  const memPrev = p ? gv('Total Members', p) : null;
-  const memYr = ym ? gv('Total Members', ym) : null;
+  const memberSubs =
+    subRow('Truck Stops',     gv('Number of Truck Stops / Travel Centers', m), '', 'Number of Truck Stops / Travel Centers', m) +
+    subRow('C-Stores',        gv('Number of C-Stores', m),                     '', 'Number of C-Stores', m) +
+    subRow('Service Centers', gv('Number of Service Centers', m),              '', 'Number of Service Centers', m) +
+    subRow("Roady's Lite",    gv("Number of Roady's Lite", m),                 '', "Number of Roady's Lite", m) +
+    subRow('YTD Onboardings', ytdKpi('Locations Onboarded', m),                '', 'Locations Onboarded', m) +
+    subRow('YTD Offboardings',ytdKpi('Locations Off boarded', m),              '', 'Locations Off boarded', m);
+  const membershipCard = dashCard('Membership', memNow, '', 'Total Members', null, memberSubs);
 
-  // ── 2) REWARDS — locations participating in the rewards program ──
+  // ── 2) REWARDS — # of Active Rewards Locations (KD value, directly editable).
   const rwNow = gv('# of Active Rewards Locations', m);
-  const rwPrev = p ? gv('# of Active Rewards Locations', p) : null;
-  const rwYr = ym ? gv('# of Active Rewards Locations', ym) : null;
-  const rwYTD = ytdKpi('# of Active Rewards Locations', m);
+  const rewardsCard = dashCard('Rewards', rwNow, '', '# of Active Rewards Locations',
+    'Active rewards locations', null);
 
-  // ── 3) VENDOR PROGRAMS — total network deployments + top 9 vendors.
-  // VP_ENROLL is the canonical enrollment store written by vendors.html;
-  // we count one "deployment" per (stop, vendor) pair flagged true.
+  // ── 3) VENDOR PROGRAMS — total deployments + top 9 vendors.
+  // VP_ENROLL is the canonical store written by vendors.html. The override key
+  // lets the user pin a manual headline value while keeping the breakdown live.
   let vendorCounts = {};
   try {
     if(typeof VP_ENROLL !== 'undefined' && VP_ENROLL){
@@ -3632,18 +3658,19 @@ function renderMaster(){
     } catch(e){}
     return vid;
   };
-  const totalDeployed = Object.values(vendorCounts).reduce((s,n) => s+n, 0);
+  const totalDeployedComputed = Object.values(vendorCounts).reduce((s,n) => s+n, 0);
+  const totalDeployed = overrideOr('Vendor Programs Total (Override)', totalDeployedComputed);
   const top9 = Object.entries(vendorCounts).sort((a,b) => b[1]-a[1]).slice(0,9);
   const vendorSubsHTML = top9.length
     ? top9.map(([vid,n]) => subRow(vendorName(vid), n, '')).join('')
     : '<div class="dc-row" style="font-style:italic;color:var(--muted)"><span>No vendor enrollment data — populate via vendors.html</span></div>';
-  const vendorCard = richGreenCard('Vendor Programs', totalDeployed, '', 'Total Network VP Deployed', vendorSubsHTML);
+  const vendorCard = dashCard('Vendor Programs', totalDeployed, '',
+    'Vendor Programs Total (Override)',
+    'Total Network VP Deployed', vendorSubsHTML);
 
   // ── 4) FUEL — total gallons + Legacy/New/Fuelman/R-Check breakdown.
-  // GD is the same fuel store the Fuelman page reads. Aggregator entries
-  // by name (Fuelman, R-Check) bucket directly; anything else routes by
-  // processor through LEGACY_AGG_PROCESSORS.
-  const totGal = totalGallons(m);
+  const totGalComputed = totalGallons(m);
+  const totGal = overrideOr('Total Gallons (Override)', totGalComputed);
   let legacyAgg = 0, newAgg = 0, fuelmanG = 0, rcheckG = 0;
   try {
     Object.values(GD).forEach(sd => {
@@ -3659,31 +3686,25 @@ function renderMaster(){
     });
   } catch(e){}
   const fuelSubsHTML =
-    subRow('Legacy Aggregators', legacyAgg, '') +
-    subRow('New Aggregators',    newAgg,    '') +
-    subRow('Fuelman',            fuelmanG,  '') +
-    subRow('R-Check',            rcheckG,   '');
-  const fuelCard = richGreenCard('Fuel', totGal, '', 'Total Gallons', fuelSubsHTML);
+    subRow('Legacy Aggregators', overrideOr('Legacy Aggregator Gallons', legacyAgg), '', 'Legacy Aggregator Gallons', m) +
+    subRow('New Aggregators',    overrideOr('New Aggregator Gallons',    newAgg),    '', 'New Aggregator Gallons',    m) +
+    subRow('Fuelman',            overrideOr('Fuelman Gallons',           fuelmanG),  '', 'Fuelman Gallons',           m) +
+    subRow('R-Check',            overrideOr('R-Check Gallons',           rcheckG),   '', 'R-Check Gallons',           m);
+  const fuelCard = dashCard('Fuel', totGal, '', 'Total Gallons (Override)', 'Total Gallons', fuelSubsHTML);
 
-  // ── 5) NETWORK RETENTION — derived from the implementation tracker ──
+  // ── 5) NETWORK RETENTION — derived from implCalcMetrics; manual override stored as decimal 0..1.
   let rrM = null;
   try { if(typeof implSites !== 'undefined' && implSites && typeof implCalcMetrics === 'function') rrM = implCalcMetrics(); } catch(e){}
-  let retentionCardHTML;
-  if(rrM){
-    const rrRate = parseFloat(rrM.ytdOffRate);
-    const retentionDecimal = (100 - rrRate) / 100;
-    const sub = `${rrM.networkTotal} stops · YTD net ${rrM.ytdNet >= 0 ? '+' : ''}${rrM.ytdNet}`;
-    retentionCardHTML = greenCard('Network Retention', retentionDecimal, '%', null, sub, false, null, null);
-  } else {
-    retentionCardHTML = greenCard('Network Retention', null, '', null, 'Implementation tracker unavailable', false, null, null);
-  }
+  const retentionComputed = rrM ? (100 - parseFloat(rrM.ytdOffRate)) / 100 : null;
+  const retentionVal = overrideOr('Network Retention Rate (Override)', retentionComputed);
+  const retentionSub = rrM
+    ? `${rrM.networkTotal} stops · YTD net ${rrM.ytdNet >= 0 ? '+' : ''}${rrM.ytdNet}`
+    : 'Implementation tracker unavailable';
+  const retentionCard = dashCard('Network Retention', retentionVal, '%',
+    'Network Retention Rate (Override)', retentionSub, null);
 
   document.getElementById('master-kpis').innerHTML =
-    greenCard('Membership', memNow, '', memPrev, '', false, null, memYr) +
-    greenCard('Rewards',    rwNow,  '', rwPrev,  'Active rewards locations', false, rwYTD, rwYr) +
-    vendorCard +
-    fuelCard +
-    retentionCardHTML;
+    membershipCard + rewardsCard + vendorCard + fuelCard + retentionCard;
 }
 
 // Recalculate Monthly Vendor Program Revenue as sum of all Program Income lines + Program Rebate-Lynco + Rebates-Bill Divvy
