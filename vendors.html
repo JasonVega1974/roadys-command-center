@@ -435,7 +435,43 @@ const VP_PER_PAGE=25;
 // Enrollment data: stored in localStorage as { locId: { vendorId: true/false } }
 let VP_ENROLL={};
 function loadVPEnroll(){try{const s=localStorage.getItem('roadys_vp_enroll');if(s)VP_ENROLL=JSON.parse(s);}catch(e){}}
-function saveVPEnroll(){try{localStorage.setItem('roadys_vp_enroll',JSON.stringify(VP_ENROLL));}catch(e){}}
+function saveVPEnroll(){
+  try{localStorage.setItem('roadys_vp_enroll',JSON.stringify(VP_ENROLL));}catch(e){}
+  // Debounced full push to Supabase so the dashboard (and other devices)
+  // see the change. Multiple rapid saves collapse into one upload.
+  scheduleVpFullSync();
+}
+let _vpFullSyncTimer=null;
+function scheduleVpFullSync(){
+  if(_vpFullSyncTimer) clearTimeout(_vpFullSyncTimer);
+  _vpFullSyncTimer=setTimeout(()=>{ _vpFullSyncTimer=null; vpFullSyncToSupabase(); },1500);
+}
+async function vpFullSyncToSupabase(){
+  if(!roadysSB) return;
+  const rows=[];
+  Object.entries(VP_ENROLL).forEach(([sid,enr])=>{
+    if(!enr||typeof enr!=='object') return;
+    Object.entries(enr).forEach(([vid,on])=>{
+      rows.push({
+        stop_id: sid,
+        vendor_id: vid,
+        vendor_name: (VP_VENDORS.find(v=>v.id===vid)||{}).name||vid,
+        enrolled: !!on,
+        updated_at: new Date().toISOString()
+      });
+    });
+  });
+  if(!rows.length) return;
+  // Chunk to keep request payload reasonable.
+  for(let i=0;i<rows.length;i+=500){
+    const chunk=rows.slice(i,i+500);
+    try{
+      const {error}=await roadysSB.from('vp_enroll').upsert(chunk,{onConflict:'stop_id,vendor_id'});
+      if(error){ console.warn('vp full sync chunk failed:',error); break; }
+    }catch(e){ console.warn('vp full sync exception:',e); break; }
+  }
+  console.log('[Supabase] vp_enroll: pushed '+rows.length+' rows');
+}
 loadVPEnroll();
 
 // ── Sysco Enrollment Seed Data (from Sysco participation list) ──
@@ -2450,8 +2486,26 @@ function init(){
   renderKPIs();
   renderRevenueChart();
   renderROIKPIs();
-  // Auto-load from Supabase (async, won't block render)
-  loadFromSupabase();
+  // Auto-load from Supabase (async, won't block render). After it
+  // returns, count local enrollments and push everything up if local
+  // has more than cloud — covers first-run seeding for users who set
+  // up enrollments before the dashboard's Supabase sync was wired.
+  (async () => {
+    await loadFromSupabase();
+    let localCount = 0;
+    Object.values(VP_ENROLL).forEach(enr => {
+      if(enr && typeof enr === 'object') localCount += Object.values(enr).filter(v => v).length;
+    });
+    if(localCount > 0 && roadysSB){
+      try {
+        const {count, error} = await roadysSB.from('vp_enroll').select('*', {count:'exact', head:true});
+        if(!error && (count || 0) < localCount){
+          console.log('[Supabase] vp_enroll: local has '+localCount+' enrollments, cloud has '+(count||0)+'. Pushing...');
+          vpFullSyncToSupabase();
+        }
+      } catch(e){ console.warn('vp init seed check:', e); }
+    }
+  })();
 }
 
 init();
