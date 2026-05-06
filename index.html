@@ -2593,8 +2593,12 @@ function getRoadysSB(){
   }
   return roadysSB;
 }
-// Initialize eagerly on load
-document.addEventListener('DOMContentLoaded', ()=>{ getRoadysSB(); });
+// Initialize eagerly on load. Also kick off the vendor-enrollments
+// Supabase fetch — runs async, refreshes the dashboard on completion.
+document.addEventListener('DOMContentLoaded', ()=>{
+  getRoadysSB();
+  if(typeof vpLoadFromSupabase === 'function') vpLoadFromSupabase();
+});
 
 // ═══════════════════════════════════════════════
 // MEMBER DATA (368 stops from CSV)
@@ -13712,6 +13716,50 @@ async function crmDeleteLeadFromSupabase(id){
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
   }catch(e){
     console.warn('crmDeleteLeadFromSupabase error:',e);
+  }
+}
+
+// ══════════════════════════════════════
+//  VENDOR PROGRAMS — SUPABASE SYNC
+// ══════════════════════════════════════
+// Reads the vp_enroll table (canonical store written by vendors.html
+// via vpSyncToSupabase / loadFromSupabase) and hydrates the in-memory
+// VP_ENROLL object the dashboard's Vendor Programs card reads. Fires
+// on app boot; on completion it re-renders the dashboard so the
+// Vendor Programs card reflects the latest cloud state without a
+// manual refresh.
+async function vpLoadFromSupabase(){
+  const sb=getRoadysSB(); if(!sb) return false;
+  try{
+    sbShowSyncing('⟳ Loading vendor enrollments...');
+    const {data,error}=await sb.from('vp_enroll').select('stop_id, vendor_id, enrolled');
+    if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
+    if(data && data.length){
+      // Replace VP_ENROLL with the cloud snapshot. One row per (stop, vendor).
+      VP_ENROLL = {};
+      data.forEach(r => {
+        if(!r.stop_id || !r.vendor_id) return;
+        if(!VP_ENROLL[r.stop_id]) VP_ENROLL[r.stop_id] = {};
+        VP_ENROLL[r.stop_id][r.vendor_id] = r.enrolled !== false;
+      });
+      try { localStorage.setItem('roadys_vp_enroll', JSON.stringify(VP_ENROLL)); } catch(e){}
+      sbHideSyncing(true);
+      // Refresh the dashboard if it's been built once already. renderMaster
+      // updates master-kpis innerHTML — safe whether or not the page is
+      // currently visible; updates the DOM for the next viewer either way.
+      if(document.getElementById('master-kpis')){
+        try { renderMaster(); } catch(e){ console.warn('vpLoadFromSupabase: renderMaster failed', e); }
+      }
+      return true;
+    }
+    // No rows — fall through silently. Dashboard will show whatever
+    // localStorage already has (or "No vendor enrollment data" if also empty).
+    sbHideSyncing(true);
+    return false;
+  }catch(e){
+    console.warn('vpLoadFromSupabase error:', e);
+    sbHideSyncing(false);
+    return false;
   }
 }
 
