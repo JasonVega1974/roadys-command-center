@@ -3662,12 +3662,14 @@ function renderMaster(){
   // Redemption Rate YTD = redeems / adds. Display-only — clearing
   // monthly adds/redeems is the way to "edit" this number.
   const ytdRate    = (ytdAdds && ytdAdds > 0) ? (ytdRedeems / ytdAdds) : null;
+  const ytdExpired = ytdKpi('Expired Points Revenue', m);
   const appUsers   = gv('Rewards App Registrations', m);
   const rewardsSubs =
-    subRow('YTD Rewards Adds',     ytdAdds,    '$', 'Issued Points (Add Dollars)', m) +
-    subRow('YTD Rewards Redeems',  ytdRedeems, '$', 'Redeemed Points', m) +
-    subRow('YTD Redemption Rate',  ytdRate,    '%', null, null) +
-    subRow('Total App Users',      appUsers,   '',  'Rewards App Registrations', m);
+    subRow('YTD Rewards Adds',         ytdAdds,    '$', 'Issued Points (Add Dollars)', m) +
+    subRow('YTD Rewards Redeems',      ytdRedeems, '$', 'Redeemed Points', m) +
+    subRow('YTD Redemption Rate',      ytdRate,    '%', null, null) +
+    subRow('YTD Expired Points',       ytdExpired, '$', 'Expired Points Revenue', m) +
+    subRow('Total App Users',          appUsers,   '',  'Rewards App Registrations', m);
   const rewardsCard = dashCard('Rewards', rwNow, '', '# of Active Rewards Locations',
     'Active rewards locations', rewardsSubs);
 
