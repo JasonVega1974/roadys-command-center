@@ -980,7 +980,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
     <!-- ══ KPI: REWARDS ══ -->
     <div class="page" id="pg-kpi-rewards">
-      <div class="sec-hdr"><div class="sec-title">REWARDS PROGRAM</div><span class="badge by" id="rew-badge">Driver Loyalty</span></div>
+      <div class="sec-hdr"><div class="sec-title">REWARDS PROGRAM</div><span class="badge by" id="rew-badge">Driver Loyalty</span><label class="btn btn-accent" style="cursor:pointer;margin-left:auto;font-size:.75em" title="Import Rewards monthly CSV (Add Transactions, Redeem USD, Redemption Rate, etc.)">&#128229; Import Rewards CSV<input type="file" accept=".csv" style="display:none" onchange="importRewardsCsv(this)"/></label></div>
       <div class="kpi-grid" id="rew-kpis"></div>
       <div class="cg2" id="rew-charts"></div>
       <div class="tw"><table class="dt" id="rew-tbl"></table></div>
@@ -3306,6 +3306,11 @@ const KPI_MD = {
   'Rewards Fees':{cat:'Rewards',f:'$'},
   'Rewards Fees YTD':{cat:'Rewards',f:'$'},
   'Rewards App Registrations':{cat:'Rewards',f:''},
+  // New Rewards CSV columns (Roady's Rewards monthly export)
+  'Rewards Add Transactions':   {cat:'Rewards',f:''},   // count
+  'Rewards Redeem Transactions':{cat:'Rewards',f:''},   // count
+  'Rewards Gallons Captured':   {cat:'Rewards',f:''},   // count (gal)
+  'Rewards Multiplier Diff':    {cat:'Rewards',f:'$'},  // dollars
 };
 
 let KD = {}; // KPI data store
@@ -3884,6 +3889,116 @@ function recalcRewardsRevenue(){
     KD['Expired Points Revenue YTD'][mo]=ytdE;
   });
 }
+// ── Rewards CSV Importer ──────────────────────────────────────────────
+// Expects the Roady's Rewards monthly export with these columns
+// (header row, exact match — case-insensitive):
+//   Month, Add Transactions, Redeem Transactions, Gallons Captured,
+//   Add USD, Multiplier Diff, Redeem USD, Redemption Rate, Delta
+// One row per month name (e.g. "January"). Year defaults to the
+// current calendar year; user is prompted to override.
+async function importRewardsCsv(input){
+  const file = input.files && input.files[0];
+  if(!file){ return; }
+  try {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if(lines.length < 2){ toast('Empty CSV'); input.value=''; return; }
+    const header = parseCsvLine(lines[0]);
+    const col = name => header.findIndex(h => h.toLowerCase().trim().replace(/^"|"$/g,'') === name.toLowerCase());
+    const idx = {
+      month:   col('Month'),
+      addTxn:  col('Add Transactions'),
+      redTxn:  col('Redeem Transactions'),
+      gallons: col('Gallons Captured'),
+      addUsd:  col('Add USD'),
+      mult:    col('Multiplier Diff'),
+      redUsd:  col('Redeem USD'),
+      rate:    col('Redemption Rate'),
+      delta:   col('Delta')
+    };
+    if(idx.month < 0){ toast('CSV missing required Month column'); input.value=''; return; }
+
+    const yearStr = prompt('Year for this Rewards data:', String(new Date().getFullYear()));
+    if(yearStr === null){ input.value=''; return; }
+    const year = parseInt(yearStr, 10);
+    if(isNaN(year) || year < 2020 || year > 2100){ toast('Invalid year'); input.value=''; return; }
+
+    const MONTH_MAP = {january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
+    // Strip $/commas/percent/whitespace then parse.
+    const num = s => {
+      if(s === null || s === undefined || s === '') return null;
+      const cleaned = String(s).replace(/^"|"$/g,'').replace(/[$,\s]/g,'').replace(/%$/,'');
+      const n = parseFloat(cleaned);
+      return isNaN(n) ? null : n;
+    };
+    const setKD = (key, val) => {
+      if(val === null || val === undefined || isNaN(val)) return;
+      if(!KD[key]) KD[key] = {};
+      KD[key][period] = val;
+    };
+
+    let imported = 0, skipped = 0;
+    let period = '';
+    for(let i = 1; i < lines.length; i++){
+      const cells = parseCsvLine(lines[i]);
+      const monthName = (cells[idx.month] || '').toLowerCase().trim().replace(/^"|"$/g,'');
+      const mm = MONTH_MAP[monthName];
+      if(!mm){ skipped++; continue; }
+      period = year + '-' + mm;
+      if(idx.addTxn  >= 0) setKD('Rewards Add Transactions',    num(cells[idx.addTxn]));
+      if(idx.redTxn  >= 0) setKD('Rewards Redeem Transactions', num(cells[idx.redTxn]));
+      if(idx.gallons >= 0) setKD('Rewards Gallons Captured',    num(cells[idx.gallons]));
+      if(idx.addUsd  >= 0) setKD('Issued Points (Add Dollars)', num(cells[idx.addUsd]));
+      if(idx.mult    >= 0) setKD('Rewards Multiplier Diff',     num(cells[idx.mult]));
+      if(idx.redUsd  >= 0) setKD('Redeemed Points',             num(cells[idx.redUsd]));
+      if(idx.rate    >= 0){
+        // CSV "74.85%" → num strips % to get 74.85. Redemption Rate
+        // KD stores as decimal 0..1, so divide by 100.
+        const rate = num(cells[idx.rate]);
+        setKD('Redemption Rate', rate !== null ? rate / 100 : null);
+      }
+      if(idx.delta   >= 0) setKD('Delta',                       num(cells[idx.delta]));
+      imported++;
+    }
+
+    if(!imported){
+      toast('No rows imported — check Month column matches January..December');
+      input.value=''; return;
+    }
+    // saveData() persists localStorage AND debounced-flushes to Supabase.
+    saveData();
+    if(typeof recalcRewardsRevenue === 'function') recalcRewardsRevenue();
+    if(typeof pgKpiRewards === 'function')         pgKpiRewards();
+    if(typeof renderMaster === 'function')         renderMaster();
+    toast('Imported ' + imported + ' months of Rewards data' + (skipped?' ('+skipped+' rows skipped)':''));
+  } catch(e){
+    console.error('importRewardsCsv:', e);
+    toast('Import failed: ' + (e.message || e), 'terr');
+  } finally {
+    input.value = '';
+  }
+}
+// Minimal CSV parser — handles quoted fields with embedded commas.
+function parseCsvLine(line){
+  const result = [];
+  let cur = '';
+  let inQuotes = false;
+  for(let i = 0; i < line.length; i++){
+    const c = line[i];
+    if(c === '"'){
+      if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if(c === ',' && !inQuotes){
+      result.push(cur);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
 // ── P&L CSV Importer (QuickBooks format) ──────────────────────────────
 function importPLcsv(input){
   const file=input.files?.[0]; if(!file) return;
@@ -4509,7 +4624,7 @@ function pgKpiRewards(){
   mkchart('rw5',{type:'line',data:{labels:LBLS,datasets:[kpiLD('Rewards App Registrations','#7C3AED','rgba(124,58,237,.15)')]},options:{...CDO,plugins:{legend:{display:false}},scales:{x:CDO.scales.x,y:{...CDO.scales.y,beginAtZero:false}}}});
   mkchart('rw3',{type:'bar',data:{labels:LBLS,datasets:[{label:'Expired Revenue',data:MOS.map(mo=>gv('Expired Points Revenue',mo)??0),backgroundColor:'rgba(124,58,237,.7)',borderWidth:0}]},options:{...CDO,plugins:{legend:{display:false}},scales:{x:CDO.scales.x,y:{...CDO.scales.y,ticks:{...CDO.scales.y.ticks,callback:v=>'$'+v.toLocaleString()}}}}});
   mkchart('rw4',{type:'line',data:{labels:LBLS,datasets:[{label:'Redemption Rate',data:MOS.map(mo=>gv('Redemption Rate',mo)?gv('Redemption Rate',mo)*100:null),borderColor:'#FFD60A',backgroundColor:'rgba(255,214,10,.1)',tension:.4,fill:true,spanGaps:true}]},options:{...CDO,plugins:{legend:{display:false}},scales:{x:CDO.scales.x,y:{...CDO.scales.y,ticks:{...CDO.scales.y.ticks,callback:v=>v.toFixed(0)+'%'}}}}});
-  document.getElementById('rew-tbl').innerHTML=kpiTblHdr()+'<tbody>'+kpiTableRows(['Registered Drivers','Rewards App Registrations','Issued Points (Add Dollars)','Redeemed Points','Rewards Fees','Rewards Fees YTD','Expired Points Revenue','Expired Points Revenue YTD','Redemption Rate','# of Active Rewards Locations','Number of locations with SmartDesq or SmartAuth','Comdata POS Integrated Locations'])+'</tbody>';
+  document.getElementById('rew-tbl').innerHTML=kpiTblHdr()+'<tbody>'+kpiTableRows(['Registered Drivers','Rewards App Registrations','Rewards Add Transactions','Rewards Redeem Transactions','Rewards Gallons Captured','Issued Points (Add Dollars)','Rewards Multiplier Diff','Redeemed Points','Delta','Rewards Fees','Rewards Fees YTD','Expired Points Revenue','Expired Points Revenue YTD','Redemption Rate','# of Active Rewards Locations','Number of locations with SmartDesq or SmartAuth','Comdata POS Integrated Locations'])+'</tbody>';
 
   // Rewards by Truck Stop table
   const allStops=MEMBERS.filter(mb=>mb.status==='active'&&mb.id);
