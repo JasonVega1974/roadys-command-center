@@ -392,6 +392,69 @@ body:not(.dash-edit-mode) .dc-add-card-placeholder{display:none!important;}
 body:not(.dash-edit-mode) .dc-custom-row{padding-right:0;}
 body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);}
 
+/* P&L Notes: header button, edit-mode entry form, modal listing */
+.fin-notes-btn{display:inline-flex;align-items:center;gap:6px;}
+.fin-notes-count{background:var(--accent);color:var(--bg);font-size:.7em;font-weight:800;padding:1px 6px;border-radius:8px;min-width:18px;text-align:center;}
+.fin-notes-form{margin-bottom:14px;}
+.fin-notes-form-card{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:14px;}
+.fin-notes-form-title{font-weight:700;font-size:.85em;color:var(--accent);margin-bottom:10px;letter-spacing:.04em;}
+.fin-notes-form-grid{display:flex;gap:10px;flex-wrap:wrap;}
+.fin-notes-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:160px;}
+.fin-notes-field span{font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;}
+.fin-notes-field input,.fin-notes-field select,.fin-notes-field textarea{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);
+  padding:7px 10px;font-size:.85em;font-family:inherit;
+}
+.fin-notes-field input:focus,.fin-notes-field select:focus,.fin-notes-field textarea:focus{
+  outline:none;border-color:var(--accent);
+}
+.fin-notes-field textarea{resize:vertical;min-height:60px;font-family:inherit;}
+/* Modal */
+.pnl-notes-modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;
+  align-items:flex-start;justify-content:center;padding:60px 20px;
+}
+.pnl-notes-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  width:100%;max-width:680px;max-height:80vh;display:flex;flex-direction:column;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.pnl-notes-header{
+  display:flex;align-items:center;gap:10px;padding:14px 16px;
+  border-bottom:1px solid var(--border);font-size:.95em;
+}
+.pnl-notes-controls{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.pnl-notes-controls select{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  border-radius:6px;padding:5px 8px;font-size:.78em;
+}
+.pnl-notes-close{
+  background:transparent;border:none;color:var(--muted);font-size:1.6em;line-height:1;
+  cursor:pointer;padding:0 6px;border-radius:4px;
+}
+.pnl-notes-close:hover{color:var(--red);background:rgba(255,71,87,.08);}
+.pnl-notes-list{overflow-y:auto;padding:8px;flex:1;}
+.pnl-notes-empty{padding:30px;text-align:center;color:var(--muted);font-size:.88em;}
+.pnl-note-item{
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;margin-bottom:8px;
+}
+.pnl-note-meta{
+  display:flex;gap:10px;align-items:center;font-size:.72em;color:var(--muted);
+  margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;
+}
+.pnl-note-date{color:var(--accent);}
+.pnl-note-li{
+  background:rgba(0,200,255,.1);color:var(--accent);
+  padding:1px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:600;
+}
+.pnl-note-del{
+  margin-left:auto;background:transparent;border:none;color:var(--muted);
+  cursor:pointer;font-size:1.1em;line-height:1;padding:0 6px;border-radius:3px;
+}
+.pnl-note-del:hover{color:var(--red);background:rgba(255,71,87,.1);}
+.pnl-note-text{font-size:.88em;color:var(--text);white-space:pre-wrap;line-height:1.5;}
+
 /* SECTION HEADERS */
 .sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
 .sec-title{font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
@@ -956,9 +1019,16 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
     <!-- ══ KPI: FINANCIALS ══ -->
     <div class="page" id="pg-kpi-financial">
-      <div class="sec-hdr"><div class="sec-title">FINANCIAL PERFORMANCE</div><span class="badge" id="fin-badge">—</span><label class="btn btn-accent" style="cursor:pointer;margin-left:auto;font-size:.75em" title="Import QuickBooks P&amp;L CSV">&#128229; Import P&amp;L CSV<input type="file" accept=".csv" style="display:none" onchange="importPLcsv(this)"/></label></div>
+      <div class="sec-hdr">
+        <div class="sec-title">FINANCIAL PERFORMANCE</div>
+        <span class="badge" id="fin-badge">—</span>
+        <button class="btn fin-notes-btn" id="fin-notes-btn" onclick="pnlOpenNotesModal()" title="View Financials notes" style="margin-left:auto;font-size:.78em;display:none">&#128221; Notes <span class="fin-notes-count" id="fin-notes-count">0</span></button>
+        <button class="btn fin-edit-toggle" id="fin-edit-toggle" onclick="pnlToggleEditMode()" title="Toggle edit mode for notes" style="font-size:.75em">&#9998; Edit</button>
+        <label class="btn btn-accent" style="cursor:pointer;font-size:.75em" title="Import QuickBooks P&amp;L CSV">&#128229; Import P&amp;L CSV<input type="file" accept=".csv" style="display:none" onchange="importPLcsv(this)"/></label>
+      </div>
       <div class="kpi-grid" id="fin-kpis"></div>
       <div class="kpi-grid" id="fin-kpis-row2"></div>
+      <div id="fin-notes-form" class="fin-notes-form" style="display:none"></div>
       <div class="cg2" id="fin-charts"></div>
       <div class="fin-tbl-toolbar">
         <button class="btn fin-scroll-btn" onclick="finScroll(-600)" title="Scroll left">&laquo; Left</button>
@@ -2664,12 +2734,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if(typeof dashApplyEditModeClass === 'function') dashApplyEditModeClass();
 
   getRoadysSB();
-  if(typeof vpLoadFromSupabase === 'function')   vpLoadFromSupabase();
-  if(typeof kpiLoadFromSupabase === 'function')  kpiLoadFromSupabase();
-  if(typeof fuelLoadFromSupabase === 'function') fuelLoadFromSupabase();
-  if(typeof subscribeKpiRealtime === 'function')  subscribeKpiRealtime();
-  if(typeof subscribeFuelRealtime === 'function') subscribeFuelRealtime();
-  if(typeof subscribeVpRealtime === 'function')   subscribeVpRealtime();
+  if(typeof loadPnlNotesLocal === 'function')      loadPnlNotesLocal();
+  if(typeof vpLoadFromSupabase === 'function')     vpLoadFromSupabase();
+  if(typeof kpiLoadFromSupabase === 'function')    kpiLoadFromSupabase();
+  if(typeof fuelLoadFromSupabase === 'function')   fuelLoadFromSupabase();
+  if(typeof pnlNotesLoadFromSupabase === 'function') pnlNotesLoadFromSupabase();
+  if(typeof subscribeKpiRealtime === 'function')   subscribeKpiRealtime();
+  if(typeof subscribeFuelRealtime === 'function')  subscribeFuelRealtime();
+  if(typeof subscribeVpRealtime === 'function')    subscribeVpRealtime();
+  if(typeof subscribePnlNotesRealtime === 'function') subscribePnlNotesRealtime();
 });
 
 // ═══════════════════════════════════════════════
@@ -3987,6 +4060,272 @@ async function importRewardsCsv(input){
     input.value = '';
   }
 }
+// ════════════════════════════════════════════════════════════
+//  P&L NOTES — date-tagged, line-item-tagged free-text notes
+// ════════════════════════════════════════════════════════════
+// Each note: { id, note_date (YYYY-MM-DD), line_item, notes, created_at, updated_at }
+// Local cache: localStorage 'roadys_pnl_notes' (array)
+// Cloud: Supabase pnl_notes table — synced via load/save/delete + realtime
+let PNL_NOTES = [];
+function loadPnlNotesLocal(){
+  try { PNL_NOTES = JSON.parse(localStorage.getItem('roadys_pnl_notes') || '[]') || []; }
+  catch(e){ PNL_NOTES = []; }
+}
+function savePnlNotesLocal(){
+  try { localStorage.setItem('roadys_pnl_notes', JSON.stringify(PNL_NOTES)); } catch(e){}
+}
+async function pnlNotesLoadFromSupabase(){
+  const sb = getRoadysSB(); if(!sb) return false;
+  try {
+    sbShowSyncing && sbShowSyncing('⟳ Loading notes...');
+    const {data, error} = await sb.from('pnl_notes').select('*').order('note_date', {ascending: false});
+    if(error) throw new Error(error.message || JSON.stringify(error));
+    if(data){
+      // Merge cloud → local same way kpi/fuel does, then push any
+      // local-only notes back up. Avoids wiping unsynced edits.
+      const cloudIds = new Set();
+      data.forEach(r => {
+        cloudIds.add(r.id);
+        const idx = PNL_NOTES.findIndex(n => n.id === r.id);
+        if(idx >= 0) PNL_NOTES[idx] = r;
+        else PNL_NOTES.push(r);
+      });
+      savePnlNotesLocal();
+      // Local-only notes (not in cloud yet) → push them up
+      const orphaned = PNL_NOTES.filter(n => !cloudIds.has(n.id));
+      if(orphaned.length){
+        console.log('[Supabase] pnl_notes: pushing ' + orphaned.length + ' local-only notes...');
+        for(const n of orphaned) await pnlNoteSaveToSupabase(n);
+      }
+    }
+    sbHideSyncing && sbHideSyncing(true);
+    pnlRefreshFinancialsUI();
+    return true;
+  } catch(e){
+    console.warn('pnlNotesLoadFromSupabase:', e);
+    sbHideSyncing && sbHideSyncing(false);
+    return false;
+  }
+}
+async function pnlNoteSaveToSupabase(note){
+  const sb = getRoadysSB(); if(!sb) return;
+  try {
+    const {error} = await sb.from('pnl_notes').upsert({
+      id:         note.id,
+      note_date:  note.note_date,
+      line_item:  note.line_item,
+      notes:      note.notes,
+      updated_at: new Date().toISOString()
+    }, {onConflict: 'id'});
+    if(error) throw new Error(error.message || JSON.stringify(error));
+  } catch(e){ console.warn('pnlNoteSaveToSupabase:', e); }
+}
+async function pnlNoteDeleteFromSupabase(id){
+  const sb = getRoadysSB(); if(!sb) return;
+  try {
+    const {error} = await sb.from('pnl_notes').delete().eq('id', id);
+    if(error) throw new Error(error.message || JSON.stringify(error));
+  } catch(e){ console.warn('pnlNoteDeleteFromSupabase:', e); }
+}
+
+// ── Edit-mode toggle (gates the note-entry form) ───────────────
+function pnlIsEditMode(){
+  try { return localStorage.getItem('roadys_pnl_edit_mode') === '1'; } catch(e){ return false; }
+}
+function pnlToggleEditMode(){
+  const next = !pnlIsEditMode();
+  try { localStorage.setItem('roadys_pnl_edit_mode', next ? '1' : '0'); } catch(e){}
+  pnlRefreshFinancialsUI();
+  toast(next ? 'Notes edit mode ON' : 'Notes edit mode OFF');
+}
+
+// ── Note form (rendered into #fin-notes-form) ──────────────────
+function pnlBuildLineItemOptions(){
+  // The dropdown shows N/A and Other up top, then every P&L key the
+  // page already iterates over (income, COGS, OpEx, plus the rollup
+  // rows the table prints). Sorted alphabetically within group.
+  const incomeLines = Object.keys(KPI_MD).filter(k => KPI_MD[k].cat === 'PL_Income').sort();
+  const cogsLines   = Object.keys(KPI_MD).filter(k => KPI_MD[k].cat === 'PL_COGS').sort();
+  const opexLines   = Object.keys(KPI_MD).filter(k => KPI_MD[k].cat === 'PL_OpEx').sort();
+  const rollups     = ['Total Income','Total Cost of Goods Sold','Gross Profit','Total Operating Expenses','Net Income'];
+  const opt = v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`;
+  return [
+    `<optgroup label="General"><option value="N/A">N/A</option><option value="Other">Other</option></optgroup>`,
+    rollups.length   ? `<optgroup label="P&L Rollups">${rollups.map(opt).join('')}</optgroup>` : '',
+    incomeLines.length ? `<optgroup label="Income">${incomeLines.map(opt).join('')}</optgroup>` : '',
+    cogsLines.length   ? `<optgroup label="Cost of Goods Sold">${cogsLines.map(opt).join('')}</optgroup>` : '',
+    opexLines.length   ? `<optgroup label="Operating Expense">${opexLines.map(opt).join('')}</optgroup>` : ''
+  ].join('');
+}
+function pnlRenderNoteForm(){
+  const wrap = document.getElementById('fin-notes-form');
+  if(!wrap) return;
+  if(!pnlIsEditMode()){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  const today = new Date().toISOString().slice(0,10);
+  wrap.style.display = '';
+  wrap.innerHTML = `
+    <div class="fin-notes-form-card">
+      <div class="fin-notes-form-title">&#128221; Add a Note</div>
+      <div class="fin-notes-form-grid">
+        <label class="fin-notes-field">
+          <span>Date</span>
+          <input type="date" id="pnl-note-date" value="${today}">
+        </label>
+        <label class="fin-notes-field" style="flex:2">
+          <span>Line Item</span>
+          <select id="pnl-note-line-item">${pnlBuildLineItemOptions()}</select>
+        </label>
+      </div>
+      <label class="fin-notes-field" style="margin-top:8px">
+        <span>Note</span>
+        <textarea id="pnl-note-text" rows="3" placeholder="What changed, why, or what to remember..."></textarea>
+      </label>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn" onclick="document.getElementById('pnl-note-text').value='';">Clear</button>
+        <button class="btn btn-accent" onclick="pnlAddNote()">&#128190; Save Note</button>
+      </div>
+    </div>
+  `;
+}
+
+function pnlAddNote(){
+  const date = document.getElementById('pnl-note-date')?.value;
+  const lineItem = document.getElementById('pnl-note-line-item')?.value;
+  const text = (document.getElementById('pnl-note-text')?.value || '').trim();
+  if(!date){ toast('Date required', 'terr'); return; }
+  if(!lineItem){ toast('Pick a line item (or N/A)', 'terr'); return; }
+  if(!text){ toast('Note text required', 'terr'); return; }
+  const note = {
+    id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    note_date: date,
+    line_item: lineItem,
+    notes: text,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  PNL_NOTES.push(note);
+  savePnlNotesLocal();
+  pnlNoteSaveToSupabase(note);
+  // Clear text and refresh chrome (button count, modal if open)
+  const ta = document.getElementById('pnl-note-text'); if(ta) ta.value = '';
+  pnlRefreshFinancialsUI();
+  toast('Note saved');
+}
+function pnlDeleteNote(id){
+  if(!confirm('Delete this note?')) return;
+  PNL_NOTES = PNL_NOTES.filter(n => n.id !== id);
+  savePnlNotesLocal();
+  pnlNoteDeleteFromSupabase(id);
+  pnlRefreshFinancialsUI();
+  pnlRenderNotesModal();
+}
+
+// ── Notes modal (📝 button opens it) ───────────────────────────
+function pnlOpenNotesModal(){
+  let modal = document.getElementById('pnl-notes-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'pnl-notes-modal';
+    modal.className = 'pnl-notes-modal';
+    modal.innerHTML = `
+      <div class="pnl-notes-card" onclick="event.stopPropagation()">
+        <div class="pnl-notes-header">
+          <span style="font-weight:800">&#128221; P&amp;L Notes</span>
+          <span class="pnl-notes-controls">
+            <select id="pnl-notes-sort" onchange="pnlRenderNotesModal()" title="Sort">
+              <option value="date-desc">Newest first</option>
+              <option value="date-asc">Oldest first</option>
+              <option value="line-asc">Line item A→Z</option>
+              <option value="line-desc">Line item Z→A</option>
+            </select>
+            <button class="pnl-notes-close" onclick="pnlCloseNotesModal()" title="Close">×</button>
+          </span>
+        </div>
+        <div id="pnl-notes-list" class="pnl-notes-list"></div>
+      </div>
+    `;
+    modal.addEventListener('click', () => pnlCloseNotesModal());
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  pnlRenderNotesModal();
+}
+function pnlCloseNotesModal(){
+  const modal = document.getElementById('pnl-notes-modal');
+  if(modal) modal.style.display = 'none';
+}
+function pnlRenderNotesModal(){
+  const list = document.getElementById('pnl-notes-list');
+  if(!list) return;
+  const sortKey = document.getElementById('pnl-notes-sort')?.value || 'date-desc';
+  const arr = [...PNL_NOTES];
+  if     (sortKey === 'date-desc') arr.sort((a,b) => (b.note_date||'').localeCompare(a.note_date||'') || (b.created_at||'').localeCompare(a.created_at||''));
+  else if(sortKey === 'date-asc')  arr.sort((a,b) => (a.note_date||'').localeCompare(b.note_date||''));
+  else if(sortKey === 'line-asc')  arr.sort((a,b) => (a.line_item||'').localeCompare(b.line_item||''));
+  else if(sortKey === 'line-desc') arr.sort((a,b) => (b.line_item||'').localeCompare(a.line_item||''));
+  list.innerHTML = arr.length
+    ? arr.map(n => `
+      <div class="pnl-note-item">
+        <div class="pnl-note-meta">
+          <span class="pnl-note-date">${escHtml(n.note_date||'')}</span>
+          <span class="pnl-note-li">${escHtml(n.line_item||'')}</span>
+          <button class="pnl-note-del" onclick="pnlDeleteNote('${escHtml(n.id)}')" title="Delete note">×</button>
+        </div>
+        <div class="pnl-note-text">${escHtml(n.notes||'')}</div>
+      </div>
+    `).join('')
+    : '<div class="pnl-notes-empty">No notes yet. Click ✎ Edit on the Financials page to add one.</div>';
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function pnlRefreshFinancialsUI(){
+  // Toggle button visibility / count on the section header
+  const btn = document.getElementById('fin-notes-btn');
+  const cnt = document.getElementById('fin-notes-count');
+  if(cnt) cnt.textContent = PNL_NOTES.length;
+  if(btn) btn.style.display = PNL_NOTES.length ? '' : 'none';
+  // Edit-mode button reflects state
+  const tog = document.getElementById('fin-edit-toggle');
+  if(tog){
+    const on = pnlIsEditMode();
+    tog.innerHTML = on ? '&#10003; Done Editing' : '&#9998; Edit';
+    tog.classList.toggle('btn-accent', on);
+  }
+  pnlRenderNoteForm();
+  // Re-render modal if open
+  if(document.getElementById('pnl-notes-modal')?.style.display === 'flex'){
+    pnlRenderNotesModal();
+  }
+}
+
+// ── Realtime: pnl_notes ────────────────────────────────────────
+let _pnlRtChannel = null;
+function subscribePnlNotesRealtime(){
+  const sb = getRoadysSB(); if(!sb || _pnlRtChannel) return;
+  _pnlRtChannel = sb.channel('pnl_notes_changes')
+    .on('postgres_changes', {event: '*', schema: 'public', table: 'pnl_notes'}, payload => {
+      const r = payload.new || payload.old; if(!r || !r.id) return;
+      if(payload.eventType === 'DELETE'){
+        PNL_NOTES = PNL_NOTES.filter(n => n.id !== r.id);
+      } else {
+        const idx = PNL_NOTES.findIndex(n => n.id === r.id);
+        if(idx >= 0){
+          // Skip echo of our own write (same updated_at)
+          if(PNL_NOTES[idx].updated_at === r.updated_at) return;
+          PNL_NOTES[idx] = r;
+        } else {
+          PNL_NOTES.push(r);
+        }
+      }
+      savePnlNotesLocal();
+      pnlRefreshFinancialsUI();
+    })
+    .subscribe();
+}
+
 // Minimal CSV parser — handles quoted fields with embedded commas.
 function parseCsvLine(line){
   const result = [];
@@ -4580,6 +4919,10 @@ function pgFinancial(){
     plNIRow()+plNIYTDRow();
 
   document.getElementById('fin-tbl').innerHTML=kpiTblHdr()+`<tbody>${tbody}</tbody>`;
+
+  // Notes: refresh the section-header buttons (count, edit toggle)
+  // and re-render the entry form if edit mode is on.
+  if(typeof pnlRefreshFinancialsUI === 'function') pnlRefreshFinancialsUI();
 }
 
 // ── Financials horizontal scroll helpers ──
