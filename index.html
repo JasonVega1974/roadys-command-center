@@ -356,12 +356,16 @@ tr.search-hide{display:none!important;}
 .dc-row-add{margin-top:6px;text-align:center;}
 .dc-add-btn{background:transparent;border:1px dashed var(--border);color:var(--muted);padding:3px 10px;border-radius:4px;font-size:.7em;cursor:pointer;font-family:inherit;}
 .dc-add-btn:hover{border-color:var(--accent);color:var(--accent);}
-.dc-custom-row{position:relative;padding-right:36px;}
-.dc-row-del,.dc-row-edit{position:absolute;top:0;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.95em;line-height:1;padding:0 4px;opacity:.6;transition:all .15s;}
-.dc-row-edit{right:18px;}
-.dc-row-del{right:0;}
+.dc-custom-row{position:relative;padding-right:72px;}
+.dc-row-del,.dc-row-edit,.dc-row-up,.dc-row-dn{position:absolute;top:0;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.7em;line-height:1;padding:0 3px;opacity:.6;transition:all .15s;}
+.dc-row-up{right:54px;}
+.dc-row-dn{right:36px;}
+.dc-row-edit{right:18px;font-size:.85em;}
+.dc-row-del{right:0;font-size:.95em;}
+.dc-row-up:hover,.dc-row-dn:hover{color:var(--accent);opacity:1;}
 .dc-row-edit:hover{color:var(--accent);opacity:1;}
 .dc-row-del:hover{color:var(--red);opacity:1;}
+.dc-row-up[disabled],.dc-row-dn[disabled]{opacity:.2;cursor:not-allowed;}
 /* Add-card placeholder + delete/edit-card buttons */
 .dc-add-card-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--border)!important;background:transparent!important;cursor:pointer;min-height:160px;transition:all .15s;}
 .dc-add-card-placeholder:hover{border-color:var(--accent)!important;background:rgba(0,200,255,.04)!important;}
@@ -380,6 +384,8 @@ tr.search-hide{display:none!important;}
 body:not(.dash-edit-mode) .dc-row-add,
 body:not(.dash-edit-mode) .dc-row-del,
 body:not(.dash-edit-mode) .dc-row-edit,
+body:not(.dash-edit-mode) .dc-row-up,
+body:not(.dash-edit-mode) .dc-row-dn,
 body:not(.dash-edit-mode) .dc-card-del,
 body:not(.dash-edit-mode) .dc-card-edit,
 body:not(.dash-edit-mode) .dc-add-card-placeholder{display:none!important;}
@@ -3791,7 +3797,7 @@ function renderMaster(){
   // months don't fight with a one-off YTD number set on the dashboard.
   const yearMonths = MOS.filter(mo => mo.slice(0,4) === m.slice(0,4) && mo <= m);
   const totGalYTD = yearMonths.reduce((s, mo) => s + totalGallons(mo), 0);
-  let legacyAggYTD = 0, newAggYTD = 0, fuelmanYTD = 0, rcheckYTD = 0;
+  let legacyAggYTD = 0, newAggYTD = 0, fleetYTD = 0, fuelmanYTD = 0, rcheckYTD = 0;
   try {
     yearMonths.forEach(mo => {
       Object.values(GD).forEach(sd => {
@@ -3804,6 +3810,8 @@ function renderMaster(){
           else if(LEGACY_AGG_PROCESSORS.has(a.processor)) legacyAggYTD += gal;
           else                                newAggYTD   += gal;
         });
+        // Sum fleet entries (separate array on the GD record from aggregators).
+        (rec.fleets||[]).forEach(f => { fleetYTD += +f.gallons || 0; });
       });
     });
   } catch(e){}
@@ -3811,6 +3819,7 @@ function renderMaster(){
   const fuelSubsHTML =
     subRow('YTD Legacy Aggregators', overrideOr('Legacy Aggregator Gallons YTD (Override)', legacyAggYTD), '', 'Legacy Aggregator Gallons YTD (Override)', m) +
     subRow('YTD New Aggregators',    overrideOr('New Aggregator Gallons YTD (Override)',    newAggYTD),    '', 'New Aggregator Gallons YTD (Override)',    m) +
+    subRow('YTD Fleets',             overrideOr('Fleet Gallons YTD (Override)',             fleetYTD),     '', 'Fleet Gallons YTD (Override)',             m) +
     subRow('YTD Fuelman',            overrideOr('Fuelman Gallons YTD (Override)',           fuelmanYTD),   '', 'Fuelman Gallons YTD (Override)',           m) +
     subRow('YTD R-Check',            overrideOr('R-Check Gallons YTD (Override)',           rcheckYTD),    '', 'R-Check Gallons YTD (Override)',           m) +
     customRowsHTML('fuel', m);
@@ -4256,15 +4265,20 @@ function customRowsHTML(cardId, m){
   const editAttrs = (key, mo) => key && mo
     ? ` data-key="${(key+'').replace(/"/g,'&quot;')}" data-mo="${mo}" onclick="dashCellEdit(this)" title="Click to edit"`
     : '';
+  const lastIdx = list.length - 1;
   const rowsHTML = list.map((r, i) => {
     const val = r.key ? gv(r.key, m) : null;
     const lblEsc = (r.label||'').replace(/</g,'&lt;');
     const editable = !!r.key;
+    const upDisabled = i === 0;
+    const dnDisabled = i === lastIdx;
     return `<div class="dc-row dc-custom-row">`+
       `<span class="dc-lbl">${lblEsc}</span>`+
       `<span class="dc-val${editable?' dc-edit':''}"${editAttrs(r.key, m)}>${kpiFmt(val, r.fmt||'')}</span>`+
-      `<button class="dc-row-edit" title="Edit row label / key / format" onclick="dashEditRow('${cardId}',${i})">&#9998;</button>`+
-      `<button class="dc-row-del" title="Delete this row" onclick="dashRemoveRow('${cardId}',${i})">×</button>`+
+      `<button class="dc-row-up" title="Move up"   onclick="dashMoveRow('${cardId}',${i},-1)" ${upDisabled?'disabled':''}>&#9650;</button>`+
+      `<button class="dc-row-dn" title="Move down" onclick="dashMoveRow('${cardId}',${i},+1)" ${dnDisabled?'disabled':''}>&#9660;</button>`+
+      `<button class="dc-row-edit" title="Edit name / format" onclick="dashEditRow('${cardId}',${i})">&#9998;</button>`+
+      `<button class="dc-row-del" title="Delete row"          onclick="dashRemoveRow('${cardId}',${i})">×</button>`+
       `</div>`;
   }).join('');
   const addBtn = `<div class="dc-row-add"><button class="dc-add-btn" onclick="dashAddRow('${cardId}')" title="Add a row">+ Add Row</button></div>`;
@@ -4307,12 +4321,18 @@ function addCardPlaceholderHTML(){
 }
 
 // Action handlers — minimal prompt-based UX. Modal upgrade later.
+// Note: "key" here is the storage field name in our KD data store, not
+// an API key. We auto-generate it from the label so users never have
+// to think about it; advanced users can rename it via dashEditRow.
 function dashAddRow(cardId){
-  const label = (prompt('Row label (e.g. "Active Drivers"):') || '').trim();
+  const label = (prompt('Metric name (e.g. "Active Drivers"):') || '').trim();
   if(!label) return;
-  const key = (prompt('KPI key — the data source.\nUse an existing key (case-sensitive) or type a new one to create it:') || '').trim();
-  if(!key) return;
-  const fmt = (prompt('Format:\n  $    — dollars (e.g. 12345 → $12,345)\n  %    — decimal as percent (0.5 → 50%)\n  %n   — value as percent (98.1 → 98.1%)\n  count — plain number (default)\n\nEnter format ($ / % / %n / blank for count):') || '').trim();
+  const fmt = (prompt('Format:\n  $   — dollars  (12345 → $12,345)\n  %   — decimal as percent  (0.5 → 50%)\n  %n  — value as percent  (98.1 → 98.1%)\n  blank — plain count\n\nEnter $ / % / %n / blank:') || '').trim();
+  // Auto-generate a unique storage field ID. Slug from the label so it's
+  // human-readable in Supabase / DevTools, plus a timestamp suffix to
+  // guarantee uniqueness even if someone makes two rows with the same name.
+  const slug = label.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g,'').slice(0,40).toLowerCase();
+  const key = 'dash_' + cardId + '_' + slug + '_' + Date.now().toString(36);
   const state = loadDashCustom();
   if(!state.rows[cardId]) state.rows[cardId] = [];
   state.rows[cardId].push({label, key, fmt});
@@ -4330,19 +4350,31 @@ function dashRemoveRow(cardId, idx){
     if(typeof renderMaster === 'function') renderMaster();
   }
 }
+// Move a custom row up (-1) or down (+1) within its card.
+function dashMoveRow(cardId, idx, direction){
+  const state = loadDashCustom();
+  const list = state.rows?.[cardId];
+  if(!list || !list.length) return;
+  const newIdx = idx + direction;
+  if(newIdx < 0 || newIdx >= list.length) return;
+  // Swap in place
+  const tmp = list[idx];
+  list[idx] = list[newIdx];
+  list[newIdx] = tmp;
+  saveDashCustom(state);
+  if(typeof renderMaster === 'function') renderMaster();
+}
 function dashEditRow(cardId, idx){
   const state = loadDashCustom();
   const row = state.rows?.[cardId]?.[idx];
   if(!row){ toast('Row not found'); return; }
-  // Three prompts. Cancel on any returns null and aborts the edit.
-  const newLabel = prompt('Row label:', row.label || '');
+  // Two-prompt edit (label + format). Storage field ID stays as-is so
+  // the underlying value isn't lost. Cancel on either prompt aborts.
+  const newLabel = prompt('Metric name:', row.label || '');
   if(newLabel === null) return;
-  const newKey = prompt('KPI key (data source):', row.key || '');
-  if(newKey === null) return;
   const newFmt = prompt('Format ($ / % / %n / blank for count):', row.fmt || '');
   if(newFmt === null) return;
   row.label = (newLabel || '').trim() || row.label;
-  row.key   = (newKey   || '').trim() || row.key;
   row.fmt   = (newFmt   || '').trim();
   saveDashCustom(state);
   if(typeof renderMaster === 'function') renderMaster();
@@ -4351,9 +4383,19 @@ function dashEditRow(cardId, idx){
 function dashAddCard(){
   const title = (prompt('Card title (e.g. "Driver Engagement"):') || '').trim();
   if(!title) return;
-  const headlineKey = (prompt('Headline KPI key (data source for the big number).\nLeave blank for a card with only sub-rows.') || '').trim();
-  const headlineFmt = headlineKey ? ((prompt('Headline format ($ / % / %n / blank):') || '').trim()) : '';
-  const subtitle = (prompt('Sub-title under the headline (optional):') || '').trim();
+  // Headline (the big number) is optional — if the user wants only
+  // sub-rows, they leave it empty. Otherwise we auto-generate the
+  // storage field ID, same pattern as dashAddRow.
+  const wantsHeadline = confirm('Add a big headline number on this card?\n\nOK = yes, prompt for label and format.\nCancel = no, just sub-rows.');
+  let headlineKey = '', headlineFmt = '';
+  if(wantsHeadline){
+    const headlineLabel = (prompt('Headline label (shown small above the big number):') || '').trim();
+    if(!headlineLabel) return;
+    headlineFmt = (prompt('Headline format ($ / % / %n / blank for count):') || '').trim();
+    const slug = headlineLabel.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g,'').slice(0,40).toLowerCase();
+    headlineKey = 'dash_card_' + slug + '_' + Date.now().toString(36);
+  }
+  const subtitle = (prompt('Sub-title under the headline (optional, blank for none):') || '').trim();
   const state = loadDashCustom();
   const newId = 'custom_' + Date.now();
   state.cards.push({id: newId, title, subtitle, headlineKey, headlineFmt, rows: []});
@@ -4375,14 +4417,11 @@ function dashEditCard(cardId){
   if(!card){ toast('Card not found'); return; }
   const newTitle = prompt('Card title:', card.title || '');
   if(newTitle === null) return;
-  const newHeadlineKey = prompt('Headline KPI key (blank for none):', card.headlineKey || '');
-  if(newHeadlineKey === null) return;
-  const newHeadlineFmt = prompt('Headline format ($ / % / %n / blank):', card.headlineFmt || '');
+  const newHeadlineFmt = prompt('Headline format ($ / % / %n / blank for count):', card.headlineFmt || '');
   if(newHeadlineFmt === null) return;
   const newSubtitle = prompt('Sub-title (blank for none):', card.subtitle || '');
   if(newSubtitle === null) return;
   card.title       = (newTitle       || '').trim() || card.title;
-  card.headlineKey = (newHeadlineKey || '').trim();
   card.headlineFmt = (newHeadlineFmt || '').trim();
   card.subtitle    = (newSubtitle    || '').trim();
   saveDashCustom(state);
