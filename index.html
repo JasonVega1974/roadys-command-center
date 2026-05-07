@@ -448,6 +448,11 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
   background:rgba(0,200,255,.1);color:var(--accent);
   padding:1px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:600;
 }
+.pnl-note-section{
+  background:rgba(0,214,143,.12);color:var(--green);
+  padding:1px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:700;
+  font-size:.95em;
+}
 .pnl-note-del{
   margin-left:auto;background:transparent;border:none;color:var(--muted);
   cursor:pointer;font-size:1.1em;line-height:1;padding:0 6px;border-radius:3px;
@@ -4111,11 +4116,12 @@ async function pnlNoteSaveToSupabase(note){
   const sb = getRoadysSB(); if(!sb) return;
   try {
     const {error} = await sb.from('pnl_notes').upsert({
-      id:         note.id,
-      note_date:  note.note_date,
-      line_item:  note.line_item,
-      notes:      note.notes,
-      updated_at: new Date().toISOString()
+      id:           note.id,
+      note_date:    note.note_date,
+      card_section: note.card_section || 'N/A',
+      line_item:    note.line_item,
+      notes:        note.notes,
+      updated_at:   new Date().toISOString()
     }, {onConflict: 'id'});
     if(error) throw new Error(error.message || JSON.stringify(error));
   } catch(e){ console.warn('pnlNoteSaveToSupabase:', e); }
@@ -4171,6 +4177,14 @@ function pnlRenderNoteForm(){
           <span>Date</span>
           <input type="date" id="pnl-note-date" value="${today}">
         </label>
+        <label class="fin-notes-field">
+          <span>Card Section</span>
+          <select id="pnl-note-card-section">
+            <option value="P&L Summary">P&amp;L Summary</option>
+            <option value="Revenue">Revenue</option>
+            <option value="N/A">N/A</option>
+          </select>
+        </label>
         <label class="fin-notes-field" style="flex:2">
           <span>Line Item</span>
           <select id="pnl-note-line-item">${pnlBuildLineItemOptions()}</select>
@@ -4190,6 +4204,7 @@ function pnlRenderNoteForm(){
 
 function pnlAddNote(){
   const date = document.getElementById('pnl-note-date')?.value;
+  const cardSection = document.getElementById('pnl-note-card-section')?.value || 'N/A';
   const lineItem = document.getElementById('pnl-note-line-item')?.value;
   const text = (document.getElementById('pnl-note-text')?.value || '').trim();
   if(!date){ toast('Date required', 'terr'); return; }
@@ -4198,6 +4213,7 @@ function pnlAddNote(){
   const note = {
     id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
     note_date: date,
+    card_section: cardSection,
     line_item: lineItem,
     notes: text,
     created_at: new Date().toISOString(),
@@ -4232,9 +4248,16 @@ function pnlOpenNotesModal(){
         <div class="pnl-notes-header">
           <span style="font-weight:800">&#128221; P&amp;L Notes</span>
           <span class="pnl-notes-controls">
+            <select id="pnl-notes-filter" onchange="pnlRenderNotesModal()" title="Filter by card section">
+              <option value="">All sections</option>
+              <option value="P&L Summary">P&amp;L Summary</option>
+              <option value="Revenue">Revenue</option>
+              <option value="N/A">N/A</option>
+            </select>
             <select id="pnl-notes-sort" onchange="pnlRenderNotesModal()" title="Sort">
               <option value="date-desc">Newest first</option>
               <option value="date-asc">Oldest first</option>
+              <option value="section-asc">Card section A→Z</option>
               <option value="line-asc">Line item A→Z</option>
               <option value="line-desc">Line item Z→A</option>
             </select>
@@ -4257,24 +4280,28 @@ function pnlCloseNotesModal(){
 function pnlRenderNotesModal(){
   const list = document.getElementById('pnl-notes-list');
   if(!list) return;
-  const sortKey = document.getElementById('pnl-notes-sort')?.value || 'date-desc';
-  const arr = [...PNL_NOTES];
-  if     (sortKey === 'date-desc') arr.sort((a,b) => (b.note_date||'').localeCompare(a.note_date||'') || (b.created_at||'').localeCompare(a.created_at||''));
-  else if(sortKey === 'date-asc')  arr.sort((a,b) => (a.note_date||'').localeCompare(b.note_date||''));
-  else if(sortKey === 'line-asc')  arr.sort((a,b) => (a.line_item||'').localeCompare(b.line_item||''));
-  else if(sortKey === 'line-desc') arr.sort((a,b) => (b.line_item||'').localeCompare(a.line_item||''));
+  const sortKey   = document.getElementById('pnl-notes-sort')?.value   || 'date-desc';
+  const filterSec = document.getElementById('pnl-notes-filter')?.value || '';
+  let arr = [...PNL_NOTES];
+  if(filterSec) arr = arr.filter(n => (n.card_section || 'N/A') === filterSec);
+  if     (sortKey === 'date-desc')    arr.sort((a,b) => (b.note_date||'').localeCompare(a.note_date||'') || (b.created_at||'').localeCompare(a.created_at||''));
+  else if(sortKey === 'date-asc')     arr.sort((a,b) => (a.note_date||'').localeCompare(b.note_date||''));
+  else if(sortKey === 'section-asc')  arr.sort((a,b) => (a.card_section||'N/A').localeCompare(b.card_section||'N/A') || (b.note_date||'').localeCompare(a.note_date||''));
+  else if(sortKey === 'line-asc')     arr.sort((a,b) => (a.line_item||'').localeCompare(b.line_item||''));
+  else if(sortKey === 'line-desc')    arr.sort((a,b) => (b.line_item||'').localeCompare(a.line_item||''));
   list.innerHTML = arr.length
     ? arr.map(n => `
       <div class="pnl-note-item">
         <div class="pnl-note-meta">
           <span class="pnl-note-date">${escHtml(n.note_date||'')}</span>
+          ${n.card_section ? `<span class="pnl-note-section">${escHtml(n.card_section)}</span>` : ''}
           <span class="pnl-note-li">${escHtml(n.line_item||'')}</span>
           <button class="pnl-note-del" onclick="pnlDeleteNote('${escHtml(n.id)}')" title="Delete note">×</button>
         </div>
         <div class="pnl-note-text">${escHtml(n.notes||'')}</div>
       </div>
     `).join('')
-    : '<div class="pnl-notes-empty">No notes yet. Click ✎ Edit on the Financials page to add one.</div>';
+    : '<div class="pnl-notes-empty">No notes match. Adjust filters above, or click ✎ Edit on the Financials page to add one.</div>';
 }
 
 // ── Helpers ────────────────────────────────────────────────────
