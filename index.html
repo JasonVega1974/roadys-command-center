@@ -458,12 +458,28 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
   padding:1px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:700;
   font-size:.95em;
 }
-.pnl-note-del{
-  margin-left:auto;background:transparent;border:none;color:var(--muted);
-  cursor:pointer;font-size:1.1em;line-height:1;padding:0 6px;border-radius:3px;
+.pnl-note-edit, .pnl-note-del{
+  background:transparent;border:none;color:var(--muted);
+  cursor:pointer;font-size:1em;line-height:1;padding:0 6px;border-radius:3px;
 }
+.pnl-note-edit{margin-left:auto;}
+.pnl-note-edit:hover{color:var(--accent);background:rgba(0,200,255,.1);}
 .pnl-note-del:hover{color:var(--red);background:rgba(255,71,87,.1);}
 .pnl-note-text{font-size:.88em;color:var(--text);white-space:pre-wrap;line-height:1.5;}
+/* Inline edit form inside the modal (replaces the row when ✎ clicked) */
+.pnl-note-editing{border-color:var(--accent);}
+.pnl-note-edit-form{display:flex;flex-direction:column;}
+.pnl-note-edit-grid{display:flex;gap:10px;flex-wrap:wrap;}
+.pnl-note-edit-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px;}
+.pnl-note-edit-field span{font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;}
+.pnl-note-edit-field input,.pnl-note-edit-field select,.pnl-note-edit-field textarea{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);
+  padding:6px 9px;font-size:.82em;font-family:inherit;
+}
+.pnl-note-edit-field input:focus,.pnl-note-edit-field select:focus,.pnl-note-edit-field textarea:focus{
+  outline:none;border-color:var(--accent);
+}
+.pnl-note-edit-field textarea{resize:vertical;min-height:50px;}
 
 /* SECTION HEADERS */
 .sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
@@ -4197,7 +4213,7 @@ function pnlRenderNoteForm(){
           <span>Card Section</span>
           <select id="pnl-note-card-section" onchange="pnlUpdateCardTitleOptions()">
             <option value="P&L Summary">P&amp;L Summary</option>
-            <option value="Revenue">Revenue</option>
+            <option value="Revenue">Revenue Streams</option>
             <option value="N/A">N/A</option>
           </select>
         </label>
@@ -4256,8 +4272,9 @@ function pnlAddNote(){
   PNL_NOTES.push(note);
   savePnlNotesLocal();
   pnlNoteSaveToSupabase(note);
-  // Clear text and refresh chrome (button count, modal if open)
-  const ta = document.getElementById('pnl-note-text'); if(ta) ta.value = '';
+  // Auto-close the note form after save — flip edit-mode off so the
+  // panel collapses without the user needing a second click.
+  try { localStorage.setItem('roadys_pnl_edit_mode', '0'); } catch(e){}
   pnlRefreshFinancialsUI();
   toast('Note saved');
 }
@@ -4268,6 +4285,107 @@ function pnlDeleteNote(id){
   pnlNoteDeleteFromSupabase(id);
   pnlRefreshFinancialsUI();
   pnlRenderNotesModal();
+}
+
+// Inline edit in the modal: click ✎ on a note → that row becomes a
+// mini-form pre-filled with the note's date, section, card, line item,
+// and body. Save updates in place; Cancel re-renders the row. Only
+// one note can be in edit mode at a time (other notes still show
+// normally). Persists via the same KD/Supabase path as add.
+let _pnlEditingNoteId = null;
+function pnlBeginEditNote(id){
+  _pnlEditingNoteId = id;
+  pnlRenderNotesModal();
+}
+function pnlCancelEditNote(){
+  _pnlEditingNoteId = null;
+  pnlRenderNotesModal();
+}
+function pnlSaveEditedNote(id){
+  const note = PNL_NOTES.find(n => n.id === id);
+  if(!note){ toast('Note not found', 'terr'); return; }
+  const date = document.getElementById('pnl-edit-date-' + id)?.value;
+  const section = document.getElementById('pnl-edit-section-' + id)?.value;
+  const card = document.getElementById('pnl-edit-card-' + id)?.value;
+  const lineItem = document.getElementById('pnl-edit-line-' + id)?.value;
+  const text = (document.getElementById('pnl-edit-text-' + id)?.value || '').trim();
+  if(!date){ toast('Date required', 'terr'); return; }
+  if(!lineItem){ toast('Line item required', 'terr'); return; }
+  if(!text){ toast('Note text required', 'terr'); return; }
+  note.note_date    = date;
+  note.card_section = section || 'N/A';
+  note.card_title   = card || 'N/A';
+  note.line_item    = lineItem;
+  note.notes        = text;
+  note.updated_at   = new Date().toISOString();
+  savePnlNotesLocal();
+  pnlNoteSaveToSupabase(note);
+  _pnlEditingNoteId = null;
+  pnlRefreshFinancialsUI();
+  pnlRenderNotesModal();
+  toast('Note updated');
+}
+
+// Build the edit-row HTML for the one note currently being edited.
+// Returns HTML for an inline form replacing the normal note display.
+function pnlBuildEditRowHTML(n){
+  // Filter Card options to the section currently selected. Falls back
+  // to the note's stored card if it's not in the current section's list.
+  const section = n.card_section || 'P&L Summary';
+  const cards = PNL_NOTE_CARDS[section] || ['N/A'];
+  const cardOpts = cards.map(c =>
+    `<option value="${escHtml(c)}" ${c === n.card_title ? 'selected' : ''}>${escHtml(c)}</option>`
+  ).join('');
+  // Pre-select section option
+  const sectionOpts = `
+    <option value="P&L Summary" ${section === 'P&L Summary' ? 'selected' : ''}>P&amp;L Summary</option>
+    <option value="Revenue" ${section === 'Revenue' ? 'selected' : ''}>Revenue Streams</option>
+    <option value="N/A" ${section === 'N/A' ? 'selected' : ''}>N/A</option>
+  `;
+  // Pre-select line item option (rebuild dropdown then mark selected)
+  const lineOpts = pnlBuildLineItemOptions().replace(
+    new RegExp(`<option value="${escHtml(n.line_item).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`),
+    `<option value="${escHtml(n.line_item)}" selected`
+  );
+  return `
+    <div class="pnl-note-edit-form">
+      <div class="pnl-note-edit-grid">
+        <label class="pnl-note-edit-field">
+          <span>Date</span>
+          <input type="date" id="pnl-edit-date-${escHtml(n.id)}" value="${escHtml(n.note_date||'')}">
+        </label>
+        <label class="pnl-note-edit-field">
+          <span>Card Section</span>
+          <select id="pnl-edit-section-${escHtml(n.id)}" onchange="pnlEditUpdateCardOptions('${escHtml(n.id)}')">${sectionOpts}</select>
+        </label>
+        <label class="pnl-note-edit-field">
+          <span>Card</span>
+          <select id="pnl-edit-card-${escHtml(n.id)}">${cardOpts}</select>
+        </label>
+        <label class="pnl-note-edit-field" style="flex:2">
+          <span>Line Item</span>
+          <select id="pnl-edit-line-${escHtml(n.id)}">${lineOpts}</select>
+        </label>
+      </div>
+      <label class="pnl-note-edit-field" style="margin-top:8px">
+        <span>Note</span>
+        <textarea id="pnl-edit-text-${escHtml(n.id)}" rows="3">${escHtml(n.notes||'')}</textarea>
+      </label>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn" onclick="pnlCancelEditNote()">Cancel</button>
+        <button class="btn btn-accent" onclick="pnlSaveEditedNote('${escHtml(n.id)}')">&#128190; Save Changes</button>
+      </div>
+    </div>
+  `;
+}
+// When user changes Card Section in the edit row, repopulate the Card
+// dropdown so its options match the new section.
+function pnlEditUpdateCardOptions(id){
+  const sec = document.getElementById('pnl-edit-section-' + id)?.value;
+  const sel = document.getElementById('pnl-edit-card-' + id);
+  if(!sel || !sec) return;
+  const cards = PNL_NOTE_CARDS[sec] || ['N/A'];
+  sel.innerHTML = cards.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
 }
 
 // ── Notes modal (📝 button opens it) ───────────────────────────
@@ -4285,7 +4403,7 @@ function pnlOpenNotesModal(){
             <select id="pnl-notes-filter" onchange="pnlRenderNotesModal()" title="Filter by card section">
               <option value="">All sections</option>
               <option value="P&L Summary">P&amp;L Summary</option>
-              <option value="Revenue">Revenue</option>
+              <option value="Revenue">Revenue Streams</option>
               <option value="N/A">N/A</option>
             </select>
             <select id="pnl-notes-sort" onchange="pnlRenderNotesModal()" title="Sort">
@@ -4323,19 +4441,31 @@ function pnlRenderNotesModal(){
   else if(sortKey === 'section-asc')  arr.sort((a,b) => (a.card_section||'N/A').localeCompare(b.card_section||'N/A') || (b.note_date||'').localeCompare(a.note_date||''));
   else if(sortKey === 'line-asc')     arr.sort((a,b) => (a.line_item||'').localeCompare(b.line_item||''));
   else if(sortKey === 'line-desc')    arr.sort((a,b) => (b.line_item||'').localeCompare(a.line_item||''));
+  // Cosmetic display: stored 'Revenue' shows as 'Revenue Streams'.
+  // Keeps the DB key stable (existing notes don't need migration)
+  // while honoring the renamed section header on the Financials page.
+  const sectionLabel = s => (s === 'Revenue' ? 'Revenue Streams' : (s || ''));
   list.innerHTML = arr.length
-    ? arr.map(n => `
-      <div class="pnl-note-item">
-        <div class="pnl-note-meta">
-          <span class="pnl-note-date">${escHtml(n.note_date||'')}</span>
-          ${n.card_section ? `<span class="pnl-note-section">${escHtml(n.card_section)}</span>` : ''}
-          ${n.card_title && n.card_title !== n.card_section ? `<span class="pnl-note-card">${escHtml(n.card_title)}</span>` : ''}
-          <span class="pnl-note-li">${escHtml(n.line_item||'')}</span>
-          <button class="pnl-note-del" onclick="pnlDeleteNote('${escHtml(n.id)}')" title="Delete note">×</button>
-        </div>
-        <div class="pnl-note-text">${escHtml(n.notes||'')}</div>
-      </div>
-    `).join('')
+    ? arr.map(n => {
+        // If this note is currently being edited inline, render the form
+        // instead of the static display row.
+        if(n.id === _pnlEditingNoteId){
+          return `<div class="pnl-note-item pnl-note-editing" data-note-id="${escHtml(n.id)}">${pnlBuildEditRowHTML(n)}</div>`;
+        }
+        return `
+          <div class="pnl-note-item" data-note-id="${escHtml(n.id)}">
+            <div class="pnl-note-meta">
+              <span class="pnl-note-date">${escHtml(n.note_date||'')}</span>
+              ${n.card_section ? `<span class="pnl-note-section">${escHtml(sectionLabel(n.card_section))}</span>` : ''}
+              ${n.card_title && n.card_title !== n.card_section ? `<span class="pnl-note-card">${escHtml(n.card_title)}</span>` : ''}
+              <span class="pnl-note-li">${escHtml(n.line_item||'')}</span>
+              <button class="pnl-note-edit" onclick="pnlBeginEditNote('${escHtml(n.id)}')" title="Edit note">&#9998;</button>
+              <button class="pnl-note-del" onclick="pnlDeleteNote('${escHtml(n.id)}')" title="Delete note">×</button>
+            </div>
+            <div class="pnl-note-text">${escHtml(n.notes||'')}</div>
+          </div>
+        `;
+      }).join('')
     : '<div class="pnl-notes-empty">No notes match. Adjust filters above, or click 📝 Add Note on the Financials page to add one.</div>';
 }
 
@@ -4349,11 +4479,14 @@ function pnlRefreshFinancialsUI(){
   const cnt = document.getElementById('fin-notes-count');
   if(cnt) cnt.textContent = PNL_NOTES.length;
   if(btn) btn.style.display = PNL_NOTES.length ? '' : 'none';
-  // Edit-mode button reflects state
+  // Add Note button stays labeled the same in both states; the
+  // accent-blue background is the only visual cue when the form
+  // is open. Per user spec, the form closes itself after Save Note,
+  // so users rarely need to click this button to close it manually.
   const tog = document.getElementById('fin-edit-toggle');
   if(tog){
     const on = pnlIsEditMode();
-    tog.innerHTML = on ? '&#10003; Done' : '&#128221; Add Note';
+    tog.innerHTML = '&#128221; Add Note';
     tog.classList.toggle('btn-accent', on);
   }
   pnlRenderNoteForm();
@@ -4865,7 +4998,7 @@ function pgFinancial(){
   const activeRewLocs=gv('# of Active Rewards Locations',m);
   const rewSubLine=activeRewLocs!=null?`Fees + Expired Points · <b style="color:var(--accent)">${kpiFmt(activeRewLocs,'')}</b> active locations`:'Fees + Expired Points';
   document.getElementById('fin-kpis-row2').innerHTML=
-    '<div style="grid-column:1/-1;font-size:.7em;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);padding:4px 0 0">Revenue</div>'+
+    '<div style="grid-column:1/-1;font-size:.7em;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);padding:4px 0 0">Revenue Streams</div>'+
     kpiKC('Membership',gv('Membership Gross Revenue',m),'$',p?gv('Membership Gross Revenue',p):null,'',false,ytdKpi('Membership Gross Revenue',m),gvy('Membership Gross Revenue',m))+
     kpiKC('Rewards',rewRev(m),'$',p?rewRev(p):null,rewSubLine,false,ytdKpi('Rewards Revenue',m),gvy('Rewards Revenue',m))+
     kpiKC('Vendor Programs',gv('Monthly Vendor Program Revenue',m),'$',p?gv('Monthly Vendor Program Revenue',p):null,'',false,ytdKpi('Monthly Vendor Program Revenue',m),gvy('Monthly Vendor Program Revenue',m))+
