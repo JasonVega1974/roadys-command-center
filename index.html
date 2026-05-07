@@ -1033,7 +1033,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
         <div class="sec-title">FINANCIAL PERFORMANCE</div>
         <span class="badge" id="fin-badge">—</span>
         <button class="btn fin-notes-btn" id="fin-notes-btn" onclick="pnlOpenNotesModal()" title="View Financials notes" style="margin-left:auto;font-size:.78em;display:none">&#128221; Notes <span class="fin-notes-count" id="fin-notes-count">0</span></button>
-        <button class="btn fin-edit-toggle" id="fin-edit-toggle" onclick="pnlToggleEditMode()" title="Toggle edit mode for notes" style="font-size:.75em">&#9998; Edit</button>
+        <button class="btn fin-edit-toggle" id="fin-edit-toggle" onclick="pnlToggleEditMode()" title="Show / hide the note-entry form" style="font-size:.75em">&#128221; Add Note</button>
         <label class="btn btn-accent" style="cursor:pointer;font-size:.75em" title="Import QuickBooks P&amp;L CSV">&#128229; Import P&amp;L CSV<input type="file" accept=".csv" style="display:none" onchange="importPLcsv(this)"/></label>
       </div>
       <div class="kpi-grid" id="fin-kpis"></div>
@@ -4158,7 +4158,7 @@ function pnlToggleEditMode(){
   const next = !pnlIsEditMode();
   try { localStorage.setItem('roadys_pnl_edit_mode', next ? '1' : '0'); } catch(e){}
   pnlRefreshFinancialsUI();
-  toast(next ? 'Notes edit mode ON' : 'Notes edit mode OFF');
+  toast(next ? 'Note form open' : 'Note form closed');
 }
 
 // ── Note form (rendered into #fin-notes-form) ──────────────────
@@ -4336,7 +4336,7 @@ function pnlRenderNotesModal(){
         <div class="pnl-note-text">${escHtml(n.notes||'')}</div>
       </div>
     `).join('')
-    : '<div class="pnl-notes-empty">No notes match. Adjust filters above, or click ✎ Edit on the Financials page to add one.</div>';
+    : '<div class="pnl-notes-empty">No notes match. Adjust filters above, or click 📝 Add Note on the Financials page to add one.</div>';
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -4353,7 +4353,7 @@ function pnlRefreshFinancialsUI(){
   const tog = document.getElementById('fin-edit-toggle');
   if(tog){
     const on = pnlIsEditMode();
-    tog.innerHTML = on ? '&#10003; Done Editing' : '&#9998; Edit';
+    tog.innerHTML = on ? '&#10003; Done' : '&#128221; Add Note';
     tog.classList.toggle('btn-accent', on);
   }
   pnlRenderNoteForm();
