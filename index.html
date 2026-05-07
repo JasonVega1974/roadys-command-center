@@ -453,6 +453,11 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
   padding:1px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:700;
   font-size:.95em;
 }
+.pnl-note-card{
+  background:rgba(124,58,237,.12);color:#9D6FFF;
+  padding:1px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:700;
+  font-size:.95em;
+}
 .pnl-note-del{
   margin-left:auto;background:transparent;border:none;color:var(--muted);
   cursor:pointer;font-size:1.1em;line-height:1;padding:0 6px;border-radius:3px;
@@ -4068,9 +4073,19 @@ async function importRewardsCsv(input){
 // ════════════════════════════════════════════════════════════
 //  P&L NOTES — date-tagged, line-item-tagged free-text notes
 // ════════════════════════════════════════════════════════════
-// Each note: { id, note_date (YYYY-MM-DD), line_item, notes, created_at, updated_at }
+// Each note: { id, note_date (YYYY-MM-DD), card_section, card_title, line_item, notes, created_at, updated_at }
 // Local cache: localStorage 'roadys_pnl_notes' (array)
 // Cloud: Supabase pnl_notes table — synced via load/save/delete + realtime
+//
+// PNL_NOTE_CARDS maps the Card Section dropdown value to the list of
+// specific cards in that section. Edit this map when the dashboard
+// gains or loses a card so the note form's Card dropdown stays in
+// sync with what's actually rendered on the Financials page.
+const PNL_NOTE_CARDS = {
+  'P&L Summary': ['Gross Income', 'COGS', 'Operating Expense', 'Payroll Expense', 'Net Income'],
+  'Revenue':     ['Membership', 'Rewards', 'Vendor Programs', 'Fuel Revenue'],
+  'N/A':         ['N/A']
+};
 let PNL_NOTES = [];
 function loadPnlNotesLocal(){
   try { PNL_NOTES = JSON.parse(localStorage.getItem('roadys_pnl_notes') || '[]') || []; }
@@ -4119,6 +4134,7 @@ async function pnlNoteSaveToSupabase(note){
       id:           note.id,
       note_date:    note.note_date,
       card_section: note.card_section || 'N/A',
+      card_title:   note.card_title   || 'N/A',
       line_item:    note.line_item,
       notes:        note.notes,
       updated_at:   new Date().toISOString()
@@ -4179,11 +4195,15 @@ function pnlRenderNoteForm(){
         </label>
         <label class="fin-notes-field">
           <span>Card Section</span>
-          <select id="pnl-note-card-section">
+          <select id="pnl-note-card-section" onchange="pnlUpdateCardTitleOptions()">
             <option value="P&L Summary">P&amp;L Summary</option>
             <option value="Revenue">Revenue</option>
             <option value="N/A">N/A</option>
           </select>
+        </label>
+        <label class="fin-notes-field">
+          <span>Card</span>
+          <select id="pnl-note-card-title"></select>
         </label>
         <label class="fin-notes-field" style="flex:2">
           <span>Line Item</span>
@@ -4200,11 +4220,24 @@ function pnlRenderNoteForm(){
       </div>
     </div>
   `;
+  // Populate Card dropdown initial state to match the default Card Section.
+  pnlUpdateCardTitleOptions();
+}
+
+// Refresh the Card dropdown options whenever the Card Section
+// dropdown changes. Keeps the choices scoped to the right row.
+function pnlUpdateCardTitleOptions(){
+  const sec = document.getElementById('pnl-note-card-section')?.value || 'P&L Summary';
+  const sel = document.getElementById('pnl-note-card-title');
+  if(!sel) return;
+  const cards = PNL_NOTE_CARDS[sec] || ['N/A'];
+  sel.innerHTML = cards.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
 }
 
 function pnlAddNote(){
   const date = document.getElementById('pnl-note-date')?.value;
   const cardSection = document.getElementById('pnl-note-card-section')?.value || 'N/A';
+  const cardTitle   = document.getElementById('pnl-note-card-title')?.value   || 'N/A';
   const lineItem = document.getElementById('pnl-note-line-item')?.value;
   const text = (document.getElementById('pnl-note-text')?.value || '').trim();
   if(!date){ toast('Date required', 'terr'); return; }
@@ -4214,6 +4247,7 @@ function pnlAddNote(){
     id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
     note_date: date,
     card_section: cardSection,
+    card_title: cardTitle,
     line_item: lineItem,
     notes: text,
     created_at: new Date().toISOString(),
@@ -4295,6 +4329,7 @@ function pnlRenderNotesModal(){
         <div class="pnl-note-meta">
           <span class="pnl-note-date">${escHtml(n.note_date||'')}</span>
           ${n.card_section ? `<span class="pnl-note-section">${escHtml(n.card_section)}</span>` : ''}
+          ${n.card_title && n.card_title !== n.card_section ? `<span class="pnl-note-card">${escHtml(n.card_title)}</span>` : ''}
           <span class="pnl-note-li">${escHtml(n.line_item||'')}</span>
           <button class="pnl-note-del" onclick="pnlDeleteNote('${escHtml(n.id)}')" title="Delete note">×</button>
         </div>
