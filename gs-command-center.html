@@ -6902,27 +6902,97 @@ function brTriggerUpload(slot){
   const inp = document.getElementById('br-up-' + slot);
   if(inp) inp.click();
 }
+// Downsample + re-encode an uploaded image so it fits cleanly in localStorage.
+// Photos → JPEG @ ~1600px, ~85% quality. Logo-like slots → PNG @ ~1100px to
+// preserve transparency. The localStorage quota for an entire origin is ~5 MB,
+// so any single upload should be well under 1 MB after this pass.
+function brIsLogoLikeSlot(slot){
+  return slot === 'logo' || /(?:^logo$|^s2-|^s10-|aom|cocacola)/i.test(slot);
+}
+function brResizeImageToDataURL(file, opts){
+  const o = opts || {};
+  const isLogo = !!o.logo;
+  const maxDim = o.maxDim || (isLogo ? 1100 : 1600);
+  const mime = o.mime || (isLogo ? 'image/png' : 'image/jpeg');
+  const quality = o.quality != null ? o.quality : 0.85;
+  return new Promise((resolve, reject) => {
+    if(!file){ reject(new Error('no file')); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('read failed'));
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('decode failed'));
+      img.onload = () => {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if(w > maxDim || h > maxDim){
+          const ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.max(1, Math.round(w * ratio));
+          h = Math.max(1, Math.round(h * ratio));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        // White background for JPEG (no alpha) so transparent areas don't go black
+        if(mime === 'image/jpeg'){
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL(mime, quality)); }
+        catch(e){ reject(e); }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function brIsQuotaError(e){
+  if(!e) return false;
+  const name = e.name || '';
+  const msg = e.message || '';
+  return e.code === 22 || e.code === 1014 || /quota/i.test(name) || /quota/i.test(msg) || name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED';
+}
+function brStorageBytes(){
+  let total = 0;
+  try {
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      const v = localStorage.getItem(k) || '';
+      total += (k ? k.length : 0) + v.length;
+    }
+  } catch(e){}
+  return total;
+}
 function brOnImage(ev, slot){
   const f = ev.target.files && ev.target.files[0];
-  if(!f){ return; }
-  const reader = new FileReader();
-  reader.onload = e => {
+  if(ev.target) ev.target.value = '';
+  if(!f) return;
+  const isLogo = brIsLogoLikeSlot(slot);
+  brResizeImageToDataURL(f, { logo: isLogo }).then(dataUrl => {
     if(!_brData.images) _brData.images = {};
-    _brData.images[slot] = e.target.result;
+    _brData.images[slot] = dataUrl;
     try {
       brSave();
+      brRender();
     } catch(err){
-      toast('Image too large for browser storage');
+      // Save failed — roll back so we don't display a phantom image
+      delete _brData.images[slot];
+      if(brIsQuotaError(err)){
+        alert('Cannot save image — your browser\'s localStorage is full.\n\n'
+          + 'Open 🎨 Brand → "Free up storage" to clear unused defaults, or pick a smaller image.');
+      } else {
+        toast('Could not save image: ' + (err.message || err));
+      }
       console.warn('br image save failed', err);
     }
-    brRender();
-  };
-  reader.readAsDataURL(f);
-  // Reset so the same file can be re-selected later
-  if(ev.target) ev.target.value = '';
+  }).catch(err => {
+    console.error('br image load failed', err);
+    toast('Could not load image — please try a different file.');
+  });
 }
 function brRemoveImage(slot){
-  if(_brData.images) delete _brData.images[slot];
+  if(_brData && _brData.images) delete _brData.images[slot];
   brSave();
   brRender();
 }
@@ -6949,17 +7019,25 @@ function brUploadDefault(key){
   input.addEventListener('change', (ev) => {
     const f = ev.target.files && ev.target.files[0];
     if(!f) return;
-    const reader = new FileReader();
-    reader.onload = e => {
+    const isLogo = brIsLogoLikeSlot(key);
+    brResizeImageToDataURL(f, { logo: isLogo }).then(dataUrl => {
       const g = brLoadGlobal();
-      g[key] = e.target.result;
+      g[key] = dataUrl;
       try {
         brSaveGlobal(g);
         brRender();
         toast('Default ' + key + ' saved across all decks.');
-      } catch(err){ /* toast already shown */ }
-    };
-    reader.readAsDataURL(f);
+      } catch(err){
+        if(brIsQuotaError(err)){
+          alert('Cannot save default — your browser\'s localStorage is full.\n\n'
+            + 'Use "Free up storage" in this menu to clear unused defaults.');
+        }
+        // Toast already shown by brSaveGlobal on other errors
+      }
+    }).catch(err => {
+      toast('Could not load image: ' + (err.message || err));
+      console.error(err);
+    });
   });
   input.click();
 }
@@ -6967,6 +7045,43 @@ function brClearGlobal(key){
   const g = brLoadGlobal();
   delete g[key];
   brSaveGlobal(g);
+  brRender();
+}
+// Wipe the deck-deck data + global defaults to recover localStorage space.
+function brFreeUpStorage(){
+  const before = brStorageBytes();
+  const beforeKb = (before/1024).toFixed(0);
+  const choice = prompt(
+    'Free up browser storage. Currently using ~' + beforeKb + ' KB total across this site.\n\n'
+    + 'Type:\n'
+    + '  "defaults"  — clear default logo + Merchant Console image only (theme is kept)\n'
+    + '  "drafts"    — clear ALL saved Business Review draft data (per-stop edits + images)\n'
+    + '  "all"       — clear everything: defaults, drafts and theme\n\n'
+    + 'Cancel to leave storage as-is.',
+    'defaults'
+  );
+  if(!choice) return;
+  const c = choice.trim().toLowerCase();
+  if(c === 'defaults'){
+    const g = brLoadGlobal();
+    delete g.logo;
+    delete g['s7-shot'];
+    Object.keys(g).forEach(k => { if(k !== 'theme' && k !== 'customColors') delete g[k]; });
+    brSaveGlobal(g);
+  } else if(c === 'drafts'){
+    try { localStorage.removeItem(BR_LS_KEY); } catch(e){}
+    if(_brData){ _brData = { fields:{}, images:{}, period:_brPeriod, savedAt:null }; }
+  } else if(c === 'all'){
+    try { localStorage.removeItem(BR_LS_KEY); } catch(e){}
+    try { localStorage.removeItem(BR_GLOBAL_LS_KEY); } catch(e){}
+    if(_brData){ _brData = { fields:{}, images:{}, period:_brPeriod, savedAt:null }; }
+  } else {
+    toast('Unrecognized option — nothing cleared.');
+    return;
+  }
+  const after = brStorageBytes();
+  const freed = Math.max(0, before - after);
+  toast('Freed ~' + (freed/1024).toFixed(0) + ' KB');
   brRender();
 }
 
@@ -7077,6 +7192,12 @@ function brRenderMenu(){
     </button>
     ${g.logo ? '<button class="br-menu-item" onclick="brClearGlobal(\'logo\')" style="color:#fca5a5">Clear default logo</button>' : ''}
     ${g['s7-shot'] ? '<button class="br-menu-item" onclick="brClearGlobal(\'s7-shot\')" style="color:#fca5a5">Clear default Merchant Console image</button>' : ''}
+    <div class="br-menu-divider"></div>
+    <div class="br-menu-section">Storage</div>
+    <button class="br-menu-item" onclick="brFreeUpStorage()" title="Clear deck data to free up browser storage">
+      <span>🧹 Free up storage</span>
+      <span style="color:#94a3b8;font-size:.85em">~${(brStorageBytes()/1024).toFixed(0)} KB used</span>
+    </button>
   `;
 }
 function brSetTheme(k){

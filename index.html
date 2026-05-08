@@ -11584,9 +11584,32 @@ function implForceSave(){
 let _implSaveTimer = null;
 let _implDirtyIds = new Set();
 
+function implIsQuotaError(e){
+  if(!e) return false;
+  const name = e.name || '';
+  const msg = e.message || '';
+  return e.code === 22 || e.code === 1014 || /quota/i.test(name) || /quota/i.test(msg) || name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED';
+}
+function implQuotaAlert(action){
+  alert('Cannot ' + (action||'save change') + ' — your browser\'s localStorage is full.\n\n'
+    + 'This is most often caused by large logo or photo uploads in the Business Review deck.\n\n'
+    + 'To free space:\n'
+    + '  1. Open gs-command-center.html\n'
+    + '  2. Open any stop\'s Business Review deck\n'
+    + '  3. Click 🎨 Brand → Clear default Logo / Console image\n\n'
+    + 'Or open DevTools → Application → Local Storage → clear the gs_cmd_business_review_* keys.');
+}
 function implSaveSites(siteId){
   // Always save to localStorage immediately
-  localStorage.setItem(IMPL_STORAGE_KEY, JSON.stringify({sites:implSites, projectNotes:implProjectNotes, lastUpdate:new Date().toLocaleString()}));
+  try {
+    localStorage.setItem(IMPL_STORAGE_KEY, JSON.stringify({sites:implSites, projectNotes:implProjectNotes, lastUpdate:new Date().toLocaleString()}));
+  } catch(e){
+    console.error('[impl] localStorage write failed:', e);
+    if(implIsQuotaError(e)) implQuotaAlert('save site changes');
+    else alert('Could not save site changes locally: ' + (e.message||e));
+    // We still try to push to Supabase below — local cache being out of sync
+    // will get reconciled on the next successful save.
+  }
   const el=document.getElementById('implLastUpdate');
   if(el) el.textContent='Saving...';
   // Track which site changed (or all if no specific id)
@@ -15252,7 +15275,14 @@ function implTplLoad() {
 }
 
 function implTplSave() {
-  localStorage.setItem(IMPL_TPL_STORAGE_KEY, JSON.stringify(implCustomTemplates));
+  try {
+    localStorage.setItem(IMPL_TPL_STORAGE_KEY, JSON.stringify(implCustomTemplates));
+  } catch(e){
+    console.error('[impl] template save failed:', e);
+    if(implIsQuotaError(e)) implQuotaAlert('save template change');
+    else alert('Could not save template change: ' + (e.message||e));
+    throw e;
+  }
 }
 
 // Get effective template for a project type (custom overrides built-in)
