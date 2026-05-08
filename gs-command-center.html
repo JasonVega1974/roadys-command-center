@@ -474,6 +474,57 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .auth-status.err{color:var(--red)}
 .auth-help{font-size:.7em;color:var(--muted);margin-top:6px;line-height:1.4}
 
+/* ═══ DECK GALLERY (Phase 9.2) ════════════════════════════════════════ */
+.gal-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.gal-actions-hd{display:flex;gap:6px;align-items:center}
+.gal-admin{font-size:.74em;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:4px;margin-left:8px}
+.gal-admin.on{background:rgba(16,185,129,.15);color:var(--green)}
+.gal-admin.off{background:rgba(251,191,36,.15);color:var(--yellow);cursor:pointer}
+.gal-admin.off:hover{background:rgba(251,191,36,.25)}
+.gal-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.gal-pill{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:999px;padding:5px 14px;font-size:.78em;font-family:var(--ff);cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.gal-pill:hover{border-color:var(--cyan);color:var(--cyan)}
+.gal-pill.active{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
+.gal-pill .c{background:rgba(0,0,0,.18);padding:0 7px;border-radius:999px;font-size:.85em;font-weight:700}
+.gal-pill.active .c{background:rgba(0,0,0,.25)}
+.gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.gal-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:transform .12s,border-color .12s}
+.gal-card:hover{border-color:var(--cyan);transform:translateY(-2px)}
+.gal-thumb{aspect-ratio:4/3;background:linear-gradient(135deg,#1a2236,#0f172a);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.gal-thumb img{max-width:100%;max-height:100%;object-fit:contain}
+.gal-meta{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.gal-label{font-weight:700;font-size:.86em;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gal-tags{display:flex;gap:4px;flex-wrap:wrap}
+.gal-tag{font-size:.66em;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:4px;background:var(--bg3);color:var(--muted);text-transform:uppercase}
+.gal-tag.mono{font-family:var(--fm);text-transform:none;letter-spacing:0}
+.gal-tag.cat-logo{background:rgba(34,211,238,.15);color:var(--cyan)}
+.gal-tag.cat-vendor{background:rgba(251,191,36,.15);color:var(--yellow)}
+.gal-tag.cat-screenshot{background:rgba(167,139,250,.15);color:var(--purple)}
+.gal-tag.cat-photo{background:rgba(16,185,129,.15);color:var(--green)}
+.gal-actions{display:flex;gap:6px;margin-top:4px}
+.gal-actions .btn{font-size:.72em;padding:4px 10px;flex:1}
+.gal-empty{padding:40px;text-align:center;color:var(--muted);grid-column:1/-1;border:1px dashed var(--border);border-radius:10px}
+.gal-loading{padding:40px;text-align:center;color:var(--muted)}
+
+/* Gallery editor modal (separate from the deck overlay z-index) */
+#gallery-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;display:none;align-items:center;justify-content:center;padding:20px}
+#gallery-modal.show{display:flex}
+.gal-modal-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;width:780px;max-width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+.gal-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.gal-modal-hd h3{margin:0;font-size:1em;font-weight:800}
+.gal-modal-body{display:grid;grid-template-columns:1fr 1.1fr;gap:18px;padding:18px;overflow-y:auto}
+@media(max-width:720px){.gal-modal-body{grid-template-columns:1fr}}
+.gal-modal-preview{position:relative;aspect-ratio:4/3;background:linear-gradient(135deg,#1a2236,#0f172a);border:2px dashed var(--border2);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);font-size:.85em;cursor:pointer}
+.gal-modal-preview img{max-width:100%;max-height:100%;object-fit:contain}
+.gal-modal-preview input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.gal-modal-fields{display:flex;flex-direction:column;gap:12px}
+.gal-modal-fields label{display:flex;flex-direction:column;gap:4px;font-size:.74em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.gal-modal-fields input,.gal-modal-fields select,.gal-modal-fields textarea{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--ff);font-size:.84em;text-transform:none;letter-spacing:0;font-weight:400}
+.gal-modal-fields input:focus,.gal-modal-fields select:focus,.gal-modal-fields textarea:focus{outline:none;border-color:var(--cyan)}
+.gal-modal-fields .gal-hint{font-size:.72em;color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;line-height:1.5}
+.gal-modal-fields .gal-hint code{background:var(--bg);padding:1px 5px;border-radius:3px;font-size:.92em}
+.gal-modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
+
 /* ═══ BUSINESS REVIEW DECK (Phase 9.1 — world-class redesign) ═══════════
    Design tokens, slide canvas, typography & layout primitives all live
    under .br-slide so the host app's variables are unaffected.
@@ -570,6 +621,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-img-slot.has-img{border-style:solid;border-color:transparent}
 .br-img-slot.has-link.has-img::after{content:'↗ click image';position:absolute;bottom:8px;right:8px;background:rgba(15,23,42,.78);color:#fff;font-size:.66em;font-weight:600;padding:3px 8px;border-radius:6px;letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .15s;z-index:2}
 .br-img-slot.has-link.has-img:hover::after{opacity:1}
+.br-img-slot .br-img-gallery-tag{position:absolute;bottom:8px;left:8px;background:rgba(15,23,42,.78);color:#a5f3fc;font-size:.66em;font-weight:700;padding:3px 8px;border-radius:6px;letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .15s;z-index:2}
+.br-img-slot.has-img:hover .br-img-gallery-tag{opacity:1}
 
 /* Brand menu (theme + asset uploads) */
 .br-menu{position:relative}
@@ -634,6 +687,10 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-cover-r::after{content:'';position:absolute;left:0;top:0;bottom:0;width:80px;background:linear-gradient(90deg,rgba(15,23,42,.4) 0%,transparent 100%);pointer-events:none;z-index:2}
 .br-cover-credit{position:absolute;bottom:24px;right:32px;font-size:.66em;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;font-weight:600;z-index:3;text-align:right}
 .br-cover-credit .gs{color:rgba(255,255,255,.85);font-weight:700;font-size:1.1em;letter-spacing:.04em;text-transform:none;display:block;margin-bottom:2px}
+.br-stopphoto-publish,.br-stopphoto-saved{position:absolute;left:24px;bottom:24px;display:flex;align-items:center;gap:10px;background:rgba(15,23,42,.85);border:1px solid rgba(148,163,184,.25);padding:8px 12px;border-radius:10px;backdrop-filter:blur(6px);z-index:3;max-width:calc(100% - 200px)}
+.br-stopphoto-saved{font-size:.72em;color:#a5f3fc;border-color:rgba(34,211,238,.4)}
+.br-stopphoto-saved b{color:#fff;font-weight:700}
+.br-stopphoto-publish .br-btn{padding:7px 14px;font-size:.78em}
 
 /* ─── SLIDE 2 — KPI Pillars ──────────────────────────────────────────── */
 .br-pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;min-height:0}
@@ -879,6 +936,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     <div class="tab" data-tab="fuel-intro" onclick="switchTab('fuel-intro',this)">🔥 Fuel Intro</div>
     <div class="tab" data-tab="critical" onclick="switchTab('critical',this)">🚨 Critical<span class="badge" id="crit-badge" style="display:none">0</span></div>
     <div class="tab" data-tab="site-reviews" onclick="switchTab('site-reviews',this)">📋 Site Reviews</div>
+    <div class="tab" data-tab="gallery" onclick="switchTab('gallery',this)">🖼 Gallery</div>
     <div class="tab" data-tab="stop-detail" id="tab-stop-detail" style="display:none" onclick="switchTab('stop-detail',this)">📊 Stop Detail</div>
   </div>
 
@@ -908,6 +966,9 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 
   <!-- ═══ SITE REVIEWS (Phase 9) ═══ -->
   <div class="panel" id="p-site-reviews"><div class="container" id="site-reviews-content"></div></div>
+
+  <!-- ═══ DECK GALLERY (Phase 9.2) ═══ -->
+  <div class="panel" id="p-gallery"><div class="container" id="gallery-content"></div></div>
 
   <!-- ═══ STOP DETAIL PAGE (Phase 4) ═══ -->
   <div class="panel" id="p-stop-detail"><div class="container" id="stop-detail-content"></div></div>
@@ -1816,6 +1877,7 @@ function switchTab(id,el){
   if(el)el.classList.add('active');
   const p=document.getElementById('p-'+id);if(p)p.classList.add('active');
   if(id==='calendar')renderCalendar();
+  if(id==='gallery' && typeof galleryRender === 'function') galleryRender();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -6667,6 +6729,317 @@ function resolveCritical(id){
 // Persists per stop+period in localStorage. Export = window.print() with
 // landscape @page rules so each .br-slide becomes one PDF page.
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// DECK GALLERY (Phase 9.2) — shared image library
+// Backed by Supabase table public.deck_gallery (see docs/deck-gallery-migration.sql).
+// Resolution priority for any deck image slot:
+//   1. per-deck override  (_brData.images[slot])
+//   2. gallery match by exact slot_key  ('logo', 's7-shot', 'stop-photo:R03650', ...)
+//   3. gallery match by vendor_id        (slide 10 vendor auto-pull)
+//   4. localStorage global default       (pre-gallery legacy fallback)
+//   5. file path under assets/           (e.g. assets/roadys-logo.png)
+// All authoring (upload / edit / delete) is gated by GALLERY_PIN.
+// ═══════════════════════════════════════════════════════
+const GALLERY_PIN = '1234';   // matches the master PIN used in index.html
+let _galleryAdminUnlocked = false;
+let _galleryCache = [];
+let _galleryFetchedAt = 0;
+let _galleryLoading = null;
+let _galleryFilter = 'all';
+
+function galleryEnsureAdmin(promptIfLocked){
+  if(_galleryAdminUnlocked) return true;
+  if(promptIfLocked){
+    const v = prompt('Gallery admin PIN:');
+    if(v && v.trim() === GALLERY_PIN){
+      _galleryAdminUnlocked = true;
+      toast('Gallery admin unlocked for this session');
+      return true;
+    }
+    if(v != null) toast('Wrong PIN');
+  }
+  return false;
+}
+
+async function galleryLoad(force){
+  if(_galleryLoading) return _galleryLoading;
+  if(!force && _galleryCache.length && Date.now() - _galleryFetchedAt < 5*60*1000) return _galleryCache;
+  _galleryLoading = (async () => {
+    try {
+      await ensureSupabaseLib();
+      const sb = getRoadysSB();
+      if(!sb){ console.warn('[gallery] no supabase'); return _galleryCache; }
+      const { data, error } = await sb.from('deck_gallery').select('*').order('updated_at', { ascending: false });
+      if(error){ console.warn('[gallery] select failed:', error.message||error); return _galleryCache; }
+      _galleryCache = data || [];
+      _galleryFetchedAt = Date.now();
+      return _galleryCache;
+    } catch(e){
+      console.warn('[gallery] fetch failed:', e.message||e);
+      return _galleryCache;
+    } finally { _galleryLoading = null; }
+  })();
+  return _galleryLoading;
+}
+
+function gallerySrc(opts){
+  // Synchronous lookup — returns a data URL or '' if no match. The cache must
+  // be primed first via galleryLoad(); the deck primes it on open.
+  const o = opts || {};
+  if(!_galleryCache.length) return '';
+  const slot = o.slot || '';
+  const vendorId = o.vendorId || '';
+  const stopId = o.stopId || '';
+  // 1. exact slot match
+  if(slot){
+    const m = _galleryCache.find(r => r.slot_key === slot);
+    if(m && m.data_url) return m.data_url;
+  }
+  // 2. stop-photo:<id>
+  if(stopId){
+    const k = 'stop-photo:' + stopId;
+    const m = _galleryCache.find(r => r.slot_key === k);
+    if(m && m.data_url) return m.data_url;
+  }
+  // 3. vendor:<id>
+  if(vendorId){
+    const m = _galleryCache.find(r => r.vendor_id === vendorId);
+    if(m && m.data_url) return m.data_url;
+  }
+  return '';
+}
+
+async function gallerySave(item){
+  // Upserts a row. Caller is responsible for resizing data_url first.
+  if(!galleryEnsureAdmin(true)) throw new Error('admin lock');
+  await ensureSupabaseLib();
+  const sb = getRoadysSB();
+  if(!sb) throw new Error('Supabase unavailable');
+  const row = Object.assign({}, item);
+  if(!row.id) row.id = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  if(!row.label) row.label = '(untitled)';
+  if(!row.category) row.category = 'other';
+  row.updated_at = new Date().toISOString();
+  const { error } = await sb.from('deck_gallery').upsert(row, { onConflict: 'id' });
+  if(error) throw new Error(error.message || JSON.stringify(error));
+  // Refresh cache
+  await galleryLoad(true);
+  return row.id;
+}
+
+async function galleryDelete(id){
+  if(!galleryEnsureAdmin(true)) throw new Error('admin lock');
+  await ensureSupabaseLib();
+  const sb = getRoadysSB();
+  if(!sb) throw new Error('Supabase unavailable');
+  const { error } = await sb.from('deck_gallery').delete().eq('id', id);
+  if(error) throw new Error(error.message || JSON.stringify(error));
+  await galleryLoad(true);
+}
+
+// ─── Tab UI ─────────────────────────────────────────────────────────────
+function galleryRender(){
+  const el = document.getElementById('gallery-content');
+  if(!el) return;
+  // Show a skeleton immediately, then load + repaint
+  el.innerHTML = '<div class="gal-loading">Loading gallery…</div>';
+  galleryLoad().then(() => galleryPaint(el));
+}
+function galleryPaint(el){
+  if(!el) el = document.getElementById('gallery-content');
+  if(!el) return;
+  const items = (_galleryCache || []).filter(r => _galleryFilter === 'all' || r.category === _galleryFilter);
+  const counts = (_galleryCache || []).reduce((a, r) => { a[r.category||'other'] = (a[r.category||'other']||0) + 1; return a; }, {});
+  const cat = (k, label) => `<button class="gal-pill${_galleryFilter===k?' active':''}" onclick="galleryFilter('${k}')">${label}${counts[k]?` <span class="c">${counts[k]}</span>`:''}</button>`;
+  const adminBadge = _galleryAdminUnlocked
+    ? '<span class="gal-admin on">🔓 Admin unlocked</span>'
+    : '<span class="gal-admin off" onclick="galleryEnsureAdmin(true);galleryRender()">🔐 Locked — click to unlock</span>';
+  const cards = items.length ? items.map(r => `
+    <div class="gal-card" data-id="${esc(r.id)}">
+      <div class="gal-thumb"><img src="${esc(r.data_url)}" alt="${esc(r.label)}"/></div>
+      <div class="gal-meta">
+        <div class="gal-label" title="${esc(r.label)}">${esc(r.label)}</div>
+        <div class="gal-tags">
+          <span class="gal-tag cat-${esc(r.category||'other')}">${esc(r.category||'other')}</span>
+          ${r.slot_key ? `<span class="gal-tag mono">${esc(r.slot_key)}</span>` : ''}
+          ${r.vendor_id ? `<span class="gal-tag mono">vendor: ${esc(r.vendor_id)}</span>` : ''}
+        </div>
+        <div class="gal-actions">
+          <button class="btn" onclick="galleryEditItem('${esc(r.id)}')">✎ Edit</button>
+          <button class="btn btn-red" onclick="galleryConfirmDelete('${esc(r.id)}')">🗑 Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('') : '<div class="gal-empty">No images yet. Click <b>+ Upload Image</b> to add one.</div>';
+  el.innerHTML = `
+    <div class="gal-hd">
+      <div>
+        <h2 style="margin:0;font-size:1.2em">🖼 Deck Gallery</h2>
+        <div style="font-size:.78em;color:var(--muted);margin-top:3px">Shared image library — auto-populates Business Review decks across every browser. ${adminBadge}</div>
+      </div>
+      <div class="gal-actions-hd">
+        <button class="btn btn-cyan" onclick="galleryOpenUpload()">+ Upload Image</button>
+        <button class="btn" onclick="galleryRender()" title="Refresh">↻</button>
+      </div>
+    </div>
+    <div class="gal-filters">
+      ${cat('all','All')}${cat('logo','Logos')}${cat('vendor','Vendors')}${cat('screenshot','Screenshots')}${cat('photo','Photos')}${cat('other','Other')}
+    </div>
+    <div class="gal-grid">${cards}</div>
+  `;
+}
+function galleryFilter(k){ _galleryFilter = k; galleryPaint(); }
+
+function galleryOpenUpload(prefill){
+  if(!galleryEnsureAdmin(true)) return;
+  galleryShowEditor(prefill || null);
+}
+function galleryEditItem(id){
+  if(!galleryEnsureAdmin(true)) return;
+  const r = _galleryCache.find(x => x.id === id);
+  if(!r){ toast('Item not found'); return; }
+  galleryShowEditor(r);
+}
+async function galleryConfirmDelete(id){
+  if(!galleryEnsureAdmin(true)) return;
+  const r = _galleryCache.find(x => x.id === id);
+  if(!r) return;
+  if(!confirm('Delete "' + (r.label||'image') + '" from the shared gallery?\n\nDecks that previously auto-pulled this image will fall back to per-deck or built-in defaults.')) return;
+  try { await galleryDelete(id); galleryPaint(); toast('Deleted'); }
+  catch(e){ alert('Delete failed: ' + e.message); }
+}
+
+function galleryVendorOptions(currentId){
+  const m = loadVendorMaster();
+  return m.VP_VENDORS.map(v =>
+    `<option value="${esc(v.id)}"${v.id===currentId?' selected':''}>${esc(v.name)} — ${esc(v.id)}</option>`
+  ).join('');
+}
+
+let _galleryEditingItem = null;
+let _galleryEditingDataUrl = null;
+function galleryShowEditor(item){
+  _galleryEditingItem = item ? Object.assign({}, item) : { id:null, slot_key:'', label:'', category:'other', vendor_id:'', notes:'' };
+  _galleryEditingDataUrl = item ? (item.data_url || null) : null;
+  const isNew = !item;
+  document.getElementById('gallery-modal').innerHTML = `
+    <div class="gal-modal-card">
+      <div class="gal-modal-hd">
+        <h3>${isNew ? 'Upload to Gallery' : 'Edit Gallery Image'}</h3>
+        <button class="btn" onclick="galleryCloseEditor()">✕</button>
+      </div>
+      <div class="gal-modal-body">
+        <div class="gal-modal-preview" id="gal-modal-preview">
+          ${_galleryEditingDataUrl ? `<img src="${esc(_galleryEditingDataUrl)}" alt=""/>` : '<span style="color:var(--muted)">Drop or pick an image</span>'}
+          <input type="file" accept="image/*" id="gal-file-input" onchange="galleryOnFile(event)"/>
+        </div>
+        <div class="gal-modal-fields">
+          <label>Label
+            <input type="text" id="gal-fld-label" value="${esc(_galleryEditingItem.label||'')}" placeholder="e.g. Coca-Cola CCNA logo"/>
+          </label>
+          <label>Category
+            <select id="gal-fld-category" onchange="galleryOnCategoryChange(this.value)">
+              <option value="logo"      ${_galleryEditingItem.category==='logo'?'selected':''}>Logo</option>
+              <option value="vendor"    ${_galleryEditingItem.category==='vendor'?'selected':''}>Vendor logo</option>
+              <option value="screenshot"${_galleryEditingItem.category==='screenshot'?'selected':''}>Screenshot</option>
+              <option value="photo"     ${_galleryEditingItem.category==='photo'?'selected':''}>Photo (truck stop)</option>
+              <option value="other"     ${_galleryEditingItem.category==='other'?'selected':''}>Other</option>
+            </select>
+          </label>
+          <label id="gal-fld-vendor-wrap" style="display:${_galleryEditingItem.category==='vendor'?'flex':'none'}">Vendor
+            <select id="gal-fld-vendor">
+              <option value="">— select vendor —</option>
+              ${galleryVendorOptions(_galleryEditingItem.vendor_id||'')}
+            </select>
+          </label>
+          <label>Slot key
+            <input type="text" id="gal-fld-slot" value="${esc(_galleryEditingItem.slot_key||'')}" placeholder="e.g. logo, s7-shot, stop-photo:R03650"/>
+            <div class="gal-hint">Optional. Reserved keys: <code>logo</code>, <code>s7-shot</code> (Merchant Console). For truck-stop photos use <code>stop-photo:&lt;ROADY_ID&gt;</code>.</div>
+          </label>
+          <label>Notes
+            <textarea id="gal-fld-notes" rows="2" placeholder="Optional internal notes">${esc(_galleryEditingItem.notes||'')}</textarea>
+          </label>
+        </div>
+      </div>
+      <div class="gal-modal-foot">
+        <button class="btn" onclick="galleryCloseEditor()">Cancel</button>
+        <button class="btn btn-cyan" onclick="gallerySaveFromEditor()">${isNew?'Upload':'Save changes'}</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('gallery-modal').classList.add('show');
+}
+function galleryCloseEditor(){
+  document.getElementById('gallery-modal').classList.remove('show');
+  _galleryEditingItem = null;
+  _galleryEditingDataUrl = null;
+}
+function galleryOnCategoryChange(v){
+  document.getElementById('gal-fld-vendor-wrap').style.display = (v === 'vendor') ? 'flex' : 'none';
+}
+function galleryOnFile(ev){
+  const f = ev.target.files && ev.target.files[0];
+  if(!f) return;
+  const cat = document.getElementById('gal-fld-category').value;
+  const isLogo = cat === 'logo' || cat === 'vendor';
+  brResizeImageToDataURL(f, { logo: isLogo }).then(dataUrl => {
+    _galleryEditingDataUrl = dataUrl;
+    const prev = document.getElementById('gal-modal-preview');
+    prev.innerHTML = '<img src="' + esc(dataUrl) + '"><input type="file" accept="image/*" id="gal-file-input" onchange="galleryOnFile(event)"/>';
+    // Auto-suggest a label from the file name if empty
+    const lab = document.getElementById('gal-fld-label');
+    if(lab && !lab.value.trim()) lab.value = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g,' ');
+  }).catch(err => toast('Image load failed: ' + err.message));
+}
+async function gallerySaveFromEditor(){
+  const dataUrl = _galleryEditingDataUrl;
+  const label = (document.getElementById('gal-fld-label').value || '').trim();
+  const cat = document.getElementById('gal-fld-category').value;
+  const slot = (document.getElementById('gal-fld-slot').value || '').trim();
+  const vendor = cat === 'vendor' ? (document.getElementById('gal-fld-vendor').value || '') : '';
+  const notes = (document.getElementById('gal-fld-notes').value || '').trim();
+  if(!dataUrl){ alert('Pick an image first.'); return; }
+  if(!label){ alert('Give it a label.'); return; }
+  if(cat === 'vendor' && !vendor){ alert('Pick the vendor this logo is for.'); return; }
+  const row = {
+    id: _galleryEditingItem && _galleryEditingItem.id ? _galleryEditingItem.id : null,
+    slot_key: slot || null,
+    label, category: cat,
+    vendor_id: vendor || null,
+    data_url: dataUrl,
+    notes: notes || null
+  };
+  try {
+    await gallerySave(row);
+    galleryCloseEditor();
+    galleryPaint();
+    toast('Saved to gallery');
+  } catch(e){ alert('Save failed: ' + e.message); }
+}
+
+// Convenience: called from the deck slide 1 truck-stop photo slot to publish
+// the current image to the gallery for this stop.
+async function gallerySaveStopPhoto(stopId, stopName, dataUrl){
+  if(!galleryEnsureAdmin(true)) return;
+  if(!dataUrl){ toast('No photo uploaded yet'); return; }
+  const slot = 'stop-photo:' + stopId;
+  // Reuse the existing row id if one exists for this slot
+  const existing = _galleryCache.find(r => r.slot_key === slot);
+  try {
+    await gallerySave({
+      id: existing ? existing.id : null,
+      slot_key: slot,
+      label: stopName + ' — truck stop photo',
+      category: 'photo',
+      data_url: dataUrl
+    });
+    toast('Published to gallery for ' + stopName);
+  } catch(e){ alert('Publish failed: ' + e.message); }
+}
+
+// ═══════════════════════════════════════════════════════
+// BUSINESS REVIEW DECK (Phase 9)
+// ═══════════════════════════════════════════════════════
 const BR_LS_KEY = 'gs_cmd_business_review_v1';
 let _brStopId = null;
 let _brPeriod = 'last12';
@@ -6812,6 +7185,11 @@ function brOpen(stopId, period){
   _brSlide = 1;
   document.getElementById('br-overlay').classList.add('show');
   brRender();
+  // Prime the shared gallery in the background, then repaint so logos /
+  // vendor images / stop photos pulled from Supabase replace any blank slots.
+  galleryLoad().then(items => {
+    if(items && items.length && _brStopId === stopId) brRender();
+  });
 }
 function brClose(){
   document.getElementById('br-overlay').classList.remove('show');
@@ -6866,35 +7244,42 @@ function brEditable(slide, key, defaultVal, opts){
     + (style ? ' style="' + style + '"' : '')
     + '>' + esc(v == null ? '' : String(v)) + '</' + tag + '>';
 }
-// Image slot — supports per-deck override, global default, file-path default,
-// and an optional linkTo URL that wraps the rendered image in a target=_blank link.
+// Image slot — resolution priority:
+//   1. per-deck override (_brData.images[slot])
+//   2. shared gallery (slot_key match, vendor match, or stop-photo:<id>)
+//   3. localStorage global default (legacy)
+//   4. file path under assets/ (defaultSrc)
 function brImgSlot(slot, label, opts){
   const o = opts || {};
   const cls = o.cls || '';
   const style = o.style || '';
   const linkTo = o.linkTo || '';
   const fileDefault = o.defaultSrc || '';
+  const galleryOpts = o.gallery || null;   // { vendorId, stopId } — extras for the gallery lookup
   const perDeck = (_brData && _brData.images && _brData.images[slot]) || '';
-  const globalDefault = brLoadGlobal()[slot] || '';
-  const src = perDeck || globalDefault || fileDefault;
+  const galleryUrl = !perDeck ? gallerySrc(Object.assign({ slot }, galleryOpts || {})) : '';
+  const globalDefault = (!perDeck && !galleryUrl) ? (brLoadGlobal()[slot] || '') : '';
+  const src = perDeck || galleryUrl || globalDefault || fileDefault;
   const has = src ? ' has-img' : '';
   const linkCls = linkTo ? ' has-link' : '';
+  const fromGallery = !perDeck && !!galleryUrl;
   // If we're displaying the file-path default (no upload anywhere), attach an
   // onerror so the slot reverts to the upload affordance if the file 404s.
-  const isFilePath = !perDeck && !globalDefault && !!fileDefault;
+  const isFilePath = !perDeck && !galleryUrl && !globalDefault && !!fileDefault;
   const errAttr = isFilePath ? ` onerror="this.style.display='none';this.closest('.br-img-slot').classList.add('img-broken')"` : '';
   const imgTag = src ? `<img src="${esc(src)}" alt=""${errAttr}>` : '';
   const wrapped = (src && linkTo)
     ? `<a class="br-img-link-wrap" href="${esc(linkTo)}" target="_blank" rel="noopener" title="Open ${esc(linkTo)}">${imgTag}</a>`
     : imgTag;
   return `
-    <div class="br-img-slot${has}${linkCls} ${cls}" style="${style}" data-br-slot="${esc(slot)}">
+    <div class="br-img-slot${has}${linkCls} ${cls}" style="${style}" data-br-slot="${esc(slot)}"${fromGallery ? ' data-from-gallery="1"' : ''}>
       ${wrapped}
       <span class="br-img-empty">📷 ${esc(label || 'Click or drop image')}</span>
       <input type="file" accept="image/*" class="br-img-overlay" onchange="brOnImage(event,'${esc(slot)}')"/>
       <input type="file" accept="image/*" id="br-up-${esc(slot)}" style="display:none" onchange="brOnImage(event,'${esc(slot)}')"/>
       ${src ? '<button class="br-img-rep" onclick="brTriggerUpload(\'' + esc(slot) + '\')" title="Upload a different image">↻ Replace</button>' : ''}
       ${(perDeck || globalDefault) ? '<button class="br-img-rm" onclick="brRemoveImage(\'' + esc(slot) + '\')" title="Remove this image">✕</button>' : ''}
+      ${fromGallery ? '<span class="br-img-gallery-tag" title="Loaded from shared gallery">📚 from gallery</span>' : ''}
     </div>
   `;
 }
@@ -7285,9 +7670,11 @@ const BR_ICONS = {
 };
 const ICO = k => BR_ICONS[k] || '';
 
-// Logo source — per-deck override > global default > assets/roadys-logo.png
+// Logo source — per-deck override > shared gallery > global default > file path
 function brLogoSrc(){
   if(_brData && _brData.images && _brData.images.logo) return _brData.images.logo;
+  const fromGallery = gallerySrc({ slot: 'logo' });
+  if(fromGallery) return fromGallery;
   const g = brLoadGlobal();
   if(g.logo) return g.logo;
   return 'assets/roadys-logo.png';
@@ -7329,6 +7716,33 @@ function brSfoot(d, num){
   `;
 }
 
+// Slide 1 helper: shows a small "Save photo to Gallery" affordance below the
+// truck-stop photo slot, but only when the user has uploaded a per-deck photo
+// for this stop AND the gallery doesn't already hold the same image.
+function brStopPhotoSaveBtn(d){
+  const perDeck = (_brData && _brData.images && _brData.images['s1-photo']) || '';
+  if(!perDeck) return '';   // nothing to publish yet
+  const slot = 'stop-photo:' + d.stop.id;
+  const existing = _galleryCache.find(r => r.slot_key === slot);
+  const alreadyPublished = existing && existing.data_url === perDeck;
+  if(alreadyPublished) {
+    return `<div class="br-stopphoto-saved">📚 Published to gallery as <b>${esc(d.stop.name)}</b> — future decks for this stop will auto-pull this photo.</div>`;
+  }
+  const stopJs = (d.stop.id || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const nameJs = (d.stop.name || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  return `
+    <div class="br-stopphoto-publish">
+      <button class="br-btn primary" onclick="brPublishStopPhoto('${stopJs}','${nameJs}')">📤 Save photo to Gallery</button>
+      <span style="font-size:.78em;color:#94a3b8">Publishes to <b>${esc(d.stop.name)}</b> so future decks for this stop auto-load it.</span>
+    </div>`;
+}
+async function brPublishStopPhoto(stopId, stopName){
+  const dataUrl = (_brData && _brData.images && _brData.images['s1-photo']) || '';
+  if(!dataUrl){ toast('No photo to publish yet'); return; }
+  await gallerySaveStopPhoto(stopId, stopName, dataUrl);
+  brRender();
+}
+
 // ─── SLIDE 1 — COVER ──────────────────────────────────────────────────
 function brSlide1(d){
   const fmtN = n => Math.round(+n||0).toLocaleString();
@@ -7361,7 +7775,8 @@ function brSlide1(d){
           </div>
         </div>
         <div class="br-cover-r">
-          ${brImgSlot('s1-photo','Click to upload truck-stop photo')}
+          ${brImgSlot('s1-photo','Click to upload truck-stop photo',{ gallery: { stopId: d.stop.id } })}
+          ${brStopPhotoSaveBtn(d)}
           <div class="br-cover-credit">
             <span class="gs">${brEditable(1,'gsName', d.stop.gs)}</span>
             <span>${brEditable(1,'gsRole','Growth Strategist')}</span>
@@ -7562,7 +7977,8 @@ function brSlide7(d){
         <div class="br-s7">
           ${brImgSlot('s7-shot','Click to upload Merchant Console screenshot',{
             linkTo: 'https://merchant.roadys.com/login',
-            defaultSrc: 'assets/merchant-console-login.png'
+            defaultSrc: 'assets/merchant-console-login.png',
+            gallery: {}
           })}
           <div class="br-s7-foot">
             <p>${brEditable(7,'foot','Real-time visibility into rewards activity, fuel pricing, location performance and account contacts — all in one place. Click the screenshot to open the live console.',{tag:'span'})}</p>
@@ -7739,37 +8155,79 @@ function brRenderRewardsChart(){
 }
 
 // ─── SLIDE 10 — Vendor Programs ───────────────────────────────────────
+// Auto-pulls a card per enrolled vendor that has a logo in the shared gallery.
+// Falls back to the original Coca-Cola / AllOver Media duo when no gallery
+// matches exist so existing decks keep their layout.
 function brSlide10(d){
+  const enrolled = (d.enrolledVendors || []);
+  // Find which enrolled vendors have a gallery logo, sorted by vendor priority
+  const master = (typeof loadVendorMaster === 'function') ? loadVendorMaster() : null;
+  const priorityOf = (vid) => {
+    const m = master && master.VP_VENDORS.find(v => v.id === vid);
+    return m ? ({High:0, Medium:1, Low:2})[m.priority] ?? 3 : 3;
+  };
+  const cardsFromGallery = [];
+  for(const v of enrolled){
+    const logo = gallerySrc({ vendorId: v.id });
+    if(!logo) continue;
+    const verbKey = 's10-verb-' + v.id;
+    const amtKey  = 's10-amt-'  + v.id;
+    const yrKey   = 's10-yr-'   + v.id;
+    cardsFromGallery.push({ vendor: v, logo, verbKey, amtKey, yrKey, _p: priorityOf(v.id) });
+  }
+  cardsFromGallery.sort((a, b) => a._p - b._p);
+  cardsFromGallery.length = Math.min(cardsFromGallery.length, 4); // cap at 4 cards on slide
+  let cardsHtml;
+  if(cardsFromGallery.length){
+    cardsHtml = cardsFromGallery.map((c, i) => `
+      <div class="br-s10-card${i % 2 ? ' earn' : ''}">
+        <div class="br-s10-logoslot" style="height:80px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:8px;padding:6px">
+          <img src="${esc(c.logo)}" alt="${esc(c.vendor.name)}" style="max-height:100%;max-width:100%;object-fit:contain"/>
+        </div>
+        <div class="br-s10-stat">
+          <div class="verb">${brEditable(10, c.verbKey, i % 2 ? 'Earned' : 'Saved')}</div>
+          <div class="amt br-num">$${brEditable(10, c.amtKey, '0', {tag:'span'})}</div>
+          <div class="yr">${esc(c.vendor.name)} · ${brEditable(10, c.yrKey, 'in ' + d.year)}</div>
+        </div>
+      </div>`).join('');
+  } else {
+    // Fallback: legacy two-card layout (Coca-Cola + AllOver Media) — same as before.
+    cardsHtml = `
+      <div class="br-s10-card">
+        ${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logoslot'})}
+        <div class="br-s10-stat">
+          <div class="verb">${brEditable(10,'cokeLbl','Saved')}</div>
+          <div class="amt br-num">$${brEditable(10,'cokeAmt','2,529',{tag:'span'})}</div>
+          <div class="yr">${brEditable(10,'cokeYr','in '+d.year)}</div>
+        </div>
+      </div>
+      <div class="br-s10-card earn">
+        ${brImgSlot('s10-aom','AllOver Media logo',{cls:'br-s10-logoslot'})}
+        <div class="br-s10-stat">
+          <div class="verb">${brEditable(10,'aomLbl','Earned')}</div>
+          <div class="amt br-num">$${brEditable(10,'aomAmt','380',{tag:'span'})}</div>
+          <div class="yr">${brEditable(10,'aomYr','in '+d.year)}</div>
+        </div>
+      </div>`;
+  }
+  // Build "additional programs" suggestions from non-enrolled high-priority vendors
+  const enrolledIds = new Set(enrolled.map(v => v.id));
+  const masterForOpps = master || loadVendorMaster();
+  const opps = masterForOpps.VP_VENDORS
+    .filter(v => v.priority === 'High' && v.status === 'Active' && !enrolledIds.has(v.id))
+    .slice(0, 3);
+  const oppGrid = opps.length
+    ? opps.map((v, i) => `<div>${brEditable(10, 'p' + i, v.name)}</div>`).join('')
+    : `<div>${brEditable(10,'p1','Lynco Products')}</div><div>${brEditable(10,'p2','Truck Parking Club')}</div><div>${brEditable(10,'p3','Sysco')}</div>`;
   return `
     <div class="br-slide${_brSlide===10?' active':''}" data-slide="10">
       ${brShead(10, 'Vendor Earnings', 'Programs at Work for Your Stop')}
       <div class="br-sbody">
         <div class="br-s10">
-          <div class="br-s10-rows">
-            <div class="br-s10-card">
-              ${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logoslot'})}
-              <div class="br-s10-stat">
-                <div class="verb">${brEditable(10,'cokeLbl','Saved')}</div>
-                <div class="amt br-num">$${brEditable(10,'cokeAmt','2,529',{tag:'span'})}</div>
-                <div class="yr">${brEditable(10,'cokeYr','in '+d.year)}</div>
-              </div>
-            </div>
-            <div class="br-s10-card earn">
-              ${brImgSlot('s10-aom','AllOver Media logo',{cls:'br-s10-logoslot'})}
-              <div class="br-s10-stat">
-                <div class="verb">${brEditable(10,'aomLbl','Earned')}</div>
-                <div class="amt br-num">$${brEditable(10,'aomAmt','380',{tag:'span'})}</div>
-                <div class="yr">${brEditable(10,'aomYr','in '+d.year)}</div>
-              </div>
-            </div>
-          </div>
+          <div class="br-s10-rows" style="grid-template-columns:repeat(${Math.min(cardsFromGallery.length || 2, 3)},1fr)">${cardsHtml}</div>
           <div class="br-s10-extra">
             <h4><span class="ico">${ICO('star')}</span>${brEditable(10,'addH','Additional Programs to Consider')}</h4>
-            <div class="br-s10-extra-grid">
-              <div>${brEditable(10,'p1','Lynco Products')}</div>
-              <div>${brEditable(10,'p2','Truck Parking Club')}</div>
-              <div>${brEditable(10,'p3','Sysco')}</div>
-            </div>
+            <div class="br-s10-extra-grid">${oppGrid}</div>
           </div>
         </div>
       </div>
@@ -8005,4 +8463,7 @@ initLogin();
 
 <!-- PHASE 9: BUSINESS REVIEW DECK OVERLAY -->
 <div id="br-overlay"></div>
+
+<!-- PHASE 9.2: GALLERY EDITOR MODAL -->
+<div id="gallery-modal" onclick="if(event.target.id==='gallery-modal') galleryCloseEditor()"></div>
 </body>
