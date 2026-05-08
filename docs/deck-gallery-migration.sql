@@ -23,6 +23,13 @@ CREATE INDEX IF NOT EXISTS deck_gallery_slot_idx     ON public.deck_gallery(slot
 CREATE INDEX IF NOT EXISTS deck_gallery_vendor_idx   ON public.deck_gallery(vendor_id);
 CREATE INDEX IF NOT EXISTS deck_gallery_category_idx ON public.deck_gallery(category);
 
+-- Table-level privileges. Tables created via the SQL Editor do NOT inherit
+-- the auto-grants the Supabase Dashboard table builder applies, so we have
+-- to grant explicitly to anon / authenticated. Without this, every write
+-- fails with "permission denied for table deck_gallery" before RLS even runs.
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.deck_gallery TO anon, authenticated;
+
 -- Row-level security: anon role can read & write. Write authority is gated
 -- in the app layer by the master PIN, matching the existing patterns for
 -- vp_enroll, impl_sites and pnl_notes.
@@ -33,10 +40,12 @@ DROP POLICY IF EXISTS "deck_gallery anon write" ON public.deck_gallery;
 
 CREATE POLICY "deck_gallery anon read"
   ON public.deck_gallery FOR SELECT
+  TO anon, authenticated
   USING (true);
 
 CREATE POLICY "deck_gallery anon write"
   ON public.deck_gallery FOR ALL
+  TO anon, authenticated
   USING (true) WITH CHECK (true);
 
 -- updated_at auto-bump on UPDATE
