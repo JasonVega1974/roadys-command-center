@@ -553,13 +553,39 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-edit-hint{display:inline-block;font-size:.64em;color:#0ea5e9;margin-left:6px;vertical-align:middle;font-style:italic;font-weight:500}
 
 /* Image upload slot */
-.br-img-slot{position:relative;background:linear-gradient(135deg,var(--b-bg-3),var(--b-bg-2));border:1.5px dashed var(--b-line-2);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--b-mute-2);font-size:.84em;font-weight:500;cursor:pointer;overflow:hidden;transition:all .15s}
-.br-img-slot:hover{border-color:#0ea5e9;color:#0ea5e9;background:linear-gradient(135deg,#eff6ff,#dbeafe)}
+.br-img-slot{position:relative;background:linear-gradient(135deg,var(--b-bg-3),var(--b-bg-2));border:1.5px dashed var(--b-line-2);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--b-mute-2);font-size:.84em;font-weight:500;overflow:hidden;transition:all .15s}
+.br-img-slot:not(.has-img):hover{border-color:#0ea5e9;color:#0ea5e9;background:linear-gradient(135deg,#eff6ff,#dbeafe);cursor:pointer}
 .br-img-slot img{width:100%;height:100%;object-fit:cover;display:block}
-.br-img-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
-.br-img-slot .br-img-rm{position:absolute;top:6px;right:6px;background:rgba(15,23,42,.85);color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:.7em;font-weight:600;cursor:pointer;display:none;z-index:2}
-.br-img-slot.has-img:hover .br-img-rm{display:block}
+.br-img-slot .br-img-empty{display:flex;align-items:center;justify-content:center;text-align:center;padding:0 14px;line-height:1.4;pointer-events:none}
+.br-img-slot.has-img .br-img-empty{display:none}
+.br-img-slot.img-broken .br-img-empty{display:flex}
+.br-img-slot .br-img-overlay{position:absolute;inset:0;opacity:0;cursor:pointer}
+.br-img-slot.has-img .br-img-overlay{display:none}
+.br-img-slot.img-broken .br-img-overlay{display:block}
+.br-img-slot .br-img-link-wrap{display:block;width:100%;height:100%;text-decoration:none;cursor:pointer}
+.br-img-slot .br-img-link-wrap img{display:block;width:100%;height:100%;object-fit:cover}
+.br-img-slot .br-img-rep{position:absolute;top:8px;left:8px;background:rgba(15,23,42,.88);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.7em;font-weight:600;cursor:pointer;display:none;z-index:3;letter-spacing:.02em}
+.br-img-slot .br-img-rm{position:absolute;top:8px;right:8px;background:rgba(15,23,42,.88);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.7em;font-weight:600;cursor:pointer;display:none;z-index:3;letter-spacing:.02em}
+.br-img-slot.has-img:hover .br-img-rep,.br-img-slot.has-img:hover .br-img-rm{display:block}
 .br-img-slot.has-img{border-style:solid;border-color:transparent}
+.br-img-slot.has-link.has-img::after{content:'↗ click image';position:absolute;bottom:8px;right:8px;background:rgba(15,23,42,.78);color:#fff;font-size:.66em;font-weight:600;padding:3px 8px;border-radius:6px;letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .15s;z-index:2}
+.br-img-slot.has-link.has-img:hover::after{opacity:1}
+
+/* Brand menu (theme + asset uploads) */
+.br-menu{position:relative}
+.br-menu-pop{position:absolute;top:calc(100% + 8px);right:0;background:#0f172a;border:1px solid rgba(148,163,184,.2);border-radius:12px;padding:8px;display:none;flex-direction:column;gap:1px;min-width:280px;z-index:9100;box-shadow:0 16px 40px rgba(0,0,0,.55)}
+.br-menu.open .br-menu-pop{display:flex}
+.br-menu-section{font-size:.66em;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8;font-weight:700;padding:10px 10px 6px;margin-top:4px}
+.br-menu-section:first-child{margin-top:0}
+.br-menu-item{background:transparent;color:#e2e8f0;border:none;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.82em;font-family:inherit;display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:500;width:100%}
+.br-menu-item:hover{background:rgba(255,255,255,.06)}
+.br-menu-item.active{background:rgba(220,38,38,.18);color:#fee2e2;border:1px solid rgba(220,38,38,.4)}
+.br-menu-swatches{display:inline-flex;gap:3px}
+.br-menu-swatches span{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid rgba(255,255,255,.1)}
+.br-menu-color-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:6px 10px}
+.br-menu-color-row label{display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-size:.7em;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.br-menu-color-row input[type=color]{width:100%;height:28px;border-radius:6px;border:1px solid #334155;background:transparent;padding:0;cursor:pointer}
+.br-menu-divider{height:1px;background:rgba(148,163,184,.12);margin:6px 4px}
 
 /* Tables / cells */
 .br-tbl{width:100%;border-collapse:collapse;font-size:.8em}
@@ -6840,36 +6866,240 @@ function brEditable(slide, key, defaultVal, opts){
     + (style ? ' style="' + style + '"' : '')
     + '>' + esc(v == null ? '' : String(v)) + '</' + tag + '>';
 }
-// Image slot — uses data-URL storage in _brData.images.
+// Image slot — supports per-deck override, global default, file-path default,
+// and an optional linkTo URL that wraps the rendered image in a target=_blank link.
 function brImgSlot(slot, label, opts){
   const o = opts || {};
   const cls = o.cls || '';
   const style = o.style || '';
-  const dataUrl = _brData.images[slot] || '';
-  const has = dataUrl ? ' has-img' : '';
+  const linkTo = o.linkTo || '';
+  const fileDefault = o.defaultSrc || '';
+  const perDeck = (_brData && _brData.images && _brData.images[slot]) || '';
+  const globalDefault = brLoadGlobal()[slot] || '';
+  const src = perDeck || globalDefault || fileDefault;
+  const has = src ? ' has-img' : '';
+  const linkCls = linkTo ? ' has-link' : '';
+  // If we're displaying the file-path default (no upload anywhere), attach an
+  // onerror so the slot reverts to the upload affordance if the file 404s.
+  const isFilePath = !perDeck && !globalDefault && !!fileDefault;
+  const errAttr = isFilePath ? ` onerror="this.style.display='none';this.closest('.br-img-slot').classList.add('img-broken')"` : '';
+  const imgTag = src ? `<img src="${esc(src)}" alt=""${errAttr}>` : '';
+  const wrapped = (src && linkTo)
+    ? `<a class="br-img-link-wrap" href="${esc(linkTo)}" target="_blank" rel="noopener" title="Open ${esc(linkTo)}">${imgTag}</a>`
+    : imgTag;
   return `
-    <div class="br-img-slot${has} ${cls}" style="${style}" data-br-slot="${esc(slot)}">
-      ${dataUrl ? '<img src="' + esc(dataUrl) + '" alt="">' : '<span>📷 ' + esc(label||'Click or drop image') + '</span>'}
-      <input type="file" accept="image/*" onchange="brOnImage(event,'${esc(slot)}')"/>
-      <button class="br-img-rm" onclick="brRemoveImage('${esc(slot)}')">Remove</button>
+    <div class="br-img-slot${has}${linkCls} ${cls}" style="${style}" data-br-slot="${esc(slot)}">
+      ${wrapped}
+      <span class="br-img-empty">📷 ${esc(label || 'Click or drop image')}</span>
+      <input type="file" accept="image/*" class="br-img-overlay" onchange="brOnImage(event,'${esc(slot)}')"/>
+      <input type="file" accept="image/*" id="br-up-${esc(slot)}" style="display:none" onchange="brOnImage(event,'${esc(slot)}')"/>
+      ${src ? '<button class="br-img-rep" onclick="brTriggerUpload(\'' + esc(slot) + '\')" title="Upload a different image">↻ Replace</button>' : ''}
+      ${(perDeck || globalDefault) ? '<button class="br-img-rm" onclick="brRemoveImage(\'' + esc(slot) + '\')" title="Remove this image">✕</button>' : ''}
     </div>
   `;
+}
+function brTriggerUpload(slot){
+  const inp = document.getElementById('br-up-' + slot);
+  if(inp) inp.click();
 }
 function brOnImage(ev, slot){
   const f = ev.target.files && ev.target.files[0];
   if(!f){ return; }
   const reader = new FileReader();
   reader.onload = e => {
+    if(!_brData.images) _brData.images = {};
     _brData.images[slot] = e.target.result;
-    brSave();
+    try {
+      brSave();
+    } catch(err){
+      toast('Image too large for browser storage');
+      console.warn('br image save failed', err);
+    }
     brRender();
   };
   reader.readAsDataURL(f);
+  // Reset so the same file can be re-selected later
+  if(ev.target) ev.target.value = '';
 }
 function brRemoveImage(slot){
-  delete _brData.images[slot];
+  if(_brData.images) delete _brData.images[slot];
   brSave();
   brRender();
+}
+
+// ─── Global brand settings (theme + default logo / merchant console image) ──
+const BR_GLOBAL_LS_KEY = 'gs_cmd_business_review_global_v1';
+function brLoadGlobal(){
+  try { return JSON.parse(localStorage.getItem(BR_GLOBAL_LS_KEY) || '{}') || {}; } catch(e){ return {}; }
+}
+function brSaveGlobal(g){
+  try { localStorage.setItem(BR_GLOBAL_LS_KEY, JSON.stringify(g)); }
+  catch(e){ toast('Brand settings too large to save (browser quota).'); console.warn('br global save failed', e); throw e; }
+}
+function brUploadDefault(key){
+  const inputId = 'br-default-upload';
+  const old = document.getElementById(inputId);
+  if(old) old.remove();
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.id = inputId;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const g = brLoadGlobal();
+      g[key] = e.target.result;
+      try {
+        brSaveGlobal(g);
+        brRender();
+        toast('Default ' + key + ' saved across all decks.');
+      } catch(err){ /* toast already shown */ }
+    };
+    reader.readAsDataURL(f);
+  });
+  input.click();
+}
+function brClearGlobal(key){
+  const g = brLoadGlobal();
+  delete g[key];
+  brSaveGlobal(g);
+  brRender();
+}
+
+// Theme presets — accent (red), primary (blue), dark (navy)
+const BR_THEMES = {
+  roadys:   { name: "Roady's Classic", accent:'#dc2626', primary:'#1d4ed8', dark:'#0f172a' },
+  midnight: { name: 'Midnight Blue',   accent:'#ef4444', primary:'#3b82f6', dark:'#020617' },
+  forest:   { name: 'Forest',          accent:'#dc2626', primary:'#059669', dark:'#064e3b' },
+  royal:    { name: 'Royal Purple',    accent:'#dc2626', primary:'#6d28d9', dark:'#2e1065' },
+  charcoal: { name: 'Slate & Crimson', accent:'#dc2626', primary:'#475569', dark:'#1e293b' }
+};
+
+// Naive HSL-free hex shifter — adjusts each channel by `amt` (-255..255).
+function brShade(hex, amt){
+  if(!hex || hex[0] !== '#' || hex.length !== 7) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, ((n>>16)&0xff) + amt));
+  const g = Math.max(0, Math.min(255, ((n>>8)&0xff) + amt));
+  const b = Math.max(0, Math.min(255, (n&0xff) + amt));
+  return '#' + ((r<<16)|(g<<8)|b).toString(16).padStart(6,'0');
+}
+
+function brApplyTheme(){
+  const g = brLoadGlobal();
+  const k = g.theme || 'roadys';
+  const base = BR_THEMES[k] || BR_THEMES.roadys;
+  const c = Object.assign({}, base, g.customColors || {});
+  const primaryDeep = brShade(c.primary, -30);
+  const darkLight = brShade(c.dark, 28);
+  let style = document.getElementById('br-theme-style');
+  if(!style){
+    style = document.createElement('style');
+    style.id = 'br-theme-style';
+    document.head.appendChild(style);
+  }
+  style.textContent = `
+    #br-overlay .br-slide{
+      --b-red:${c.accent}; --b-red-deep:${brShade(c.accent,-30)};
+      --b-blue:${c.primary}; --b-blue-deep:${primaryDeep};
+      --b-cover:linear-gradient(135deg, ${c.dark} 0%, ${darkLight} 60%, ${c.dark} 100%);
+    }
+    #br-overlay .br-cover-l::before{background:${c.accent}}
+    #br-overlay .br-rail{background:linear-gradient(90deg, ${c.accent} 0%, ${c.accent} 35%, ${c.primary} 100%)}
+    #br-overlay .br-s11-net{background:linear-gradient(135deg, ${c.dark}, ${darkLight})}
+    #br-overlay .br-s11-net::before{background:${c.accent}}
+    #br-overlay .br-s9-bench{background:linear-gradient(135deg, ${c.dark}, ${darkLight})}
+    #br-overlay .br-s13-card.gs{background:linear-gradient(135deg, ${c.dark}, ${darkLight});border-color:${c.dark}}
+    #br-overlay .br-toolbar .br-btn.primary{background:${c.accent};border-color:${c.accent}}
+    #br-overlay .br-toolbar .br-btn.primary:hover{background:${brShade(c.accent,-20)};border-color:${brShade(c.accent,-20)}}
+    #br-overlay .br-thumb.active{border-color:${c.accent};box-shadow:0 0 0 3px ${c.accent}33}
+  `;
+}
+
+function brToggleMenu(ev){
+  if(ev) ev.stopPropagation();
+  const m = document.getElementById('br-menu');
+  if(!m) return;
+  const opening = !m.classList.contains('open');
+  m.classList.toggle('open');
+  if(opening){
+    brRenderMenu();
+    setTimeout(() => {
+      const onDoc = (e) => {
+        if(!m.contains(e.target)){
+          m.classList.remove('open');
+          document.removeEventListener('click', onDoc);
+        }
+      };
+      document.addEventListener('click', onDoc);
+    }, 0);
+  }
+}
+function brRenderMenu(){
+  const pop = document.getElementById('br-menu-pop');
+  if(!pop) return;
+  const g = brLoadGlobal();
+  const cur = g.theme || 'roadys';
+  const cc = g.customColors || {};
+  const isCustom = !!g.customColors;
+  const swatches = (t) => `<span class="br-menu-swatches"><span style="background:${t.accent}"></span><span style="background:${t.primary}"></span><span style="background:${t.dark}"></span></span>`;
+  const themeBtns = Object.entries(BR_THEMES).map(([k, v]) => `
+    <button class="br-menu-item${(k===cur && !isCustom) ? ' active' : ''}" onclick="brSetTheme('${k}')">
+      <span>${esc(v.name)}</span>${swatches(v)}
+    </button>`).join('');
+  const cAccent  = cc.accent  || BR_THEMES[cur].accent;
+  const cPrimary = cc.primary || BR_THEMES[cur].primary;
+  const cDark    = cc.dark    || BR_THEMES[cur].dark;
+  pop.innerHTML = `
+    <div class="br-menu-section">Theme</div>
+    ${themeBtns}
+    <div class="br-menu-divider"></div>
+    <div class="br-menu-section">Custom Colors${isCustom ? ' <span style="color:#fbbf24;font-size:.92em">(active)</span>' : ''}</div>
+    <div class="br-menu-color-row">
+      <label>Accent <input type="color" value="${cAccent}" oninput="brSetCustomColor('accent', this.value)"></label>
+      <label>Primary <input type="color" value="${cPrimary}" oninput="brSetCustomColor('primary', this.value)"></label>
+      <label>Dark <input type="color" value="${cDark}" oninput="brSetCustomColor('dark', this.value)"></label>
+    </div>
+    ${isCustom ? '<button class="br-menu-item" onclick="brResetCustomColors()" style="color:#fca5a5">↺ Reset to preset</button>' : ''}
+    <div class="br-menu-divider"></div>
+    <div class="br-menu-section">Brand Assets</div>
+    <button class="br-menu-item" onclick="brUploadDefault('logo')">
+      <span>🖼 ${g.logo ? 'Replace' : 'Set'} Default Logo</span>
+      ${g.logo ? '<span style="color:#10b981;font-size:.85em">✓ saved</span>' : '<span style="color:#94a3b8;font-size:.85em">none</span>'}
+    </button>
+    <button class="br-menu-item" onclick="brUploadDefault('s7-shot')">
+      <span>🖼 ${g['s7-shot'] ? 'Replace' : 'Set'} Merchant Console Image</span>
+      ${g['s7-shot'] ? '<span style="color:#10b981;font-size:.85em">✓ saved</span>' : '<span style="color:#94a3b8;font-size:.85em">none</span>'}
+    </button>
+    ${g.logo ? '<button class="br-menu-item" onclick="brClearGlobal(\'logo\')" style="color:#fca5a5">Clear default logo</button>' : ''}
+    ${g['s7-shot'] ? '<button class="br-menu-item" onclick="brClearGlobal(\'s7-shot\')" style="color:#fca5a5">Clear default Merchant Console image</button>' : ''}
+  `;
+}
+function brSetTheme(k){
+  const g = brLoadGlobal();
+  g.theme = k;
+  delete g.customColors;
+  brSaveGlobal(g);
+  brApplyTheme();
+  brRenderMenu();
+}
+function brSetCustomColor(field, value){
+  const g = brLoadGlobal();
+  if(!g.customColors) g.customColors = {};
+  g.customColors[field] = value;
+  brSaveGlobal(g);
+  brApplyTheme();
+}
+function brResetCustomColors(){
+  const g = brLoadGlobal();
+  delete g.customColors;
+  brSaveGlobal(g);
+  brApplyTheme();
+  brRenderMenu();
 }
 
 // Bind contentEditable blur events after each render.
@@ -6934,16 +7164,21 @@ const BR_ICONS = {
 };
 const ICO = k => BR_ICONS[k] || '';
 
-// Logo block — try the user-uploaded data URL first, then assets/roadys-logo.png,
-// then fall back to a styled "Roady's" text. The img onerror handler swaps to text.
+// Logo source — per-deck override > global default > assets/roadys-logo.png
+function brLogoSrc(){
+  if(_brData && _brData.images && _brData.images.logo) return _brData.images.logo;
+  const g = brLoadGlobal();
+  if(g.logo) return g.logo;
+  return 'assets/roadys-logo.png';
+}
+// Logo block — img with onerror fallback to a styled script-text "Roady's".
+// Clicking opens a per-deck upload (the global default is set via the Brand menu).
 function brLogoHTML(){
-  const userLogo = _brData && _brData.images && _brData.images.logo;
-  const src = userLogo || 'assets/roadys-logo.png';
   return `
     <span class="br-logo" data-br-slot="logo">
-      <img src="${esc(src)}" alt="Roady's" onerror="this.parentElement.classList.add('no-img')"/>
+      <img src="${esc(brLogoSrc())}" alt="Roady's" onerror="this.parentElement.classList.add('no-img')"/>
       <span class="br-logo-text">Roady’s</span>
-      <input type="file" accept="image/*" onchange="brOnImage(event,'logo')" title="Replace logo"/>
+      <input type="file" accept="image/*" onchange="brOnImage(event,'logo')" title="Click to replace logo for this deck"/>
     </span>
   `;
 }
@@ -6982,7 +7217,7 @@ function brSlide1(d){
       <div class="br-cover">
         <div class="br-cover-l">
           <div class="br-cover-logo">
-            <img src="${esc((_brData.images && _brData.images.logo) || 'assets/roadys-logo.png')}" alt="Roady's" onerror="this.parentElement.classList.add('no-img')"/>
+            <img src="${esc(brLogoSrc())}" alt="Roady's" onerror="this.parentElement.classList.add('no-img')"/>
             <span class="br-logo-text">Roady’s</span>
           </div>
           <div class="br-cover-eyebrow">${brEditable(1,'eyebrow','Annual Business Review')}</div>
@@ -7204,10 +7439,13 @@ function brSlide7(d){
       ${brShead(7, 'Operations Toolkit', 'Merchant Console at a Glance')}
       <div class="br-sbody">
         <div class="br-s7">
-          ${brImgSlot('s7-shot','Click to upload Merchant Console screenshot')}
+          ${brImgSlot('s7-shot','Click to upload Merchant Console screenshot',{
+            linkTo: 'https://merchant.roadys.com/login',
+            defaultSrc: 'assets/merchant-console-login.png'
+          })}
           <div class="br-s7-foot">
-            <p>${brEditable(7,'foot','Real-time visibility into rewards activity, fuel pricing, location performance and account contacts — all in one place.',{tag:'span'})}</p>
-            <a class="br-s7-link" href="https://merchant.roadys.com/" target="_blank" rel="noopener">${ICO('monitor')} ${brEditable(7,'link','merchant.roadys.com',{tag:'span'})} ${ICO('arrow')}</a>
+            <p>${brEditable(7,'foot','Real-time visibility into rewards activity, fuel pricing, location performance and account contacts — all in one place. Click the screenshot to open the live console.',{tag:'span'})}</p>
+            <a class="br-s7-link" href="https://merchant.roadys.com/login" target="_blank" rel="noopener">${ICO('monitor')} ${brEditable(7,'link','merchant.roadys.com',{tag:'span'})} ${ICO('arrow')}</a>
           </div>
         </div>
       </div>
@@ -7569,6 +7807,10 @@ function brRender(){
       <span class="br-page-ind" id="br-page-ind">Slide ${_brSlide} of 13</span>
       <button class="br-btn" onclick="brNext()">Next →</button>
       <button class="br-btn" onclick="brResetSlide()" title="Clear edits on the current slide">↺ Reset slide</button>
+      <div class="br-menu" id="br-menu">
+        <button class="br-btn" onclick="brToggleMenu(event)" title="Theme & brand assets">🎨 Brand ▾</button>
+        <div class="br-menu-pop" id="br-menu-pop"></div>
+      </div>
       <button class="br-btn primary" onclick="brExportPDF()">🖨 Export PDF</button>
       <button class="br-btn danger" onclick="brClose()">✕ Close</button>
     </div>
@@ -7576,6 +7818,7 @@ function brRender(){
     <div class="br-thumbs">${thumbs}</div>
   `;
   brBindEditables();
+  brApplyTheme();
   // Defer chart render to next tick so the canvas is in the DOM
   if(_brSlide === 8) setTimeout(brRenderGallonsChart, 0);
   if(_brSlide === 9) setTimeout(brRenderRewardsChart, 0);
