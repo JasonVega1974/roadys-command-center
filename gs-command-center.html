@@ -474,186 +474,323 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .auth-status.err{color:var(--red)}
 .auth-help{font-size:.7em;color:var(--muted);margin-top:6px;line-height:1.4}
 
-/* ═══ BUSINESS REVIEW DECK (Phase 9) ═══════════════════════════════════ */
-#br-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9000;display:none;flex-direction:column}
+/* ═══ BUSINESS REVIEW DECK (Phase 9.1 — world-class redesign) ═══════════
+   Design tokens, slide canvas, typography & layout primitives all live
+   under .br-slide so the host app's variables are unaffected.
+   ────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+#br-overlay{position:fixed;inset:0;background:rgba(2,6,23,.94);z-index:9000;display:none;flex-direction:column;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 #br-overlay.show{display:flex}
-.br-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;background:#0f172a;border-bottom:1px solid #1f2937;padding:8px 14px;color:#e2e8f0;font-family:var(--ff);flex-wrap:wrap}
-.br-toolbar .br-title{font-weight:800;font-size:.9em;color:#e2e8f0}
+
+/* Toolbar */
+.br-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#0b1220,#0f172a);border-bottom:1px solid rgba(148,163,184,.15);padding:10px 16px;color:#e2e8f0;flex-wrap:wrap;font-feature-settings:'cv11','ss01'}
+.br-toolbar .br-title{font-weight:700;font-size:.86em;color:#e2e8f0;letter-spacing:-.005em}
 .br-toolbar .br-sub{font-size:.74em;color:#94a3b8}
 .br-toolbar .br-spacer{flex:1}
-.br-toolbar select,.br-toolbar input[type=text]{background:#1a2236;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:5px 8px;font-size:.78em;font-family:var(--ff)}
-.br-toolbar select:focus,.br-toolbar input:focus{outline:none;border-color:#22d3ee}
-.br-toolbar .br-btn{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:5px 12px;font-size:.78em;cursor:pointer;font-weight:600;font-family:var(--ff)}
-.br-toolbar .br-btn:hover{background:#334155;border-color:#22d3ee}
-.br-toolbar .br-btn.primary{background:#22d3ee;color:#0b0f19;border-color:#22d3ee}
-.br-toolbar .br-btn.primary:hover{background:#06b6d4;color:#fff}
-.br-toolbar .br-btn.danger{color:#fca5a5;border-color:#7f1d1d}
-.br-toolbar .br-btn.danger:hover{background:#7f1d1d;color:#fff}
-.br-toolbar .br-page-ind{font-size:.78em;color:#94a3b8;font-family:var(--fm)}
+.br-toolbar select{background:#1a2236;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:6px 10px;font-size:.78em;font-family:inherit;cursor:pointer}
+.br-toolbar select:focus{outline:none;border-color:#22d3ee}
+.br-toolbar .br-btn{background:rgba(30,41,59,.7);color:#e2e8f0;border:1px solid rgba(148,163,184,.2);border-radius:8px;padding:6px 14px;font-size:.78em;cursor:pointer;font-weight:600;font-family:inherit;transition:all .15s}
+.br-toolbar .br-btn:hover{background:rgba(51,65,85,.9);border-color:#22d3ee}
+.br-toolbar .br-btn.primary{background:#dc2626;color:#fff;border-color:#dc2626}
+.br-toolbar .br-btn.primary:hover{background:#b91c1c;border-color:#b91c1c}
+.br-toolbar .br-btn.danger{color:#fca5a5;border-color:rgba(127,29,29,.5)}
+.br-toolbar .br-btn.danger:hover{background:#7f1d1d;color:#fff;border-color:#7f1d1d}
+.br-toolbar .br-page-ind{font-size:.78em;color:#cbd5e1;font-variant-numeric:tabular-nums;min-width:100px;text-align:center}
 
-.br-stage{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px;background:#020617}
-.br-deck{display:flex;flex-direction:column;align-items:center;gap:18px;width:100%;max-width:1200px}
-.br-slide{width:1100px;max-width:100%;aspect-ratio:16/9;background:#fff;color:#0f172a;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);overflow:hidden;display:none;position:relative;font-family:'Helvetica Neue','Segoe UI',Arial,sans-serif;font-size:13px}
+/* Stage */
+.br-stage{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:24px;background:radial-gradient(ellipse at top,#0f172a 0%,#020617 70%)}
+.br-deck{display:flex;flex-direction:column;align-items:center;gap:24px;width:100%;max-width:1200px}
+
+/* Slide canvas — fixed 1100×618.75 (16:9) for predictable typography */
+.br-slide{width:1100px;max-width:100%;aspect-ratio:16/9;background:#fff;color:#0f172a;border-radius:16px;box-shadow:0 24px 60px -12px rgba(0,0,0,.6),0 0 0 1px rgba(148,163,184,.08);overflow:hidden;display:none;position:relative;font-size:13px;line-height:1.5;font-feature-settings:'cv11','ss01';
+  --b-bg:#ffffff;--b-bg-2:#f8fafc;--b-bg-3:#f1f5f9;--b-line:#e2e8f0;--b-line-2:#cbd5e1;
+  --b-ink:#0f172a;--b-ink-2:#1e293b;--b-mute:#475569;--b-mute-2:#64748b;--b-mute-3:#94a3b8;
+  --b-blue:#1d4ed8;--b-blue-deep:#1e3a8a;--b-blue-50:#eff6ff;--b-blue-100:#dbeafe;
+  --b-red:#dc2626;--b-red-deep:#991b1b;--b-red-50:#fef2f2;
+  --b-gold:#d4a017;--b-success:#059669;
+  --b-cover:linear-gradient(135deg,#0b1220 0%,#1e293b 60%,#0f172a 100%);
+  --b-shadow-sm:0 1px 2px rgba(15,23,42,.05);
+  --b-shadow:0 4px 16px -4px rgba(15,23,42,.1),0 2px 4px rgba(15,23,42,.04);
+}
 .br-slide.active{display:block}
 .br-slide *{box-sizing:border-box}
-.br-slide a{color:#1d4ed8;text-decoration:none}
+.br-slide a{color:var(--b-blue);text-decoration:none}
+.br-num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum'}
 
-/* Sidebar — vertical "Business Review" + stop name strip */
-.br-side{position:absolute;left:0;top:0;bottom:0;width:160px;background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%);display:flex;align-items:stretch;color:#fff}
-.br-side-a{flex:0 0 80px;writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.6em;letter-spacing:.04em;color:rgba(255,255,255,.92)}
-.br-side-b{flex:1;background:#3b82f6;writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.5em;letter-spacing:.04em;color:#fff;text-align:center;padding:0 6px}
+/* ─── Common slide chrome ────────────────────────────────────────────── */
+/* Thin red rail at the top of every content slide */
+.br-rail{position:absolute;left:0;top:0;right:0;height:3px;background:linear-gradient(90deg,var(--b-red) 0%,var(--b-red) 35%,var(--b-blue) 100%)}
 
-.br-body{position:absolute;left:160px;top:0;right:0;bottom:0;padding:34px 44px;overflow:hidden;display:flex;flex-direction:column}
-.br-logo{position:absolute;top:18px;right:32px;font-family:'Brush Script MT','Lucida Handwriting',cursive;color:#dc2626;font-size:2.4em;font-weight:700;font-style:italic;line-height:1;user-select:none}
-.br-logo .br-logo-dash{display:block;height:6px;background:#0f172a;border-radius:3px;width:60px;margin:-2px 0 0 6px;transform:skewX(-30deg)}
-.br-logo img{height:50px;display:block}
-.br-page-no{position:absolute;bottom:14px;right:24px;font-size:.78em;color:#94a3b8;font-family:'Helvetica Neue',sans-serif}
+/* Slide header (eyebrow + title + logo) */
+.br-shead{display:flex;align-items:flex-start;justify-content:space-between;padding:34px 48px 0;gap:24px}
+.br-shead-l{flex:1;min-width:0}
+.br-eyebrow{font-size:.66em;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--b-red);margin-bottom:6px}
+.br-stitle{font-size:1.85em;font-weight:800;color:var(--b-ink);line-height:1.1;letter-spacing:-.018em;margin:0}
+.br-stitle .sub{font-weight:500;color:var(--b-mute);font-size:.62em;letter-spacing:0;display:block;margin-top:6px}
+.br-shead-r{flex:0 0 auto;display:flex;align-items:center}
 
-.br-h1{font-size:2.4em;font-weight:900;color:#0f172a;margin:0 0 4px 0;line-height:1.05}
-.br-h2{font-size:1.7em;font-weight:900;color:#0f172a;margin:0 0 8px 0;line-height:1.1}
-.br-h2 .sub{font-size:.7em;color:#475569;font-weight:600}
-.br-sub{font-size:.95em;color:#475569;margin-bottom:12px}
-.br-pill{display:inline-block;background:#1d4ed8;color:#fff;padding:3px 10px;border-radius:14px;font-size:.74em;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+/* Logo */
+.br-logo{position:relative;display:inline-flex;align-items:center;height:52px;cursor:pointer}
+.br-logo img{height:100%;width:auto;display:block;object-fit:contain;max-width:200px}
+.br-logo .br-logo-text{font-family:'Brush Script MT','Lucida Handwriting',cursive;color:var(--b-red);font-size:2.2em;font-weight:700;font-style:italic;line-height:1;letter-spacing:.01em;display:none;text-shadow:0 1px 0 rgba(0,0,0,.05)}
+.br-logo.no-img .br-logo-text{display:inline}
+.br-logo.no-img img{display:none}
+.br-logo input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
 
+/* Slide body */
+.br-sbody{position:absolute;left:0;right:0;top:118px;bottom:46px;padding:0 48px;display:flex;flex-direction:column;min-height:0}
+
+/* Slide footer */
+.br-sfoot{position:absolute;left:48px;right:48px;bottom:18px;display:flex;align-items:center;justify-content:space-between;font-size:.72em;color:var(--b-mute-2);font-weight:500}
+.br-sfoot .l{display:flex;align-items:center;gap:8px}
+.br-sfoot .l::before{content:'';display:inline-block;width:14px;height:2px;background:var(--b-red);border-radius:2px}
+
+/* Edit affordances */
 [contenteditable="true"]{outline:none;transition:box-shadow .12s,background .12s}
-[contenteditable="true"]:hover{background:rgba(34,211,238,.08)}
-[contenteditable="true"]:focus{background:rgba(34,211,238,.12);box-shadow:inset 0 0 0 1px #22d3ee;border-radius:3px}
-.br-edit-hint{display:inline-block;font-size:.66em;color:#0ea5e9;margin-left:4px;vertical-align:middle;font-style:italic}
+[contenteditable="true"]:hover{background:rgba(34,211,238,.06)}
+[contenteditable="true"]:focus{background:rgba(34,211,238,.1);box-shadow:inset 0 0 0 1.5px #22d3ee;border-radius:4px}
+.br-edit-hint{display:inline-block;font-size:.64em;color:#0ea5e9;margin-left:6px;vertical-align:middle;font-style:italic;font-weight:500}
 
-/* Image-import area */
-.br-img-slot{position:relative;background:#f1f5f9;border:2px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:.84em;cursor:pointer;overflow:hidden}
-.br-img-slot:hover{border-color:#0ea5e9;color:#0ea5e9;background:#eff6ff}
+/* Image upload slot */
+.br-img-slot{position:relative;background:linear-gradient(135deg,var(--b-bg-3),var(--b-bg-2));border:1.5px dashed var(--b-line-2);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--b-mute-2);font-size:.84em;font-weight:500;cursor:pointer;overflow:hidden;transition:all .15s}
+.br-img-slot:hover{border-color:#0ea5e9;color:#0ea5e9;background:linear-gradient(135deg,#eff6ff,#dbeafe)}
 .br-img-slot img{width:100%;height:100%;object-fit:cover;display:block}
 .br-img-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
-.br-img-slot .br-img-rm{position:absolute;top:4px;right:4px;background:rgba(15,23,42,.85);color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:.7em;cursor:pointer;display:none;z-index:2}
+.br-img-slot .br-img-rm{position:absolute;top:6px;right:6px;background:rgba(15,23,42,.85);color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:.7em;font-weight:600;cursor:pointer;display:none;z-index:2}
 .br-img-slot.has-img:hover .br-img-rm{display:block}
-.br-img-slot.has-img{border-style:solid;border-color:#cbd5e1}
+.br-img-slot.has-img{border-style:solid;border-color:transparent}
 
-/* Slide 1 — Title */
-.br-s1-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:30px;height:100%;align-items:center}
-.br-s1-left{display:flex;flex-direction:column;gap:8px}
-.br-s1-right{display:flex;flex-direction:column;gap:14px}
-.br-s1-photo{height:280px;border-radius:10px}
-.br-s1-mission{background:#f8fafc;border-radius:10px;padding:18px 20px}
-.br-s1-mission h3{margin:0 0 6px;font-size:1.3em;font-weight:900;color:#0f172a}
+/* Tables / cells */
+.br-tbl{width:100%;border-collapse:collapse;font-size:.8em}
+.br-tbl thead{background:var(--b-bg-2)}
+.br-tbl th{text-align:left;padding:8px 10px;font-weight:700;font-size:.78em;color:var(--b-mute);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--b-line-2)}
+.br-tbl td{padding:7px 10px;border-bottom:1px solid var(--b-line);color:var(--b-ink-2)}
+.br-tbl tr:last-child td{border-bottom:none}
+.br-tbl input{width:100%;border:none;background:transparent;font-family:inherit;font-size:1em;color:var(--b-ink-2);padding:2px 0}
+.br-tbl input:focus{outline:none;background:var(--b-blue-100)}
 
-/* Slide 2 — KPI overview */
-.br-s2-banner{background:#1d4ed8;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:14px}
-.br-s2-banner h3{margin:0 0 4px;font-size:1.1em}
-.br-s2-banner .desc{font-size:.92em;line-height:1.4;opacity:.95}
-.br-s2-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1}
-.br-s2-card{background:#f8fafc;border-radius:10px;padding:14px;display:flex;flex-direction:column;align-items:center;text-align:center}
-.br-s2-card h4{margin:0 0 10px;color:#1d4ed8;font-size:1em;font-weight:800}
-.br-s2-card .br-s2-area{flex:1;width:100%;min-height:170px}
+/* Reusable card */
+.br-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:12px;padding:16px 18px;box-shadow:var(--b-shadow-sm)}
+.br-card.flat{box-shadow:none;border-color:var(--b-line)}
+.br-card-hd{font-size:.66em;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--b-blue);margin-bottom:8px}
+.br-card-title{font-size:1em;font-weight:700;color:var(--b-ink);margin:0 0 4px}
 
-/* Slide 3 — Service grid */
-.br-s3-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:14px;flex:1}
-.br-s3-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px}
-.br-s3-card .icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;background:#dbeafe;color:#1d4ed8;border-radius:6px;font-size:1.1em;margin-bottom:8px}
-.br-s3-card h4{margin:0 0 6px;color:#dc2626;font-size:.95em;font-weight:800}
-.br-s3-card p{margin:0;font-size:.85em;color:#475569;line-height:1.4}
+/* Stat block */
+.br-stat{display:flex;flex-direction:column;gap:2px}
+.br-stat .lbl{font-size:.66em;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2)}
+.br-stat .val{font-size:1.9em;font-weight:800;color:var(--b-ink);letter-spacing:-.018em;line-height:1;font-variant-numeric:tabular-nums;font-feature-settings:'tnum'}
+.br-stat .sub{font-size:.74em;color:var(--b-mute);font-weight:500}
+.br-stat.brand .val{color:var(--b-blue)}
+.br-stat.danger .val{color:var(--b-red)}
+.br-stat.success .val{color:var(--b-success)}
 
-/* Slide 4 — Competitor table + cost components */
-.br-s4{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
-.br-s4-card{background:#f8fafc;border-radius:8px;padding:10px 14px}
-.br-s4-card h4{margin:0 0 6px;color:#1d4ed8;font-size:.92em;font-weight:800}
-.br-tbl{width:100%;border-collapse:collapse;font-size:.78em}
-.br-tbl th{background:transparent;text-align:left;padding:6px 8px;font-weight:800;color:#0f172a;border-bottom:1px solid #cbd5e1}
-.br-tbl td{padding:5px 8px;border-bottom:1px solid #e2e8f0;color:#334155}
-.br-tbl input{width:100%;border:none;background:transparent;font-family:inherit;font-size:1em;color:#334155;padding:2px 0}
-.br-tbl input:focus{outline:none;background:#dbeafe}
-.br-cost-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 24px;font-size:.85em}
-.br-cost-row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #e2e8f0;align-items:center}
-.br-cost-row .lbl{color:#475569}
-.br-cost-row input{border:none;background:transparent;font-family:inherit;color:#0f172a;padding:2px 0;width:100%}
-.br-cost-row input:focus{outline:none;background:#dbeafe}
+/* ─── SLIDE 1 — COVER ────────────────────────────────────────────────── */
+.br-cover{position:absolute;inset:0;display:grid;grid-template-columns:1.05fr 1fr}
+.br-cover-l{background:var(--b-cover);color:#fff;padding:48px 44px 36px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.br-cover-l::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:var(--b-red)}
+.br-cover-l::after{content:'';position:absolute;right:-200px;bottom:-200px;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(220,38,38,.15) 0%,transparent 60%)}
+.br-cover-logo{margin-bottom:auto;height:64px;position:relative;z-index:1}
+.br-cover-logo img{height:100%;width:auto;max-width:240px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
+.br-cover-logo .br-logo-text{color:#fff;font-size:2.6em}
+.br-cover-eyebrow{font-size:.78em;font-weight:600;letter-spacing:.32em;text-transform:uppercase;color:#fca5a5;margin-bottom:14px;position:relative;z-index:1}
+.br-cover-h1{font-size:3.6em;font-weight:800;line-height:.98;letter-spacing:-.025em;color:#fff;margin:0 0 16px;position:relative;z-index:1}
+.br-cover-stop{font-size:1.3em;font-weight:600;color:rgba(255,255,255,.85);margin:0 0 6px;position:relative;z-index:1}
+.br-cover-meta{font-size:.84em;color:rgba(203,213,225,.7);font-weight:500;margin-bottom:24px;position:relative;z-index:1;font-variant-numeric:tabular-nums}
+.br-cover-chips{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:auto;position:relative;z-index:1}
+.br-cover-chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px}
+.br-cover-chip .lbl{font-size:.62em;letter-spacing:.16em;text-transform:uppercase;color:rgba(203,213,225,.7);font-weight:700;margin-bottom:3px}
+.br-cover-chip .val{font-size:1.15em;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+.br-cover-chip .val .sub{font-size:.6em;font-weight:500;color:rgba(203,213,225,.6);margin-left:4px}
+.br-cover-r{position:relative;overflow:hidden;background:#0f172a}
+.br-cover-r .br-img-slot{position:absolute;inset:0;border-radius:0;border:none;background:#0f172a}
+.br-cover-r .br-img-slot:hover{background:#1e293b}
+.br-cover-r::after{content:'';position:absolute;left:0;top:0;bottom:0;width:80px;background:linear-gradient(90deg,rgba(15,23,42,.4) 0%,transparent 100%);pointer-events:none;z-index:2}
+.br-cover-credit{position:absolute;bottom:24px;right:32px;font-size:.66em;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;font-weight:600;z-index:3;text-align:right}
+.br-cover-credit .gs{color:rgba(255,255,255,.85);font-weight:700;font-size:1.1em;letter-spacing:.04em;text-transform:none;display:block;margin-bottom:2px}
 
-/* Slide 5 — Comdata savings */
-.br-s5-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:24px;height:100%;align-items:center}
-.br-s5-left .icon-circle{width:50px;height:50px;background:#dbeafe;color:#1d4ed8;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:1.4em;margin-bottom:14px}
-.br-s5-left h3{margin:0 0 8px;font-size:1.2em;color:#0f172a;font-weight:900}
-.br-s5-left p{font-size:.92em;line-height:1.5;color:#475569;margin:0 0 16px}
-.br-s5-stat{margin-bottom:8px}
-.br-s5-stat .num{font-size:2.4em;font-weight:900;color:#1d4ed8;display:inline-block;line-height:1}
-.br-s5-stat .lbl{font-size:.95em;color:#475569;margin-left:6px}
-.br-s5-right{height:340px}
-.br-s5-foot{position:absolute;left:204px;bottom:30px;font-size:.7em;color:#64748b;font-style:italic}
+/* ─── SLIDE 2 — KPI Pillars ──────────────────────────────────────────── */
+.br-pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;min-height:0}
+.br-pillar{background:linear-gradient(180deg,var(--b-bg) 0%,var(--b-bg-2) 100%);border:1px solid var(--b-line);border-radius:14px;padding:18px 16px 16px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.br-pillar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--b-blue)}
+.br-pillar.r::before{background:var(--b-red)}
+.br-pillar.g::before{background:var(--b-success)}
+.br-pillar.gold::before{background:var(--b-gold)}
+.br-pillar .ico{width:40px;height:40px;border-radius:10px;background:var(--b-blue-100);color:var(--b-blue);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.br-pillar.r .ico{background:#fee2e2;color:var(--b-red)}
+.br-pillar.g .ico{background:#d1fae5;color:var(--b-success)}
+.br-pillar.gold .ico{background:#fef3c7;color:var(--b-gold)}
+.br-pillar h4{margin:0 0 6px;font-size:1.05em;font-weight:700;color:var(--b-ink);letter-spacing:-.012em}
+.br-pillar p{margin:0 0 10px;font-size:.82em;color:var(--b-mute);line-height:1.5}
+.br-pillar .met{margin-top:auto;padding-top:10px;border-top:1px solid var(--b-line)}
+.br-pillar .met-num{font-size:1.5em;font-weight:800;color:var(--b-ink);font-variant-numeric:tabular-nums;letter-spacing:-.018em;line-height:1}
+.br-pillar .met-lbl{font-size:.64em;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);margin-top:3px}
 
-/* Slide 6 — Digital visibility */
-.br-s6-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1}
-.br-s6-card{background:#f8fafc;border-radius:10px;padding:12px;display:flex;flex-direction:column}
-.br-s6-card h4{margin:0 0 8px;color:#1d4ed8;font-size:.95em;font-weight:800;text-align:center}
-.br-s6-card .br-img-slot{flex:1;min-height:280px}
+/* ─── SLIDE 3 — Service grid ─────────────────────────────────────────── */
+.br-svc{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:14px;flex:1;min-height:0}
+.br-svc-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:18px;display:flex;flex-direction:column;position:relative;transition:all .15s}
+.br-svc-card .ico{width:36px;height:36px;border-radius:10px;background:var(--b-blue-100);color:var(--b-blue);display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px}
+.br-svc-card h4{margin:0 0 6px;font-size:1em;font-weight:700;color:var(--b-ink);letter-spacing:-.01em}
+.br-svc-card p{margin:0;font-size:.82em;color:var(--b-mute);line-height:1.5}
 
-/* Slide 7 — Merchant Console dashboard */
-.br-s7-grid{display:grid;grid-template-columns:1fr;gap:10px;flex:1;min-height:0}
-.br-s7-shot{height:340px;width:100%}
-.br-s7-foot{display:flex;justify-content:space-between;align-items:center;font-size:.84em;color:#475569;padding:8px 4px 0}
-.br-s7-link{background:#dbeafe;color:#1d4ed8;padding:5px 10px;border-radius:6px;font-weight:700;font-size:.82em}
+/* ─── SLIDE 4 — Competition + Cost Components ─────────────────────────── */
+.br-s4-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;flex:1;min-height:0}
+.br-cost-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:.84em}
+.br-cost-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--b-line);align-items:center}
+.br-cost-row:last-child{border-bottom:none}
+.br-cost-row .lbl{color:var(--b-mute);font-size:.96em}
+.br-cost-row input{border:none;background:transparent;font-family:inherit;color:var(--b-ink);padding:2px 6px;width:90px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;border-radius:4px}
+.br-cost-row input:focus{outline:none;background:var(--b-blue-100)}
 
-/* Slide 8 — Gallons */
-.br-s8-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;flex:1;min-height:0}
-.br-s8-left{background:#f8fafc;border-radius:10px;padding:12px 16px;display:flex;flex-direction:column}
-.br-s8-volume{background:#1d4ed8;color:#fff;border-radius:10px;padding:14px 18px;text-align:left}
-.br-s8-volume .hd{font-size:.86em;font-weight:700;opacity:.9}
-.br-s8-volume .lbl{font-size:.7em;text-transform:uppercase;letter-spacing:.06em;margin-top:6px;opacity:.85}
-.br-s8-volume .num{font-size:2.4em;font-weight:900;line-height:1;margin-top:2px}
-.br-s8-aggwrap{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;font-size:.78em}
-.br-s8-aggwrap .col{background:#f8fafc;border-radius:6px;padding:8px 10px}
-.br-s8-aggwrap .col h5{margin:0 0 4px;color:#1d4ed8;font-size:.92em}
-.br-s8-aggwrap .col ul{margin:0;padding:0 0 0 16px}
-.br-s8-aggwrap .col li{padding:1px 0}
-.br-s8-chart-wrap{flex:1;min-height:140px;position:relative;margin-top:6px}
+/* ─── SLIDE 5 — Comdata savings ──────────────────────────────────────── */
+.br-s5{display:grid;grid-template-columns:1fr 1fr;gap:24px;flex:1;align-items:center;min-height:0}
+.br-s5-l{display:flex;flex-direction:column;gap:18px}
+.br-s5-icon{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,var(--b-blue),var(--b-blue-deep));color:#fff;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 20px -6px rgba(29,78,216,.4)}
+.br-s5-headline{font-size:1.35em;font-weight:800;color:var(--b-ink);line-height:1.2;letter-spacing:-.018em;margin:0}
+.br-s5-desc{font-size:.92em;color:var(--b-mute);line-height:1.55;margin:0}
+.br-s5-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px}
+.br-s5-stat{background:linear-gradient(180deg,var(--b-bg) 0%,var(--b-bg-2) 100%);border:1px solid var(--b-line);border-radius:14px;padding:18px;position:relative;overflow:hidden}
+.br-s5-stat::before{content:'';position:absolute;right:-30px;top:-30px;width:80px;height:80px;border-radius:50%;background:radial-gradient(circle,rgba(29,78,216,.06),transparent);}
+.br-s5-stat .lbl{font-size:.62em;letter-spacing:.16em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:4px}
+.br-s5-stat .val{font-size:2.4em;font-weight:800;color:var(--b-blue);font-variant-numeric:tabular-nums;letter-spacing:-.028em;line-height:.95}
+.br-s5-stat .val .pre{font-size:.55em;font-weight:700;color:var(--b-mute-2);margin-right:2px;vertical-align:.45em}
+.br-s5-r{height:100%;min-height:280px}
+.br-s5-foot{font-size:.7em;color:var(--b-mute-2);font-style:italic;margin-top:8px}
 
-/* Slide 9 — Rewards table */
-.br-s9{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
-.br-s9 .br-tbl th, .br-s9 .br-tbl td{font-size:.76em;padding:4px 6px}
-.br-s9-bench{background:#dbeafe;border-radius:8px;padding:10px 14px;font-size:.84em;color:#1e3a8a}
-.br-s9-bench b{color:#1d4ed8}
+/* ─── SLIDE 6 — Digital visibility ───────────────────────────────────── */
+.br-s6{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1;min-height:0}
+.br-s6-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.br-s6-card h4{margin:0;font-size:.94em;font-weight:700;color:var(--b-ink);letter-spacing:-.008em;display:flex;align-items:center;gap:8px}
+.br-s6-card h4 .ico{width:24px;height:24px;border-radius:6px;background:var(--b-blue-100);color:var(--b-blue);display:inline-flex;align-items:center;justify-content:center}
+.br-s6-card .br-img-slot{flex:1}
+.br-s6-card p{margin:0;font-size:.78em;color:var(--b-mute);line-height:1.5}
 
-/* Slide 10 — Vendor programs */
-.br-s10-grid{display:flex;flex-direction:column;gap:10px;flex:1}
-.br-s10-row{display:grid;grid-template-columns:1fr 1.4fr;gap:14px;background:#f8fafc;border-radius:10px;padding:10px 14px;align-items:center}
-.br-s10-logo{height:60px;border-radius:6px}
-.br-s10-stat{font-size:1.3em;font-weight:800;color:#0f172a}
-.br-s10-stat b{color:#1d4ed8}
-.br-s10-add{margin-top:6px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px}
-.br-s10-add h4{margin:0 0 6px;color:#0f172a;font-size:.95em;font-weight:800}
-.br-s10-add-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:.84em;color:#475569}
-.br-s10-add-grid div{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:6px 10px;text-align:center;font-weight:600}
+/* ─── SLIDE 7 — Merchant Console ─────────────────────────────────────── */
+.br-s7{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
+.br-s7 .br-img-slot{flex:1;min-height:280px}
+.br-s7-foot{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 0 0}
+.br-s7-foot p{flex:1;margin:0;font-size:.84em;color:var(--b-mute);line-height:1.5}
+.br-s7-link{background:var(--b-blue);color:#fff;padding:8px 14px;border-radius:8px;font-weight:600;font-size:.78em;letter-spacing:.01em;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 
-/* Slide 11 — Summary */
-.br-s11-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1}
-.br-s11-card{background:#f8fafc;border-radius:10px;padding:12px 16px}
-.br-s11-card h4{margin:0 0 8px;font-size:.95em;font-weight:800}
-.br-s11-card.rev h4{color:#1d4ed8}
-.br-s11-card.sav h4{color:#1d4ed8}
-.br-s11-card.exp h4{color:#dc2626}
-.br-s11-row{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:.86em;padding:3px 0;border-bottom:1px dashed #e2e8f0}
-.br-s11-row:last-child{border-bottom:none}
-.br-s11-row .v{font-weight:800;color:#0f172a}
-.br-s11-total{margin-top:6px;text-align:right;font-weight:800;color:#1d4ed8;font-size:.95em}
-.br-s11-net{grid-column:span 2;background:#3b82f6;color:#fff;border-radius:10px;padding:14px 22px;text-align:center;font-size:1.6em;font-weight:900}
+/* ─── SLIDE 8 — Volume Performance ───────────────────────────────────── */
+.br-s8{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;flex:1;min-height:0}
+.br-s8-l{display:flex;flex-direction:column;gap:10px;min-height:0}
+.br-s8-hero{background:linear-gradient(135deg,var(--b-blue) 0%,var(--b-blue-deep) 100%);color:#fff;border-radius:14px;padding:18px 22px;display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;position:relative;overflow:hidden;box-shadow:0 12px 24px -8px rgba(29,78,216,.35)}
+.br-s8-hero::after{content:'';position:absolute;right:-60px;top:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%)}
+.br-s8-hero .lbl{font-size:.68em;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85}
+.br-s8-hero .num{font-size:2.6em;font-weight:800;line-height:.95;font-variant-numeric:tabular-nums;letter-spacing:-.025em;margin-top:2px}
+.br-s8-hero .sub{font-size:.74em;font-weight:500;opacity:.75;margin-top:4px}
+.br-s8-rack{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:.76em}
+.br-s8-rack-cell{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:8px;padding:8px 10px}
+.br-s8-rack-cell .l{font-size:.84em;color:var(--b-mute-2);font-weight:600}
+.br-s8-rack-cell .v{font-weight:700;color:var(--b-ink);font-variant-numeric:tabular-nums;margin-top:2px}
+.br-s8-chart{flex:1;background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:12px 14px;position:relative;min-height:140px;display:flex;flex-direction:column}
+.br-s8-chart .hd{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:6px}
+.br-s8-chart-wrap{flex:1;position:relative;min-height:0}
+.br-s8-r{display:flex;flex-direction:column;gap:8px;min-height:0}
+.br-s8-mix{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:14px;flex:1;min-height:0;display:flex;flex-direction:column}
+.br-s8-mix .hd{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:8px}
+.br-s8-mix-list{font-size:.8em;line-height:1.6;flex:1;overflow:hidden}
+.br-s8-mix-list .row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:3px 0;border-bottom:1px dotted var(--b-line);font-variant-numeric:tabular-nums}
+.br-s8-mix-list .row:last-child{border-bottom:none}
+.br-s8-mix-list .row .name{color:var(--b-ink-2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-s8-mix-list .row .gal{color:var(--b-mute);font-weight:600}
+.br-s8-mix-list .empty{color:var(--b-mute-2);font-style:italic;font-size:.92em}
 
-/* Slide 12 — Next Steps */
-.br-s12-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:14px;flex:1}
-.br-s12-card{background:#f8fafc;border-radius:10px;padding:14px}
-.br-s12-card h4{margin:0 0 8px;color:#1d4ed8;font-size:1em;font-weight:800}
-.br-s12-card ul{margin:0;padding-left:18px;font-size:.86em;line-height:1.5;color:#334155}
+/* ─── SLIDE 9 — Rewards Performance ──────────────────────────────────── */
+.br-s9{display:grid;grid-template-columns:1.05fr 1fr;gap:14px;flex:1;min-height:0}
+.br-s9-l{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;min-height:0}
+.br-s9 .br-tbl{font-size:.74em}
+.br-s9 .br-tbl th{font-size:.7em;padding:5px 6px}
+.br-s9 .br-tbl td{padding:4px 6px}
+.br-s9 .br-tbl input{padding:1px 0}
+.br-s9-r{display:flex;flex-direction:column;gap:10px;min-height:0}
+.br-s9-chart{flex:1;background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;min-height:0}
+.br-s9-chart .hd{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:4px}
+.br-s9-chart-wrap{flex:1;min-height:0;position:relative}
+.br-s9-bench{background:linear-gradient(135deg,#0b1220,#1e293b);color:#fff;border-radius:14px;padding:14px 16px;font-size:.82em}
+.br-s9-bench .hd{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:#fca5a5;font-weight:700;margin-bottom:6px}
+.br-s9-bench-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+.br-s9-bench-item{background:rgba(255,255,255,.04);border-radius:8px;padding:8px 10px}
+.br-s9-bench-item .l{font-size:.7em;color:rgba(203,213,225,.7);font-weight:600;margin-bottom:2px}
+.br-s9-bench-item .v{font-size:1em;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
 
-/* Slide 13 — Contacts */
-.br-s13-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1}
-.br-s13-card{background:#f8fafc;border-radius:10px;padding:16px 20px}
-.br-s13-card h4{margin:0 0 10px;color:#1d4ed8;font-size:1em;font-weight:800}
-.br-s13-card .lbl{font-size:.74em;font-weight:800;color:#0f172a;margin-top:8px}
-.br-s13-card .val{font-size:.88em;color:#475569;line-height:1.5}
-.br-s13-card a{color:#0ea5e9}
+/* ─── SLIDE 10 — Vendor Programs ─────────────────────────────────────── */
+.br-s10{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
+.br-s10-rows{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.br-s10-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:18px;display:grid;grid-template-columns:1fr 1.3fr;gap:14px;align-items:center;position:relative;overflow:hidden}
+.br-s10-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--b-success)}
+.br-s10-card.earn::before{background:var(--b-gold)}
+.br-s10-logoslot{height:80px}
+.br-s10-stat{display:flex;flex-direction:column}
+.br-s10-stat .verb{font-size:.7em;letter-spacing:.16em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:2px}
+.br-s10-stat .amt{font-size:2em;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;letter-spacing:-.022em;line-height:1}
+.br-s10-card.earn .br-s10-stat .amt{color:var(--b-gold)}
+.br-s10-stat .yr{font-size:.78em;color:var(--b-mute);font-weight:500;margin-top:2px}
+.br-s10-extra{background:linear-gradient(180deg,var(--b-bg) 0%,var(--b-bg-2) 100%);border:1px solid var(--b-line);border-radius:14px;padding:14px 18px}
+.br-s10-extra h4{margin:0 0 10px;font-size:.92em;font-weight:700;color:var(--b-ink);display:flex;align-items:center;gap:8px}
+.br-s10-extra h4 .ico{width:24px;height:24px;border-radius:6px;background:#fef3c7;color:var(--b-gold);display:inline-flex;align-items:center;justify-content:center}
+.br-s10-extra-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.br-s10-extra-grid div{background:#fff;border:1px solid var(--b-line);border-radius:10px;padding:10px 12px;font-size:.84em;color:var(--b-ink-2);font-weight:600;text-align:center}
+
+/* ─── SLIDE 11 — P&L Summary ─────────────────────────────────────────── */
+.br-s11{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:14px;flex:1;min-height:0}
+.br-s11 .panel{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:14px 18px;display:flex;flex-direction:column}
+.br-s11 .panel .hd{display:flex;align-items:center;gap:8px;font-size:.7em;letter-spacing:.16em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:8px}
+.br-s11 .panel .hd .dot{width:8px;height:8px;border-radius:50%;background:var(--b-blue)}
+.br-s11 .panel.rev .hd .dot{background:var(--b-blue)}
+.br-s11 .panel.sav .hd .dot{background:var(--b-success)}
+.br-s11 .panel.exp .hd .dot{background:var(--b-red)}
+.br-s11 .row{display:flex;justify-content:space-between;align-items:baseline;font-size:.86em;padding:5px 0;border-bottom:1px dotted var(--b-line)}
+.br-s11 .row:last-of-type{border-bottom:none}
+.br-s11 .row .k{color:var(--b-ink-2);font-weight:500}
+.br-s11 .row .v{font-weight:700;color:var(--b-ink);font-variant-numeric:tabular-nums}
+.br-s11 .total{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1.5px solid var(--b-line-2);font-size:.92em;font-weight:700}
+.br-s11 .total .k{color:var(--b-mute);font-size:.74em;letter-spacing:.14em;text-transform:uppercase}
+.br-s11 .total .v{font-size:1.2em;font-variant-numeric:tabular-nums}
+.br-s11 .panel.rev .total .v{color:var(--b-blue)}
+.br-s11 .panel.sav .total .v{color:var(--b-success)}
+.br-s11 .panel.exp .total .v{color:var(--b-red)}
+.br-s11-net{grid-column:span 2;background:linear-gradient(135deg,#0b1220,#1e293b);color:#fff;border-radius:14px;padding:18px 28px;display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;position:relative;overflow:hidden;box-shadow:0 16px 32px -12px rgba(15,23,42,.35)}
+.br-s11-net::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--b-red)}
+.br-s11-net::after{content:'';position:absolute;right:-100px;bottom:-100px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(220,38,38,.18),transparent 60%)}
+.br-s11-net .l{position:relative;z-index:1}
+.br-s11-net .lbl{font-size:.66em;letter-spacing:.2em;text-transform:uppercase;color:#fca5a5;font-weight:700;margin-bottom:4px}
+.br-s11-net .h{font-size:1.15em;font-weight:600;color:rgba(255,255,255,.85);margin:0}
+.br-s11-net .amt{font-size:3em;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.028em;line-height:1;color:#fff;position:relative;z-index:1;text-align:right}
+
+/* ─── SLIDE 12 — Forward Plan ────────────────────────────────────────── */
+.br-s12{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:14px;flex:1;min-height:0}
+.br-s12-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:18px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.br-s12-card::before{content:attr(data-num);position:absolute;right:14px;top:8px;font-size:3.6em;font-weight:800;color:var(--b-blue-100);font-variant-numeric:tabular-nums;line-height:1;letter-spacing:-.04em;z-index:0}
+.br-s12-card .ico{width:36px;height:36px;border-radius:10px;background:var(--b-blue-100);color:var(--b-blue);display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px;position:relative;z-index:1}
+.br-s12-card h4{margin:0 0 8px;font-size:1.05em;font-weight:700;color:var(--b-ink);letter-spacing:-.012em;position:relative;z-index:1}
+.br-s12-card ul{margin:0;padding-left:18px;font-size:.85em;line-height:1.55;color:var(--b-mute);position:relative;z-index:1}
+.br-s12-card ul li{margin-bottom:4px}
+
+/* ─── SLIDE 13 — Contacts / Thank You ────────────────────────────────── */
+.br-s13{display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1;min-height:0}
+.br-s13-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:22px 26px;display:flex;flex-direction:column}
+.br-s13-card h4{margin:0 0 14px;font-size:1.05em;font-weight:700;color:var(--b-ink);display:flex;align-items:center;gap:10px}
+.br-s13-card h4 .ico{width:32px;height:32px;border-radius:8px;background:var(--b-blue-100);color:var(--b-blue);display:inline-flex;align-items:center;justify-content:center}
+.br-s13-row{display:grid;grid-template-columns:80px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--b-line);font-size:.84em}
+.br-s13-row:last-child{border-bottom:none}
+.br-s13-row .l{font-size:.74em;font-weight:700;color:var(--b-mute-2);letter-spacing:.08em;text-transform:uppercase;align-self:center}
+.br-s13-row .v{color:var(--b-ink-2);line-height:1.5}
+.br-s13-row .v a{color:var(--b-blue);font-weight:600}
+.br-s13-card.gs{background:linear-gradient(135deg,#0b1220,#1e293b);color:#fff;border-color:#0f172a}
+.br-s13-card.gs h4{color:#fff}
+.br-s13-card.gs h4 .ico{background:rgba(220,38,38,.2);color:#fca5a5}
+.br-s13-card.gs .br-s13-row{border-bottom-color:rgba(148,163,184,.15)}
+.br-s13-card.gs .br-s13-row .l{color:rgba(252,165,165,.8)}
+.br-s13-card.gs .br-s13-row .v{color:rgba(241,245,249,.95)}
+.br-s13-card.gs .br-s13-row .v a{color:#93c5fd}
 
 /* Thumbnail strip */
-.br-thumbs{flex:0 0 auto;background:#0f172a;border-top:1px solid #1f2937;padding:6px 10px;display:flex;gap:6px;overflow-x:auto}
-.br-thumb{flex:0 0 70px;height:46px;border-radius:4px;background:#fff;border:2px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.74em;font-weight:800;color:#1e293b;font-family:'Helvetica Neue',sans-serif}
-.br-thumb.active{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.3)}
-.br-thumb:hover{border-color:#94a3b8}
+.br-thumbs{flex:0 0 auto;background:#0b1220;border-top:1px solid rgba(148,163,184,.15);padding:10px 14px;display:flex;gap:8px;overflow-x:auto}
+.br-thumb{flex:0 0 78px;height:50px;border-radius:6px;background:#fff;border:2px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.78em;font-weight:700;color:#0f172a;font-family:inherit;transition:all .12s}
+.br-thumb.active{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.2)}
+.br-thumb:hover{border-color:#94a3b8;transform:translateY(-1px)}
 
 /* Print — landscape, one slide per page. Scoped to body.br-printing so
    the existing Stop Detail print path (printStopDetail) is unaffected. */
@@ -668,7 +805,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
   body.br-printing .br-slide:last-child { page-break-after: auto; break-after: auto; }
   body.br-printing [contenteditable="true"]:hover, body.br-printing [contenteditable="true"]:focus { background: transparent !important; box-shadow: none !important; }
   body.br-printing .br-edit-hint { display: none !important; }
-  body.br-printing .br-img-slot { border: none !important; background: #fff !important; }
+  body.br-printing .br-img-slot { border-style: solid !important; border-color: var(--b-line) !important; background: var(--b-bg-2) !important; }
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -6510,6 +6647,7 @@ let _brPeriod = 'last12';
 let _brSlide = 1;
 let _brData = null;        // {slides:{1:{...}, ...}, images:{slot:dataUrl}, period}
 let _brGallonsChart = null;
+let _brRewardsChart = null;
 
 function brLoadAll(){
   try { return JSON.parse(localStorage.getItem(BR_LS_KEY) || '{}') || {}; } catch(e){ return {}; }
@@ -6653,6 +6791,7 @@ function brClose(){
   document.getElementById('br-overlay').classList.remove('show');
   _brStopId = null; _brData = null;
   if(_brGallonsChart){ try{_brGallonsChart.destroy();}catch(e){} _brGallonsChart = null; }
+  if(_brRewardsChart){ try{_brRewardsChart.destroy();}catch(e){} _brRewardsChart = null; }
 }
 function brSwitchPeriod(p){
   if(!_brStopId) return;
@@ -6672,8 +6811,9 @@ function brGoSlide(n){
     el.classList.toggle('active', (idx+1) === n);
   });
   document.getElementById('br-page-ind').textContent = 'Slide ' + n + ' of ' + total;
-  // Render gallons chart only when slide 8 is shown
+  // Render charts only when their slide is shown
   if(n === 8) brRenderGallonsChart();
+  if(n === 9) brRenderRewardsChart();
 }
 function brPrev(){ brGoSlide(_brSlide - 1); }
 function brNext(){ brGoSlide(_brSlide + 1); }
@@ -6769,137 +6909,203 @@ function brRecalcSlide11(){
 }
 
 // ─── Slide builders ────────────────────────────────────────────────────
-function brSlideShellHTML(num, sideName){
+// ─── Inline SVG icon set (24x24, stroke=currentColor) ────────────────────
+const BR_ICONS = {
+  fuel: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18"/><path d="M2 22h17"/><path d="M16 9h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2v-7l-3-3"/></svg>',
+  reward: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0L7.825 21.89a.5.5 0 0 1-.81-.47l1.514-8.526"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
+  map: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  doc: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  bank: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h18M5 22V11M19 22V11M3 11l9-7 9 7"/></svg>',
+  users: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  trending: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>',
+  dollar: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  search: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  star: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  msg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  monitor: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+  briefcase: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>',
+  check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+};
+const ICO = k => BR_ICONS[k] || '';
+
+// Logo block — try the user-uploaded data URL first, then assets/roadys-logo.png,
+// then fall back to a styled "Roady's" text. The img onerror handler swaps to text.
+function brLogoHTML(){
+  const userLogo = _brData && _brData.images && _brData.images.logo;
+  const src = userLogo || 'assets/roadys-logo.png';
   return `
-    <div class="br-side">
-      <div class="br-side-a">Business Review</div>
-      <div class="br-side-b">${esc(sideName||'')}</div>
-    </div>
-    <div class="br-logo">
-      ${_brData.images.logo
-        ? '<img src="' + esc(_brData.images.logo) + '" alt="logo">'
-        : 'Roady\'s'}
-      <input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="brOnImage(event,'logo')" title="Replace logo"/>
-    </div>
-    <div class="br-page-no">${num}</div>
+    <span class="br-logo" data-br-slot="logo">
+      <img src="${esc(src)}" alt="Roady's" onerror="this.parentElement.classList.add('no-img')"/>
+      <span class="br-logo-text">Roady’s</span>
+      <input type="file" accept="image/*" onchange="brOnImage(event,'logo')" title="Replace logo"/>
+    </span>
   `;
 }
 
+// Standard slide header (eyebrow + title + logo). Used by slides 2–13.
+function brShead(slide, eyebrow, title, subtitle){
+  const subHtml = subtitle ? '<span class="sub">' + brEditable(slide,'sub', subtitle) + '</span>' : '';
+  return `
+    <div class="br-rail"></div>
+    <div class="br-shead">
+      <div class="br-shead-l">
+        <div class="br-eyebrow">${brEditable(slide,'eyebrow', eyebrow)}</div>
+        <h2 class="br-stitle">${brEditable(slide,'title', title)}${subHtml}</h2>
+      </div>
+      <div class="br-shead-r">${brLogoHTML()}</div>
+    </div>
+  `;
+}
+
+// Standard slide footer (stop name on left, period + page number on right)
+function brSfoot(d, num){
+  return `
+    <div class="br-sfoot">
+      <span class="l">${esc(d.stop.name)} <span style="color:var(--b-mute-3)">·</span> ${esc(d.stop.id)}</span>
+      <span>${esc(d.periodLabel)} <span style="color:var(--b-mute-3)">·</span> ${num} / 13</span>
+    </div>
+  `;
+}
+
+// ─── SLIDE 1 — COVER ──────────────────────────────────────────────────
 function brSlide1(d){
-  const sideName = d.stop.name;
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const fmt$k = n => { const v = Math.round(+n||0); return v >= 1000 ? '$' + (v/1000).toFixed(1) + 'k' : '$' + v; };
   return `
     <div class="br-slide${_brSlide===1?' active':''}" data-slide="1">
-      ${brSlideShellHTML(1, sideName)}
-      <div class="br-body">
-        <div class="br-s1-grid">
-          <div class="br-s1-left">
-            <h1 class="br-h1">${brEditable(1,'title','Business Review',{tag:'span'})}</h1>
-            <div style="font-size:1.4em;color:#475569;margin-top:6px">${brEditable(1,'subtitle', d.stop.name, {tag:'span'})}</div>
-            <div style="font-size:.92em;color:#64748b;margin-top:6px">${brEditable(1,'period', d.periodLabel)}</div>
+      <div class="br-cover">
+        <div class="br-cover-l">
+          <div class="br-cover-logo">
+            <img src="${esc((_brData.images && _brData.images.logo) || 'assets/roadys-logo.png')}" alt="Roady's" onerror="this.parentElement.classList.add('no-img')"/>
+            <span class="br-logo-text">Roady’s</span>
           </div>
-          <div class="br-s1-right">
-            ${brImgSlot('s1-photo','Truck Stop Photo',{cls:'br-s1-photo'})}
-            <div class="br-s1-mission">
-              <h3>${brEditable(1,'missionH','Our Mission')}</h3>
-              <div style="font-size:.92em;color:#475569;line-height:1.5">${brEditable(1,'missionBody','To make our stops more successful. We reach this goal primarily through fleet fuel marketing, our loyalty rewards and a variety of vendor programs.', {tag:'div'})}</div>
+          <div class="br-cover-eyebrow">${brEditable(1,'eyebrow','Annual Business Review')}</div>
+          <h1 class="br-cover-h1">${brEditable(1,'title','Business Review',{tag:'span'})}</h1>
+          <div class="br-cover-stop">${brEditable(1,'stop', d.stop.name, {tag:'span'})}</div>
+          <div class="br-cover-meta">${brEditable(1,'period', d.periodLabel)} · ${esc(d.stop.city||'')}, ${esc(d.stop.state||'')}</div>
+          <div class="br-cover-chips">
+            <div class="br-cover-chip">
+              <div class="lbl">Total Gallons</div>
+              <div class="val br-num">${fmtN(d.totalGal)}</div>
+            </div>
+            <div class="br-cover-chip">
+              <div class="lbl">Aggregators</div>
+              <div class="val br-num">${(d.aggregators||[]).length}<span class="sub">/ ${(d.fleets||[]).length} fleets</span></div>
+            </div>
+            <div class="br-cover-chip">
+              <div class="lbl">Est. Revenue</div>
+              <div class="val br-num">${fmt$k(d.revenueAuto)}</div>
             </div>
           </div>
         </div>
+        <div class="br-cover-r">
+          ${brImgSlot('s1-photo','Click to upload truck-stop photo')}
+          <div class="br-cover-credit">
+            <span class="gs">${brEditable(1,'gsName', d.stop.gs)}</span>
+            <span>${brEditable(1,'gsRole','Growth Strategist')}</span>
+          </div>
+        </div>
       </div>
     </div>`;
 }
 
+// ─── SLIDE 2 — KPI Pillars ────────────────────────────────────────────
 function brSlide2(d){
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const fmt$k = n => { const v = Math.round(+n||0); return v >= 1000 ? '$' + (v/1000).toFixed(1) + 'k' : '$' + v; };
+  const enrolledCount = (d.enrolledVendors||[]).length;
+  const redeemRate = (d.adds > 0) ? ((d.redeems / d.adds) * 100).toFixed(1) + '%' : '—';
+  const pillars = [
+    { cls:'',     ico:'fuel',   h:'Fuel Programs',   p:'Real-time pricing data, aggregator and fleet networks, settlement support, and Comdata integration.', mLbl:'Total gallons',  mVal: fmtN(d.totalGal) },
+    { cls:'gold', ico:'reward', h:'Rewards',         p:'Drive repeat traffic with Roady\'s Rewards. Track adds, redemptions, and capture rate per location.', mLbl:'Redemption rate', mVal: redeemRate },
+    { cls:'g',    ico:'tag',    h:'Vendor Programs', p:'Stack savings and rebates from a curated network of supplier partners — Coca-Cola, Sysco, Lynco and more.', mLbl:'Enrolled programs', mVal: enrolledCount + '' },
+    { cls:'r',    ico:'map',    h:'Marketing',       p:'Listings on TruckerPath, Trucker’s Friend, Pilot Flying J, Tripaxle and Google Maps with consistent NAP.', mLbl:'Est. period revenue', mVal: fmt$k(d.revenueAuto) }
+  ];
+  const cards = pillars.map((c, i) => `
+    <div class="br-pillar ${c.cls}">
+      <div class="ico">${ICO(c.ico)}</div>
+      <h4>${brEditable(2,'h'+i,c.h)}</h4>
+      <p>${brEditable(2,'p'+i,c.p,{tag:'div'})}</p>
+      <div class="met">
+        <div class="met-num br-num">${esc(c.mVal)}</div>
+        <div class="met-lbl">${brEditable(2,'l'+i,c.mLbl)}</div>
+      </div>
+    </div>`).join('');
   return `
     <div class="br-slide${_brSlide===2?' active':''}" data-slide="2">
-      ${brSlideShellHTML(2, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(2,'title','Key Performance Indicators')}</h2>
-        <div class="br-sub">${brEditable(2,'sub','Goal: Demonstrate the value of your Roady\'s partnership through KPIs')}</div>
-        <div class="br-s2-banner">
-          <h3>${brEditable(2,'bannerH','Fuel Programs')}</h3>
-          <div class="desc">${brEditable(2,'bannerD','Comprehensive solutions providing real-time data and cost management: Comdata Price File, Aggregators, Fleets, Fuelman, R-Check, Competitor Price Reports', {tag:'div'})}</div>
-        </div>
-        <div class="br-s2-grid">
-          <div class="br-s2-card">
-            <h4>${brEditable(2,'c1H','Rewards')}</h4>
-            <div class="br-s2-area">${brImgSlot('s2-rewards','Rewards card image',{style:'height:100%'})}</div>
-          </div>
-          <div class="br-s2-card">
-            <h4>${brEditable(2,'c2H','Vendor Programs')}</h4>
-            <div class="br-s2-area">${brImgSlot('s2-vendors','Vendor logos image',{style:'height:100%'})}</div>
-          </div>
-          <div class="br-s2-card">
-            <h4>${brEditable(2,'c3H','Marketing')}</h4>
-            <div class="br-s2-area">${brImgSlot('s2-marketing','Map listing screenshot',{style:'height:100%'})}</div>
-          </div>
-        </div>
+      ${brShead(2, 'Partnership Overview', 'How Roady\'s Powers Your Operation')}
+      <div class="br-sbody">
+        <div class="br-pillars">${cards}</div>
       </div>
+      ${brSfoot(d, 2)}
     </div>`;
 }
 
+// ─── SLIDE 3 — Fuel Marketing Services ────────────────────────────────
 function brSlide3(d){
   const cards = [
-    { icon: '📊', t: 'Competitor Price Reports', b: 'No need to drive around to check your competition\'s prices. Get notified when their prices change!' },
-    { icon: '🏷', t: 'Fuel Discount Implementation', b: 'Roady\'s can implement fuel discounts through fleet cards, eliminating workload on your staff.' },
-    { icon: '📄', t: 'Comdata Price File', b: 'Leverage our technology to save $2,007/year on your Comdata fees.' },
-    { icon: '🏛', t: 'Merchant Settlement Support', b: 'We interface with Wex/EFS and Comdata daily to ensure your accounts are settled promptly.' },
-    { icon: '⛽', t: 'Fuel Cost Handling', b: 'We ensure critical cost components are accurately input for nationwide fleet discounts.' },
-    { icon: '👥', t: 'Dedicated Account Teams', b: 'Exceptional customer service from our entire team dedicated to your success.' }
+    { ico:'chart',     t:'Competitor Price Reports',    b:'Stop driving the lane to check the competition. Get notified when neighboring diesel and DEF prices change.' },
+    { ico:'tag',       t:'Fuel Discount Implementation', b:'Roady\'s implements fleet-card discounts on your behalf, eliminating manual workload on the counter.' },
+    { ico:'doc',       t:'Comdata Price File',          b:'Leverage Roady\'s technology to remove the discount admin fee — typically a $2,000+ annual reduction.' },
+    { ico:'bank',      t:'Merchant Settlement Support', b:'We interface with WEX/EFS and Comdata daily so your settlements land promptly with no AR drama.' },
+    { ico:'fuel',      t:'Fuel Cost Handling',          b:'Critical cost components — taxes, freight, additives — accurately input for nationwide fleet discounts.' },
+    { ico:'users',     t:'Dedicated Account Teams',     b:'A pod of specialists owning your success: Growth Strategist, Rewards, Accounting, and Vendor Programs.' }
   ];
   const grid = cards.map((c, i) => `
-    <div class="br-s3-card">
-      <span class="icon">${c.icon}</span>
+    <div class="br-svc-card">
+      <span class="ico">${ICO(c.ico)}</span>
       <h4>${brEditable(3,'t'+i,c.t)}</h4>
       <p>${brEditable(3,'b'+i,c.b,{tag:'div'})}</p>
     </div>`).join('');
   return `
     <div class="br-slide${_brSlide===3?' active':''}" data-slide="3">
-      ${brSlideShellHTML(3, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(3,'title','Fuel Marketing Services')}</h2>
-        <div class="br-s3-grid">${grid}</div>
+      ${brShead(3, 'Fuel Marketing', 'Services that Drive Performance')}
+      <div class="br-sbody">
+        <div class="br-svc">${grid}</div>
       </div>
+      ${brSfoot(d, 3)}
     </div>`;
 }
 
+// ─── SLIDE 4 — Competition + Cost Components ──────────────────────────
 function brSlide4(d){
-  // Competitor table with empty editable rows (no source data — user fills in)
   const rows = brField(4,'competitors',[
-    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' },
-    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' },
-    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' },
-    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' }
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' },
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' },
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' },
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' }
   ]);
   const trs = rows.map((r, i) => `
     <tr>
-      <td><input value="${esc(r.name||'')}" onblur="brTblCell(4,'competitors',${i},'name',this.value)"></td>
-      <td><input value="${esc(r.loc||'')}" onblur="brTblCell(4,'competitors',${i},'loc',this.value)"></td>
-      <td><input value="${esc(r.addr||'')}" onblur="brTblCell(4,'competitors',${i},'addr',this.value)"></td>
-      <td><input value="${esc(r.city||'')}" onblur="brTblCell(4,'competitors',${i},'city',this.value)"></td>
-      <td><input value="${esc(r.st||'')}" onblur="brTblCell(4,'competitors',${i},'st',this.value)" style="width:30px"></td>
-      <td><input value="${esc(r.dist||'')}" onblur="brTblCell(4,'competitors',${i},'dist',this.value)" style="width:42px"></td>
-      <td><input value="${esc(r.diesel||'')}" onblur="brTblCell(4,'competitors',${i},'diesel',this.value)" style="width:50px"></td>
-      <td><input value="${esc(r.diesDate||'')}" onblur="brTblCell(4,'competitors',${i},'diesDate',this.value)"></td>
-      <td><input value="${esc(r.def||'')}" onblur="brTblCell(4,'competitors',${i},'def',this.value)" style="width:50px"></td>
-      <td><input value="${esc(r.defDate||'')}" onblur="brTblCell(4,'competitors',${i},'defDate',this.value)"></td>
+      <td><input value="${esc(r.name||'')}" onblur="brTblCell(4,'competitors',${i},'name',this.value)" placeholder="Truck stop name"></td>
+      <td><input value="${esc(r.loc||'')}" onblur="brTblCell(4,'competitors',${i},'loc',this.value)" placeholder="Exit"></td>
+      <td><input value="${esc(r.city||'')}" onblur="brTblCell(4,'competitors',${i},'city',this.value)" placeholder="City"></td>
+      <td><input value="${esc(r.st||'')}" onblur="brTblCell(4,'competitors',${i},'st',this.value)" style="width:36px" placeholder="ST"></td>
+      <td><input value="${esc(r.dist||'')}" onblur="brTblCell(4,'competitors',${i},'dist',this.value)" style="width:48px" placeholder="mi"></td>
+      <td><input value="${esc(r.diesel||'')}" onblur="brTblCell(4,'competitors',${i},'diesel',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
+      <td><input value="${esc(r.def||'')}" onblur="brTblCell(4,'competitors',${i},'def',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
     </tr>`).join('');
 
-  // Pre-fill cost components from rack data when present
   const rk = d.rack || {};
   const costFields = [
-    { k:'winterAdd', l:'Winter Additive', v: rk.winterAdditive ?? '' },
-    { k:'winterBegin', l:'Winter Begins', v: rk.winterAdditiveStart ?? '' },
-    { k:'winterEnd', l:'Winter Ends', v: rk.winterAdditiveEnd ?? '' },
-    { k:'freight', l:'Freight Rate', v: (typeof rk.freightRate === 'number' ? rk.freightRate.toFixed(4) : (rk.freightRate ?? '0.175')) },
-    { k:'freightFm', l:'Freight (Fuelman)', v: rk.freightRateFuelman ?? '' },
+    { k:'freight',  l:'Freight Rate',     v:(typeof rk.freightRate==='number' ? rk.freightRate.toFixed(4) : (rk.freightRate ?? '0.1750')) },
+    { k:'freightFm',l:'Freight (Fuelman)',v: rk.freightRateFuelman ?? '' },
     { k:'fedSpill', l:'Fed Oil Spill Liab.', v: rk.federalOilSpillLiability ?? '0' },
-    { k:'countyTax', l:'County Tax', v: rk.countyTax ?? '0' },
-    { k:'inspTax', l:'INSP. Tax', v: rk.inspectionTax ?? '0' },
-    { k:'envTax', l:'ENV. Tax', v: rk.environmentalTax ?? '0' },
-    { k:'loadTax', l:'LOAD Tax', v: rk.loadTax ?? '0.01875' },
-    { k:'miscTax', l:'Misc. Tax', v: rk.miscTax ?? '0' },
-    { k:'fedTax', l:'Federal Tax', v: rk.federalTax ?? '0.2502' }
+    { k:'countyTax',l:'County Tax',       v: rk.countyTax ?? '0' },
+    { k:'inspTax',  l:'Inspection Tax',   v: rk.inspectionTax ?? '0' },
+    { k:'envTax',   l:'Environmental Tax',v: rk.environmentalTax ?? '0' },
+    { k:'loadTax',  l:'LOAD Tax',         v: rk.loadTax ?? '0.01875' },
+    { k:'miscTax',  l:'Misc. Tax',        v: rk.miscTax ?? '0' },
+    { k:'fedTax',   l:'Federal Tax',      v:(typeof rk.federalTax==='number' ? rk.federalTax.toFixed(4) : (rk.federalTax ?? '0.2502')) },
+    { k:'stateTax', l:'State Excise',     v:(typeof rk.stateExciseTax==='number' ? rk.stateExciseTax.toFixed(2) : (rk.stateExciseTax ?? '0.21')) },
+    { k:'winterAdd',  l:'Winter Additive',v: rk.winterAdditive ?? '0' },
+    { k:'winterDates',l:'Winter Dates',   v: (rk.winterAdditiveStart || '') + (rk.winterAdditiveEnd ? ' → '+rk.winterAdditiveEnd : '') }
   ];
   const costRows = costFields.map(f => `
     <div class="br-cost-row">
@@ -6910,133 +7116,152 @@ function brSlide4(d){
 
   return `
     <div class="br-slide${_brSlide===4?' active':''}" data-slide="4">
-      ${brSlideShellHTML(4, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(4,'title','Fuel Services')} <span class="sub">${brEditable(4,'sub','& Cost Components')}</span></h2>
-        <div class="br-s4">
-          <div class="br-s4-card">
-            <h4>${brEditable(4,'compH','Competition (Monitored Lanes)')} <span class="br-edit-hint">(click cells to edit)</span></h4>
+      ${brShead(4, 'Fuel Pricing', 'Competitive Position & Cost Components')}
+      <div class="br-sbody">
+        <div class="br-s4-grid">
+          <div class="br-card flat">
+            <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('search')} Monitored Lanes</span></div>
             <table class="br-tbl">
-              <thead><tr><th>Name</th><th>Location</th><th>Address</th><th>City</th><th>St</th><th>Dist</th><th>Diesel</th><th>Diesel Date</th><th>DEF</th><th>DEF Date</th></tr></thead>
+              <thead><tr><th>Truck Stop</th><th>Exit</th><th>City</th><th>ST</th><th>Dist</th><th>Diesel</th><th>DEF</th></tr></thead>
               <tbody>${trs}</tbody>
             </table>
+            <div style="font-size:.7em;color:var(--b-mute-2);margin-top:6px;font-style:italic">Click any cell to edit. Real-time price feeds via OPIS / Trucker Path push updates here.</div>
           </div>
-          <div class="br-s4-card">
-            <h4>${brEditable(4,'costH','Fuel Cost Components')}</h4>
+          <div class="br-card flat">
+            <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('doc')} Cost Components</span></div>
             <div class="br-cost-grid">${costRows}</div>
           </div>
         </div>
       </div>
+      ${brSfoot(d, 4)}
     </div>`;
 }
 
+// ─── SLIDE 5 — Comdata Price File ─────────────────────────────────────
 function brSlide5(d){
   return `
     <div class="br-slide${_brSlide===5?' active':''}" data-slide="5">
-      ${brSlideShellHTML(5, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(5,'title','Fuel Services: Comdata Price File')}</h2>
-        <div class="br-s5-grid">
-          <div class="br-s5-left">
-            <span class="icon-circle">📈</span>
-            <h3>${brEditable(5,'h','Fuel Related Savings')}</h3>
-            <p>${brEditable(5,'p','By leveraging the Comdata Price File, your truck stop achieves significant annual cost reductions.', {tag:'div'})}</p>
-            <div class="br-s5-stat">
-              <span class="num">$${brEditable(5,'monthly','295',{tag:'span'})}</span>
-              <span class="lbl">${brEditable(5,'monthlyL','Monthly Savings')}</span>
+      ${brShead(5, 'Operational Savings', 'Comdata Price File Impact')}
+      <div class="br-sbody">
+        <div class="br-s5">
+          <div class="br-s5-l">
+            <div class="br-s5-icon">${ICO('trending')}</div>
+            <h3 class="br-s5-headline">${brEditable(5,'h','Recover the discount admin fee — every month.',{tag:'span'})}</h3>
+            <p class="br-s5-desc">${brEditable(5,'p','By leveraging Roady\'s Comdata Price File, your stop avoids the per-transaction admin charge that has climbed from $145 (2018) → $167 (2023) → $295 (2025).',{tag:'span'})}</p>
+            <div class="br-s5-stats">
+              <div class="br-s5-stat">
+                <div class="lbl">Monthly Savings</div>
+                <div class="val"><span class="pre">$</span>${brEditable(5,'monthly','295',{tag:'span'})}</div>
+              </div>
+              <div class="br-s5-stat">
+                <div class="lbl">Annualized</div>
+                <div class="val"><span class="pre">$</span>${brEditable(5,'annual','3,540',{tag:'span'})}</div>
+              </div>
             </div>
-            <div class="br-s5-stat">
-              <span class="num">$${brEditable(5,'annual','3,540',{tag:'span'})}</span>
-              <span class="lbl">${brEditable(5,'annualL','Annual Total*')}</span>
-            </div>
+            <div class="br-s5-foot">${brEditable(5,'foot','*Disc Admin Fee raised to $167 from $145 in 2023, then to $295 in 2025.')}</div>
           </div>
-          <div class="br-s5-right">
-            ${brImgSlot('s5-shot','Comdata transaction screenshot',{style:'height:100%'})}
+          <div class="br-s5-r">
+            ${brImgSlot('s5-shot','Click to upload Comdata settlement screenshot',{style:'height:100%'})}
           </div>
         </div>
-        <div class="br-s5-foot">${brEditable(5,'foot','*Disc Admin Fee raised to $167 from $145 in 2023, then to $295 in 2025.')}</div>
       </div>
+      ${brSfoot(d, 5)}
     </div>`;
 }
 
+// ─── SLIDE 6 — Digital Visibility ─────────────────────────────────────
 function brSlide6(d){
   return `
     <div class="br-slide${_brSlide===6?' active':''}" data-slide="6">
-      ${brSlideShellHTML(6, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(6,'title','Fuel Services:')} <span class="sub">${brEditable(6,'sub','Digital Visibility Impacting Gallons & Inside Sales')}</span></h2>
-        <div class="br-s6-grid">
+      ${brShead(6, 'Digital Presence', 'Visibility That Drives Volume & Inside Sales')}
+      <div class="br-sbody">
+        <div class="br-s6">
           <div class="br-s6-card">
-            <h4>${brEditable(6,'h1','Local Search Presence')}</h4>
-            ${brImgSlot('s6-search','Map / search result image')}
+            <h4><span class="ico">${ICO('pin')}</span>${brEditable(6,'h1','Local Search Presence')}</h4>
+            ${brImgSlot('s6-search','Trucker Path map listing')}
+            <p>${brEditable(6,'p1','Truckers find your stop on Trucker Path, Trucker\'s Friend and Google Maps with consistent NAP.',{tag:'span'})}</p>
           </div>
           <div class="br-s6-card">
-            <h4>${brEditable(6,'h2','Pricing Transparency')}</h4>
-            ${brImgSlot('s6-price','Pricing app screenshot')}
+            <h4><span class="ico">${ICO('dollar')}</span>${brEditable(6,'h2','Pricing Transparency')}</h4>
+            ${brImgSlot('s6-price','Live diesel & DEF price card')}
+            <p>${brEditable(6,'p2','Real-time diesel and DEF prices keep your numbers honest in apps and reduce pump-side complaints.',{tag:'span'})}</p>
           </div>
           <div class="br-s6-card">
-            <h4>${brEditable(6,'h3','Customer Feedback')}</h4>
+            <h4><span class="ico">${ICO('star')}</span>${brEditable(6,'h3','Customer Feedback')}</h4>
             ${brImgSlot('s6-fb','Reviews screenshot')}
+            <p>${brEditable(6,'p3','Reviews and Q&A drive trust. Address pricing-clarity issues fast — they convert detractors into volume.',{tag:'span'})}</p>
           </div>
         </div>
       </div>
+      ${brSfoot(d, 6)}
     </div>`;
 }
 
+// ─── SLIDE 7 — Merchant Console Dashboard ─────────────────────────────
 function brSlide7(d){
   return `
     <div class="br-slide${_brSlide===7?' active':''}" data-slide="7">
-      ${brSlideShellHTML(7, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(7,'title','Fuel Services:')} <span class="sub">${brEditable(7,'sub','Merchant Console, Dashboard')}</span></h2>
-        <div class="br-s7-grid">
-          ${brImgSlot('s7-shot','Merchant Console dashboard screenshot',{cls:'br-s7-shot'})}
-          <div style="font-size:.86em;color:#475569;line-height:1.45">${brEditable(7,'foot','The Merchant Console provides real-time visibility into rewards activity, fuel pricing, and location performance.', {tag:'div'})}</div>
+      ${brShead(7, 'Operations Toolkit', 'Merchant Console at a Glance')}
+      <div class="br-sbody">
+        <div class="br-s7">
+          ${brImgSlot('s7-shot','Click to upload Merchant Console screenshot')}
           <div class="br-s7-foot">
-            <div></div>
-            <div class="br-s7-link">${brEditable(7,'link','https://merchant.roadys.com/')}</div>
+            <p>${brEditable(7,'foot','Real-time visibility into rewards activity, fuel pricing, location performance and account contacts — all in one place.',{tag:'span'})}</p>
+            <a class="br-s7-link" href="https://merchant.roadys.com/" target="_blank" rel="noopener">${ICO('monitor')} ${brEditable(7,'link','merchant.roadys.com',{tag:'span'})} ${ICO('arrow')}</a>
           </div>
         </div>
       </div>
+      ${brSfoot(d, 7)}
     </div>`;
 }
 
+// ─── SLIDE 8 — Volume Performance ─────────────────────────────────────
 function brSlide8(d){
   const fmtN = n => Math.round(+n||0).toLocaleString();
-  const aggList = (d.aggregators||[]).slice(0, 12).map(a => `<li>${esc(a.name)} <span style="color:#64748b">(${fmtN(a.gallons)} gal)</span></li>`).join('') || '<li style="color:#94a3b8">— none on file —</li>';
-  const fleetList = (d.fleets||[]).slice(0, 12).map(f => `<li>${esc(f.name)} <span style="color:#64748b">(${fmtN(f.gallons)} gal)</span></li>`).join('') || '<li style="color:#94a3b8">— none on file —</li>';
   const rk = d.rack || {};
+  const aggRows = (d.aggregators||[]).slice(0, 8).map(a =>
+    `<div class="row"><span class="name">${esc(a.name)}</span><span class="gal">${fmtN(a.gallons)} gal</span></div>`
+  ).join('') || '<div class="empty">No aggregator data on file for this period.</div>';
+  const fleetRows = (d.fleets||[]).slice(0, 8).map(f =>
+    `<div class="row"><span class="name">${esc(f.name)}</span><span class="gal">${fmtN(f.gallons)} gal</span></div>`
+  ).join('') || '<div class="empty">No fleet data on file for this period.</div>';
   return `
     <div class="br-slide${_brSlide===8?' active':''}" data-slide="8">
-      ${brSlideShellHTML(8, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(8,'title','Fuel Services:')} <span class="sub">${brEditable(8,'sub','Merchant Console, Gallons')}</span></h2>
-        <div class="br-s8-grid">
-          <div class="br-s8-left">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.78em">
-              <div><div style="color:#64748b">OPIS Rack</div><div style="font-weight:700">${esc(rk.opisRack || 'El Paso, TX')}</div></div>
-              <div><div style="color:#64748b">Rack Price Type</div><div style="font-weight:700">${esc(rk.rackPriceType || 'Contract Average')}</div></div>
-              <div><div style="color:#64748b">Federal Tax</div><div style="font-weight:700">$${(typeof rk.federalTax==='number'?rk.federalTax:0.2502).toFixed(4)}</div></div>
-              <div><div style="color:#64748b">State Excise Tax</div><div style="font-weight:700">$${(typeof rk.stateExciseTax==='number'?rk.stateExciseTax:0).toFixed(2)}</div></div>
-              <div><div style="color:#64748b">Misc Tax</div><div style="font-weight:700">$${(typeof rk.miscTax==='number'?rk.miscTax:0).toFixed(2)}</div></div>
-              <div><div style="color:#64748b">Freight Rate</div><div style="font-weight:700">$${(typeof rk.freightRate==='number'?rk.freightRate:0.175).toFixed(3)}</div></div>
+      ${brShead(8, 'Volume', 'Gallons Performance')}
+      <div class="br-sbody">
+        <div class="br-s8">
+          <div class="br-s8-l">
+            <div class="br-s8-hero">
+              <div>${ICO('fuel')}</div>
+              <div>
+                <div class="lbl">${brEditable(8,'volL','Total Gallons')}</div>
+                <div class="num br-num">${fmtN(d.totalGal)}</div>
+                <div class="sub">${esc(d.periodLabel)}</div>
+              </div>
             </div>
-            <div class="br-s8-chart-wrap"><canvas id="br-s8-chart"></canvas></div>
+            <div class="br-s8-rack">
+              <div class="br-s8-rack-cell"><div class="l">OPIS Rack</div><div class="v">${esc(rk.opisRack || 'El Paso, TX')}</div></div>
+              <div class="br-s8-rack-cell"><div class="l">Rack Type</div><div class="v">${esc(rk.rackPriceType || 'Contract Average')}</div></div>
+              <div class="br-s8-rack-cell"><div class="l">Freight</div><div class="v">$${(typeof rk.freightRate==='number'?rk.freightRate:0.175).toFixed(3)}</div></div>
+            </div>
+            <div class="br-s8-chart">
+              <div class="hd">Monthly Trend</div>
+              <div class="br-s8-chart-wrap"><canvas id="br-s8-chart"></canvas></div>
+            </div>
           </div>
-          <div>
-            <div class="br-s8-volume">
-              <div class="hd">${brEditable(8,'volH','Volume Insights')}</div>
-              <div class="lbl">${brEditable(8,'volL','Total Gallons')}</div>
-              <div class="num">${fmtN(d.totalGal)}</div>
-              <div style="font-size:.74em;opacity:.85;margin-top:4px">${esc(d.periodLabel)}</div>
+          <div class="br-s8-r">
+            <div class="br-s8-mix">
+              <div class="hd"><span style="display:inline-flex;align-items:center;gap:6px">${ICO('briefcase')} Aggregators (${(d.aggregators||[]).length})</span></div>
+              <div class="br-s8-mix-list">${aggRows}</div>
             </div>
-            <div class="br-s8-aggwrap">
-              <div class="col"><h5>Aggregators</h5><ul>${aggList}</ul></div>
-              <div class="col"><h5>Fleets</h5><ul>${fleetList}</ul></div>
+            <div class="br-s8-mix">
+              <div class="hd"><span style="display:inline-flex;align-items:center;gap:6px">${ICO('users')} Fleets (${(d.fleets||[]).length})</span></div>
+              <div class="br-s8-mix-list">${fleetRows}</div>
             </div>
           </div>
         </div>
       </div>
+      ${brSfoot(d, 8)}
     </div>`;
 }
 
@@ -7047,68 +7272,141 @@ function brRenderGallonsChart(){
   if(_brGallonsChart){ try{_brGallonsChart.destroy();}catch(e){} _brGallonsChart = null; }
   const c = document.getElementById('br-s8-chart');
   if(!c || typeof Chart === 'undefined') return;
+  // Gradient fill
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, c.offsetHeight || 200);
+  grad.addColorStop(0, 'rgba(29,78,216,.45)');
+  grad.addColorStop(1, 'rgba(29,78,216,.05)');
   _brGallonsChart = new Chart(c, {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: data.monthlyTotals.map(m => m.label),
-      datasets: [{ label:'Gallons', data: data.monthlyTotals.map(m => m.gallons), backgroundColor:'rgba(59,130,246,.7)', borderColor:'#1d4ed8', borderWidth:1 }]
+      datasets: [{
+        label:'Gallons',
+        data: data.monthlyTotals.map(m => m.gallons),
+        borderColor:'#1d4ed8',
+        backgroundColor: grad,
+        tension:.35,
+        fill:true,
+        pointRadius:3,
+        pointBackgroundColor:'#1d4ed8',
+        pointBorderColor:'#fff',
+        pointBorderWidth:1.5,
+        borderWidth:2
+      }]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{beginAtZero:true, ticks:{color:'#64748b'} }, x:{ ticks:{color:'#64748b', font:{size:9}} } } }
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#0f172a', titleFont:{size:11}, bodyFont:{size:11} } },
+      scales:{
+        y:{ beginAtZero:true, grid:{color:'rgba(148,163,184,.15)'}, ticks:{color:'#64748b', font:{size:9, family:'Inter'}, callback:(v)=>v>=1000?(v/1000).toFixed(0)+'k':v} },
+        x:{ grid:{display:false}, ticks:{color:'#64748b', font:{size:9, family:'Inter'}} }
+      }
+    }
   });
 }
 
+// ─── SLIDE 9 — Rewards Program Performance ────────────────────────────
 function brSlide9(d){
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const seeded = brField(9, 'rows', null);
-  const rows = seeded || months.map(m => ({ month:m, addTx:'', redTx:'', gallons:'', addUsd:'', redUsd:'', rate:'', delta:'' }));
+  const rows = seeded || months.map(m => ({ month:m, addTx:'', redTx:'', addUsd:'', redUsd:'', rate:'' }));
   const trs = rows.map((r,i) => `
     <tr>
-      <td style="font-weight:700;color:#0f172a">${esc(r.month)}</td>
+      <td style="font-weight:700;color:var(--b-ink)">${esc((r.month||'').slice(0,3))}</td>
       <td><input value="${esc(r.addTx||'')}" onblur="brTblCell(9,'rows',${i},'addTx',this.value)"></td>
       <td><input value="${esc(r.redTx||'')}" onblur="brTblCell(9,'rows',${i},'redTx',this.value)"></td>
-      <td><input value="${esc(r.gallons||'')}" onblur="brTblCell(9,'rows',${i},'gallons',this.value)"></td>
       <td><input value="${esc(r.addUsd||'')}" onblur="brTblCell(9,'rows',${i},'addUsd',this.value)"></td>
       <td><input value="${esc(r.redUsd||'')}" onblur="brTblCell(9,'rows',${i},'redUsd',this.value)"></td>
       <td><input value="${esc(r.rate||'')}" onblur="brTblCell(9,'rows',${i},'rate',this.value)"></td>
-      <td><input value="${esc(r.delta||'')}" onblur="brTblCell(9,'rows',${i},'delta',this.value)"></td>
     </tr>`).join('');
   return `
     <div class="br-slide${_brSlide===9?' active':''}" data-slide="9">
-      ${brSlideShellHTML(9, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(9,'title','Rewards Program Performance')} <span class="sub">(${brEditable(9,'year', String(d.year),{tag:'span'})})</span></h2>
+      ${brShead(9, 'Loyalty', 'Rewards Program Performance', String(d.year))}
+      <div class="br-sbody">
         <div class="br-s9">
-          <table class="br-tbl">
-            <thead><tr><th>Month</th><th>Add Tx</th><th>Redeem Tx</th><th>Gallons Captured</th><th>Add USD</th><th>Redeem USD</th><th>Redemption Rate</th><th>Delta</th></tr></thead>
-            <tbody>${trs}</tbody>
-          </table>
-          <div class="br-s9-bench">
-            <b>${brEditable(9,'benchH','Network Benchmarks')}</b><br>
-            • Average Add Transactions: <b>${brEditable(9,'b1','584/mo')}</b> &nbsp; • Average Redeem Transactions: <b>${brEditable(9,'b2','90/mo')}</b> &nbsp; • Average Redemption Rate: <b>${brEditable(9,'b3','72%')}</b>
+          <div class="br-s9-l">
+            <table class="br-tbl">
+              <thead><tr><th>Month</th><th>Adds</th><th>Redeems</th><th>Add $</th><th>Redeem $</th><th>Rate</th></tr></thead>
+              <tbody>${trs}</tbody>
+            </table>
+          </div>
+          <div class="br-s9-r">
+            <div class="br-s9-chart">
+              <div class="hd">Monthly Adds vs. Redeems</div>
+              <div class="br-s9-chart-wrap"><canvas id="br-s9-chart"></canvas></div>
+            </div>
+            <div class="br-s9-bench">
+              <div class="hd">${brEditable(9,'benchH','Network Benchmarks')}</div>
+              <div class="br-s9-bench-grid">
+                <div class="br-s9-bench-item"><div class="l">Avg Adds</div><div class="v">${brEditable(9,'b1','584/mo',{tag:'span'})}</div></div>
+                <div class="br-s9-bench-item"><div class="l">Avg Redeems</div><div class="v">${brEditable(9,'b2','90/mo',{tag:'span'})}</div></div>
+                <div class="br-s9-bench-item"><div class="l">Avg Rate</div><div class="v">${brEditable(9,'b3','72%',{tag:'span'})}</div></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+      ${brSfoot(d, 9)}
     </div>`;
 }
 
+function brRenderRewardsChart(){
+  if(!_brData) return;
+  if(_brRewardsChart){ try{_brRewardsChart.destroy();}catch(e){} _brRewardsChart = null; }
+  const c = document.getElementById('br-s9-chart');
+  if(!c || typeof Chart === 'undefined') return;
+  const rows = brField(9, 'rows', []) || [];
+  const labels = rows.length ? rows.map(r => (r.month||'').slice(0,3)) : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const num = v => { const n = parseDollarString('$'+(v||'')); return n == null ? 0 : n; };
+  const adds = rows.length ? rows.map(r => num(r.addUsd)) : new Array(12).fill(0);
+  const reds = rows.length ? rows.map(r => num(r.redUsd)) : new Array(12).fill(0);
+  _brRewardsChart = new Chart(c, {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Add $',    data:adds, backgroundColor:'rgba(29,78,216,.85)',  borderRadius:4 },
+      { label:'Redeem $', data:reds, backgroundColor:'rgba(220,38,38,.85)', borderRadius:4 }
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom', labels:{font:{size:10,family:'Inter'},color:'#475569',boxWidth:10}}, tooltip:{backgroundColor:'#0f172a'} },
+      scales:{
+        y:{ beginAtZero:true, grid:{color:'rgba(148,163,184,.15)'}, ticks:{color:'#64748b', font:{size:9,family:'Inter'}, callback:v=>'$'+v} },
+        x:{ grid:{display:false}, ticks:{color:'#64748b', font:{size:9,family:'Inter'}} }
+      }
+    }
+  });
+}
+
+// ─── SLIDE 10 — Vendor Programs ───────────────────────────────────────
 function brSlide10(d){
   return `
     <div class="br-slide${_brSlide===10?' active':''}" data-slide="10">
-      ${brSlideShellHTML(10, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(10,'title','Vendor Programs')}</h2>
-        <div class="br-s10-grid">
-          <div class="br-s10-row">
-            <div>${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logo'})}</div>
-            <div class="br-s10-stat">${brEditable(10,'cokeLbl','Saved')} <b>$${brEditable(10,'cokeAmt','2,529')}</b> ${brEditable(10,'cokeYr','in '+d.year)}</div>
+      ${brShead(10, 'Vendor Earnings', 'Programs at Work for Your Stop')}
+      <div class="br-sbody">
+        <div class="br-s10">
+          <div class="br-s10-rows">
+            <div class="br-s10-card">
+              ${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logoslot'})}
+              <div class="br-s10-stat">
+                <div class="verb">${brEditable(10,'cokeLbl','Saved')}</div>
+                <div class="amt br-num">$${brEditable(10,'cokeAmt','2,529',{tag:'span'})}</div>
+                <div class="yr">${brEditable(10,'cokeYr','in '+d.year)}</div>
+              </div>
+            </div>
+            <div class="br-s10-card earn">
+              ${brImgSlot('s10-aom','AllOver Media logo',{cls:'br-s10-logoslot'})}
+              <div class="br-s10-stat">
+                <div class="verb">${brEditable(10,'aomLbl','Earned')}</div>
+                <div class="amt br-num">$${brEditable(10,'aomAmt','380',{tag:'span'})}</div>
+                <div class="yr">${brEditable(10,'aomYr','in '+d.year)}</div>
+              </div>
+            </div>
           </div>
-          <div class="br-s10-row">
-            <div>${brImgSlot('s10-aom','AllOver Media logo',{cls:'br-s10-logo'})}</div>
-            <div class="br-s10-stat">${brEditable(10,'aomLbl','Earned')} <b>$${brEditable(10,'aomAmt','380.00')}</b> ${brEditable(10,'aomYr','in '+d.year)}</div>
-          </div>
-          <div class="br-s10-add">
-            <h4>${brEditable(10,'addH','Additional Programs to Consider')}</h4>
-            <div class="br-s10-add-grid">
+          <div class="br-s10-extra">
+            <h4><span class="ico">${ICO('star')}</span>${brEditable(10,'addH','Additional Programs to Consider')}</h4>
+            <div class="br-s10-extra-grid">
               <div>${brEditable(10,'p1','Lynco Products')}</div>
               <div>${brEditable(10,'p2','Truck Parking Club')}</div>
               <div>${brEditable(10,'p3','Sysco')}</div>
@@ -7116,13 +7414,13 @@ function brSlide10(d){
           </div>
         </div>
       </div>
+      ${brSfoot(d, 10)}
     </div>`;
 }
 
+// ─── SLIDE 11 — P&L Summary ───────────────────────────────────────────
 function brSlide11(d){
-  // Default values come from auto-data, but each is editable.
   const fmt$ = n => Math.round(+n||0).toLocaleString();
-  // Auto seeds — user can override.
   const dieselSales = brField(11,'dieselSales', String(Math.round(d.revenueAuto)));
   const defSales = brField(11,'defSales', '0');
   const fuelmanRev = brField(11,'fuelmanRev', '0');
@@ -7132,111 +7430,102 @@ function brSlide11(d){
   const cokeAom = brField(11,'cokeAom', '2,909');
   const rewardsAdds = brField(11,'rewardsAdds', String(Math.round(d.adds)));
   const memFee = brField(11,'memFee', String(Math.round(d.memAnnual)));
-  // Totals (recomputed live by the user when they edit; we render the seed)
   const total = (s) => (parseDollarString('$'+s)) || (+s||0);
   const totalRev = total(rewardsRedeemed)+total(dieselSales)+total(defSales)+total(fuelmanRev)+total(insideSales);
   const totalSav = total(comdataSav)+total(cokeAom);
   const totalExp = total(rewardsAdds)+total(memFee);
   const net = totalRev + totalSav - totalExp;
+  const num = (key, def) => '$<span class="br-s11-num br-num" data-br-num="'+key+'">' + brEditable(11, key, def, {tag:'span'}) + '</span>';
   return `
     <div class="br-slide${_brSlide===11?' active':''}" data-slide="11">
-      ${brSlideShellHTML(11, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(11,'title','Business Review Summary: '+d.year)}</h2>
-        <div class="br-s11-grid">
-          <div class="br-s11-card rev">
-            <h4>Revenues</h4>
-            <div class="br-s11-row"><span>Rewards Redeemed</span><span class="v">$<span class="br-s11-num" data-br-num="rewardsRedeemed">${brEditable(11,'rewardsRedeemed', String(Math.round(d.redeems)))}</span></span></div>
-            <div class="br-s11-row"><span>Diesel Sales</span><span class="v">$<span class="br-s11-num" data-br-num="dieselSales">${brEditable(11,'dieselSales', String(Math.round(d.revenueAuto)))}</span></span></div>
-            <div class="br-s11-row"><span>DEF Sales</span><span class="v">$<span class="br-s11-num" data-br-num="defSales">${brEditable(11,'defSales','0')}</span></span></div>
-            <div class="br-s11-row"><span>Fuelman</span><span class="v">$<span class="br-s11-num" data-br-num="fuelmanRev">${brEditable(11,'fuelmanRev','0')}</span></span></div>
-            <div class="br-s11-row"><span>Inside Store Sales</span><span class="v">$<span class="br-s11-num" data-br-num="insideSales">${brEditable(11,'insideSales','0')}</span></span></div>
-            <div class="br-s11-total">Total: $<span id="br-s11-totalRev">${fmt$(totalRev)}</span></div>
+      ${brShead(11, 'Annual Summary', 'Financial Snapshot · ' + d.year)}
+      <div class="br-sbody">
+        <div class="br-s11">
+          <div class="panel rev">
+            <div class="hd"><span class="dot"></span>Revenues</div>
+            <div class="row"><span class="k">Rewards Redeemed</span><span class="v">${num('rewardsRedeemed', String(Math.round(d.redeems)))}</span></div>
+            <div class="row"><span class="k">Diesel Sales</span><span class="v">${num('dieselSales', String(Math.round(d.revenueAuto)))}</span></div>
+            <div class="row"><span class="k">DEF Sales</span><span class="v">${num('defSales','0')}</span></div>
+            <div class="row"><span class="k">Fuelman</span><span class="v">${num('fuelmanRev','0')}</span></div>
+            <div class="row"><span class="k">Inside Store Sales</span><span class="v">${num('insideSales','0')}</span></div>
+            <div class="total"><span class="k">Total Revenue</span><span class="v br-num">$<span id="br-s11-totalRev">${fmt$(totalRev)}</span></span></div>
           </div>
-          <div class="br-s11-card sav">
-            <h4>Savings</h4>
-            <div class="br-s11-row"><span>Comdata Price File</span><span class="v">$<span class="br-s11-num" data-br-num="comdataSav">${brEditable(11,'comdataSav','3,540')}</span></span></div>
-            <div class="br-s11-row"><span>Coke &amp; All Over Media</span><span class="v">$<span class="br-s11-num" data-br-num="cokeAom">${brEditable(11,'cokeAom','2,909')}</span></span></div>
-            <div class="br-s11-total">Total: $<span id="br-s11-totalSav">${fmt$(totalSav)}</span></div>
+          <div class="panel sav">
+            <div class="hd"><span class="dot"></span>Savings</div>
+            <div class="row"><span class="k">Comdata Price File</span><span class="v">${num('comdataSav','3,540')}</span></div>
+            <div class="row"><span class="k">Coke &amp; AllOver Media</span><span class="v">${num('cokeAom','2,909')}</span></div>
+            <div class="total"><span class="k">Total Savings</span><span class="v br-num">$<span id="br-s11-totalSav">${fmt$(totalSav)}</span></span></div>
           </div>
-          <div class="br-s11-card exp" style="grid-column:span 2">
-            <h4>Expenses</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 30px">
-              <div class="br-s11-row"><span>Rewards (add points)</span><span class="v">$<span class="br-s11-num" data-br-num="rewardsAdds">${brEditable(11,'rewardsAdds', String(Math.round(d.adds)))}</span></span></div>
-              <div class="br-s11-row"><span>Membership Fee (annual)</span><span class="v">$<span class="br-s11-num" data-br-num="memFee">${brEditable(11,'memFee', String(Math.round(d.memAnnual)))}</span></span></div>
+          <div class="panel exp" style="grid-column:span 2">
+            <div class="hd"><span class="dot"></span>Expenses</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
+              <div class="row"><span class="k">Rewards (add points)</span><span class="v">${num('rewardsAdds', String(Math.round(d.adds)))}</span></div>
+              <div class="row"><span class="k">Membership Fee (annual)</span><span class="v">${num('memFee', String(Math.round(d.memAnnual)))}</span></div>
             </div>
-            <div class="br-s11-total">Total: $<span id="br-s11-totalExp">${fmt$(totalExp)}</span></div>
+            <div class="total"><span class="k">Total Expenses</span><span class="v br-num">$<span id="br-s11-totalExp">${fmt$(totalExp)}</span></span></div>
           </div>
-          <div class="br-s11-net">${brEditable(11,'netLbl','Net Income')}: $<span id="br-s11-net">${fmt$(net)}</span></div>
+          <div class="br-s11-net">
+            <div class="l">
+              <div class="lbl">${brEditable(11,'netLbl','Net Income')}</div>
+              <div class="h">${brEditable(11,'netSub','Total partnership impact ('+d.year+')',{tag:'span'})}</div>
+            </div>
+            <div class="amt br-num">$<span id="br-s11-net">${fmt$(net)}</span></div>
+          </div>
         </div>
       </div>
+      ${brSfoot(d, 11)}
     </div>`;
 }
 
+// ─── SLIDE 12 — Forward Plan ──────────────────────────────────────────
 function brSlide12(d){
+  const cards = [
+    { ico:'fuel',     h:'Fuel Programs',    items:['Review opportunities for fleet gallons','Add complementary aggregator coverage'] },
+    { ico:'tag',      h:'Vendor Programs',  items:['Savings review on Sysco, Entegra, Lynco','Truck Parking Club enrollment review'] },
+    { ico:'reward',   h:'Rewards',          items:['Roll out the Rewards mobile app','Stand up location-specific promotions'] },
+    { ico:'monitor',  h:'Merchant Console', items:['Daily check-in on rewards & gallons reports','Set retail price alerts on key competitors'] }
+  ];
+  const grid = cards.map((c, i) => `
+    <div class="br-s12-card" data-num="${i+1}">
+      <div class="ico">${ICO(c.ico)}</div>
+      <h4>${brEditable(12,'h'+i, c.h)}</h4>
+      <ul>${c.items.map((t,j) => '<li>' + brEditable(12,'i'+i+'_'+j, t) + '</li>').join('')}</ul>
+    </div>`).join('');
   return `
     <div class="br-slide${_brSlide===12?' active':''}" data-slide="12">
-      ${brSlideShellHTML(12, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(12,'title','Next Steps: Moving Forward')}</h2>
-        <div class="br-s12-grid">
-          <div class="br-s12-card">
-            <h4>${brEditable(12,'h1','1. Fuel Programs')}</h4>
-            <ul>
-              <li>${brEditable(12,'h1a','Review opportunities for fleet gallons')}</li>
-              <li>${brEditable(12,'h1b','Review opportunities for additional aggregator gallons')}</li>
-            </ul>
-          </div>
-          <div class="br-s12-card">
-            <h4>${brEditable(12,'h2','2. Vendor Programs')}</h4>
-            <ul>
-              <li>${brEditable(12,'h2a','Savings opportunity review on other programs (e.g., Sysco, Entegra, Lynco, Truck Parking Club)')}</li>
-            </ul>
-          </div>
-          <div class="br-s12-card">
-            <h4>${brEditable(12,'h3','3. Rewards')}</h4>
-            <ul>
-              <li>${brEditable(12,'h3a','Rewards mobile app with promotions coming soon')}</li>
-            </ul>
-          </div>
-          <div class="br-s12-card">
-            <h4>${brEditable(12,'h4','4. Merchant Console')}</h4>
-            <ul>
-              <li>${brEditable(12,'h4a','Utilize for: rewards reports, gallons reports, fuel pricing and more')}</li>
-            </ul>
-          </div>
-        </div>
+      ${brShead(12, 'Forward Plan', 'Where We Go from Here')}
+      <div class="br-sbody">
+        <div class="br-s12">${grid}</div>
       </div>
+      ${brSfoot(d, 12)}
     </div>`;
 }
 
+// ─── SLIDE 13 — Contacts / Thank You ──────────────────────────────────
 function brSlide13(d){
   return `
     <div class="br-slide${_brSlide===13?' active':''}" data-slide="13">
-      ${brSlideShellHTML(13, d.stop.name)}
-      <div class="br-body">
-        <h2 class="br-h2">${brEditable(13,'title','Business Review: Contacts')}</h2>
-        <div class="br-s13-grid">
-          <div class="br-s13-card">
-            <h4>${brEditable(13,'oH','Office Information')}</h4>
-            <div class="lbl">Address</div>
-            <div class="val">${brEditable(13,'oAddr1','1615 12th Ave. Rd. Suite C',{tag:'div'})}<br>${brEditable(13,'oAddr2','Nampa, ID 83686')}</div>
-            <div class="lbl">Phone</div>
-            <div class="val">${brEditable(13,'oPhone','(888) 540-2909')}</div>
-            <div class="lbl">Hours</div>
-            <div class="val">${brEditable(13,'oHrs1','Mon - Fri: 8:00 am – 5:00 pm MT',{tag:'div'})}<br>${brEditable(13,'oHrs2','Closed Weekends')}</div>
+      ${brShead(13, 'Thank You', 'Your Roady\'s Team')}
+      <div class="br-sbody">
+        <div class="br-s13">
+          <div class="br-s13-card gs">
+            <h4><span class="ico">${ICO('user')}</span>${brEditable(13,'kH','Your Growth Strategist')}</h4>
+            <div class="br-s13-row"><span class="l">Name</span><span class="v">${brEditable(13,'gsName', d.stop.gs)}</span></div>
+            <div class="br-s13-row"><span class="l">Email</span><span class="v"><a href="#">${brEditable(13,'gsEmail','—')}</a></span></div>
+            <div class="br-s13-row"><span class="l">Phone</span><span class="v">${brEditable(13,'gsPhone','—')}</span></div>
+            <div class="br-s13-row"><span class="l">Region</span><span class="v">${brEditable(13,'gsRegion', d.stop.state || '—')}</span></div>
           </div>
           <div class="br-s13-card">
-            <h4>${brEditable(13,'kH','Key Contacts')}</h4>
-            <div class="lbl">Growth Strategist</div>
-            <div class="val">${brEditable(13,'gsName','Maria Coleman',{tag:'div'})}<br>${brEditable(13,'gsEmail','maria@roadyscorp.com')}<br>${brEditable(13,'gsPhone','208-810-4249')}</div>
-            <div class="lbl">Rewards</div>
-            <div class="val">${brEditable(13,'rPhone','888-733-5923')}</div>
-            <div class="lbl">Accounting</div>
-            <div class="val">${brEditable(13,'aEmail','accounting@roadyscorp.com')}</div>
+            <h4><span class="ico">${ICO('briefcase')}</span>${brEditable(13,'oH','Office & Support')}</h4>
+            <div class="br-s13-row"><span class="l">Address</span><span class="v">${brEditable(13,'oAddr1','1615 12th Ave. Rd. Suite C',{tag:'span'})}<br>${brEditable(13,'oAddr2','Nampa, ID 83686',{tag:'span'})}</span></div>
+            <div class="br-s13-row"><span class="l">Phone</span><span class="v">${brEditable(13,'oPhone','(888) 540-2909')}</span></div>
+            <div class="br-s13-row"><span class="l">Hours</span><span class="v">${brEditable(13,'oHrs','Mon – Fri · 8:00 am – 5:00 pm MT')}</span></div>
+            <div class="br-s13-row"><span class="l">Rewards</span><span class="v">${brEditable(13,'rPhone','888-733-5923')}</span></div>
+            <div class="br-s13-row"><span class="l">Accounting</span><span class="v"><a href="#">${brEditable(13,'aEmail','accounting@roadyscorp.com')}</a></span></div>
           </div>
         </div>
       </div>
+      ${brSfoot(d, 13)}
     </div>`;
 }
 
@@ -7289,6 +7578,7 @@ function brRender(){
   brBindEditables();
   // Defer chart render to next tick so the canvas is in the DOM
   if(_brSlide === 8) setTimeout(brRenderGallonsChart, 0);
+  if(_brSlide === 9) setTimeout(brRenderRewardsChart, 0);
 }
 
 function brResetSlide(){
