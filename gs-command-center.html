@@ -473,6 +473,203 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .auth-status.success{color:var(--green)}
 .auth-status.err{color:var(--red)}
 .auth-help{font-size:.7em;color:var(--muted);margin-top:6px;line-height:1.4}
+
+/* ═══ BUSINESS REVIEW DECK (Phase 9) ═══════════════════════════════════ */
+#br-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9000;display:none;flex-direction:column}
+#br-overlay.show{display:flex}
+.br-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;background:#0f172a;border-bottom:1px solid #1f2937;padding:8px 14px;color:#e2e8f0;font-family:var(--ff);flex-wrap:wrap}
+.br-toolbar .br-title{font-weight:800;font-size:.9em;color:#e2e8f0}
+.br-toolbar .br-sub{font-size:.74em;color:#94a3b8}
+.br-toolbar .br-spacer{flex:1}
+.br-toolbar select,.br-toolbar input[type=text]{background:#1a2236;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:5px 8px;font-size:.78em;font-family:var(--ff)}
+.br-toolbar select:focus,.br-toolbar input:focus{outline:none;border-color:#22d3ee}
+.br-toolbar .br-btn{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:5px 12px;font-size:.78em;cursor:pointer;font-weight:600;font-family:var(--ff)}
+.br-toolbar .br-btn:hover{background:#334155;border-color:#22d3ee}
+.br-toolbar .br-btn.primary{background:#22d3ee;color:#0b0f19;border-color:#22d3ee}
+.br-toolbar .br-btn.primary:hover{background:#06b6d4;color:#fff}
+.br-toolbar .br-btn.danger{color:#fca5a5;border-color:#7f1d1d}
+.br-toolbar .br-btn.danger:hover{background:#7f1d1d;color:#fff}
+.br-toolbar .br-page-ind{font-size:.78em;color:#94a3b8;font-family:var(--fm)}
+
+.br-stage{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px;background:#020617}
+.br-deck{display:flex;flex-direction:column;align-items:center;gap:18px;width:100%;max-width:1200px}
+.br-slide{width:1100px;max-width:100%;aspect-ratio:16/9;background:#fff;color:#0f172a;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);overflow:hidden;display:none;position:relative;font-family:'Helvetica Neue','Segoe UI',Arial,sans-serif;font-size:13px}
+.br-slide.active{display:block}
+.br-slide *{box-sizing:border-box}
+.br-slide a{color:#1d4ed8;text-decoration:none}
+
+/* Sidebar — vertical "Business Review" + stop name strip */
+.br-side{position:absolute;left:0;top:0;bottom:0;width:160px;background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%);display:flex;align-items:stretch;color:#fff}
+.br-side-a{flex:0 0 80px;writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.6em;letter-spacing:.04em;color:rgba(255,255,255,.92)}
+.br-side-b{flex:1;background:#3b82f6;writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.5em;letter-spacing:.04em;color:#fff;text-align:center;padding:0 6px}
+
+.br-body{position:absolute;left:160px;top:0;right:0;bottom:0;padding:34px 44px;overflow:hidden;display:flex;flex-direction:column}
+.br-logo{position:absolute;top:18px;right:32px;font-family:'Brush Script MT','Lucida Handwriting',cursive;color:#dc2626;font-size:2.4em;font-weight:700;font-style:italic;line-height:1;user-select:none}
+.br-logo .br-logo-dash{display:block;height:6px;background:#0f172a;border-radius:3px;width:60px;margin:-2px 0 0 6px;transform:skewX(-30deg)}
+.br-logo img{height:50px;display:block}
+.br-page-no{position:absolute;bottom:14px;right:24px;font-size:.78em;color:#94a3b8;font-family:'Helvetica Neue',sans-serif}
+
+.br-h1{font-size:2.4em;font-weight:900;color:#0f172a;margin:0 0 4px 0;line-height:1.05}
+.br-h2{font-size:1.7em;font-weight:900;color:#0f172a;margin:0 0 8px 0;line-height:1.1}
+.br-h2 .sub{font-size:.7em;color:#475569;font-weight:600}
+.br-sub{font-size:.95em;color:#475569;margin-bottom:12px}
+.br-pill{display:inline-block;background:#1d4ed8;color:#fff;padding:3px 10px;border-radius:14px;font-size:.74em;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+
+[contenteditable="true"]{outline:none;transition:box-shadow .12s,background .12s}
+[contenteditable="true"]:hover{background:rgba(34,211,238,.08)}
+[contenteditable="true"]:focus{background:rgba(34,211,238,.12);box-shadow:inset 0 0 0 1px #22d3ee;border-radius:3px}
+.br-edit-hint{display:inline-block;font-size:.66em;color:#0ea5e9;margin-left:4px;vertical-align:middle;font-style:italic}
+
+/* Image-import area */
+.br-img-slot{position:relative;background:#f1f5f9;border:2px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:.84em;cursor:pointer;overflow:hidden}
+.br-img-slot:hover{border-color:#0ea5e9;color:#0ea5e9;background:#eff6ff}
+.br-img-slot img{width:100%;height:100%;object-fit:cover;display:block}
+.br-img-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.br-img-slot .br-img-rm{position:absolute;top:4px;right:4px;background:rgba(15,23,42,.85);color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:.7em;cursor:pointer;display:none;z-index:2}
+.br-img-slot.has-img:hover .br-img-rm{display:block}
+.br-img-slot.has-img{border-style:solid;border-color:#cbd5e1}
+
+/* Slide 1 — Title */
+.br-s1-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:30px;height:100%;align-items:center}
+.br-s1-left{display:flex;flex-direction:column;gap:8px}
+.br-s1-right{display:flex;flex-direction:column;gap:14px}
+.br-s1-photo{height:280px;border-radius:10px}
+.br-s1-mission{background:#f8fafc;border-radius:10px;padding:18px 20px}
+.br-s1-mission h3{margin:0 0 6px;font-size:1.3em;font-weight:900;color:#0f172a}
+
+/* Slide 2 — KPI overview */
+.br-s2-banner{background:#1d4ed8;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:14px}
+.br-s2-banner h3{margin:0 0 4px;font-size:1.1em}
+.br-s2-banner .desc{font-size:.92em;line-height:1.4;opacity:.95}
+.br-s2-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1}
+.br-s2-card{background:#f8fafc;border-radius:10px;padding:14px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.br-s2-card h4{margin:0 0 10px;color:#1d4ed8;font-size:1em;font-weight:800}
+.br-s2-card .br-s2-area{flex:1;width:100%;min-height:170px}
+
+/* Slide 3 — Service grid */
+.br-s3-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:14px;flex:1}
+.br-s3-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px}
+.br-s3-card .icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;background:#dbeafe;color:#1d4ed8;border-radius:6px;font-size:1.1em;margin-bottom:8px}
+.br-s3-card h4{margin:0 0 6px;color:#dc2626;font-size:.95em;font-weight:800}
+.br-s3-card p{margin:0;font-size:.85em;color:#475569;line-height:1.4}
+
+/* Slide 4 — Competitor table + cost components */
+.br-s4{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
+.br-s4-card{background:#f8fafc;border-radius:8px;padding:10px 14px}
+.br-s4-card h4{margin:0 0 6px;color:#1d4ed8;font-size:.92em;font-weight:800}
+.br-tbl{width:100%;border-collapse:collapse;font-size:.78em}
+.br-tbl th{background:transparent;text-align:left;padding:6px 8px;font-weight:800;color:#0f172a;border-bottom:1px solid #cbd5e1}
+.br-tbl td{padding:5px 8px;border-bottom:1px solid #e2e8f0;color:#334155}
+.br-tbl input{width:100%;border:none;background:transparent;font-family:inherit;font-size:1em;color:#334155;padding:2px 0}
+.br-tbl input:focus{outline:none;background:#dbeafe}
+.br-cost-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 24px;font-size:.85em}
+.br-cost-row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #e2e8f0;align-items:center}
+.br-cost-row .lbl{color:#475569}
+.br-cost-row input{border:none;background:transparent;font-family:inherit;color:#0f172a;padding:2px 0;width:100%}
+.br-cost-row input:focus{outline:none;background:#dbeafe}
+
+/* Slide 5 — Comdata savings */
+.br-s5-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:24px;height:100%;align-items:center}
+.br-s5-left .icon-circle{width:50px;height:50px;background:#dbeafe;color:#1d4ed8;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:1.4em;margin-bottom:14px}
+.br-s5-left h3{margin:0 0 8px;font-size:1.2em;color:#0f172a;font-weight:900}
+.br-s5-left p{font-size:.92em;line-height:1.5;color:#475569;margin:0 0 16px}
+.br-s5-stat{margin-bottom:8px}
+.br-s5-stat .num{font-size:2.4em;font-weight:900;color:#1d4ed8;display:inline-block;line-height:1}
+.br-s5-stat .lbl{font-size:.95em;color:#475569;margin-left:6px}
+.br-s5-right{height:340px}
+.br-s5-foot{position:absolute;left:204px;bottom:30px;font-size:.7em;color:#64748b;font-style:italic}
+
+/* Slide 6 — Digital visibility */
+.br-s6-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1}
+.br-s6-card{background:#f8fafc;border-radius:10px;padding:12px;display:flex;flex-direction:column}
+.br-s6-card h4{margin:0 0 8px;color:#1d4ed8;font-size:.95em;font-weight:800;text-align:center}
+.br-s6-card .br-img-slot{flex:1;min-height:280px}
+
+/* Slide 7 — Merchant Console dashboard */
+.br-s7-grid{display:grid;grid-template-columns:1fr;gap:10px;flex:1;min-height:0}
+.br-s7-shot{height:340px;width:100%}
+.br-s7-foot{display:flex;justify-content:space-between;align-items:center;font-size:.84em;color:#475569;padding:8px 4px 0}
+.br-s7-link{background:#dbeafe;color:#1d4ed8;padding:5px 10px;border-radius:6px;font-weight:700;font-size:.82em}
+
+/* Slide 8 — Gallons */
+.br-s8-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;flex:1;min-height:0}
+.br-s8-left{background:#f8fafc;border-radius:10px;padding:12px 16px;display:flex;flex-direction:column}
+.br-s8-volume{background:#1d4ed8;color:#fff;border-radius:10px;padding:14px 18px;text-align:left}
+.br-s8-volume .hd{font-size:.86em;font-weight:700;opacity:.9}
+.br-s8-volume .lbl{font-size:.7em;text-transform:uppercase;letter-spacing:.06em;margin-top:6px;opacity:.85}
+.br-s8-volume .num{font-size:2.4em;font-weight:900;line-height:1;margin-top:2px}
+.br-s8-aggwrap{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;font-size:.78em}
+.br-s8-aggwrap .col{background:#f8fafc;border-radius:6px;padding:8px 10px}
+.br-s8-aggwrap .col h5{margin:0 0 4px;color:#1d4ed8;font-size:.92em}
+.br-s8-aggwrap .col ul{margin:0;padding:0 0 0 16px}
+.br-s8-aggwrap .col li{padding:1px 0}
+.br-s8-chart-wrap{flex:1;min-height:140px;position:relative;margin-top:6px}
+
+/* Slide 9 — Rewards table */
+.br-s9{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
+.br-s9 .br-tbl th, .br-s9 .br-tbl td{font-size:.76em;padding:4px 6px}
+.br-s9-bench{background:#dbeafe;border-radius:8px;padding:10px 14px;font-size:.84em;color:#1e3a8a}
+.br-s9-bench b{color:#1d4ed8}
+
+/* Slide 10 — Vendor programs */
+.br-s10-grid{display:flex;flex-direction:column;gap:10px;flex:1}
+.br-s10-row{display:grid;grid-template-columns:1fr 1.4fr;gap:14px;background:#f8fafc;border-radius:10px;padding:10px 14px;align-items:center}
+.br-s10-logo{height:60px;border-radius:6px}
+.br-s10-stat{font-size:1.3em;font-weight:800;color:#0f172a}
+.br-s10-stat b{color:#1d4ed8}
+.br-s10-add{margin-top:6px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px}
+.br-s10-add h4{margin:0 0 6px;color:#0f172a;font-size:.95em;font-weight:800}
+.br-s10-add-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:.84em;color:#475569}
+.br-s10-add-grid div{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:6px 10px;text-align:center;font-weight:600}
+
+/* Slide 11 — Summary */
+.br-s11-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1}
+.br-s11-card{background:#f8fafc;border-radius:10px;padding:12px 16px}
+.br-s11-card h4{margin:0 0 8px;font-size:.95em;font-weight:800}
+.br-s11-card.rev h4{color:#1d4ed8}
+.br-s11-card.sav h4{color:#1d4ed8}
+.br-s11-card.exp h4{color:#dc2626}
+.br-s11-row{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:.86em;padding:3px 0;border-bottom:1px dashed #e2e8f0}
+.br-s11-row:last-child{border-bottom:none}
+.br-s11-row .v{font-weight:800;color:#0f172a}
+.br-s11-total{margin-top:6px;text-align:right;font-weight:800;color:#1d4ed8;font-size:.95em}
+.br-s11-net{grid-column:span 2;background:#3b82f6;color:#fff;border-radius:10px;padding:14px 22px;text-align:center;font-size:1.6em;font-weight:900}
+
+/* Slide 12 — Next Steps */
+.br-s12-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:14px;flex:1}
+.br-s12-card{background:#f8fafc;border-radius:10px;padding:14px}
+.br-s12-card h4{margin:0 0 8px;color:#1d4ed8;font-size:1em;font-weight:800}
+.br-s12-card ul{margin:0;padding-left:18px;font-size:.86em;line-height:1.5;color:#334155}
+
+/* Slide 13 — Contacts */
+.br-s13-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1}
+.br-s13-card{background:#f8fafc;border-radius:10px;padding:16px 20px}
+.br-s13-card h4{margin:0 0 10px;color:#1d4ed8;font-size:1em;font-weight:800}
+.br-s13-card .lbl{font-size:.74em;font-weight:800;color:#0f172a;margin-top:8px}
+.br-s13-card .val{font-size:.88em;color:#475569;line-height:1.5}
+.br-s13-card a{color:#0ea5e9}
+
+/* Thumbnail strip */
+.br-thumbs{flex:0 0 auto;background:#0f172a;border-top:1px solid #1f2937;padding:6px 10px;display:flex;gap:6px;overflow-x:auto}
+.br-thumb{flex:0 0 70px;height:46px;border-radius:4px;background:#fff;border:2px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.74em;font-weight:800;color:#1e293b;font-family:'Helvetica Neue',sans-serif}
+.br-thumb.active{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.3)}
+.br-thumb:hover{border-color:#94a3b8}
+
+/* Print — landscape, one slide per page. Scoped to body.br-printing so
+   the existing Stop Detail print path (printStopDetail) is unaffected. */
+@media print {
+  body.br-printing { background: #fff !important; }
+  body.br-printing > *:not(#br-overlay) { display: none !important; }
+  body.br-printing #br-overlay { position: fixed !important; inset: 0 !important; background: #fff !important; display: block !important; overflow: visible !important; }
+  body.br-printing .br-toolbar, body.br-printing .br-thumbs { display: none !important; }
+  body.br-printing .br-stage { display: block !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
+  body.br-printing .br-deck { gap: 0 !important; max-width: none !important; width: 100% !important; }
+  body.br-printing .br-slide { display: block !important; width: 11in !important; height: 8.5in !important; max-width: none !important; aspect-ratio: auto !important; border-radius: 0 !important; box-shadow: none !important; page-break-after: always; break-after: page; }
+  body.br-printing .br-slide:last-child { page-break-after: auto; break-after: auto; }
+  body.br-printing [contenteditable="true"]:hover, body.br-printing [contenteditable="true"]:focus { background: transparent !important; box-shadow: none !important; }
+  body.br-printing .br-edit-hint { display: none !important; }
+  body.br-printing .br-img-slot { border: none !important; background: #fff !important; }
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -3499,6 +3696,7 @@ function renderStopDetailPage(stopId){
         ${drawerCRMTasksHTML(stopId)}
         ${pageCalculationsHTML(stopId)}
         ${pageHistoryTableHTML(stopId)}
+        ${pageBusinessReviewHTML(stopId)}
       </div>
     </div>
   `;
@@ -3530,6 +3728,45 @@ function pageHeaderHTML(stopId){
         ${isAllGSMode() ? '' : `<button class="btn btn-cyan" onclick="scheduleVisit('${esc(stopId)}','page')">📅 Schedule Visit</button>`}
         <button class="btn" onclick="printStopDetail()">🖨 Print Report</button>
         <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
+        <button class="btn btn-cyan" onclick="brOpenFromHeader('${esc(stopId)}')">📑 Business Review</button>
+      </div>
+    </div>
+  `;
+}
+function brOpenFromHeader(stopId){
+  // Use the period currently selected at the bottom of the page if it exists,
+  // otherwise default to last12. Saves a click for repeat users.
+  const sel = document.getElementById('br-period-bottom');
+  const period = (sel && sel.value) || 'last12';
+  brOpen(stopId, period);
+}
+function pageBusinessReviewHTML(stopId){
+  const lastSavedNote = (() => {
+    try {
+      const all = brLoadAll();
+      const periods = ['last12','rolling12','ytd'];
+      for(const p of periods){
+        const d = all[stopId + '|' + p];
+        if(d && d.savedAt) return ' · last saved: ' + new Date(d.savedAt).toLocaleString();
+      }
+    } catch(e){}
+    return '';
+  })();
+  return `
+    <div class="drawer-card" style="border-left:3px solid var(--cyan)">
+      <div class="drawer-card-hd">📑 Business Review Deck</div>
+      <div style="font-size:.84em;color:var(--dim);line-height:1.5;margin-bottom:10px">
+        Generate a 13-slide editable business-review deck pre-filled with this stop's data.
+        Each field is editable, image slots accept uploads, and Export PDF prints one slide per landscape page.${lastSavedNote}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.74em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Period</label>
+        <select id="br-period-bottom" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.84em;font-family:var(--ff)">
+          <option value="last12">Last 12 months</option>
+          <option value="rolling12">Rolling 12 months</option>
+          <option value="ytd">YTD</option>
+        </select>
+        <button class="btn btn-cyan" style="font-weight:700" onclick="brOpen('${esc(stopId)}', document.getElementById('br-period-bottom').value)">📑 Generate Business Review</button>
       </div>
     </div>
   `;
@@ -6260,6 +6497,837 @@ function resolveCritical(id){
 }
 
 // ═══════════════════════════════════════════════════════
+// BUSINESS REVIEW DECK (Phase 9)
+// 13-slide editable presentation generated from a stop's data.
+// Auto-fills KPIs, gallons, vendor enrollments and revenue/savings/expenses
+// summary; every text node is contentEditable; image slots accept uploads.
+// Persists per stop+period in localStorage. Export = window.print() with
+// landscape @page rules so each .br-slide becomes one PDF page.
+// ═══════════════════════════════════════════════════════
+const BR_LS_KEY = 'gs_cmd_business_review_v1';
+let _brStopId = null;
+let _brPeriod = 'last12';
+let _brSlide = 1;
+let _brData = null;        // {slides:{1:{...}, ...}, images:{slot:dataUrl}, period}
+let _brGallonsChart = null;
+
+function brLoadAll(){
+  try { return JSON.parse(localStorage.getItem(BR_LS_KEY) || '{}') || {}; } catch(e){ return {}; }
+}
+function brSaveAll(all){ try { localStorage.setItem(BR_LS_KEY, JSON.stringify(all)); } catch(e){ console.warn('br save failed', e); } }
+function brKey(stopId, period){ return stopId + '|' + period; }
+function brLoad(stopId, period){
+  const all = brLoadAll();
+  return all[brKey(stopId, period)] || null;
+}
+function brSave(){
+  if(!_brStopId || !_brData) return;
+  _brData.savedAt = new Date().toISOString();
+  const all = brLoadAll();
+  all[brKey(_brStopId, _brPeriod)] = _brData;
+  brSaveAll(all);
+}
+
+// Period helpers — returns {label, months:[{key,label}]}.
+function brPeriodMonths(period){
+  const today = new Date();
+  const y = today.getFullYear();
+  const mo = today.getMonth(); // 0-11
+  const months = [];
+  if(period === 'ytd'){
+    for(let i = 0; i <= mo; i++){
+      const d = new Date(y, i, 1);
+      months.push({ key: y + '-' + String(i+1).padStart(2,'0'), label: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i] });
+    }
+    return { label: 'YTD ' + y, months, year: y };
+  }
+  // last12 = current month minus 11 → current  (12 months ending current)
+  // rolling12 = previous month minus 11 → previous (12 months ending last completed)
+  const endOffset = period === 'rolling12' ? 1 : 0;
+  for(let i = 11; i >= 0; i--){
+    const d = new Date(y, mo - endOffset - i, 1);
+    months.push({
+      key: d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'),
+      label: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + (d.getFullYear()%100)
+    });
+  }
+  const startLbl = months[0].label;
+  const endLbl = months[months.length-1].label;
+  return { label: (period === 'rolling12' ? 'Rolling 12 (' : 'Last 12 (') + startLbl + ' – ' + endLbl + ')', months, year: y };
+}
+
+// Build the auto-data scaffold from current stop + period.
+function brBuildAutoData(stopId, period){
+  const stop = MEMBERS.find(m => m.id === stopId);
+  if(!stop) return null;
+  const rec = loadStopRecord(stopId);
+  const GD = loadFuelGD();
+  const VPE = loadVendorEnrolls();
+  const master = loadVendorMaster();
+  const periodInfo = brPeriodMonths(period);
+  const cm = currentMonthKey();
+
+  // Sum gallons across the period
+  let totalGal = 0;
+  let aggMap = {}; // {processor: {gal, c+, r-, name, monthly:{}}}
+  let fleetMap = {};
+  const monthlyTotals = []; // for chart
+  for(const m of periodInfo.months){
+    const r = GD[stopId]?.[m.key];
+    const g = +(r?.gallons || 0);
+    totalGal += g;
+    monthlyTotals.push({ key: m.key, label: m.label, gallons: g });
+    if(r){
+      (r.aggregators||[]).forEach(a => {
+        const id = a.id || a.name || 'unk';
+        if(!aggMap[id]) aggMap[id] = { id, name: a.name||'—', processor: a.processor||'', gallons: 0 };
+        aggMap[id].gallons += +(a.gallons||0);
+      });
+      (r.fleets||[]).forEach(f => {
+        const id = f.id || f.name || 'unk';
+        if(!fleetMap[id]) fleetMap[id] = { id, name: f.name||'—', processor: f.processor||'', gallons: 0 };
+        fleetMap[id].gallons += +(f.gallons||0);
+      });
+    }
+  }
+  const aggregators = Object.values(aggMap).sort((a,b) => b.gallons - a.gallons);
+  const fleets = Object.values(fleetMap).sort((a,b) => b.gallons - a.gallons);
+
+  // Current month rack snapshot for Slide 8 left column
+  const curRack = GD[stopId]?.[cm]?.rack || {};
+
+  // Vendor enrollments
+  const stopVP = VPE[stopId] || {};
+  const enrolledIds = Object.keys(stopVP).filter(vid => stopVP[vid] === true);
+  const enrolledVendors = enrolledIds.map(vid => {
+    const v = master.VP_VENDORS.find(x => x.id === vid);
+    return v ? { id: vid, name: v.name, program: v.program } : { id: vid, name: vid, program: '' };
+  });
+
+  // Revenue/Profit/Savings auto-calc
+  const fmt$ = n => '$' + Math.round(+n||0).toLocaleString();
+  const revenueAuto = totalGal * REV_PER_GAL_GS;
+  const profitAuto = totalGal * (REV_PER_GAL_GS - COST_PER_GAL_GS);
+  const adds = (typeof rec.rewardsYtdAdds === 'number') ? rec.rewardsYtdAdds : 0;
+  const redeems = (typeof rec.rewardsYtdRedeems === 'number') ? rec.rewardsYtdRedeems : 0;
+
+  // Membership $/mo from rec.membershipCost (e.g. "$1,500.00 /mo")
+  const memMonthly = parseDollarString(rec.membershipCost) || 0;
+  const memAnnual = memMonthly * 12;
+
+  const gsName = MANAGER_MAP[stop.state] || 'Unassigned';
+
+  return {
+    period, periodLabel: periodInfo.label, year: periodInfo.year,
+    stop: {
+      id: stop.id, name: stop.name||'', company: stop.company||'',
+      street: stop.street||'', city: stop.city||'', state: stop.state||'', zip: stop.zip||'',
+      exit: stop.exit||'', phone: stop.phone||'', type: stop.type||'', group: stop.group||'',
+      gs: gsName
+    },
+    rack: curRack,
+    totalGal, monthlyTotals,
+    aggregators, fleets, enrolledVendors,
+    revenueAuto, profitAuto, redeems, adds,
+    memMonthly, memAnnual,
+    // Default editable text per slide — built up by the renderer below.
+    // Saved overrides live in `_brData.fields[slide][key]`.
+  };
+}
+
+// Render the whole deck for the active stop+period
+function brOpen(stopId, period){
+  if(!stopId){ toast('No stop'); return; }
+  _brStopId = stopId;
+  _brPeriod = period || 'last12';
+  // Load saved or seed new
+  const saved = brLoad(stopId, _brPeriod);
+  _brData = saved || { fields: {}, images: {}, period: _brPeriod, savedAt: null };
+  if(!_brData.fields) _brData.fields = {};
+  if(!_brData.images) _brData.images = {};
+  _brSlide = 1;
+  document.getElementById('br-overlay').classList.add('show');
+  brRender();
+}
+function brClose(){
+  document.getElementById('br-overlay').classList.remove('show');
+  _brStopId = null; _brData = null;
+  if(_brGallonsChart){ try{_brGallonsChart.destroy();}catch(e){} _brGallonsChart = null; }
+}
+function brSwitchPeriod(p){
+  if(!_brStopId) return;
+  // Persist the current period's edits before switching
+  brSave();
+  brOpen(_brStopId, p);
+}
+function brGoSlide(n){
+  const total = 13;
+  if(n < 1) n = 1; if(n > total) n = total;
+  _brSlide = n;
+  // Sync DOM without full re-render to preserve focus
+  document.querySelectorAll('.br-slide').forEach((el, idx) => {
+    el.classList.toggle('active', (idx+1) === n);
+  });
+  document.querySelectorAll('.br-thumb').forEach((el, idx) => {
+    el.classList.toggle('active', (idx+1) === n);
+  });
+  document.getElementById('br-page-ind').textContent = 'Slide ' + n + ' of ' + total;
+  // Render gallons chart only when slide 8 is shown
+  if(n === 8) brRenderGallonsChart();
+}
+function brPrev(){ brGoSlide(_brSlide - 1); }
+function brNext(){ brGoSlide(_brSlide + 1); }
+
+// Field reader/writer with auto-data fallback.
+function brField(slide, key, defaultVal){
+  const f = _brData.fields[slide];
+  if(f && Object.prototype.hasOwnProperty.call(f, key)) return f[key];
+  return defaultVal;
+}
+function brFieldChanged(slide, key, value){
+  if(!_brData.fields[slide]) _brData.fields[slide] = {};
+  _brData.fields[slide][key] = value;
+}
+// Editable text — uses contentEditable, persists onblur via brFieldChanged.
+function brEditable(slide, key, defaultVal, opts){
+  const o = opts || {};
+  const v = brField(slide, key, defaultVal);
+  const tag = o.tag || 'span';
+  const cls = o.cls || '';
+  const style = o.style || '';
+  return '<' + tag + ' contenteditable="true" data-br-slide="' + slide + '" data-br-key="' + key + '"'
+    + (cls ? ' class="' + cls + '"' : '')
+    + (style ? ' style="' + style + '"' : '')
+    + '>' + esc(v == null ? '' : String(v)) + '</' + tag + '>';
+}
+// Image slot — uses data-URL storage in _brData.images.
+function brImgSlot(slot, label, opts){
+  const o = opts || {};
+  const cls = o.cls || '';
+  const style = o.style || '';
+  const dataUrl = _brData.images[slot] || '';
+  const has = dataUrl ? ' has-img' : '';
+  return `
+    <div class="br-img-slot${has} ${cls}" style="${style}" data-br-slot="${esc(slot)}">
+      ${dataUrl ? '<img src="' + esc(dataUrl) + '" alt="">' : '<span>📷 ' + esc(label||'Click or drop image') + '</span>'}
+      <input type="file" accept="image/*" onchange="brOnImage(event,'${esc(slot)}')"/>
+      <button class="br-img-rm" onclick="brRemoveImage('${esc(slot)}')">Remove</button>
+    </div>
+  `;
+}
+function brOnImage(ev, slot){
+  const f = ev.target.files && ev.target.files[0];
+  if(!f){ return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _brData.images[slot] = e.target.result;
+    brSave();
+    brRender();
+  };
+  reader.readAsDataURL(f);
+}
+function brRemoveImage(slot){
+  delete _brData.images[slot];
+  brSave();
+  brRender();
+}
+
+// Bind contentEditable blur events after each render.
+function brBindEditables(){
+  document.querySelectorAll('#br-overlay [contenteditable="true"]').forEach(el => {
+    if(el._brBound) return;
+    el._brBound = true;
+    el.addEventListener('blur', () => {
+      const slide = +el.getAttribute('data-br-slide');
+      const key = el.getAttribute('data-br-key');
+      if(!slide || !key) return;
+      brFieldChanged(slide, key, el.innerText);
+      brSave();
+      if(slide === 11) brRecalcSlide11();
+    });
+  });
+}
+
+// Live re-total Slide 11 numbers when the user edits a value.
+function brRecalcSlide11(){
+  const fmt$ = n => Math.round(+n||0).toLocaleString();
+  const num = key => {
+    const el = document.querySelector('.br-s11-num[data-br-num="'+key+'"]');
+    if(!el) return 0;
+    const v = parseDollarString('$' + el.innerText);
+    return v == null ? 0 : v;
+  };
+  const totalRev = num('rewardsRedeemed') + num('dieselSales') + num('defSales') + num('fuelmanRev') + num('insideSales');
+  const totalSav = num('comdataSav') + num('cokeAom');
+  const totalExp = num('rewardsAdds') + num('memFee');
+  const net = totalRev + totalSav - totalExp;
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmt$(v); };
+  set('br-s11-totalRev', totalRev);
+  set('br-s11-totalSav', totalSav);
+  set('br-s11-totalExp', totalExp);
+  set('br-s11-net', net);
+}
+
+// ─── Slide builders ────────────────────────────────────────────────────
+function brSlideShellHTML(num, sideName){
+  return `
+    <div class="br-side">
+      <div class="br-side-a">Business Review</div>
+      <div class="br-side-b">${esc(sideName||'')}</div>
+    </div>
+    <div class="br-logo">
+      ${_brData.images.logo
+        ? '<img src="' + esc(_brData.images.logo) + '" alt="logo">'
+        : 'Roady\'s'}
+      <input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="brOnImage(event,'logo')" title="Replace logo"/>
+    </div>
+    <div class="br-page-no">${num}</div>
+  `;
+}
+
+function brSlide1(d){
+  const sideName = d.stop.name;
+  return `
+    <div class="br-slide${_brSlide===1?' active':''}" data-slide="1">
+      ${brSlideShellHTML(1, sideName)}
+      <div class="br-body">
+        <div class="br-s1-grid">
+          <div class="br-s1-left">
+            <h1 class="br-h1">${brEditable(1,'title','Business Review',{tag:'span'})}</h1>
+            <div style="font-size:1.4em;color:#475569;margin-top:6px">${brEditable(1,'subtitle', d.stop.name, {tag:'span'})}</div>
+            <div style="font-size:.92em;color:#64748b;margin-top:6px">${brEditable(1,'period', d.periodLabel)}</div>
+          </div>
+          <div class="br-s1-right">
+            ${brImgSlot('s1-photo','Truck Stop Photo',{cls:'br-s1-photo'})}
+            <div class="br-s1-mission">
+              <h3>${brEditable(1,'missionH','Our Mission')}</h3>
+              <div style="font-size:.92em;color:#475569;line-height:1.5">${brEditable(1,'missionBody','To make our stops more successful. We reach this goal primarily through fleet fuel marketing, our loyalty rewards and a variety of vendor programs.', {tag:'div'})}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide2(d){
+  return `
+    <div class="br-slide${_brSlide===2?' active':''}" data-slide="2">
+      ${brSlideShellHTML(2, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(2,'title','Key Performance Indicators')}</h2>
+        <div class="br-sub">${brEditable(2,'sub','Goal: Demonstrate the value of your Roady\'s partnership through KPIs')}</div>
+        <div class="br-s2-banner">
+          <h3>${brEditable(2,'bannerH','Fuel Programs')}</h3>
+          <div class="desc">${brEditable(2,'bannerD','Comprehensive solutions providing real-time data and cost management: Comdata Price File, Aggregators, Fleets, Fuelman, R-Check, Competitor Price Reports', {tag:'div'})}</div>
+        </div>
+        <div class="br-s2-grid">
+          <div class="br-s2-card">
+            <h4>${brEditable(2,'c1H','Rewards')}</h4>
+            <div class="br-s2-area">${brImgSlot('s2-rewards','Rewards card image',{style:'height:100%'})}</div>
+          </div>
+          <div class="br-s2-card">
+            <h4>${brEditable(2,'c2H','Vendor Programs')}</h4>
+            <div class="br-s2-area">${brImgSlot('s2-vendors','Vendor logos image',{style:'height:100%'})}</div>
+          </div>
+          <div class="br-s2-card">
+            <h4>${brEditable(2,'c3H','Marketing')}</h4>
+            <div class="br-s2-area">${brImgSlot('s2-marketing','Map listing screenshot',{style:'height:100%'})}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide3(d){
+  const cards = [
+    { icon: '📊', t: 'Competitor Price Reports', b: 'No need to drive around to check your competition\'s prices. Get notified when their prices change!' },
+    { icon: '🏷', t: 'Fuel Discount Implementation', b: 'Roady\'s can implement fuel discounts through fleet cards, eliminating workload on your staff.' },
+    { icon: '📄', t: 'Comdata Price File', b: 'Leverage our technology to save $2,007/year on your Comdata fees.' },
+    { icon: '🏛', t: 'Merchant Settlement Support', b: 'We interface with Wex/EFS and Comdata daily to ensure your accounts are settled promptly.' },
+    { icon: '⛽', t: 'Fuel Cost Handling', b: 'We ensure critical cost components are accurately input for nationwide fleet discounts.' },
+    { icon: '👥', t: 'Dedicated Account Teams', b: 'Exceptional customer service from our entire team dedicated to your success.' }
+  ];
+  const grid = cards.map((c, i) => `
+    <div class="br-s3-card">
+      <span class="icon">${c.icon}</span>
+      <h4>${brEditable(3,'t'+i,c.t)}</h4>
+      <p>${brEditable(3,'b'+i,c.b,{tag:'div'})}</p>
+    </div>`).join('');
+  return `
+    <div class="br-slide${_brSlide===3?' active':''}" data-slide="3">
+      ${brSlideShellHTML(3, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(3,'title','Fuel Marketing Services')}</h2>
+        <div class="br-s3-grid">${grid}</div>
+      </div>
+    </div>`;
+}
+
+function brSlide4(d){
+  // Competitor table with empty editable rows (no source data — user fills in)
+  const rows = brField(4,'competitors',[
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' },
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' },
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' },
+    { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', diesDate:'', def:'', defDate:'' }
+  ]);
+  const trs = rows.map((r, i) => `
+    <tr>
+      <td><input value="${esc(r.name||'')}" onblur="brTblCell(4,'competitors',${i},'name',this.value)"></td>
+      <td><input value="${esc(r.loc||'')}" onblur="brTblCell(4,'competitors',${i},'loc',this.value)"></td>
+      <td><input value="${esc(r.addr||'')}" onblur="brTblCell(4,'competitors',${i},'addr',this.value)"></td>
+      <td><input value="${esc(r.city||'')}" onblur="brTblCell(4,'competitors',${i},'city',this.value)"></td>
+      <td><input value="${esc(r.st||'')}" onblur="brTblCell(4,'competitors',${i},'st',this.value)" style="width:30px"></td>
+      <td><input value="${esc(r.dist||'')}" onblur="brTblCell(4,'competitors',${i},'dist',this.value)" style="width:42px"></td>
+      <td><input value="${esc(r.diesel||'')}" onblur="brTblCell(4,'competitors',${i},'diesel',this.value)" style="width:50px"></td>
+      <td><input value="${esc(r.diesDate||'')}" onblur="brTblCell(4,'competitors',${i},'diesDate',this.value)"></td>
+      <td><input value="${esc(r.def||'')}" onblur="brTblCell(4,'competitors',${i},'def',this.value)" style="width:50px"></td>
+      <td><input value="${esc(r.defDate||'')}" onblur="brTblCell(4,'competitors',${i},'defDate',this.value)"></td>
+    </tr>`).join('');
+
+  // Pre-fill cost components from rack data when present
+  const rk = d.rack || {};
+  const costFields = [
+    { k:'winterAdd', l:'Winter Additive', v: rk.winterAdditive ?? '' },
+    { k:'winterBegin', l:'Winter Begins', v: rk.winterAdditiveStart ?? '' },
+    { k:'winterEnd', l:'Winter Ends', v: rk.winterAdditiveEnd ?? '' },
+    { k:'freight', l:'Freight Rate', v: (typeof rk.freightRate === 'number' ? rk.freightRate.toFixed(4) : (rk.freightRate ?? '0.175')) },
+    { k:'freightFm', l:'Freight (Fuelman)', v: rk.freightRateFuelman ?? '' },
+    { k:'fedSpill', l:'Fed Oil Spill Liab.', v: rk.federalOilSpillLiability ?? '0' },
+    { k:'countyTax', l:'County Tax', v: rk.countyTax ?? '0' },
+    { k:'inspTax', l:'INSP. Tax', v: rk.inspectionTax ?? '0' },
+    { k:'envTax', l:'ENV. Tax', v: rk.environmentalTax ?? '0' },
+    { k:'loadTax', l:'LOAD Tax', v: rk.loadTax ?? '0.01875' },
+    { k:'miscTax', l:'Misc. Tax', v: rk.miscTax ?? '0' },
+    { k:'fedTax', l:'Federal Tax', v: rk.federalTax ?? '0.2502' }
+  ];
+  const costRows = costFields.map(f => `
+    <div class="br-cost-row">
+      <span class="lbl">${esc(f.l)}</span>
+      <input value="${esc(brField(4,'cost_'+f.k, String(f.v)))}" onblur="brFieldChanged(4,'cost_${f.k}',this.value);brSave()"/>
+    </div>
+  `).join('');
+
+  return `
+    <div class="br-slide${_brSlide===4?' active':''}" data-slide="4">
+      ${brSlideShellHTML(4, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(4,'title','Fuel Services')} <span class="sub">${brEditable(4,'sub','& Cost Components')}</span></h2>
+        <div class="br-s4">
+          <div class="br-s4-card">
+            <h4>${brEditable(4,'compH','Competition (Monitored Lanes)')} <span class="br-edit-hint">(click cells to edit)</span></h4>
+            <table class="br-tbl">
+              <thead><tr><th>Name</th><th>Location</th><th>Address</th><th>City</th><th>St</th><th>Dist</th><th>Diesel</th><th>Diesel Date</th><th>DEF</th><th>DEF Date</th></tr></thead>
+              <tbody>${trs}</tbody>
+            </table>
+          </div>
+          <div class="br-s4-card">
+            <h4>${brEditable(4,'costH','Fuel Cost Components')}</h4>
+            <div class="br-cost-grid">${costRows}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide5(d){
+  return `
+    <div class="br-slide${_brSlide===5?' active':''}" data-slide="5">
+      ${brSlideShellHTML(5, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(5,'title','Fuel Services: Comdata Price File')}</h2>
+        <div class="br-s5-grid">
+          <div class="br-s5-left">
+            <span class="icon-circle">📈</span>
+            <h3>${brEditable(5,'h','Fuel Related Savings')}</h3>
+            <p>${brEditable(5,'p','By leveraging the Comdata Price File, your truck stop achieves significant annual cost reductions.', {tag:'div'})}</p>
+            <div class="br-s5-stat">
+              <span class="num">$${brEditable(5,'monthly','295',{tag:'span'})}</span>
+              <span class="lbl">${brEditable(5,'monthlyL','Monthly Savings')}</span>
+            </div>
+            <div class="br-s5-stat">
+              <span class="num">$${brEditable(5,'annual','3,540',{tag:'span'})}</span>
+              <span class="lbl">${brEditable(5,'annualL','Annual Total*')}</span>
+            </div>
+          </div>
+          <div class="br-s5-right">
+            ${brImgSlot('s5-shot','Comdata transaction screenshot',{style:'height:100%'})}
+          </div>
+        </div>
+        <div class="br-s5-foot">${brEditable(5,'foot','*Disc Admin Fee raised to $167 from $145 in 2023, then to $295 in 2025.')}</div>
+      </div>
+    </div>`;
+}
+
+function brSlide6(d){
+  return `
+    <div class="br-slide${_brSlide===6?' active':''}" data-slide="6">
+      ${brSlideShellHTML(6, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(6,'title','Fuel Services:')} <span class="sub">${brEditable(6,'sub','Digital Visibility Impacting Gallons & Inside Sales')}</span></h2>
+        <div class="br-s6-grid">
+          <div class="br-s6-card">
+            <h4>${brEditable(6,'h1','Local Search Presence')}</h4>
+            ${brImgSlot('s6-search','Map / search result image')}
+          </div>
+          <div class="br-s6-card">
+            <h4>${brEditable(6,'h2','Pricing Transparency')}</h4>
+            ${brImgSlot('s6-price','Pricing app screenshot')}
+          </div>
+          <div class="br-s6-card">
+            <h4>${brEditable(6,'h3','Customer Feedback')}</h4>
+            ${brImgSlot('s6-fb','Reviews screenshot')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide7(d){
+  return `
+    <div class="br-slide${_brSlide===7?' active':''}" data-slide="7">
+      ${brSlideShellHTML(7, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(7,'title','Fuel Services:')} <span class="sub">${brEditable(7,'sub','Merchant Console, Dashboard')}</span></h2>
+        <div class="br-s7-grid">
+          ${brImgSlot('s7-shot','Merchant Console dashboard screenshot',{cls:'br-s7-shot'})}
+          <div style="font-size:.86em;color:#475569;line-height:1.45">${brEditable(7,'foot','The Merchant Console provides real-time visibility into rewards activity, fuel pricing, and location performance.', {tag:'div'})}</div>
+          <div class="br-s7-foot">
+            <div></div>
+            <div class="br-s7-link">${brEditable(7,'link','https://merchant.roadys.com/')}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide8(d){
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const aggList = (d.aggregators||[]).slice(0, 12).map(a => `<li>${esc(a.name)} <span style="color:#64748b">(${fmtN(a.gallons)} gal)</span></li>`).join('') || '<li style="color:#94a3b8">— none on file —</li>';
+  const fleetList = (d.fleets||[]).slice(0, 12).map(f => `<li>${esc(f.name)} <span style="color:#64748b">(${fmtN(f.gallons)} gal)</span></li>`).join('') || '<li style="color:#94a3b8">— none on file —</li>';
+  const rk = d.rack || {};
+  return `
+    <div class="br-slide${_brSlide===8?' active':''}" data-slide="8">
+      ${brSlideShellHTML(8, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(8,'title','Fuel Services:')} <span class="sub">${brEditable(8,'sub','Merchant Console, Gallons')}</span></h2>
+        <div class="br-s8-grid">
+          <div class="br-s8-left">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.78em">
+              <div><div style="color:#64748b">OPIS Rack</div><div style="font-weight:700">${esc(rk.opisRack || 'El Paso, TX')}</div></div>
+              <div><div style="color:#64748b">Rack Price Type</div><div style="font-weight:700">${esc(rk.rackPriceType || 'Contract Average')}</div></div>
+              <div><div style="color:#64748b">Federal Tax</div><div style="font-weight:700">$${(typeof rk.federalTax==='number'?rk.federalTax:0.2502).toFixed(4)}</div></div>
+              <div><div style="color:#64748b">State Excise Tax</div><div style="font-weight:700">$${(typeof rk.stateExciseTax==='number'?rk.stateExciseTax:0).toFixed(2)}</div></div>
+              <div><div style="color:#64748b">Misc Tax</div><div style="font-weight:700">$${(typeof rk.miscTax==='number'?rk.miscTax:0).toFixed(2)}</div></div>
+              <div><div style="color:#64748b">Freight Rate</div><div style="font-weight:700">$${(typeof rk.freightRate==='number'?rk.freightRate:0.175).toFixed(3)}</div></div>
+            </div>
+            <div class="br-s8-chart-wrap"><canvas id="br-s8-chart"></canvas></div>
+          </div>
+          <div>
+            <div class="br-s8-volume">
+              <div class="hd">${brEditable(8,'volH','Volume Insights')}</div>
+              <div class="lbl">${brEditable(8,'volL','Total Gallons')}</div>
+              <div class="num">${fmtN(d.totalGal)}</div>
+              <div style="font-size:.74em;opacity:.85;margin-top:4px">${esc(d.periodLabel)}</div>
+            </div>
+            <div class="br-s8-aggwrap">
+              <div class="col"><h5>Aggregators</h5><ul>${aggList}</ul></div>
+              <div class="col"><h5>Fleets</h5><ul>${fleetList}</ul></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brRenderGallonsChart(){
+  if(!_brData) return;
+  const data = brBuildAutoData(_brStopId, _brPeriod);
+  if(!data) return;
+  if(_brGallonsChart){ try{_brGallonsChart.destroy();}catch(e){} _brGallonsChart = null; }
+  const c = document.getElementById('br-s8-chart');
+  if(!c || typeof Chart === 'undefined') return;
+  _brGallonsChart = new Chart(c, {
+    type: 'bar',
+    data: {
+      labels: data.monthlyTotals.map(m => m.label),
+      datasets: [{ label:'Gallons', data: data.monthlyTotals.map(m => m.gallons), backgroundColor:'rgba(59,130,246,.7)', borderColor:'#1d4ed8', borderWidth:1 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{beginAtZero:true, ticks:{color:'#64748b'} }, x:{ ticks:{color:'#64748b', font:{size:9}} } } }
+  });
+}
+
+function brSlide9(d){
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const seeded = brField(9, 'rows', null);
+  const rows = seeded || months.map(m => ({ month:m, addTx:'', redTx:'', gallons:'', addUsd:'', redUsd:'', rate:'', delta:'' }));
+  const trs = rows.map((r,i) => `
+    <tr>
+      <td style="font-weight:700;color:#0f172a">${esc(r.month)}</td>
+      <td><input value="${esc(r.addTx||'')}" onblur="brTblCell(9,'rows',${i},'addTx',this.value)"></td>
+      <td><input value="${esc(r.redTx||'')}" onblur="brTblCell(9,'rows',${i},'redTx',this.value)"></td>
+      <td><input value="${esc(r.gallons||'')}" onblur="brTblCell(9,'rows',${i},'gallons',this.value)"></td>
+      <td><input value="${esc(r.addUsd||'')}" onblur="brTblCell(9,'rows',${i},'addUsd',this.value)"></td>
+      <td><input value="${esc(r.redUsd||'')}" onblur="brTblCell(9,'rows',${i},'redUsd',this.value)"></td>
+      <td><input value="${esc(r.rate||'')}" onblur="brTblCell(9,'rows',${i},'rate',this.value)"></td>
+      <td><input value="${esc(r.delta||'')}" onblur="brTblCell(9,'rows',${i},'delta',this.value)"></td>
+    </tr>`).join('');
+  return `
+    <div class="br-slide${_brSlide===9?' active':''}" data-slide="9">
+      ${brSlideShellHTML(9, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(9,'title','Rewards Program Performance')} <span class="sub">(${brEditable(9,'year', String(d.year),{tag:'span'})})</span></h2>
+        <div class="br-s9">
+          <table class="br-tbl">
+            <thead><tr><th>Month</th><th>Add Tx</th><th>Redeem Tx</th><th>Gallons Captured</th><th>Add USD</th><th>Redeem USD</th><th>Redemption Rate</th><th>Delta</th></tr></thead>
+            <tbody>${trs}</tbody>
+          </table>
+          <div class="br-s9-bench">
+            <b>${brEditable(9,'benchH','Network Benchmarks')}</b><br>
+            • Average Add Transactions: <b>${brEditable(9,'b1','584/mo')}</b> &nbsp; • Average Redeem Transactions: <b>${brEditable(9,'b2','90/mo')}</b> &nbsp; • Average Redemption Rate: <b>${brEditable(9,'b3','72%')}</b>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide10(d){
+  return `
+    <div class="br-slide${_brSlide===10?' active':''}" data-slide="10">
+      ${brSlideShellHTML(10, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(10,'title','Vendor Programs')}</h2>
+        <div class="br-s10-grid">
+          <div class="br-s10-row">
+            <div>${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logo'})}</div>
+            <div class="br-s10-stat">${brEditable(10,'cokeLbl','Saved')} <b>$${brEditable(10,'cokeAmt','2,529')}</b> ${brEditable(10,'cokeYr','in '+d.year)}</div>
+          </div>
+          <div class="br-s10-row">
+            <div>${brImgSlot('s10-aom','AllOver Media logo',{cls:'br-s10-logo'})}</div>
+            <div class="br-s10-stat">${brEditable(10,'aomLbl','Earned')} <b>$${brEditable(10,'aomAmt','380.00')}</b> ${brEditable(10,'aomYr','in '+d.year)}</div>
+          </div>
+          <div class="br-s10-add">
+            <h4>${brEditable(10,'addH','Additional Programs to Consider')}</h4>
+            <div class="br-s10-add-grid">
+              <div>${brEditable(10,'p1','Lynco Products')}</div>
+              <div>${brEditable(10,'p2','Truck Parking Club')}</div>
+              <div>${brEditable(10,'p3','Sysco')}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide11(d){
+  // Default values come from auto-data, but each is editable.
+  const fmt$ = n => Math.round(+n||0).toLocaleString();
+  // Auto seeds — user can override.
+  const dieselSales = brField(11,'dieselSales', String(Math.round(d.revenueAuto)));
+  const defSales = brField(11,'defSales', '0');
+  const fuelmanRev = brField(11,'fuelmanRev', '0');
+  const insideSales = brField(11,'insideSales', '0');
+  const rewardsRedeemed = brField(11,'rewardsRedeemed', String(Math.round(d.redeems)));
+  const comdataSav = brField(11,'comdataSav','3,540');
+  const cokeAom = brField(11,'cokeAom', '2,909');
+  const rewardsAdds = brField(11,'rewardsAdds', String(Math.round(d.adds)));
+  const memFee = brField(11,'memFee', String(Math.round(d.memAnnual)));
+  // Totals (recomputed live by the user when they edit; we render the seed)
+  const total = (s) => (parseDollarString('$'+s)) || (+s||0);
+  const totalRev = total(rewardsRedeemed)+total(dieselSales)+total(defSales)+total(fuelmanRev)+total(insideSales);
+  const totalSav = total(comdataSav)+total(cokeAom);
+  const totalExp = total(rewardsAdds)+total(memFee);
+  const net = totalRev + totalSav - totalExp;
+  return `
+    <div class="br-slide${_brSlide===11?' active':''}" data-slide="11">
+      ${brSlideShellHTML(11, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(11,'title','Business Review Summary: '+d.year)}</h2>
+        <div class="br-s11-grid">
+          <div class="br-s11-card rev">
+            <h4>Revenues</h4>
+            <div class="br-s11-row"><span>Rewards Redeemed</span><span class="v">$<span class="br-s11-num" data-br-num="rewardsRedeemed">${brEditable(11,'rewardsRedeemed', String(Math.round(d.redeems)))}</span></span></div>
+            <div class="br-s11-row"><span>Diesel Sales</span><span class="v">$<span class="br-s11-num" data-br-num="dieselSales">${brEditable(11,'dieselSales', String(Math.round(d.revenueAuto)))}</span></span></div>
+            <div class="br-s11-row"><span>DEF Sales</span><span class="v">$<span class="br-s11-num" data-br-num="defSales">${brEditable(11,'defSales','0')}</span></span></div>
+            <div class="br-s11-row"><span>Fuelman</span><span class="v">$<span class="br-s11-num" data-br-num="fuelmanRev">${brEditable(11,'fuelmanRev','0')}</span></span></div>
+            <div class="br-s11-row"><span>Inside Store Sales</span><span class="v">$<span class="br-s11-num" data-br-num="insideSales">${brEditable(11,'insideSales','0')}</span></span></div>
+            <div class="br-s11-total">Total: $<span id="br-s11-totalRev">${fmt$(totalRev)}</span></div>
+          </div>
+          <div class="br-s11-card sav">
+            <h4>Savings</h4>
+            <div class="br-s11-row"><span>Comdata Price File</span><span class="v">$<span class="br-s11-num" data-br-num="comdataSav">${brEditable(11,'comdataSav','3,540')}</span></span></div>
+            <div class="br-s11-row"><span>Coke &amp; All Over Media</span><span class="v">$<span class="br-s11-num" data-br-num="cokeAom">${brEditable(11,'cokeAom','2,909')}</span></span></div>
+            <div class="br-s11-total">Total: $<span id="br-s11-totalSav">${fmt$(totalSav)}</span></div>
+          </div>
+          <div class="br-s11-card exp" style="grid-column:span 2">
+            <h4>Expenses</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 30px">
+              <div class="br-s11-row"><span>Rewards (add points)</span><span class="v">$<span class="br-s11-num" data-br-num="rewardsAdds">${brEditable(11,'rewardsAdds', String(Math.round(d.adds)))}</span></span></div>
+              <div class="br-s11-row"><span>Membership Fee (annual)</span><span class="v">$<span class="br-s11-num" data-br-num="memFee">${brEditable(11,'memFee', String(Math.round(d.memAnnual)))}</span></span></div>
+            </div>
+            <div class="br-s11-total">Total: $<span id="br-s11-totalExp">${fmt$(totalExp)}</span></div>
+          </div>
+          <div class="br-s11-net">${brEditable(11,'netLbl','Net Income')}: $<span id="br-s11-net">${fmt$(net)}</span></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide12(d){
+  return `
+    <div class="br-slide${_brSlide===12?' active':''}" data-slide="12">
+      ${brSlideShellHTML(12, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(12,'title','Next Steps: Moving Forward')}</h2>
+        <div class="br-s12-grid">
+          <div class="br-s12-card">
+            <h4>${brEditable(12,'h1','1. Fuel Programs')}</h4>
+            <ul>
+              <li>${brEditable(12,'h1a','Review opportunities for fleet gallons')}</li>
+              <li>${brEditable(12,'h1b','Review opportunities for additional aggregator gallons')}</li>
+            </ul>
+          </div>
+          <div class="br-s12-card">
+            <h4>${brEditable(12,'h2','2. Vendor Programs')}</h4>
+            <ul>
+              <li>${brEditable(12,'h2a','Savings opportunity review on other programs (e.g., Sysco, Entegra, Lynco, Truck Parking Club)')}</li>
+            </ul>
+          </div>
+          <div class="br-s12-card">
+            <h4>${brEditable(12,'h3','3. Rewards')}</h4>
+            <ul>
+              <li>${brEditable(12,'h3a','Rewards mobile app with promotions coming soon')}</li>
+            </ul>
+          </div>
+          <div class="br-s12-card">
+            <h4>${brEditable(12,'h4','4. Merchant Console')}</h4>
+            <ul>
+              <li>${brEditable(12,'h4a','Utilize for: rewards reports, gallons reports, fuel pricing and more')}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function brSlide13(d){
+  return `
+    <div class="br-slide${_brSlide===13?' active':''}" data-slide="13">
+      ${brSlideShellHTML(13, d.stop.name)}
+      <div class="br-body">
+        <h2 class="br-h2">${brEditable(13,'title','Business Review: Contacts')}</h2>
+        <div class="br-s13-grid">
+          <div class="br-s13-card">
+            <h4>${brEditable(13,'oH','Office Information')}</h4>
+            <div class="lbl">Address</div>
+            <div class="val">${brEditable(13,'oAddr1','1615 12th Ave. Rd. Suite C',{tag:'div'})}<br>${brEditable(13,'oAddr2','Nampa, ID 83686')}</div>
+            <div class="lbl">Phone</div>
+            <div class="val">${brEditable(13,'oPhone','(888) 540-2909')}</div>
+            <div class="lbl">Hours</div>
+            <div class="val">${brEditable(13,'oHrs1','Mon - Fri: 8:00 am – 5:00 pm MT',{tag:'div'})}<br>${brEditable(13,'oHrs2','Closed Weekends')}</div>
+          </div>
+          <div class="br-s13-card">
+            <h4>${brEditable(13,'kH','Key Contacts')}</h4>
+            <div class="lbl">Growth Strategist</div>
+            <div class="val">${brEditable(13,'gsName','Maria Coleman',{tag:'div'})}<br>${brEditable(13,'gsEmail','maria@roadyscorp.com')}<br>${brEditable(13,'gsPhone','208-810-4249')}</div>
+            <div class="lbl">Rewards</div>
+            <div class="val">${brEditable(13,'rPhone','888-733-5923')}</div>
+            <div class="lbl">Accounting</div>
+            <div class="val">${brEditable(13,'aEmail','accounting@roadyscorp.com')}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Generic table-cell setter used by slides with multi-row tables.
+function brTblCell(slide, key, idx, field, value){
+  const arr = brField(slide, key, []);
+  if(!Array.isArray(arr)) return;
+  const next = arr.slice();
+  if(!next[idx]) next[idx] = {};
+  next[idx] = Object.assign({}, next[idx], { [field]: value });
+  brFieldChanged(slide, key, next);
+  brSave();
+}
+
+function brRender(){
+  const stop = MEMBERS.find(m => m.id === _brStopId);
+  if(!stop){ brClose(); return; }
+  const d = brBuildAutoData(_brStopId, _brPeriod);
+  if(!d){ brClose(); return; }
+
+  const headerStop = `${esc(d.stop.name)} — ${esc(d.stop.id)}`;
+  const slides = [
+    brSlide1(d), brSlide2(d), brSlide3(d), brSlide4(d), brSlide5(d),
+    brSlide6(d), brSlide7(d), brSlide8(d), brSlide9(d), brSlide10(d),
+    brSlide11(d), brSlide12(d), brSlide13(d)
+  ];
+  const thumbs = slides.map((_, i) => `<div class="br-thumb${(i+1)===_brSlide?' active':''}" onclick="brGoSlide(${i+1})">${i+1}</div>`).join('');
+
+  document.getElementById('br-overlay').innerHTML = `
+    <div class="br-toolbar">
+      <span class="br-title">📊 Business Review Deck</span>
+      <span class="br-sub">${headerStop} · ${esc(d.periodLabel)}</span>
+      <span class="br-spacer"></span>
+      <span style="font-size:.74em;color:#94a3b8">Period:</span>
+      <select id="br-period-sel" onchange="brSwitchPeriod(this.value)">
+        <option value="last12"${_brPeriod==='last12'?' selected':''}>Last 12 months</option>
+        <option value="rolling12"${_brPeriod==='rolling12'?' selected':''}>Rolling 12 months</option>
+        <option value="ytd"${_brPeriod==='ytd'?' selected':''}>YTD</option>
+      </select>
+      <button class="br-btn" onclick="brPrev()">← Prev</button>
+      <span class="br-page-ind" id="br-page-ind">Slide ${_brSlide} of 13</span>
+      <button class="br-btn" onclick="brNext()">Next →</button>
+      <button class="br-btn" onclick="brResetSlide()" title="Clear edits on the current slide">↺ Reset slide</button>
+      <button class="br-btn primary" onclick="brExportPDF()">🖨 Export PDF</button>
+      <button class="br-btn danger" onclick="brClose()">✕ Close</button>
+    </div>
+    <div class="br-stage"><div class="br-deck">${slides.join('')}</div></div>
+    <div class="br-thumbs">${thumbs}</div>
+  `;
+  brBindEditables();
+  // Defer chart render to next tick so the canvas is in the DOM
+  if(_brSlide === 8) setTimeout(brRenderGallonsChart, 0);
+}
+
+function brResetSlide(){
+  if(!_brData) return;
+  if(!confirm('Clear all your edits on this slide and revert to the auto-filled defaults?')) return;
+  delete _brData.fields[_brSlide];
+  // Also drop any image slot whose key starts with s<n>-
+  const prefix = 's' + _brSlide + '-';
+  Object.keys(_brData.images).forEach(k => { if(k.indexOf(prefix) === 0) delete _brData.images[k]; });
+  brSave();
+  brRender();
+}
+
+function brExportPDF(){
+  // window.print() with our @media print rules — every .br-slide is shown,
+  // each forced onto its own landscape page. We blur first so any
+  // pending edit gets persisted before the browser captures the page.
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  brSave();
+  // Inject a transient @page rule for landscape Letter, then mark the body
+  // so the print stylesheet activates. Both come off in afterprint so the
+  // existing Stop Detail print path keeps its default page setup.
+  const style = document.createElement('style');
+  style.id = 'br-print-page-style';
+  style.textContent = '@media print { @page { size: 11in 8.5in; margin: 0; } }';
+  document.head.appendChild(style);
+  document.body.classList.add('br-printing');
+  const cleanup = () => {
+    document.body.classList.remove('br-printing');
+    const s = document.getElementById('br-print-page-style');
+    if(s) s.remove();
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  // Defer one frame so layout settles before print captures the page
+  setTimeout(() => window.print(), 50);
+}
+
+// ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
 initLogin();
@@ -6280,4 +7348,7 @@ initLogin();
     </div>
   </div>
 </div>
+
+<!-- PHASE 9: BUSINESS REVIEW DECK OVERLAY -->
+<div id="br-overlay"></div>
 </body>
