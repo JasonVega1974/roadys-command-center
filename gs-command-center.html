@@ -490,8 +490,27 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
 .gal-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:transform .12s,border-color .12s}
 .gal-card:hover{border-color:var(--cyan);transform:translateY(-2px)}
-.gal-thumb{aspect-ratio:4/3;background:linear-gradient(135deg,#1a2236,#0f172a);display:flex;align-items:center;justify-content:center;overflow:hidden}
-.gal-thumb img{max-width:100%;max-height:100%;object-fit:contain}
+/* Thumbnail background — defaults to light for logos/vendors (better contrast
+   against transparent/white-edged PNGs), dark for screenshots & photos.
+   Click the thumbnail to cycle: auto → light → dark → checker → auto. */
+.gal-thumb{aspect-ratio:4/3;background:linear-gradient(135deg,#1a2236,#0f172a);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;position:relative;transition:background .15s}
+.gal-thumb img{max-width:100%;max-height:100%;object-fit:contain;position:relative;z-index:1}
+.gal-card[data-cat="logo"] .gal-thumb,
+.gal-card[data-cat="vendor"] .gal-thumb{background:#ffffff}
+.gal-card[data-bg="light"] .gal-thumb{background:#ffffff!important}
+.gal-card[data-bg="dark"]  .gal-thumb{background:linear-gradient(135deg,#1a2236,#0f172a)!important}
+.gal-card[data-bg="checker"] .gal-thumb{
+  background-color:#ffffff!important;
+  background-image:
+    linear-gradient(45deg,#e2e8f0 25%,transparent 25%),
+    linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#e2e8f0 75%),
+    linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)!important;
+  background-size:14px 14px!important;
+  background-position:0 0,0 7px,7px -7px,-7px 0!important;
+}
+.gal-thumb::after{content:'🌗';position:absolute;top:6px;right:6px;font-size:.7em;background:rgba(15,23,42,.78);color:#fff;padding:3px 8px;border-radius:6px;letter-spacing:.04em;font-weight:700;opacity:0;transition:opacity .15s;z-index:2;pointer-events:none}
+.gal-thumb:hover::after{opacity:1}
 .gal-meta{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .gal-label{font-weight:700;font-size:.86em;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gal-tags{display:flex;gap:4px;flex-wrap:wrap}
@@ -6837,6 +6856,27 @@ async function galleryDelete(id){
   await galleryLoad(true);
 }
 
+// Per-card thumbnail background preference (light / dark / checker / auto).
+// Stored in localStorage so the override sticks; auto = use category default.
+const GALLERY_BG_LS_KEY = 'gs_cmd_gallery_bg_prefs_v1';
+function galleryBgPrefs(){
+  try { return JSON.parse(localStorage.getItem(GALLERY_BG_LS_KEY) || '{}') || {}; } catch(e){ return {}; }
+}
+function galleryCycleBg(id){
+  const order = ['', 'light', 'dark', 'checker'];   // '' = auto / category default
+  const prefs = galleryBgPrefs();
+  const cur = prefs[id] || '';
+  const next = order[(order.indexOf(cur) + 1) % order.length];
+  if(next) prefs[id] = next; else delete prefs[id];
+  try { localStorage.setItem(GALLERY_BG_LS_KEY, JSON.stringify(prefs)); } catch(e){}
+  // Update the card in place — no full re-render needed
+  const card = document.querySelector('.gal-card[data-id="' + CSS.escape(id) + '"]');
+  if(card){
+    if(next) card.setAttribute('data-bg', next);
+    else card.removeAttribute('data-bg');
+  }
+}
+
 // ─── Tab UI ─────────────────────────────────────────────────────────────
 function galleryRender(){
   const el = document.getElementById('gallery-content');
@@ -6854,9 +6894,10 @@ function galleryPaint(el){
   const adminBadge = _galleryAdminUnlocked
     ? '<span class="gal-admin on">🔓 Admin unlocked</span>'
     : '<span class="gal-admin off" onclick="galleryEnsureAdmin(true);galleryRender()">🔐 Locked — click to unlock</span>';
+  const bgPrefs = galleryBgPrefs();
   const cards = items.length ? items.map(r => `
-    <div class="gal-card" data-id="${esc(r.id)}">
-      <div class="gal-thumb"><img src="${esc(r.data_url)}" alt="${esc(r.label)}"/></div>
+    <div class="gal-card" data-id="${esc(r.id)}" data-cat="${esc(r.category||'other')}"${bgPrefs[r.id] ? ` data-bg="${esc(bgPrefs[r.id])}"` : ''}>
+      <div class="gal-thumb" onclick="galleryCycleBg('${esc(r.id)}')" title="Click to cycle thumbnail background"><img src="${esc(r.data_url)}" alt="${esc(r.label)}"/></div>
       <div class="gal-meta">
         <div class="gal-label" title="${esc(r.label)}">${esc(r.label)}</div>
         <div class="gal-tags">
