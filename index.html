@@ -12748,7 +12748,7 @@ function implSubscribeRealtime(){
         // DELETE events carry the deleted row's id in payload.old, not payload.new
         if(payload.eventType==='DELETE'){
           const oldId = payload.old && payload.old.id;
-          if(!oldId) return;
+          if(!oldId || oldId==='__impl_templates__') return;
           implSites = implSites.filter(s=>s.id!==oldId);
           if(_implDirtyIds && typeof _implDirtyIds.delete==='function') _implDirtyIds.delete(oldId);
           try{ localStorage.setItem(IMPL_STORAGE_KEY, JSON.stringify({sites:implSites, projectNotes:implProjectNotes, lastUpdate:new Date().toLocaleString()})); }catch(e){}
@@ -12756,7 +12756,7 @@ function implSubscribeRealtime(){
           return;
         }
         const updated = payload.new;
-        if(!updated || !updated.id) return;
+        if(!updated || !updated.id || updated.id==='__impl_templates__') return;
         // Skip remote updates for sites that have local changes not yet flushed to Supabase.
         // Without this guard, a stale Realtime event (e.g. from the initial page-load repair)
         // can arrive after the user edits a task and overwrite the unsaved local change.
@@ -15090,7 +15090,16 @@ async function implLoadFromSupabase(){
     const {data,error}=await sb.from('impl_sites').select('*').order('updated_at',{ascending:false});
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
     if(data&&data.length){
-      implSites=data.map(r=>({
+      // Restore custom templates from the sentinel row (if present)
+      const tplRow = data.find(r=>r.id==='__impl_templates__');
+      if(tplRow && Array.isArray(tplRow.tasks)){
+        if(implCustomTemplates===null) implCustomTemplates={};
+        tplRow.tasks.forEach(entry=>{
+          if(entry.key && Array.isArray(entry.tasks)) implCustomTemplates[entry.key]=entry.tasks;
+        });
+        try{ localStorage.setItem(IMPL_TPL_STORAGE_KEY,JSON.stringify(implCustomTemplates)); }catch(e){}
+      }
+      implSites=data.filter(r=>r.id!=='__impl_templates__').map(r=>({
         id:          r.id,
         location:    r.location||'',
         projectType: r.project_type||'',
@@ -15257,6 +15266,27 @@ function implTplSave() {
     if(implIsQuotaError(e)) implQuotaAlert('save template change');
     else alert('Could not save template change: ' + (e.message||e));
     throw e;
+  }
+  implTplSaveToSupabase();
+}
+
+async function implTplSaveToSupabase() {
+  const sb = getRoadysSB();
+  if (!sb) return;
+  implTplLoad();
+  const tplArray = Object.entries(implCustomTemplates || {}).map(([key, tasks]) => ({ key, tasks }));
+  try {
+    const { error } = await sb.from('impl_sites').upsert({
+      id: '__impl_templates__',
+      location: '__impl_templates__',
+      project_type: '__impl_templates__',
+      start_date: '',
+      tasks: tplArray,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+    if (error) console.warn('[impl] template supabase save failed:', error.message || error.code);
+  } catch(e) {
+    console.warn('[impl] implTplSaveToSupabase error:', e);
   }
 }
 
@@ -15491,7 +15521,8 @@ function implAddTaskToSite(siteId) {
   if (!taskName || !taskName.trim()) return;
   const assignee = prompt('Assign to (leave blank for Unassigned):') || 'Unassigned';
   site.tasks.push({ task: taskName.trim(), assignedTo: assignee.trim() || 'Unassigned', status: 'To Do', note: '' });
-  implSaveSites();
+  implSaveSites(siteId);
+  implSaveSiteToSupabase(site);
   implRenderAll();
   // Re-open the task panel
   setTimeout(() => {
@@ -15513,7 +15544,8 @@ function implDeleteTaskFromSite(siteId, flatIdx) {
 
 This cannot be undone.`)) return;
   site.tasks.splice(flatIdx, 1);
-  implSaveSites();
+  implSaveSites(siteId);
+  implSaveSiteToSupabase(site);
   implRenderAll();
   setTimeout(() => {
     const row = document.getElementById('impl-tasks-' + siteId);
