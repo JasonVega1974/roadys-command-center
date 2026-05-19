@@ -11695,7 +11695,7 @@ function implFormatDate(ds){
   return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear();
 }
 function implNormStatus(val){const s=String(val||'').trim();if(!s||/^select$/i.test(s))return'To Do';if(/^n\/?a$/i.test(s)||/^not\s*applicable$/i.test(s))return'N/A';if(/^done$/i.test(s))return'Done';if(/^in\s*progress$/i.test(s))return'In Progress';if(/^to\s*do$/i.test(s))return'To Do';return s;}
-function implEsc(t){const d=document.createElement('div');d.textContent=t??'';return d.innerHTML;}
+function implEsc(t){const d=document.createElement('div');d.textContent=t??'';return d.innerHTML.replace(/"/g,'&quot;');}
 
 function implCalcMetrics(){
   const all=implSites.flatMap(s=>s.tasks).filter(t=>!/^(document collection|create in interstate|setup & training|cancel preparation)$/i.test(t.task)&&t.status!=='N/A');
