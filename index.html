@@ -15646,11 +15646,14 @@ function masterOpenTaskEdit(siteId, flatIdx){
   const site = implSites.find(s=>s.id===siteId);
   if(!site || !site.tasks[flatIdx]) return;
   const task = site.tasks[flatIdx];
+  const sel = document.getElementById('masterTaskAssignee');
+  sel.innerHTML = '<option value="">— Select Person —</option>' +
+    IMPL_TEAM.map(m=>`<option value="${m}">${m}</option>`).join('');
   document.getElementById('masterTaskSiteId').value=siteId;
   document.getElementById('masterTaskGroupIdx').value=flatIdx; // reuse field for flat idx
   document.getElementById('masterTaskTaskIdx').value=''; // unused in flat mode
   document.getElementById('masterTaskName').value=task.task||'';
-  document.getElementById('masterTaskAssignee').value=task.assignedTo||'';
+  sel.value=task.assignedTo||'';
   document.getElementById('masterTaskEditOverlay').style.display='flex';
 }
 
