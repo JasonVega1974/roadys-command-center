@@ -15386,7 +15386,7 @@ Your custom edits for this type will be lost.`)) return;
 }
 
 // ── Push template changes to existing sites ────
-function implTplPushToExisting(ptKey) {
+async function implTplPushToExisting(ptKey) {
   const sites = implSites.filter(s => s.projectType === ptKey);
   if (sites.length === 0) { alert(`No existing sites found for "${ptKey}".`); return; }
 
@@ -15412,31 +15412,74 @@ function implTplPushToExisting(ptKey) {
 
   const tplTasks = implTplGet(ptKey);
   let addedCount = 0, updatedCount = 0;
+  const modifiedSiteIds = new Set();
 
   sites.forEach(site => {
     tplTasks.forEach(tplTask => {
       const existing = site.tasks.find(t => t.task.trim().toLowerCase() === tplTask.task.trim().toLowerCase());
       if (existing) {
-        // Update assignee if template changed it
         if (existing.assignedTo !== tplTask.assignedTo) {
           existing.assignedTo = tplTask.assignedTo;
           updatedCount++;
+          modifiedSiteIds.add(site.id);
         }
       } else {
-        // New task — add it
         site.tasks.push({ task: tplTask.task, assignedTo: tplTask.assignedTo, status: 'To Do', note: '' });
         addedCount++;
+        modifiedSiteIds.add(site.id);
       }
     });
   });
 
+  if (modifiedSiteIds.size === 0) {
+    implRenderAll();
+    alert(`No changes needed — all existing sites already match the template.`);
+    return;
+  }
+
+  // Save to localStorage immediately
   implSaveSites();
   implRenderAll();
+
+  // Force-push each modified site to Supabase now (don't rely only on the debounce)
+  const sb = getRoadysSB();
+  if (sb) {
+    const toSave = implSites.filter(s => modifiedSiteIds.has(s.id));
+    const el = document.getElementById('implLastUpdate');
+    if (el) el.textContent = '⏳ Saving to cloud...';
+    try {
+      const rows = toSave.map(s => ({
+        id:           s.id,
+        location:     s.location || '',
+        project_type: s.projectType || '',
+        start_date:   s.startDate || '',
+        tasks:        s.tasks || [],
+        updated_at:   new Date().toISOString(),
+      }));
+      const { error } = await sb.from('impl_sites').upsert(rows, { onConflict: 'id' });
+      if (error) {
+        const msg = error.message || error.code || JSON.stringify(error);
+        console.error('[impl] Push save error:', msg);
+        if (el) el.textContent = '⚠ Cloud save failed — changes stored locally only';
+        alert(`Changes applied locally but could not save to cloud.\n\nError: ${msg}\n\nClick "☁ Save to Cloud" to retry.`);
+        return;
+      }
+      if (el) el.textContent = new Date().toLocaleString();
+    } catch(e) {
+      const msg = e && e.message ? e.message : String(e);
+      console.error('[impl] Push save exception:', msg);
+      if (el) el.textContent = '⚠ Cloud save failed — changes stored locally only';
+      alert(`Changes applied locally but could not save to cloud.\n\nError: ${msg}\n\nClick "☁ Save to Cloud" to retry.`);
+      return;
+    }
+  }
+
   alert(`✓ Done!
 
 ${addedCount} task(s) added
 ${updatedCount} task(s) reassigned
-Across ${sites.length} site(s)`);
+Across ${modifiedSiteIds.size} site(s)
+✓ Saved to cloud`);
 }
 
 // ── Site-level: Add a task to one specific site ──
@@ -15625,7 +15668,10 @@ function masterSaveTaskEdit(){
   if(!site || !site.tasks[flatIdx]) return;
   site.tasks[flatIdx].task=newName;
   if(newAssignee) site.tasks[flatIdx].assignedTo=newAssignee;
-  implSaveSites();
+  // Save to localStorage + start debounce
+  implSaveSites(siteId);
+  // Also immediately push to Supabase so a page refresh doesn't revert
+  implSaveSiteToSupabase(site);
   implRenderAll();
   masterCloseTaskEdit();
 }
