@@ -12757,6 +12757,10 @@ function implSubscribeRealtime(){
         }
         const updated = payload.new;
         if(!updated || !updated.id) return;
+        // Skip remote updates for sites that have local changes not yet flushed to Supabase.
+        // Without this guard, a stale Realtime event (e.g. from the initial page-load repair)
+        // can arrive after the user edits a task and overwrite the unsaved local change.
+        if(_implDirtyIds && _implDirtyIds.has(updated.id)) return;
         const idx = implSites.findIndex(s=>s.id===updated.id);
         const site = {
           id:          updated.id,
@@ -15093,31 +15097,6 @@ async function implLoadFromSupabase(){
         startDate:   r.start_date||'',
         tasks:       r.tasks||[],
       }));
-      // Defensive repair: undo damage caused by stale cached HTML in other
-      // browsers that still runs the old Angel->(OPEN) auto-migration.
-      // For every Onboarding task that the template assigns to Angel,
-      // if the cloud row has it as (OPEN), put it back on Angel.
-      try{
-        const canonicalAngel = (IMPL_TEMPLATES && IMPL_TEMPLATES.Onboarding && IMPL_TEMPLATES.Onboarding.Angel) || [];
-        const angelSet = new Set(canonicalAngel);
-        const repairedIds = new Set();
-        implSites.forEach(site=>{
-          if(site.projectType!=='Onboarding' || !Array.isArray(site.tasks)) return;
-          site.tasks.forEach(t=>{
-            if(angelSet.has(t.task) && t.assignedTo==='(OPEN)'){
-              t.assignedTo='Angel';
-              repairedIds.add(site.id);
-            }
-          });
-        });
-        if(repairedIds.size){
-          console.log('[impl] Repairing Angel assignments on', repairedIds.size, 'sites poisoned by stale cached HTML');
-          repairedIds.forEach(id=>{
-            const s=implSites.find(x=>x.id===id);
-            if(s) implSaveSiteToSupabase(s);
-          });
-        }
-      }catch(e){ console.warn('[impl] Angel repair skipped:', e&&e.message?e.message:e); }
       try{
         localStorage.setItem(IMPL_STORAGE_KEY,JSON.stringify({
           sites:implSites,

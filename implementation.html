@@ -5816,6 +5816,8 @@ function implSubscribeRealtime(){
         }
         const updated = payload.new;
         if(!updated || !updated.id) return;
+        // Skip remote updates for sites with unsaved local changes.
+        if(typeof _implDirtyIds!=='undefined' && _implDirtyIds && _implDirtyIds.has(updated.id)) return;
         const idx = implSites.findIndex(s=>s.id===updated.id);
         const site = {
           id:          updated.id,
@@ -7913,31 +7915,6 @@ async function implLoadFromSupabase(){
         startDate:   r.start_date||'',
         tasks:       r.tasks||[],
       }));
-      // Defensive repair: undo damage caused by stale cached HTML in other
-      // browsers that still runs the old Angel->(OPEN) auto-migration.
-      // For every Onboarding task that the template assigns to Angel,
-      // if the cloud row has it as (OPEN), put it back on Angel.
-      try{
-        const canonicalAngel = (IMPL_TEMPLATES && IMPL_TEMPLATES.Onboarding && IMPL_TEMPLATES.Onboarding.Angel) || [];
-        const angelSet = new Set(canonicalAngel);
-        const repairedIds = new Set();
-        implSites.forEach(site=>{
-          if(site.projectType!=='Onboarding' || !Array.isArray(site.tasks)) return;
-          site.tasks.forEach(t=>{
-            if(angelSet.has(t.task) && t.assignedTo==='(OPEN)'){
-              t.assignedTo='Angel';
-              repairedIds.add(site.id);
-            }
-          });
-        });
-        if(repairedIds.size){
-          console.log('[impl] Repairing Angel assignments on', repairedIds.size, 'sites poisoned by stale cached HTML');
-          repairedIds.forEach(id=>{
-            const s=implSites.find(x=>x.id===id);
-            if(s) implSaveSiteToSupabase(s);
-          });
-        }
-      }catch(e){ console.warn('[impl] Angel repair skipped:', e&&e.message?e.message:e); }
       try{
         localStorage.setItem(IMPL_STORAGE_KEY,JSON.stringify({
           sites:implSites,
@@ -8208,44 +8185,56 @@ function implTplPushToExisting(ptKey) {
   const sites = implSites.filter(s => s.projectType === ptKey);
   if (sites.length === 0) { alert(`No existing sites found for "${ptKey}".`); return; }
 
+  const tplTasks = implTplGet(ptKey);
+  const tplKeys = new Set(tplTasks.map(t => t.task.trim().toLowerCase()));
+
   if (!confirm(
-    `Push template changes to all ${sites.length} existing "${ptKey}" site(s)?
+    `Push template to all ${sites.length} existing "${ptKey}" site(s)?
 
 ` +
-    `This will:
+    `Each site will be made to match the template:
 ` +
-    `• Add any NEW tasks (with status "To Do")
+    `• ADD tasks that are in the template but missing from the site (status: To Do)
 ` +
-    `• Rename tasks that match by name
+    `• UPDATE assignees on tasks that match by name
 ` +
-    `• Reassign tasks that match by name
+    `• REMOVE tasks that are no longer in the template (their status & notes will be lost)
 
 ` +
-    `This will NOT:
+    `Existing status and notes are preserved on tasks that match by name.
+
 ` +
-    `• Delete existing tasks
-` +
-    `• Change statuses or notes on existing tasks`
+    `Note: A renamed task counts as "removed + added" — its status/notes will not transfer to the new name.`
   )) return;
 
-  const tplTasks = implTplGet(ptKey);
-  let addedCount = 0, updatedCount = 0;
+  let addedCount = 0, updatedCount = 0, removedCount = 0;
 
   sites.forEach(site => {
-    tplTasks.forEach(tplTask => {
-      const existing = site.tasks.find(t => t.task.trim().toLowerCase() === tplTask.task.trim().toLowerCase());
+    const oldTasks = Array.isArray(site.tasks) ? site.tasks : [];
+    const oldByKey = new Map();
+    oldTasks.forEach(t => oldByKey.set(String(t.task||'').trim().toLowerCase(), t));
+
+    const newTasks = tplTasks.map(tplTask => {
+      const key = tplTask.task.trim().toLowerCase();
+      const existing = oldByKey.get(key);
       if (existing) {
-        // Update assignee if template changed it
-        if (existing.assignedTo !== tplTask.assignedTo) {
-          existing.assignedTo = tplTask.assignedTo;
-          updatedCount++;
-        }
-      } else {
-        // New task — add it
-        site.tasks.push({ task: tplTask.task, assignedTo: tplTask.assignedTo, status: 'To Do', note: '' });
-        addedCount++;
+        if (existing.assignedTo !== tplTask.assignedTo) updatedCount++;
+        return {
+          task: tplTask.task,
+          assignedTo: tplTask.assignedTo,
+          status: existing.status || 'To Do',
+          note: existing.note || ''
+        };
       }
+      addedCount++;
+      return { task: tplTask.task, assignedTo: tplTask.assignedTo, status: 'To Do', note: '' };
     });
+
+    oldTasks.forEach(t => {
+      if (!tplKeys.has(String(t.task||'').trim().toLowerCase())) removedCount++;
+    });
+
+    site.tasks = newTasks;
   });
 
   implSaveSites();
@@ -8254,6 +8243,7 @@ function implTplPushToExisting(ptKey) {
 
 ${addedCount} task(s) added
 ${updatedCount} task(s) reassigned
+${removedCount} task(s) removed
 Across ${sites.length} site(s)`);
 }
 
