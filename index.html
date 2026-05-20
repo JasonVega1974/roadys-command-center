@@ -15502,37 +15502,40 @@ async function implTplPushToExisting(ptKey) {
 
   if (!confirm(
     `Push template to all ${sites.length} "${ptKey}" site(s)?\n\n` +
-    `This will:\n` +
-    `• Add NEW tasks from the template (status "To Do")\n` +
-    `• Update assignees on tasks that match by name\n\n` +
-    `This will NOT:\n` +
-    `• Delete existing tasks\n` +
-    `• Change statuses or notes on existing tasks`
+    `This will REPLACE each site's task list with the ${tplTasks.length} tasks in the template:\n` +
+    `• All assignees will match the template exactly\n` +
+    `• Progress (status & notes) is preserved for tasks with the same name\n` +
+    `• Tasks NOT in the template will be removed\n\n` +
+    `This cannot be undone.`
   )) return;
 
-  let addedCount = 0, updatedCount = 0;
   const modifiedSiteIds = new Set();
 
   sites.forEach(site => {
-    tplTasks.forEach(tplTask => {
-      const tplName = (tplTask.task || '').trim().toLowerCase();
-      const tplAssignee = tplTask.assignedTo || '';
-      const existing = site.tasks.find(t => (t.task || '').trim().toLowerCase() === tplName);
-      if (existing) {
-        if ((existing.assignedTo || '') !== tplAssignee) {
-          existing.assignedTo = tplAssignee;
-          updatedCount++;
-          modifiedSiteIds.add(site.id);
-        }
-      } else {
-        site.tasks.push({ task: tplTask.task, assignedTo: tplAssignee, status: 'To Do', note: '' });
-        addedCount++;
-        modifiedSiteIds.add(site.id);
-      }
+    // Index existing task progress by name so we can carry it forward
+    const prior = {};
+    (site.tasks || []).forEach(t => {
+      const key = (t.task || '').trim().toLowerCase();
+      if (key) prior[key] = { status: t.status || 'To Do', note: t.note || '' };
     });
-  });
 
-  console.log(`[impl] Push "${ptKey}": +${addedCount} added, ~${updatedCount} reassigned across ${modifiedSiteIds.size} site(s)`);
+    // Build replacement task list from template, restoring any saved progress
+    const newTasks = tplTasks.map(tpl => {
+      const key = (tpl.task || '').trim().toLowerCase();
+      const p = prior[key];
+      return {
+        task: tpl.task,
+        assignedTo: tpl.assignedTo || '',
+        status: p ? p.status : 'To Do',
+        note: p ? p.note : ''
+      };
+    });
+
+    if (JSON.stringify(newTasks) !== JSON.stringify(site.tasks)) {
+      site.tasks = newTasks;
+      modifiedSiteIds.add(site.id);
+    }
+  });
 
   if (modifiedSiteIds.size === 0) {
     implRenderAll();
@@ -15540,12 +15543,9 @@ async function implTplPushToExisting(ptKey) {
     return;
   }
 
-  // Save to localStorage, dirty only the modified sites
   modifiedSiteIds.forEach(id => implSaveSites(id));
   implRenderAll();
 
-  // Push each modified site individually — same path as all other saves, avoids
-  // batch-upsert permission issues where one failing row silently rolls back the rest.
   const el = document.getElementById('implLastUpdate');
   if (el) el.textContent = '⏳ Saving to cloud...';
   const toSave = implSites.filter(s => modifiedSiteIds.has(s.id));
@@ -15556,7 +15556,7 @@ async function implTplPushToExisting(ptKey) {
   if (failCount > 0) {
     alert(`Changes applied to ${modifiedSiteIds.size} site(s) locally.\n⚠ ${failCount} site(s) could not save to cloud — click "☁ Save to Cloud" to retry.`);
   } else {
-    alert(`✓ Done!\n\n${addedCount} task(s) added\n${updatedCount} task(s) reassigned\nAcross ${modifiedSiteIds.size} site(s)\n✓ Saved to cloud`);
+    alert(`✓ Done!\nTemplate pushed to ${modifiedSiteIds.size} site(s) — all ${tplTasks.length} tasks with correct assignees\n✓ Saved to cloud`);
   }
 }
 
