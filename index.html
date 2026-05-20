@@ -12043,19 +12043,19 @@ function implDrillSetSort(col){
 
 function implDrillComplete(siteId, idx){
   const s=implSites.find(s=>s.id===siteId);
-  if(s&&s.tasks[idx]){ s.tasks[idx].status='Done'; implSaveSites(); implRenderAll(); implRenderDrillPanel(); }
+  if(s&&s.tasks[idx]){ s.tasks[idx].status='Done'; implSaveSites(siteId); implSaveSiteToSupabase(s); implRenderAll(); implRenderDrillPanel(); }
 }
 
 function implDrillChangeStatus(siteId, idx, val){
   const s=implSites.find(s=>s.id===siteId);
-  if(s&&s.tasks[idx]){ s.tasks[idx].status=implNormStatus(val); implSaveSites(); implRenderAll(); implRenderDrillPanel(); }
+  if(s&&s.tasks[idx]){ s.tasks[idx].status=implNormStatus(val); implSaveSites(siteId); implSaveSiteToSupabase(s); implRenderAll(); implRenderDrillPanel(); }
 }
 
 function implDrillSaveNote(siteId, idx){
   const inp=document.getElementById('drill-note-'+siteId+'-'+idx);
   if(!inp) return;
   const s=implSites.find(s=>s.id===siteId);
-  if(s&&s.tasks[idx]){ s.tasks[idx].note=inp.value; implSaveSites(); }
+  if(s&&s.tasks[idx]){ s.tasks[idx].note=inp.value; implSaveSites(siteId); implSaveSiteToSupabase(s); }
 }
 
 function implRenderDrillPanel(){
@@ -12689,7 +12689,7 @@ async function implHandleNewSite(){
 let implCurrentNotesType=null;
 function implOpenNotesModal(pt){implCurrentNotesType=pt;document.getElementById('implNotesModal').classList.add('active');document.getElementById('implNotesProjectType').textContent=pt;document.getElementById('implNotesTextarea').value=implProjectNotes[pt]||'';document.getElementById('implNotesTextarea').focus();}
 function implCloseNotesModal(){document.getElementById('implNotesModal').classList.remove('active');implCurrentNotesType=null;}
-function implSaveNotes(){if(!implCurrentNotesType)return;implProjectNotes[implCurrentNotesType]=document.getElementById('implNotesTextarea').value.trim();implSaveSites();implRenderAll();implCloseNotesModal();}
+function implSaveNotes(){if(!implCurrentNotesType)return;implProjectNotes[implCurrentNotesType]=document.getElementById('implNotesTextarea').value.trim();try{localStorage.setItem(IMPL_STORAGE_KEY,JSON.stringify({sites:implSites,projectNotes:implProjectNotes,lastUpdate:new Date().toLocaleString()}));}catch(e){}implRenderAll();implCloseNotesModal();}
 
 document.addEventListener('click',e=>{if(e.target===document.getElementById('implNewSiteModal'))implCloseNewSiteModal();if(e.target===document.getElementById('implNotesModal'))implCloseNotesModal();if(e.target===document.getElementById('implEditSiteModal'))implCloseEditSiteModal();});
 
@@ -12736,6 +12736,15 @@ function implInit(){
       }
     }
     implSubscribeRealtime();
+
+    // Refresh from Supabase when the tab comes back into focus.
+    // This prevents a user with a stale background tab from overwriting
+    // changes made by others when they next interact with the page.
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && _implDirtyIds.size === 0) {
+        implLoadFromSupabase().then(loaded => { if (loaded) implRenderAll(); });
+      }
+    });
   });
 }
 
@@ -15467,8 +15476,8 @@ async function implTplPushToExisting(ptKey) {
     return;
   }
 
-  // Save to localStorage immediately
-  implSaveSites();
+  // Save to localStorage immediately — only dirty the sites that actually changed
+  modifiedSiteIds.forEach(id => implSaveSites(id));
   implRenderAll();
 
   // Force-push each modified site to Supabase now (don't rely only on the debounce)
