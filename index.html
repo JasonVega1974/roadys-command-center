@@ -15353,6 +15353,7 @@ function implTplRender() {
   let html = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="impl-btn impl-btn-primary" onclick="implTplAddTask('${ptJs}')">➕ Add Task</button>
     <button class="impl-btn impl-btn-secondary" onclick="implTplPushToExisting('${ptJs}')" style="background:rgba(255,165,0,.12);border-color:var(--orange);color:var(--orange)">📤 Push to Existing Sites</button>
+    <button class="impl-btn impl-btn-secondary" onclick="implBulkReassign('${ptJs}')" style="background:rgba(0,200,255,.1);border-color:var(--accent);color:var(--accent)">🔄 Bulk Reassign</button>
     <button class="impl-btn impl-btn-secondary" onclick="implTplReset('${ptJs}')" style="background:rgba(255,80,80,.1);border-color:var(--red);color:var(--red)">↩️ Reset to Default</button>
     <span style="font-size:.78em;color:var(--muted);align-self:center">${tasks.length} tasks total</span>
   </div>`;
@@ -15422,6 +15423,68 @@ Your custom edits for this type will be lost.`)) return;
   delete implCustomTemplates[ptKey];
   implTplSave();
   implTplRender();
+}
+
+// ── Bulk reassign: swap one person's tasks for another across all sites of a type ──
+async function implBulkReassign(ptKey) {
+  const sites = implSites.filter(s => s.projectType === ptKey);
+  if (!sites.length) { alert(`No "${ptKey}" sites found.`); return; }
+
+  // Build list of people currently assigned in these sites so user knows what to type
+  const current = [...new Set(
+    sites.flatMap(s => s.tasks.map(t => t.assignedTo || '').filter(Boolean))
+  )].sort();
+
+  const fromRaw = prompt(
+    `Bulk Reassign — "${ptKey}" sites\n\nCurrent assignees: ${current.join(', ')}\n\nChange FROM (type exactly):`, ''
+  );
+  if (!fromRaw || !fromRaw.trim()) return;
+  const from = fromRaw.trim();
+
+  const toOpts = IMPL_TEAM.join(', ');
+  const toRaw = prompt(`Change TO (team members: ${toOpts}):`, '');
+  if (!toRaw || !toRaw.trim()) return;
+  const to = toRaw.trim();
+
+  if (from === to) { alert('From and To are the same person — nothing to do.'); return; }
+
+  // Count affected tasks before confirming
+  let preview = 0;
+  sites.forEach(s => s.tasks.forEach(t => { if ((t.assignedTo||'').trim()===from) preview++; }));
+  if (!preview) { alert(`No tasks assigned to "${from}" found in ${sites.length} "${ptKey}" site(s).`); return; }
+
+  if (!confirm(
+    `Reassign ${preview} task(s) from "${from}" → "${to}"\nacross ${sites.length} "${ptKey}" site(s)?\n\nThis cannot be undone.`
+  )) return;
+
+  let count = 0;
+  const modifiedSiteIds = new Set();
+  sites.forEach(site => {
+    site.tasks.forEach(task => {
+      if ((task.assignedTo || '').trim() === from) {
+        task.assignedTo = to;
+        count++;
+        modifiedSiteIds.add(site.id);
+      }
+    });
+  });
+
+  modifiedSiteIds.forEach(id => implSaveSites(id));
+  implRenderAll();
+
+  const el = document.getElementById('implLastUpdate');
+  if (el) el.textContent = '⏳ Saving to cloud...';
+  const results = await Promise.allSettled(
+    implSites.filter(s => modifiedSiteIds.has(s.id)).map(s => implSaveSiteToSupabase(s))
+  );
+  const failCount = results.filter(r => r.status === 'rejected' || r.value === false).length;
+  if (el) el.textContent = failCount ? '⚠ Partial save — see alert' : new Date().toLocaleString();
+
+  if (failCount) {
+    alert(`${count} task(s) reassigned locally.\n⚠ ${failCount} site(s) could not save to cloud — click "☁ Save to Cloud" to retry.`);
+  } else {
+    alert(`✓ Done!\n${count} task(s) reassigned from "${from}" → "${to}"\nAcross ${modifiedSiteIds.size} site(s)\n✓ Saved to cloud`);
+  }
 }
 
 // ── Push template changes to existing sites ────
