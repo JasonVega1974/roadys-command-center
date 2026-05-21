@@ -383,76 +383,196 @@ R00208,V00010,4200,5,2,</code>
 
       <!-- Data Source Methodology Reference -->
       <div class="panel" style="margin-bottom:20px;border-color:rgba(0,214,143,.3)">
-        <div class="panel-hdr" style="cursor:pointer;border-bottom-color:rgba(0,214,143,.2)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-          <div class="panel-title" style="color:var(--green)">📊 Data Source & Calculation Methodology</div>
-          <span style="font-size:.72em;color:var(--muted);margin-left:auto">Per John Fechik — May 2026 · Click to expand/collapse</span>
+        <div class="panel-hdr" style="cursor:pointer;border-bottom-color:rgba(0,214,143,.2)" onclick="var b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">
+          <div class="panel-title" style="color:var(--green)">📊 Top 7 Vendor Programs — Data Sources &amp; Calculation Methodology</div>
+          <span style="font-size:.72em;color:var(--muted);margin-left:auto">Per John Fechik · 5/20/26 · Click to expand/collapse</span>
         </div>
-        <div style="padding:16px;display:none">
-          <div style="font-size:.78em;color:var(--yellow);font-weight:700;margin-bottom:12px;padding:8px 10px;background:rgba(255,214,10,.06);border:1px solid rgba(255,214,10,.2);border-radius:6px">
-            ⚠️ KEY RULES: (1) All savings figures must be labeled "ESTIMATED" — except Truck Parking Club which is an exact ACH amount. (2) Do not use AI to calculate numbers. (3) Contact John Fechik with methodology questions (available up to 10pm ET).
+        <div style="padding:16px">
+          <!-- Key Rules -->
+          <div style="font-size:.79em;margin-bottom:14px;padding:10px 14px;background:rgba(255,214,10,.05);border:1px solid rgba(255,214,10,.25);border-radius:7px;line-height:1.7">
+            <span style="color:var(--yellow);font-weight:800">⚠️ GROUND RULES (John Fechik — 5/20/26 call):</span>
+            <ol style="margin:6px 0 0 18px;color:var(--text);padding:0">
+              <li>All savings figures must be labeled <b>ESTIMATED</b> — Truck Parking Club is the only exception (exact ACH amount).</li>
+              <li><b>Do not use AI</b> to generate any number — use actual report data or John's 7% default. Call John if unsure (available until 10 pm ET).</li>
+              <li>Sysco has <b>NO rebate</b>. Entegra volume rebates go to Roady's only — do not include in member benefit calculation.</li>
+              <li>For Sysco: use <b>7% default</b> unless John has provided a location-specific cost comparison %. He will send a spreadsheet with those %s.</li>
+              <li>Truck Parking Club is member <b>earnings</b>, not a rebate or savings. Show the exact 70% ACH amount — never label it estimated.</li>
+            </ol>
           </div>
-          <table style="width:100%;border-collapse:collapse;font-size:.82em">
-            <thead>
-              <tr style="border-bottom:1px solid var(--border)">
-                <th style="padding:8px 10px;text-align:left;color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Program</th>
-                <th style="padding:8px 10px;text-align:left;color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Spending Data Source</th>
-                <th style="padding:8px 10px;text-align:left;color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Estimated Savings Calculation</th>
-                <th style="padding:8px 10px;text-align:left;color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Rebate Source</th>
-                <th style="padding:8px 10px;text-align:left;color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Avg Member Savings</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Sysco / Entegra Foodservice</td>
-                <td style="padding:8px 10px;color:var(--muted)">Monthly Sysco purchase reports (Scott pulls)</td>
-                <td style="padding:8px 10px">Monthly spend × 7% (default)<br><span style="color:var(--yellow);font-size:.9em">OR × location-specific % if cost comparison done (John provides)</span></td>
-                <td style="padding:8px 10px;color:var(--muted)">No Sysco rebate. Entegra volume rebates go to Roady's quarterly (not locations).</td>
-                <td style="padding:8px 10px;color:var(--green);font-weight:700">~$1,120/mo est. on $16K/mo</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Coca-Cola Fountain</td>
-                <td style="padding:8px 10px;color:var(--muted)">Gallons purchased/mo (from Coke "Don't Edit Report")</td>
-                <td style="padding:8px 10px">Gallons × $3.00/gal avg savings (National Price + Rebate)</td>
-                <td style="padding:8px 10px;color:var(--muted)">Quarterly rebate per ACH ($1.50/gal BIBs, $1.35 Gold Peak, $2.35 FCBs). Fountain ONLY — no cans/bottles.</td>
-                <td style="padding:8px 10px;color:var(--green);font-weight:700">~$120/mo est. on 40 gal/mo</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Farmer Brothers Coffee</td>
-                <td style="padding:8px 10px;color:var(--muted)">Monthly invoices (Coffee, Tea, Cappuccino, Other Beverages)</td>
-                <td style="padding:8px 10px">Monthly spend × 6.0% (National Contracted Pricing + Coffee Rebate)</td>
-                <td style="padding:8px 10px;color:var(--muted)">$0.20/lb on whole bean or ground coffee. Quarterly. 20% off Allied Products.</td>
-                <td style="padding:8px 10px;color:var(--green);font-weight:700">~$215/mo est. on $3,600/mo</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Heartland / Global Payments</td>
-                <td style="padding:8px 10px;color:var(--muted)">Last complete monthly CC processing statement from member</td>
-                <td style="padding:8px 10px">Varies — based on cost comparison vs. current processor. No standard %.</td>
-                <td style="padding:8px 10px;color:var(--muted)">No rebate — savings from eliminated fees and below-market transaction costs.</td>
-                <td style="padding:8px 10px;color:var(--green);font-weight:700">Up to $2,500/mo (high vol)<br>Up to $500/mo (sm-mid)</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Lynco / DAS C-Store Merch.</td>
-                <td style="padding:8px 10px;color:var(--muted)">Monthly purchase reports from DAS or Lynco (emailed to Scott)</td>
-                <td style="padding:8px 10px">Monthly spend × 7% (National Contracted Pricing + Rebate combined)</td>
-                <td style="padding:8px 10px;color:var(--muted)">DAS: 2% ($5K–$24,999) or 4% ($25K+) paid annually. Lynco: 3% min (4% if corp &gt;$50K) quarterly.</td>
-                <td style="padding:8px 10px;color:var(--green);font-weight:700">~$400/mo est. on $6,000/mo</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Truck Parking Club</td>
-                <td style="padding:8px 10px;color:var(--muted)">TPC monthly report + ACH deposit (exact amounts)</td>
-                <td style="padding:8px 10px;color:var(--yellow)">70% of total parking revenue collected — EXACT number, NOT estimated. Pull directly from TPC report.</td>
-                <td style="padding:8px 10px;color:var(--muted)">Not a rebate — this is member earnings. TPC keeps 30%.</td>
-                <td style="padding:8px 10px;color:var(--green);font-weight:700">TBD — Awaiting Jan/Feb/March 2026 data</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 10px;font-weight:700;color:var(--accent)">Vistar / Cintas (C-Store Grocery)</td>
-                <td style="padding:8px 10px;color:var(--muted)">TBD</td>
-                <td style="padding:8px 10px;color:var(--muted)">TBD — Program under evaluation</td>
-                <td style="padding:8px 10px;color:var(--muted)">TBD</td>
-                <td style="padding:8px 10px;color:var(--muted)">TBD — No Vistar currently; Cintas active</td>
-              </tr>
-            </tbody>
-          </table>
+          <!-- Table -->
+          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+            <table style="width:100%;border-collapse:collapse;font-size:.81em;table-layout:fixed;min-width:1040px">
+              <colgroup>
+                <col style="width:14%">
+                <col style="width:8%">
+                <col style="width:18%">
+                <col style="width:8%">
+                <col style="width:17%">
+                <col style="width:22%">
+                <col style="width:7%">
+                <col style="width:6%">
+              </colgroup>
+              <thead>
+                <tr style="background:var(--surface2);border-bottom:2px solid var(--border2)">
+                  <th style="padding:9px 10px;text-align:left;color:var(--accent);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Program</th>
+                  <th style="padding:9px 10px;text-align:right;color:var(--accent);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Avg Mo<br>Spend</th>
+                  <th style="padding:9px 10px;text-align:left;color:var(--green);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Rebate — Rate, Timing &amp; Who Receives</th>
+                  <th style="padding:9px 10px;text-align:right;color:var(--green);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Avg<br>Rebate/Mo</th>
+                  <th style="padding:9px 10px;text-align:left;color:var(--yellow);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Est. Savings — Formula &amp; %</th>
+                  <th style="padding:9px 10px;text-align:left;color:var(--purple);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">How Data Flows into the System</th>
+                  <th style="padding:9px 10px;text-align:right;color:var(--text);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Avg Member<br>Benefit/Mo</th>
+                  <th style="padding:9px 10px;text-align:center;color:var(--text);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;font-weight:800">Label</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- ① Sysco / Entegra -->
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--text)">Sysco / Entegra</div>
+                    <div style="font-size:.78em;color:var(--accent);margin-top:1px">Foodservice</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700">~$16,000</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="color:var(--red);font-weight:700;font-size:.9em">$0 — Sysco has NO rebate</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">Entegra volume rebates are paid quarterly to Roady's only — they do not flow to individual locations and must not be included in the member benefit figure.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;color:var(--red);font-weight:700">$0</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--yellow);font-size:.92em">Mo Spend × 7% (default)</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">If John provides a location-specific cost comparison %, substitute that % for 7% for that location only. Savings = pricing below what the member would otherwise pay.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--muted);font-size:.86em;line-height:1.5">Monthly Sysco deployment reports (Scott pulls) → uploaded as <b>ROI Data CSV</b> → ROI tracker stores monthly_spend per stop → system multiplies by 7% preset (ROI_DEFAULT_VENDOR_PRESETS V00010) to calculate Est. Savings column.</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$1,120</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
+                </tr>
+                <!-- ② Coca-Cola -->
+                <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--text)">Coca-Cola</div>
+                    <div style="font-size:.78em;color:var(--accent);margin-top:1px">Fountain Beverages</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700">~40 gal</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--green);font-size:.9em">Quarterly — per gallon via ACH</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">$1.50/gal BIBs (Sparkling/Still) · $1.35/gal Gold Peak Tea · $2.35/gal FCBs · $0.00198/finished oz Freestyle. Coke quarterly rebate report → Roady's receives → distributes to location. <b>Fountain ONLY</b> — no cans or bottles. Location must own its dispenser.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$60</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--yellow);font-size:.92em">Gallons × $3.00/gal</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">$3.00/gal = National contracted price savings + quarterly rebate per gallon combined average. If gallon data unavailable, system uses flat $120/mo default (rebate preset V00033).</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--muted);font-size:.86em;line-height:1.5">Coke "Don't Edit Report" (gallons purchased) → Scott enters gallons on Coke report to determine credit memo → data uploaded as <b>ROI Data CSV</b> → system applies $120/mo rebate preset as fallback where gallon data is missing.</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$120</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
+                </tr>
+                <!-- ③ Farmer Brothers -->
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--text)">Farmer Brothers</div>
+                    <div style="font-size:.78em;color:var(--accent);margin-top:1px">Coffee &amp; Beverages</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700">~$3,600</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--green);font-size:.9em">Quarterly — per pound coffee</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">$0.20/lb on whole bean or ground coffee. Farmer Brothers quarterly rebate report → paid to Roady's. Also: 20% discount on Allied Products (non-coffee/tea). Free equipment, video monitor, and DSD route service at no cost to member.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$70</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--yellow);font-size:.92em">Mo Spend × 6.0%</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">6.0% = National Contracted Pricing + Coffee Pound Rebate combined, applied to total monthly beverage purchases (Coffee, Tea, Cappuccino, Other Beverages). System preset V00002 = 6%.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--muted);font-size:.86em;line-height:1.5">Monthly Farmer Brothers invoices → uploaded as <b>ROI Data CSV</b> → system applies 6% preset to calculate Est. Savings. Quarterly rebate reports cross-checked per stop and entered as rebate_amount in ROI tracker.</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$215</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
+                </tr>
+                <!-- ④ Heartland -->
+                <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--text)">Heartland / Global Pmts</div>
+                    <div style="font-size:.78em;color:var(--accent);margin-top:1px">Credit Card Processing</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--muted)">Varies</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="color:var(--red);font-weight:700;font-size:.9em">$0 — No rebate</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">Savings come entirely from eliminated junk fees + cost-plus-4.5¢/transaction pricing vs. current processor. Covers Discover, MC, Visa, AMEX (no fuel cards). US-based 24/7 support.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;color:var(--red);font-weight:700">$0</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--yellow);font-size:.92em">Per-location cost comparison</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">No standard %. Each stop requires an individual cost comparison by Alan Levine (Heartland) vs. current processor statement. System uses $500/mo flat default (preset V00232) for stops without a completed comparison.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--muted);font-size:.86em;line-height:1.5">Member submits last complete monthly CC processing statement to Alan Levine (Heartland). Comparison results from Alan → manually entered into <b>ROI Data</b> per stop as cost_savings. System uses $500/mo preset as fallback until actual comparison is done.</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right">
+                    <div style="font-weight:700;color:var(--green);font-size:.88em">≤ $2,500</div>
+                    <div style="font-size:.76em;color:var(--muted)">(high-vol)</div>
+                    <div style="font-weight:700;color:var(--green);font-size:.88em;margin-top:2px">≤ $500</div>
+                    <div style="font-size:.76em;color:var(--muted)">(sm-mid)</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
+                </tr>
+                <!-- ⑤ Lynco / DAS -->
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--text)">Lynco / DAS</div>
+                    <div style="font-size:.78em;color:var(--accent);margin-top:1px">C-Store Merchandise</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700">~$6,000</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--green);font-size:.9em">Annual (DAS) / Quarterly (Lynco)</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4"><b>DAS:</b> 2% of annual sales ($5K–$24,999) or 4% ($25K+). DAS sends rebate check to Roady's → Roady's creates credit memo → pays location. $250 new-location bonus.<br><b>Lynco:</b> 3% minimum quarterly (4% if total corporate locations &gt;$50K). $1,000 new member bonus after 6 months.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$70</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--yellow);font-size:.92em">Mo Spend × 7% combined</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">7% = contracted pricing below street + annual/quarterly merchandise rebate amortized monthly. System ROI presets: DAS (V00036) = 4%, Lynco (V00022) = 3% — these reflect the rebate tier only; contracted pricing savings are additive.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--muted);font-size:.86em;line-height:1.5">Monthly purchase reports from DAS or Lynco emailed to Scott → uploaded as <b>ROI Data CSV</b> → system applies preset % to calculate Est. Savings. Annual/quarterly rebate checks verified against report and entered as rebate_amount per stop in ROI tracker.</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--green)">~$400</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
+                </tr>
+                <!-- ⑥ Truck Parking Club -->
+                <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--text)">Truck Parking Club</div>
+                    <div style="font-size:.78em;color:var(--orange);margin-top:1px">New Revenue Stream</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--muted)">N/A</td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="color:var(--orange);font-weight:700;font-size:.9em">Not a rebate — member EARNINGS</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">Member earns 70% of all parking fees collected. Truck Parking Club keeps 30%. Paid via ACH deposit. Member sets their own rate and designates which spaces are "Cost to Park" vs. "Courtesy." No cost to member — signs included.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;font-weight:700;color:var(--orange)">70%<br><span style="font-size:.8em;color:var(--muted)">of revenue</span></td>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--orange);font-size:.92em">70% × Total Parking Revenue</div>
+                    <div style="color:var(--muted);font-size:.86em;margin-top:3px;line-height:1.4">This is an <b>EXACT</b> amount — pull directly from the TPC monthly report. Do not estimate, do not use AI. Label as member parking income, not a cost savings. TPC keeps exactly 30%.</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--muted);font-size:.86em;line-height:1.5">TPC monthly activity report + ACH deposit confirmation → manually entered into <b>ROI Data</b> per stop as rebate_amount (member's 70% share). Avg monthly revenue TBD — awaiting Jan/Feb/March 2026 TPC actuals to establish baseline.</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right">
+                    <div style="font-weight:700;color:var(--muted)">TBD</div>
+                    <div style="font-size:.76em;color:var(--dim)">2026 data<br>pending</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--orange)">EXACT</td>
+                </tr>
+                <!-- ⑦ Vistar / Cintas -->
+                <tr>
+                  <td style="padding:9px 10px;vertical-align:top">
+                    <div style="font-weight:700;color:var(--muted)">Vistar / Cintas</div>
+                    <div style="font-size:.78em;color:var(--dim);margin-top:1px">C-Store Grocery</div>
+                  </td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;color:var(--dim);font-weight:700">TBD</td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--dim);font-size:.86em;line-height:1.4">TBD — No Vistar program currently active. Cintas (through Entegra) in place. Pending Sodexo &amp; Entegra meeting (4/21).</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;color:var(--dim);font-weight:700">TBD</td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--dim);font-size:.86em">TBD — Program under evaluation. Update once direction confirmed.</td>
+                  <td style="padding:9px 10px;vertical-align:top;color:var(--dim);font-size:.86em">TBD</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:right;color:var(--dim);font-weight:700">TBD</td>
+                  <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--dim)">TBD</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size:.72em;color:var(--dim);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);line-height:1.6">
+            <b>Avg Mo Spend</b> = network average for enrolled TS members on that program. <b>Avg Rebate/Mo</b> = approximate monthly equivalent of quarterly/annual rebates. <b>Avg Member Benefit/Mo</b> = Rebate + Est. Savings combined. All figures derived from analysis of vendor monthly reports and invoices uploaded to the ROI Tracker CSV import. System calculation: <code>Est. Savings = monthly_spend × preset_pct%</code> · <code>Total Benefit = rebate_amount + cost_savings + (monthly_spend × pct%)</code>.
+          </div>
         </div>
       </div>
 
@@ -2249,7 +2369,7 @@ const PROGRAM_DETAILS = [
   {vid:'V00036',name:'DAS',category:'C-Store Merchandise',
    savings:'~10% below street pricing with rebates',
    avgSavings:'~$400/mo estimated — based on ~$6,000/mo avg purchases at 7% (National Contracted Pricing + Rebate)',
-   rebateStructure:'2% for $5K-$24,999 annual, 4% for $25K+. $250 per new location. Annual rebate ~0.4% × Sales.',
+   rebateStructure:'2% of annual sales ($5K–$24,999) or 4% ($25K+), paid annually. $250 per new location signup. DAS sends rebate check to Roady\'s → Roady\'s creates credit memo → pays location.',
    roamoBenefit:'$71/mo',roaCommission:'$35/mo',
    contact:'Donald Shelley — Regional Sales Manager',email:'dshelley@dasinc.com',phone:'309-230-4139',
    contractTerm:'Jan 2022 – Dec 2024 (amended 2-20-23)',
