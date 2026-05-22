@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Roady's — Vendor Programs</title>
+<script>if(localStorage.getItem('roadys_vp_theme')==='light')document.documentElement.classList.add('light');</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +17,16 @@
   --ff:'Barlow Condensed','Arial Narrow',sans-serif;
   --fb:'DM Sans','Segoe UI',sans-serif;
   --sidebar-w:210px;
+  --inset-bg:rgba(0,0,0,.2);--row-stripe:rgba(255,255,255,.015);
 }
+html.light{
+  --bg:#EEF2FA;--surface:#FFFFFF;--surface2:#E8EDF8;--border:#C5D2EB;--border2:#A5B8D8;
+  --accent:#0076A3;--green:#006E45;--red:#C41F2B;--yellow:#7D5700;--orange:#B84000;
+  --purple:#5018A8;--teal:#0A6080;--text:#0D1628;--muted:#4E6080;--dim:#A8BAD8;
+  --inset-bg:rgba(0,0,0,.06);--row-stripe:rgba(0,0,0,.03);
+}
+.theme-toggle{background:var(--surface2);border:1px solid var(--border);color:var(--text);width:34px;height:30px;border-radius:6px;cursor:pointer;font-size:1.05em;display:flex;align-items:center;justify-content:center;transition:border-color .2s,background .2s;padding:0;flex-shrink:0;}
+.theme-toggle:hover{border-color:var(--accent);background:rgba(0,200,255,.07);}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:14px;}
 a{color:var(--accent);text-decoration:none;}
@@ -100,7 +110,8 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
     <select id="ms" onchange="onMonthChange()"></select>
     <span id="vp-period" style="font-size:.82em;color:var(--muted)"></span>
   </div>
-  <a class="topbar-back" href="index.html">← Command Center</a>
+  <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark mode" style="margin-left:auto">☀️</button>
+  <a class="topbar-back" href="index.html" style="margin-left:0">← Command Center</a>
 </div>
 
 <div class="app-layout">
@@ -446,7 +457,7 @@ R00208,V00010,4200,5,2,</code>
                   <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
                 </tr>
                 <!-- ② Coca-Cola -->
-                <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">
+                <tr style="border-bottom:1px solid var(--border);background:var(--row-stripe)">
                   <td style="padding:9px 10px;vertical-align:top">
                     <div style="font-weight:700;color:var(--text)">Coca-Cola</div>
                     <div style="font-size:.78em;color:var(--accent);margin-top:1px">Fountain Beverages</div>
@@ -486,7 +497,7 @@ R00208,V00010,4200,5,2,</code>
                   <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
                 </tr>
                 <!-- ④ Heartland -->
-                <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">
+                <tr style="border-bottom:1px solid var(--border);background:var(--row-stripe)">
                   <td style="padding:9px 10px;vertical-align:top">
                     <div style="font-weight:700;color:var(--text)">Heartland / Global Pmts</div>
                     <div style="font-size:.78em;color:var(--accent);margin-top:1px">Credit Card Processing</div>
@@ -531,7 +542,7 @@ R00208,V00010,4200,5,2,</code>
                   <td style="padding:9px 10px;vertical-align:top;text-align:center;font-size:.75em;font-weight:800;color:var(--yellow)">ESTIMATED</td>
                 </tr>
                 <!-- ⑥ Truck Parking Club -->
-                <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">
+                <tr style="border-bottom:1px solid var(--border);background:var(--row-stripe)">
                   <td style="padding:9px 10px;vertical-align:top">
                     <div style="font-weight:700;color:var(--text)">Truck Parking Club</div>
                     <div style="font-size:.78em;color:var(--orange);margin-top:1px">New Revenue Stream</div>
@@ -1185,7 +1196,7 @@ function renderTop10VendorTable(){
       <td ${td0} style="text-align:center">${rm}</td>
       <td ${td0} style="text-align:right;font-weight:700">${fmt$(d.monthRev)}</td>
       <td ${td0} style="text-align:right;color:var(--accent);font-weight:700">${d.ytdRev?fmt$(d.ytdRev):'$0'}</td>
-    </tr><tr id="vp-expand-${vid}" style="display:none"><td colspan="6" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:rgba(0,0,0,.2);padding:10px 14px">${renderVPStopDetail(d)}</div></td></tr>`;
+    </tr><tr id="vp-expand-${vid}" style="display:none"><td colspan="6" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:var(--inset-bg);padding:10px 14px">${renderVPStopDetail(d)}</div></td></tr>`;
   }).join('')+'</tbody>';
 }
 function renderVPStopDetail(d){
@@ -1613,7 +1624,7 @@ function roiRenderVendorSubRows(s){
   const inS='background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 4px;border-radius:4px;font-size:.78em;text-align:right';
   const subTh='style="font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:5px 6px;border-bottom:1px solid var(--border2)"';
 
-  let h=`<tr><td colspan="11" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:rgba(0,0,0,.2);padding:8px 12px 10px">
+  let h=`<tr><td colspan="11" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:var(--inset-bg);padding:8px 12px 10px">
     <table style="width:100%;border-collapse:collapse">
     <thead><tr><th ${subTh}>Vendor Program</th><th ${subTh} style="text-align:right">$ Spend/Mo</th><th ${subTh} style="text-align:right">% Contract Savings</th><th ${subTh} style="text-align:right">Rebate $</th><th ${subTh} style="text-align:right">% Add'l Savings</th><th ${subTh} style="text-align:right">$ Savings/Mo</th><th ${subTh} style="text-align:center;width:40px">Act</th></tr></thead><tbody>`;
 
@@ -2003,7 +2014,7 @@ function renderOppAnalysis(){
 
     if(isOpen){
       const subTh='style="font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:4px 8px;border-bottom:1px solid var(--border2)"';
-      let detail=`<tr><td colspan="7" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:rgba(0,0,0,.2);padding:10px 14px">
+      let detail=`<tr><td colspan="7" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:var(--inset-bg);padding:10px 14px">
         <div style="font-size:.72em;font-weight:700;color:var(--green);margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase">✓ Current Vendors</div>
         <table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr><th ${subTh}>Vendor</th><th ${subTh} style="text-align:right">Spend/Mo</th><th ${subTh} style="text-align:right">Rebate/Mo</th><th ${subTh} style="text-align:right">Est. Contract Savings</th><th ${subTh} style="text-align:right">Total Benefit</th></tr></thead><tbody>`;
       if(s.onVendors.length){
@@ -2716,6 +2727,21 @@ function init(){
     }
   })();
 }
+
+function toggleTheme(){
+  const light=document.documentElement.classList.toggle('light');
+  localStorage.setItem('roadys_vp_theme',light?'light':'dark');
+  const btn=document.getElementById('theme-toggle');
+  if(btn) btn.textContent=light?'🌙':'☀️';
+}
+
+// Sync toggle icon after page load (class already applied by head script to avoid FOUC)
+(function(){
+  if(document.documentElement.classList.contains('light')){
+    const btn=document.getElementById('theme-toggle');
+    if(btn) btn.textContent='🌙';
+  }
+})();
 
 init();
 </script>
