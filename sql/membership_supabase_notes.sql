@@ -1,0 +1,45 @@
+-- Membership data — Supabase changes needed?
+--
+-- ANSWER: NONE REQUIRED for the current gs-command-center.html behavior.
+--
+-- Membership fees are read from stopdata[stopId].membershipCost which is
+-- a per-Growth-Strategist localStorage key (LS_KEY + gs + "_stopdata").
+-- There is no Supabase table for stopdata today. The inline
+-- COMPANY_MEMBERSHIP_DATA seed added to gs-command-center.html is the
+-- source of truth — every browser that loads the file will see it.
+--
+-- IF you later want membership/stopdata shared across users (multi-user
+-- editing, audit history), here is the table you would create. Pattern
+-- matches the existing pnl_notes / impl_sites tables on the same project.
+-- Until then, leave this block commented — running it now creates the
+-- table but no code uses it yet.
+
+-- ─── (Optional) Shared stop-data table ────────────────────────────────────
+-- create table if not exists public.stop_records (
+--   stop_id            text primary key,
+--   membership_cost    text,           -- formatted dollar string, eg "$1,500.00"
+--   site_mgr_name      text,
+--   site_mgr_email     text,
+--   site_mgr_phone     text,
+--   price_file_fee_removed boolean default false,
+--   accepts_fuelman    boolean default false,
+--   accepts_rcheck     boolean default false,
+--   ytd_total_gallons  numeric,
+--   rewards_ytd_adds   numeric,
+--   rewards_ytd_redeems numeric,
+--   notes              jsonb default '[]'::jsonb,
+--   visits             jsonb default '[]'::jsonb,
+--   updated_at         timestamptz default now()
+-- );
+-- alter table public.stop_records enable row level security;
+-- create policy sr_read   on public.stop_records for select using (true);
+-- create policy sr_insert on public.stop_records for insert with check (true);
+-- create policy sr_update on public.stop_records for update using (true) with check (true);
+-- alter publication supabase_realtime add table public.stop_records;
+--
+-- Seed it from COMPANY_MEMBERSHIP_DATA (the membership_apr_2026.sql block
+-- below). You'd then need to wire stopdataLoadFromSupabase /
+-- stopdataSaveToSupabase in both HTML files, mirroring the pnl_notes pattern.
+
+-- ─── (Optional) One-time membership seed for the proposed table ──────────
+-- Only run AFTER creating public.stop_records above. Otherwise this errors.
