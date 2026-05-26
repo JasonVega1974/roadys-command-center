@@ -972,6 +972,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
     </div>
     <div class="topbar-user">
       <div><div class="name" id="tb-name"></div><div class="role" id="tb-role"></div></div>
+      <button class="btn btn-cyan" id="sync-btn" onclick="syncToCloud()" title="Sync your data to Supabase cloud" style="font-size:.78em;padding:5px 12px">☁️ Sync</button>
+      <span id="sync-ts" style="font-size:.68em;color:var(--muted);white-space:nowrap;display:none"></span>
       <button class="btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark / light mode">🌙</button>
       <button class="btn" onclick="logout()">Logout</button>
     </div>
@@ -2302,6 +2304,14 @@ function finalizeLogin(user){
   recomputeMyStops();
   loadData();
   renderAll();
+  // Show last sync timestamp if available
+  const lastSync = syncGetLastSync();
+  const tsEl = document.getElementById('sync-ts');
+  if(tsEl && lastSync){
+    const d = new Date(lastSync);
+    tsEl.textContent = 'synced ' + d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    tsEl.style.display = '';
+  }
 }
 
 function initGSSelector(){
@@ -2337,6 +2347,158 @@ function logout(){
   document.getElementById('app').style.display='none';
   document.getElementById('gs-selector-wrap').classList.remove('show');
   showLoginScreen();
+}
+
+// ═══════════════════════════════════════════════════════
+// CLOUD SYNC (Phase 10)
+// Reads all localStorage namespaces and upserts to Supabase.
+// Tables: gs_activity_logs, gs_scheduled_calls, gs_critical_items,
+//         gs_tasks, gs_stop_records, gs_scenarios, gs_managers
+// Safe to run multiple times — all upserts use ON CONFLICT DO UPDATE.
+// ═══════════════════════════════════════════════════════
+const SYNC_LS_KEY = 'gs_cmd_last_sync';
+
+function syncGetLastSync(){
+  try{ return localStorage.getItem(SYNC_LS_KEY)||null; }catch(e){ return null; }
+}
+function syncSetLastSync(){
+  try{
+    const now = new Date().toISOString();
+    localStorage.setItem(SYNC_LS_KEY, now);
+    const tsEl = document.getElementById('sync-ts');
+    if(tsEl){
+      const d = new Date(now);
+      tsEl.textContent = 'synced ' + d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      tsEl.style.display = '';
+    }
+  }catch(e){}
+}
+function syncUpdateBtn(state){
+  const btn = document.getElementById('sync-btn');
+  if(!btn) return;
+  if(state==='syncing'){ btn.textContent='☁️ Syncing…'; btn.disabled=true; }
+  else if(state==='done'){ btn.textContent='✓ Synced'; btn.disabled=false; setTimeout(()=>{ btn.textContent='☁️ Sync'; },3000); }
+  else if(state==='err'){ btn.textContent='⚠ Sync failed'; btn.disabled=false; setTimeout(()=>{ btn.textContent='☁️ Sync'; },4000); }
+  else { btn.textContent='☁️ Sync'; btn.disabled=false; }
+}
+
+async function syncToCloud(){
+  syncUpdateBtn('syncing');
+  try{
+    await ensureSupabaseLib();
+    const sb = getRoadysSB();
+    if(!sb){ throw new Error('Supabase client unavailable'); }
+
+    const errors = [];
+    let totalRows = 0;
+
+    // Helper: batch upsert with 200-row chunks
+    async function upsert(table, rows){
+      if(!rows.length) return;
+      totalRows += rows.length;
+      const SIZE = 200;
+      for(let i=0;i<rows.length;i+=SIZE){
+        const chunk = rows.slice(i,i+SIZE);
+        const {error} = await sb.from(table).upsert(chunk, {onConflict: table==='gs_stop_records'?'stop_id,gs_name':'id'});
+        if(error) errors.push(table+': '+error.message);
+      }
+    }
+
+    const logRows=[], schedRows=[], critRows=[], taskRows=[], stopRows=[], scenRows=[];
+
+    forEachGS((gsName, ns)=>{
+      // Activity logs: {stopId:[{id,date,type,subject,notes}]}
+      try{
+        const logs = JSON.parse(localStorage.getItem(ns('logs'))||'{}');
+        for(const [stopId,arr] of Object.entries(logs||{})){
+          if(!Array.isArray(arr)) continue;
+          for(const l of arr){
+            if(!l.id) continue;
+            logRows.push({id:l.id, gs_name:gsName, stop_id:stopId, log_date:l.date||new Date().toISOString(), log_type:l.type||'call', subject:l.subject||'', notes:l.notes||''});
+          }
+        }
+      }catch(e){}
+
+      // Scheduled calls: [{id,siteId,date,time,contact,purpose}]
+      try{
+        const sched = JSON.parse(localStorage.getItem(ns('sched'))||'[]');
+        if(Array.isArray(sched)) for(const c of sched){
+          if(!c.id) continue;
+          schedRows.push({id:c.id, gs_name:gsName, stop_id:c.siteId||'', call_date:c.date||'2000-01-01', call_time:c.time||'09:00', contact:c.contact||'', purpose:c.purpose||''});
+        }
+      }catch(e){}
+
+      // Critical items: [{id,siteId,reason,created}]
+      try{
+        const crit = JSON.parse(localStorage.getItem(ns('critical'))||'[]');
+        if(Array.isArray(crit)) for(const c of crit){
+          if(!c.id) continue;
+          critRows.push({id:c.id, gs_name:gsName, stop_id:c.siteId||'', reason:c.reason||'', created_at:c.created||new Date().toISOString()});
+        }
+      }catch(e){}
+
+      // Tasks: [{id,title,siteId,priority,status,due,category,assignedTo,notes,created,updated}]
+      try{
+        const tasks = JSON.parse(localStorage.getItem(ns('tasks'))||'[]');
+        if(Array.isArray(tasks)) for(const t of tasks){
+          if(!t.id) continue;
+          taskRows.push({id:t.id, gs_name:gsName, stop_id:t.siteId||'', title:t.title||'', priority:t.priority||'medium', status:t.status||'open', due_date:t.due||null, category:t.category||'general', assigned_to:t.assignedTo||'', notes:t.notes||'', created_at:t.created||new Date().toISOString(), updated_at:t.updated||new Date().toISOString()});
+        }
+      }catch(e){}
+
+      // Stop records: stopdata[stopId]={membershipCost,siteMgrName,...,notes:[],visits:[]} + extras[stopId]={hasRewards,...}
+      try{
+        const sd = JSON.parse(localStorage.getItem(ns('stopdata'))||'{}');
+        const ex = JSON.parse(localStorage.getItem(ns('extras'))||'{}');
+        const allStops = new Set([...Object.keys(sd),...Object.keys(ex)]);
+        for(const sid of allStops){
+          if(!sid) continue;
+          const r = sd[sid]||{};
+          stopRows.push({stop_id:sid, gs_name:gsName, membership_cost:r.membershipCost||'', site_mgr_name:r.siteMgrName||'', site_mgr_email:r.siteMgrEmail||'', site_mgr_phone:r.siteMgrPhone||'', notes:r.notes||[], visits:r.visits||[], extras:ex[sid]||{}, updated_at:new Date().toISOString()});
+        }
+      }catch(e){}
+
+      // Scenarios: [{id,name,stopId,fleet,notes,retail:{},costPlus:{},created,updated}]
+      try{
+        const scens = JSON.parse(localStorage.getItem(ns('scenarios'))||'[]');
+        if(Array.isArray(scens)) for(const s of scens){
+          if(!s.id) continue;
+          scenRows.push({id:s.id, gs_name:gsName, stop_id:s.stopId||'', name:s.name||'', fleet:s.fleet||'', notes:s.notes||'', retail:s.retail||{}, cost_plus:s.costPlus||{}, created_at:s.created||new Date().toISOString(), updated_at:s.updated||new Date().toISOString()});
+        }
+      }catch(e){}
+    });
+
+    await upsert('gs_activity_logs', logRows);
+    await upsert('gs_scheduled_calls', schedRows);
+    await upsert('gs_critical_items', critRows);
+    await upsert('gs_tasks', taskRows);
+    await upsert('gs_stop_records', stopRows);
+    await upsert('gs_scenarios', scenRows);
+
+    // Managers (global key, not per-GS)
+    try{
+      const mgrs = JSON.parse(localStorage.getItem('gs_cmd_managers')||'[]');
+      if(Array.isArray(mgrs) && mgrs.length){
+        const mgrRows = mgrs.map(m=>({name:m.name||m.id||'', pin:m.pin||'', role:m.role||'team', regions:m.regions||[], color:m.color||'', updated_at:new Date().toISOString()})).filter(m=>m.name);
+        await upsert('gs_managers', mgrRows);
+      }
+    }catch(e){}
+
+    if(errors.length){
+      console.warn('[sync] errors:', errors);
+      syncUpdateBtn('err');
+      toast('Sync partial — check console for errors');
+    } else {
+      syncSetLastSync();
+      syncUpdateBtn('done');
+      const last = syncGetLastSync();
+      toast('☁️ Synced '+totalRows+' records to cloud');
+    }
+  }catch(err){
+    console.error('[sync]', err);
+    syncUpdateBtn('err');
+    toast('Sync failed: '+err.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3779,499 +3941,12 @@ function _seedMembershipCostFor(stopId){
   return '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 // ── /COMPANY_MEMBERSHIP_DATA ──
-
-// ── AMENITIES_FUEL_CARDS_SEED (auto-generated from Export to CSV.csv) ──
-// Source: Export to CSV.csv (Accepted Fuel Cards column).
-// Only tokens with a FLEET_CARDS.id mapping are kept. Sets:
-//   stopdata[stopId].acceptsFleetCards[cardId] = true
-//   stopdata[stopId].acceptsFuelman = true (legacy boolean if applicable)
-//   stopdata[stopId].acceptsRcheck  = true (legacy boolean if applicable)
-const AMENITIES_FUEL_CARDS_SEED = {
-  'L03461':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'L03465':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'L03911':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'L03935':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'L03969':{cards:{comdata:true,efs:true,tchek:true,wex:true}},
-  'P01224':{cards:{comdata:true,efs:true,fleet_one:true}},
-  'P01225':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03515':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true}},
-  'P03595':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03599':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03600':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03604':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03605':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03606':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03607':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03608':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03609':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03610':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03611':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03612':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03613':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03614':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03615':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'P03616':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03617':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03618':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03619':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03620':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03621':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03622':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03623':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03624':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03639':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03645':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03647':{cards:{efs:true,fleet_one:true,tchek:true,wex:true}},
-  'P03659':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03660':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'P03661':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'P03662':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'P03663':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'P03673':{cards:{comdata:true,fleet_one:true}},
-  'P03674':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R00076':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00096':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00099':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00111':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00112':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00118':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00179':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R00205':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00208':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00221':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00244':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00245':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00252':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00255':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00262':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00286':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00291':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00292':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00294':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R00296':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00297':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00298':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00315':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00320':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00321':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00325':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00326':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00395':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00408':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00448':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00449':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00454':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00497':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00498':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00587':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00608':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00614':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00616':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00639':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00640':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00641':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00642':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00670':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00703':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00717':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00718':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00723':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00774':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00782':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00901':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R00917':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00930':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00931':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00932':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00933':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00935':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00941':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R00958':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01017':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01018':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01020':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01021':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01032':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01033':{cards:{comdata:true,efs:true,tchek:true}},
-  'R01036':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01038':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01059':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01063':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01066':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01067':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01072':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01080':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01083':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01084':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01099':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01104':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01106':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01107':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01118':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01120':{cards:{comdata:true,efs:true,wex:true}},
-  'R01121':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01127':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01129':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01130':{cards:{comdata:true,efs:true,voyager:true,wex:true}},
-  'R01132':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01133':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01143':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01151':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01164':{cards:{comdata:true,efs:true,tchek:true}},
-  'R01165':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01167':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01168':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01171':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01178':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01179':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01182':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01183':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01184':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01186':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01187':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01188':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01201':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01205':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01217':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01219':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'R01220':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01222':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01227':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01229':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01236':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01240':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01241':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01243':{cards:{comdata:true,efs:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01244':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01245':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01258':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01259':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01260':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01261':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R01265':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R01338':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01437':{cards:{comdata:true,efs:true,fleet_one:true}},
-  'R01570':{cards:{comdata:true}},
-  'R01635':{cards:{comdata:true}},
-  'R01835':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R01837':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R01866':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R02229':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R02230':{cards:{comdata:true,efs:true,fleet_one:true,voyager:true}},
-  'R02231':{cards:{efs:true,tchek:true}},
-  'R02592':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03469':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03494':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'R03495':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03500':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03523':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true}},
-  'R03524':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03539':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03541':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03542':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03543':{cards:{fuelman:true,wex:true}},
-  'R03544':{cards:{fuelman:true,voyager:true,wex:true}},
-  'R03596':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03597':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03598':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03601':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R03602':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R03603':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R03625':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R03627':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'R03628':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03629':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03630':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03638':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03648':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03649':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R03650':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'R03664':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R03665':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R03676':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true}},
-  'R03693':{cards:{comdata:true,efs:true,tchek:true,voyager:true,wex:true}},
-  'R03699':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03791':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,voyager:true,wex:true}},
-  'R03857':{cards:{comdata:true,efs:true,tchek:true,wex:true}},
-  'R03867':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03870':{cards:{efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03871':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'R03876':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03877':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03889':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03903':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03907':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03913':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'R03915':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03917':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03918':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'R03920':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03921':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03922':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03923':{cards:{comdata:true,efs:true,fleet_one:true,wex:true}},
-  'R03924':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'R03929':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03932':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03933':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'R03934':{cards:{comdata:true}},
-  'R03967':{cards:{comdata:true,efs:true,fleet_one:true,tchek:true,wex:true}},
-  'R03968':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-  'R03970':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,voyager:true,wex:true}},
-  'R03971':{cards:{comdata:true,tchek:true}},
-  'R03972':{cards:{comdata:true,efs:true,fleet_one:true,fuelman:true,tchek:true,wex:true}},
-};
-function _seedFleetCardsFor(rec, stopId){
-  if(typeof AMENITIES_FUEL_CARDS_SEED !== 'object') return;
-  const ent = AMENITIES_FUEL_CARDS_SEED[stopId];
-  if(!ent || !ent.cards) return;
-  const afc = (rec.acceptsFleetCards && typeof rec.acceptsFleetCards === 'object') ? rec.acceptsFleetCards : {};
-  let touched = false;
-  for(const cid in ent.cards){ if(!afc[cid]){ afc[cid] = true; touched = true; } }
-  if(touched) rec.acceptsFleetCards = afc;
-  if(ent.cards.fuelman && rec.acceptsFuelman !== true) rec.acceptsFuelman = true;
-  if(ent.cards.rcheck  && rec.acceptsRcheck  !== true) rec.acceptsRcheck  = true;
-}
-// ── /AMENITIES_FUEL_CARDS_SEED ──
-
-// ── MANAGER_CONTACTS_SEED (auto-generated from Complete Contacts Report.csv) ──
-// Source: Complete Contacts Report.csv (manager-role rows only).
-// Match priority: location-level contact (LID match) > company-level
-// (company name match). Role priority within candidates:
-//   General Manager > Manager > Office Manager > Dist. Manager > other *Manager*.
-// Sets stopdata[stopId].siteMgrEmail / .siteMgrPhone only — name not touched.
-const MANAGER_CONTACTS_SEED = {
-  'L03465':{email:'sassystruckstop219@gmail.com',phone:'+17169452595'},
-  'L03935':{email:'simmi@goldenoilcompany.com',phone:'+12623313324'},
-  'P01224':{email:'ricklensing@live.com',phone:'+16413982390'},
-  'P03515':{email:'fuelhaven@gmail.com',phone:'+17143929848'},
-  'P03600':{email:'tara@tennesseantruckstop.com',phone:'+19312934171'},
-  'P03604':{email:'',phone:'+13378040627'},
-  'P03605':{email:'',phone:'+13378040627'},
-  'P03606':{email:'',phone:'+13378040627'},
-  'P03607':{email:'',phone:'+13378040627'},
-  'P03608':{email:'',phone:'+13378040627'},
-  'P03609':{email:'',phone:'+13378040627'},
-  'P03610':{email:'',phone:'+13378040627'},
-  'P03611':{email:'',phone:'+13378040627'},
-  'P03612':{email:'',phone:'+13378040627'},
-  'P03613':{email:'',phone:'+13378040627'},
-  'P03614':{email:'',phone:'+13378040627'},
-  'P03615':{email:'',phone:'+13378040627'},
-  'P03616':{email:'',phone:'+13378040627'},
-  'P03617':{email:'',phone:'+13378040627'},
-  'P03618':{email:'',phone:'+13378040627'},
-  'P03619':{email:'',phone:'+13378040627'},
-  'P03620':{email:'',phone:'+13378040627'},
-  'P03621':{email:'',phone:'+13378040627'},
-  'P03622':{email:'',phone:'+13378040627'},
-  'P03623':{email:'',phone:'+13378040627'},
-  'P03624':{email:'',phone:'+13378040627'},
-  'P03639':{email:'',phone:'+13378040627'},
-  'P03641':{email:'',phone:'+13378040627'},
-  'P03642':{email:'',phone:'+13378040627'},
-  'P03645':{email:'nicole.weesner@apollooil.net',phone:'+19522921192'},
-  'P03653':{email:'leannl@ersdieselrepair.com',phone:'+15207054927'},
-  'P03657':{email:'harveyservicesllc@gmail.com',phone:'+17749220138'},
-  'P03658':{email:'jolly76308@yahoo.com',phone:'+19407238473'},
-  'P03661':{email:'chads@shoprite.org',phone:'+13377177244'},
-  'P03662':{email:'chads@shoprite.org',phone:'+13377177244'},
-  'P03663':{email:'chads@shoprite.org',phone:'+13377177244'},
-  'P03666':{email:'lynnseyhester@gmail.com',phone:'+12056741059'},
-  'P03673':{email:'kenny@smithpetroleum.net',phone:'+16012647596'},
-  'P03674':{email:'kenny@smithpetroleum.net',phone:'+16012647596'},
-  'P03681':{email:'bsine@winchestertruckrepair.com',phone:'+15403257820'},
-  'P03685':{email:'lynn@tdirepair.com',phone:'+18005603163'},
-  'P03686':{email:'lynn@tdirepair.com',phone:'+18005603163'},
-  'P03718':{email:'jprather@truckworldinc.com',phone:'+13305071470'},
-  'P03930':{email:'jprather@truckworldinc.com',phone:'+13305071470'},
-  'P03931':{email:'jprather@truckworldinc.com',phone:'+13305071470'},
-  'R00096':{email:'johnc@circlekatl.com',phone:'+18044026977'},
-  'R00099':{email:'debbis@srt.com',phone:''},
-  'R00118':{email:'jean.beck@rockandbrewscasinobraman.com',phone:'+15802692552'},
-  'R00179':{email:'klynnsutherland@gmail.com',phone:''},
-  'R00205':{email:'sssandhu761@gmail.com',phone:'+17606093465'},
-  'R00208':{email:'ragans@nettally.com',phone:'+18509738546'},
-  'R00221':{email:'lbrown@wortmanstores.com',phone:''},
-  'R00244':{email:'pawshere@aol.com',phone:''},
-  'R00262':{email:'wharper@woilco.com',phone:''},
-  'R00286':{email:'hermiston@spaceagefuel.com',phone:'+15415646254'},
-  'R00315':{email:'lisac@ocscoop.com',phone:'+19207398411'},
-  'R00320':{email:'lisac@ocscoop.com',phone:'+19207398411'},
-  'R00321':{email:'lisac@ocscoop.com',phone:'+19207398411'},
-  'R00325':{email:'lisac@ocscoop.com',phone:'+19207398411'},
-  'R00326':{email:'simmi@goldenoilcompany.com',phone:'+12623313324'},
-  'R00581':{email:'sssandhu761@gmail.com',phone:'+17606093465'},
-  'R00608':{email:'lisac@ocscoop.com',phone:'+19207398411'},
-  'R00614':{email:'rebecca@sthanki.com',phone:'+13378735400'},
-  'R00616':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R00639':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00640':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00641':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00642':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00670':{email:'wharper@woilco.com',phone:''},
-  'R00703':{email:'lgrambling@wareoil.com',phone:''},
-  'R00717':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R00718':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R00723':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R00782':{email:'gerri@beckoilco.com',phone:''},
-  'R00800':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00809':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00825':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00826':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00827':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00828':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00829':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00831':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00832':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00833':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00835':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00836':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00837':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00839':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00840':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00841':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00842':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00843':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00844':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00845':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00847':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00848':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00849':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00850':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00852':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00853':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R00917':{email:'kurtis@rallystops.com',phone:'+14355590965'},
-  'R00930':{email:'gerri@beckoilco.com',phone:''},
-  'R00931':{email:'gerri@beckoilco.com',phone:''},
-  'R00932':{email:'gerri@beckoilco.com',phone:''},
-  'R00935':{email:'ishanp433@gmail.com',phone:'+17153093280'},
-  'R00941':{email:'larry.lovely.ii@anwarpetroleum.com',phone:'+14052596243'},
-  'R00958':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R01017':{email:'dianna@dvfuelstop.com',phone:'+13035674730'},
-  'R01022':{email:'gerri@beckoilco.com',phone:''},
-  'R01023':{email:'gerri@beckoilco.com',phone:''},
-  'R01024':{email:'gerri@beckoilco.com',phone:''},
-  'R01025':{email:'gerri@beckoilco.com',phone:''},
-  'R01026':{email:'gerri@beckoilco.com',phone:''},
-  'R01027':{email:'gerri@beckoilco.com',phone:''},
-  'R01028':{email:'gerri@beckoilco.com',phone:''},
-  'R01029':{email:'gerri@beckoilco.com',phone:''},
-  'R01032':{email:'store1053@nouriaenergy.com',phone:''},
-  'R01033':{email:'store1053@nouriaenergy.com',phone:''},
-  'R01059':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R01063':{email:'skirsch@parpacific.com',phone:'+15092794356'},
-  'R01066':{email:'wharper@woilco.com',phone:''},
-  'R01067':{email:'wharper@woilco.com',phone:''},
-  'R01072':{email:'Pleasantsprings@goldenoilcompany.com',phone:'+16088730504'},
-  'R01084':{email:'maria@zakoil.com',phone:''},
-  'R01099':{email:'ragans@nettally.com',phone:'+18509738546'},
-  'R01106':{email:'lapinetravelcenter@gmail.com',phone:'+15415366055'},
-  'R01107':{email:'nikkielee61@yahoo.com',phone:'+16088849451'},
-  'R01129':{email:'simmi@goldenoilcompany.com',phone:'+19999999999'},
-  'R01130':{email:'simmi@goldenoilcompany.com',phone:'+19999999999'},
-  'R01133':{email:'kfrye@calhounoil.com',phone:'+18038743681'},
-  'R01135':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R01136':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R01140':{email:'lomira@goldenoilcompany.com',phone:'+12624251675'},
-  'R01143':{email:'akramch@live.com',phone:'+19546550593'},
-  'R01152':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R01164':{email:'Joshua.Bracey@sunoco.com',phone:'+18049208499'},
-  'R01165':{email:'bigsseguine2999@gmail.com',phone:'+19999999999'},
-  'R01174':{email:'gerri@beckoilco.com',phone:''},
-  'R01182':{email:'jtantillo@texaspetroleumgroup.com',phone:'+17133028827'},
-  'R01183':{email:'jtantillo@texaspetroleumgroup.com',phone:'+17133028827'},
-  'R01184':{email:'jtantillo@texaspetroleumgroup.com',phone:'+17133028827'},
-  'R01205':{email:'castlerock@spaceagefuel.com',phone:''},
-  'R01217':{email:'sarah@lionpetro.com',phone:'+13146521113'},
-  'R01219':{email:'navisent@frontier.com',phone:'+16084791318'},
-  'R01236':{email:'',phone:'+18067464866'},
-  'R01240':{email:'billing@majorsmgmt.com',phone:'+17703382620'},
-  'R01241':{email:'billing@majorsmgmt.com',phone:'+17703382620'},
-  'R01243':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R01244':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R01245':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R01338':{email:'billing@majorsmgmt.com',phone:'+17703382620'},
-  'R01569':{email:'schu.s5634@gmail.com',phone:'+19209040116'},
-  'R01570':{email:'schu.s5634@gmail.com',phone:'+19209040116'},
-  'R01602':{email:'schu.s5634@gmail.com',phone:'+19209040116'},
-  'R01635':{email:'schu.s5634@gmail.com',phone:'+19209040116'},
-  'R01866':{email:'navtruckstop@gmail.com',phone:'+19163722893'},
-  'R02229':{email:'wwhite@tempstop.com',phone:'+17193106556'},
-  'R02230':{email:'wwhite@tempstop.com',phone:'+17193106556'},
-  'R02231':{email:'wwhite@tempstop.com',phone:'+17193106556'},
-  'R03469':{email:'wharper@woilco.com',phone:''},
-  'R03500':{email:'wajahat.here86@gmail.com',phone:'+16086229188'},
-  'R03517':{email:'gerri@beckoilco.com',phone:''},
-  'R03524':{email:'heidi@spoilllc.com',phone:'+15413692624'},
-  'R03539':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03541':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03542':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03543':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03544':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03596':{email:'jprather@truckworldinc.com',phone:'+13305071470'},
-  'R03597':{email:'jprather@truckworldinc.com',phone:'+13305071470'},
-  'R03598':{email:'jprather@truckworldinc.com',phone:'+13305071470'},
-  'R03601':{email:'cdennison@midwayproperties.net',phone:'+15734459466'},
-  'R03602':{email:'',phone:'+15052180814'},
-  'R03603':{email:'',phone:'+15052180814'},
-  'R03625':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03626':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03627':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03628':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03629':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03630':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03638':{email:'',phone:'+18067464866'},
-  'R03648':{email:'rcotrell@mortonslv.com',phone:'+17026492001'},
-  'R03649':{email:'jjordan@keystops.com',phone:'+12705868283'},
-  'R03664':{email:'vmontgomery@parkeroilcompany.com',phone:'+14346349269'},
-  'R03665':{email:'vmontgomery@parkeroilcompany.com',phone:'+14346349269'},
-  'R03693':{email:'btc@fmtc.com',phone:'+14582012190'},
-  'R03699':{email:'sinjun1368@gmail.com',phone:'+13606533000'},
-  'R03791':{email:'wacotruckstop921@gmail.com',phone:'+12546554150'},
-  'R03792':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R03860':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R03863':{email:'steve.haase@chsinc.com',phone:'+15095367432'},
-  'R03870':{email:'pvtravelcenter@yahoo.com',phone:'+14056961588'},
-  'R03876':{email:'Eliot@5rtc.com',phone:'+19157999244'},
-  'R03889':{email:'nick.shaver@circlek.com',phone:''},
-  'R03907':{email:'schu.s5634@gmail.com',phone:'+19209040116'},
-  'R03917':{email:'christine.peek@spartannash.com',phone:'+15177493236'},
-  'R03918':{email:'shoaib@whiteoakgroup.us',phone:'+14177551593'},
-  'R03920':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03921':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03922':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03923':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03924':{email:'kelly.anderson@parklandusa.com',phone:'+19726585569'},
-  'R03927':{email:'btc@fmtc.com',phone:'+14582012190'},
-  'R03933':{email:'chelsearbakos@gmail.com',phone:'+18165340550'},
-  'R03968':{email:'support@relianceoilusa.com',phone:'+15709934433'},
-  'R03970':{email:'ap@stinker.com',phone:'+12089915717'},
-  'R03972':{email:'schu.s5634@gmail.com',phone:'+19209040116'},
-  'R09601':{email:'johnc@circlekatl.com',phone:'+18044026977'},
-  'R61502':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R61503':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R61504':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R61506':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R61507':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R61508':{email:'jbucks@goodoilcompany.com',phone:''},
-  'R61509':{email:'jbucks@goodoilcompany.com',phone:''},
-};
-function _seedManagerContactFor(rec, stopId){
-  if(typeof MANAGER_CONTACTS_SEED !== 'object') return;
-  const ent = MANAGER_CONTACTS_SEED[stopId];
-  if(!ent) return;
-  if(!rec.siteMgrEmail && ent.email) rec.siteMgrEmail = ent.email;
-  if(!rec.siteMgrPhone && ent.phone) rec.siteMgrPhone = ent.phone;
-}
-// ── /MANAGER_CONTACTS_SEED ──
 function loadStopRecord(stopId){
   if(!stopdata[stopId]) stopdata[stopId] = {membershipCost:'', siteMgrName:'', siteMgrEmail:'', siteMgrPhone:'', notes:[], visits:[]};
   /* MEMBERSHIP_SEED_PATCH */ if(!stopdata[stopId].membershipCost && typeof _seedMembershipCostFor === 'function'){
     const seed = _seedMembershipCostFor(stopId);
     if(seed) stopdata[stopId].membershipCost = seed;
   } /* /MEMBERSHIP_SEED_PATCH */
-  /* AMENITIES_SEED_PATCH */ if(typeof _seedFleetCardsFor === 'function') _seedFleetCardsFor(stopdata[stopId], stopId); /* /AMENITIES_SEED_PATCH */
-  /* CONTACTS_SEED_PATCH */ if(typeof _seedManagerContactFor === 'function') _seedManagerContactFor(stopdata[stopId], stopId); /* /CONTACTS_SEED_PATCH */
   return stopdata[stopId];
 }
 function saveStopRecord(stopId, partial){
@@ -4365,18 +4040,9 @@ function onMembershipChange(stopId, field, val){
   let coerced = val;
   if (field === 'priceFileFeeRemoved' || field === 'acceptsFuelman' || field === 'acceptsRcheck') {
     coerced = !!val;
-  } else if (
-    field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' || field === 'ytdTotalGallons' ||
-    field === 'roiPotentialNewGallons' || field === 'roiNewDefGallons' || field === 'roiNewDefPrice' ||
-    field === 'roiNewInsideStoreSales' || field === 'roiRewardsInvoice'
-  ) {
-    const s = String(val == null ? '' : val).replace(/[$,\s]/g, '');
-    if (s === '') {
-      coerced = null;  // empty string clears the override → fall back to auto-computed
-    } else {
-      const n = parseFloat(s);
-      coerced = isNaN(n) ? null : n;
-    }
+  } else if (field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' || field === 'ytdTotalGallons') {
+    const n = parseFloat(String(val).replace(/[$,\s]/g, ''));
+    coerced = isNaN(n) ? null : n;
   }
   saveStopRecord(stopId, {[field]: coerced});
   toast('Saved');
@@ -4820,247 +4486,69 @@ function parseDollarString(s){
 }
 function computeStopROI(stopId){
   const rec = loadStopRecord(stopId);
-
-  // ── Cost inputs ────────────────────────────────────────────────────────
   const membership = parseDollarString(rec.membershipCost);
-  const PRICE_FILE_FEE_RATE = 295;
-  const pffWaived = !!rec.priceFileFeeRemoved;
-  const priceFee = pffWaived ? 0 : PRICE_FILE_FEE_RATE;
-  const priceFileSavings = pffWaived ? PRICE_FILE_FEE_RATE : 0;
-  const cost = (membership == null) ? null : membership + priceFee;
-
-  // ── Vendor savings (existing logic — kept for the legacy current/potential view) ──
+  const priceFee = rec.priceFileFeeRemoved ? 0 : 295;
   const vendorSavingsCurrent = vendorSavingsForStop(stopId);
   const opps = vendorOpportunityForStop(stopId);
   const vendorSavingsOpportunity = opps.reduce((s, o) => s + (o.savings || 0), 0);
+  const cost = (membership == null) ? null : membership + priceFee;
   const valueCurrent   = vendorSavingsCurrent;
   const valuePotential = vendorSavingsCurrent + vendorSavingsOpportunity;
   const netCurrent   = (cost == null) ? null : valueCurrent   - cost;
   const netPotential = (cost == null) ? null : valuePotential - cost;
-
-  // ── Revenue / savings inputs ──────────────────────────────────────────
-  // Current Gallons: prefer the April 2026 seeded report total, fall back to
-  // the most recent month with data so the field still reads meaningfully
-  // outside an April-reporting context.
-  const aprGal = stopTotalGallons(stopId, '2026-04');
-  let currentGallons = aprGal;
-  if(!currentGallons){
-    // Walk backward from the current month to find the last non-zero month.
-    let m = currentMonthKey();
-    for(let i = 0; i < 12; i++){
-      const g = stopTotalGallons(stopId, m);
-      if(g > 0){ currentGallons = g; break; }
-      m = priorMonthKey(m);
-    }
-  }
-  const potentialNewGallons = +rec.roiPotentialNewGallons || 0;
-
-  // DEF: editable gallons; price defaults to CALC_DEFAULTS retail DEF price ($4.50).
-  const defPriceDefault = (CALC_DEFAULTS && CALC_DEFAULTS.retail && CALC_DEFAULTS.retail.def && CALC_DEFAULTS.retail.def.price) || 4.50;
-  const newDefGallons = +rec.roiNewDefGallons || 0;
-  const newDefPrice   = (rec.roiNewDefPrice != null && !isNaN(+rec.roiNewDefPrice)) ? +rec.roiNewDefPrice : defPriceDefault;
-  const newDefSales   = newDefGallons * newDefPrice;
-
-  // Inside store: default = avgRing × (currentGallons ÷ avgGalPerTxn).
-  // Matches the calculator's Inside Store section (line ~7493) which uses
-  // CALC_DEFAULTS.retail.inside.{avgGalPerTxn, avgRing}.
-  const insideDefaults = (CALC_DEFAULTS && CALC_DEFAULTS.retail && CALC_DEFAULTS.retail.inside) || {avgGalPerTxn:110, avgRing:18.32};
-  const avgGalPerTxn = +insideDefaults.avgGalPerTxn || 110;
-  const avgRing      = +insideDefaults.avgRing || 18.32;
-  const newInsideStoreEstimate = currentGallons > 0 ? (avgRing * (currentGallons / avgGalPerTxn)) : 0;
-  const newInsideStoreSales = (rec.roiNewInsideStoreSales != null && !isNaN(+rec.roiNewInsideStoreSales))
-    ? +rec.roiNewInsideStoreSales
-    : newInsideStoreEstimate;
-  const insideStoreIsOverridden = (rec.roiNewInsideStoreSales != null && !isNaN(+rec.roiNewInsideStoreSales));
-
-  // ── Monthly Rewards Invoice ───────────────────────────────────────────
-  // Auto: net = (YTD adds − YTD redeems) ÷ months elapsed.
-  // Positive net (adds > redeems) ⇒ ACH Credit (location is owed money).
-  // Negative net (redeems > adds) ⇒ ACH Debit (location owes money).
-  const monthsElapsed = Math.max(1, new Date().getMonth() + 1);
-  const addsYtd    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
-  const redeemsYtd = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
-  const rewardsAutoNet = (addsYtd != null && redeemsYtd != null) ? ((addsYtd - redeemsYtd) / monthsElapsed) : null;
-  const rewardsInvoiceOverridden = (rec.roiRewardsInvoice != null && !isNaN(+rec.roiRewardsInvoice));
-  const rewardsInvoice = rewardsInvoiceOverridden ? +rec.roiRewardsInvoice : (rewardsAutoNet || 0);
-  const rewardsAchType = rewardsInvoice >= 0 ? 'Credit' : 'Debit';
-  const rewardsHasData = rewardsInvoiceOverridden || rewardsAutoNet != null;
-
-  // ── New revenue / savings values ──────────────────────────────────────
-  const marginPerGallon = REV_PER_GAL_GS - COST_PER_GAL_GS;  // $0.03/gal net margin
-  const newGallonsValue = potentialNewGallons * marginPerGallon;
-  const newDefValue     = newDefSales;          // full sales counted as value
-  const newInsideValue  = newInsideStoreSales;  // full sales counted as value
-
-  // ── Net Monthly ROI ───────────────────────────────────────────────────
-  // + Price File Fee savings (when waived)
-  // + Value of New Gallons (× margin)
-  // + New DEF Sales value
-  // + New Inside Store Sales value
-  // − Membership Fee
-  // − Price File Fee (when not waived)
-  // ± Monthly Rewards Invoice (signed: positive helps, negative hurts)
-  const inflows  = priceFileSavings + newGallonsValue + newDefValue + newInsideValue + (rewardsInvoice > 0 ? rewardsInvoice : 0);
-  const outflows = (membership || 0) + priceFee + (rewardsInvoice < 0 ? -rewardsInvoice : 0);
-  const netMonthlyROI = (membership == null && !pffWaived && potentialNewGallons === 0 && newDefSales === 0 && newInsideStoreSales === 0 && !rewardsHasData)
-    ? null
-    : inflows - outflows;
-
   return {
-    // Costs
-    membership, membershipMissing: membership == null,
-    priceFee, priceFileFeeRemoved: pffWaived, priceFileSavings, priceFileFeeRate: PRICE_FILE_FEE_RATE,
+    membership, priceFee, priceFileFeeRemoved: !!rec.priceFileFeeRemoved,
     cost,
-
-    // Revenue/savings inputs
-    currentGallons, currentGallonsSource: aprGal ? '2026-04' : 'most-recent',
-    potentialNewGallons,
-    newDefGallons, newDefPrice, newDefSales, defPriceDefault,
-    newInsideStoreSales, newInsideStoreEstimate, insideStoreIsOverridden,
-    avgGalPerTxn, avgRing,
-
-    // Rewards
-    rewardsInvoice, rewardsAutoNet, rewardsInvoiceOverridden, rewardsAchType, rewardsHasData,
-    rewardsMonthsElapsed: monthsElapsed,
-
-    // Computed values
-    marginPerGallon,
-    newGallonsValue, newDefValue, newInsideValue,
-    netMonthlyROI,
-
-    // Legacy (still used by other parts of the file)
     vendorSavingsCurrent, vendorSavingsOpportunity,
     valueCurrent, valuePotential,
-    netCurrent, netPotential
+    netCurrent, netPotential,
+    membershipMissing: membership == null
   };
 }
 function drawerROIHTML(stopId){
   const r = computeStopROI(stopId);
-  const rec = loadStopRecord(stopId);
-  const fmt    = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const fmtSig = n => (n>=0?'+':'−') + '$' + Math.abs(Number(n||0)).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmt = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  // Fuel context — reuse Phase 1 helpers
+  const m = currentMonthKey();
+  const mtdGal = stopTotalGallons(stopId, m);
+  const ytdGal = ytdGallonsForStop(stopId, m, 'total');
   const fmtGal = n => Math.round(n).toLocaleString();
-  const inS = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;color:var(--text);font-size:.86em;width:100%;text-align:right;font-family:var(--fm)';
-  const lblS = 'font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700';
-  // Section header chip
-  const sectHd = (txt, color) => `<div style="font-size:.62em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${color};margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${txt}</div>`;
-  // Read-only display row (left label, right value)
-  const roRow = (label, val, sub) => `
-    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font-size:.84em">
-      <span style="color:var(--muted)">${label}${sub ? ` <span style="font-size:.78em;color:var(--muted);opacity:.7">${sub}</span>` : ''}</span>
-      <span style="font-family:var(--fm);font-weight:700">${val}</span>
-    </div>`;
-  // Editable input row (number)
-  const inpRow = (label, field, val, placeholder, sub) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;font-size:.84em">
-      <label for="sd-${field}-${stopId}" style="color:var(--muted);flex:1;min-width:0">
-        ${label}${sub ? `<div style="font-size:.7em;color:var(--muted);opacity:.7;margin-top:1px">${sub}</div>` : ''}
-      </label>
-      <input id="sd-${field}-${stopId}" type="number" step="0.01" inputmode="decimal"
-             style="${inS};width:130px;flex:none"
-             value="${val == null ? '' : val}"
-             placeholder="${placeholder || '0'}"
-             onblur="onMembershipChange('${stopId}', '${field}', this.value)"/>
-    </div>`;
-  // ── Costs cells ────────────────────────────────────────────────────────
   const memberCell = r.membershipMissing
-    ? `<span style="color:var(--muted);font-style:italic">— *</span>`
-    : `<span style="font-family:var(--fm);font-weight:700">${fmt(r.membership)}</span>`;
-  const priceFeeCell = r.priceFileFeeRemoved
-    ? `<span style="font-family:var(--fm);text-decoration:line-through;color:var(--muted)">${fmt(r.priceFileFeeRate)}</span> <span style="font-size:.74em;color:var(--green);font-weight:700">✓ Waived</span>`
-    : `<span style="font-family:var(--fm);font-weight:700">${fmt(r.priceFileFeeRate)}</span>`;
-  // ── Rewards cell ───────────────────────────────────────────────────────
-  const rewardsBadge = r.rewardsInvoice >= 0
-    ? `<span style="display:inline-block;font-size:.66em;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35);margin-left:8px">ACH CREDIT</span>`
-    : `<span style="display:inline-block;font-size:.66em;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35);margin-left:8px">ACH DEBIT</span>`;
-  const rewardsValueCell = r.rewardsHasData
-    ? `<span style="font-family:var(--fm);font-weight:700;color:${r.rewardsInvoice>=0?'var(--green)':'var(--red)'}">${fmtSig(r.rewardsInvoice)}</span>${rewardsBadge}`
-    : `<span style="color:var(--muted);font-style:italic">— enter override or YTD adds/redeems</span>`;
-  // ── ROI Summary line (signed) ──────────────────────────────────────────
-  const sumLine = (label, signedVal, struck) => {
-    const v = Number(signedVal || 0);
-    const color = struck ? 'var(--muted)' : (v >= 0 ? 'var(--green)' : 'var(--red)');
-    const styleVal = struck ? 'text-decoration:line-through;color:var(--muted)' : `color:${color};font-weight:700`;
-    return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:.84em">
-      <span style="color:var(--muted)">${label}</span>
-      <span style="font-family:var(--fm);${styleVal}">${fmtSig(v)}</span>
-    </div>`;
-  };
-  const netVal = r.netMonthlyROI;
-  const netCell = (netVal == null)
-    ? `<span style="color:var(--muted);font-style:italic">—</span>`
-    : `<span style="font-family:var(--fm);font-weight:800;font-size:1.15em;color:${netVal>=0?'var(--green)':'var(--red)'}">${fmtSig(netVal)} ${netVal>=0?'✓':'✗'}</span>`;
-  // Fuel context
-  const cmKey = currentMonthKey();
-  const mtdGal = stopTotalGallons(stopId, cmKey);
-  const ytdGal = ytdGallonsForStop(stopId, cmKey, 'total');
-  // ── Render ─────────────────────────────────────────────────────────────
+    ? `<span class="value" style="color:var(--muted);font-style:italic">— *</span>`
+    : `<span class="value">${fmt(r.membership)}</span>`;
+  const priceFeeCell = `<span class="value">${r.priceFileFeeRemoved ? '$0.00 (✓ Removed)' : fmt(295)}</span>`;
+  const costCell = `<span class="value">${r.cost == null ? '—' : fmt(r.cost)}</span>`;
+  function netCell(net){
+    if(net == null) return `<span class="value" style="color:var(--muted);font-style:italic">—</span>`;
+    const sym = net > 0 ? ' ✓' : ' ✗';
+    return `<span class="value" style="font-weight:800;color:${net>0?'var(--green)':'var(--red)'}">${fmt(net)}${sym}</span>`;
+  }
+  // Render two-column table: rows are "label · current · potential"
   return `
     <div class="drawer-card green">
       <div class="drawer-card-hd">💰 Site Value / ROI — Monthly</div>
-
-      ${sectHd('Revenue / Savings Inputs', 'var(--cyan)')}
-      ${roRow('Current Gallons',
-              `<span style="color:var(--cyan)">${fmtGal(r.currentGallons)} gal</span>`,
-              r.currentGallons > 0 ? `from ${r.currentGallonsSource === '2026-04' ? 'April 2026 report' : 'most recent monthly'}` : 'no monthly data yet')}
-      ${inpRow('Potential New Gallons', 'roiPotentialNewGallons',
-               rec.roiPotentialNewGallons, '0',
-               `× $${r.marginPerGallon.toFixed(2)} margin/gal`)}
-      ${inpRow('New DEF Gallons', 'roiNewDefGallons',
-               rec.roiNewDefGallons, '0',
-               `@ $${r.newDefPrice.toFixed(2)}/gal · sales = ${fmt(r.newDefSales)}`)}
-      ${inpRow('New Inside Store Sales ($)', 'roiNewInsideStoreSales',
-               rec.roiNewInsideStoreSales, r.newInsideStoreEstimate.toFixed(2),
-               r.insideStoreIsOverridden
-                 ? `auto = ${fmt(r.newInsideStoreEstimate)} (${r.avgRing.toFixed(2)} × ${fmtGal(r.currentGallons)} ÷ ${r.avgGalPerTxn}) — overridden`
-                 : `auto = ${r.avgRing.toFixed(2)} × ${fmtGal(r.currentGallons)} ÷ ${r.avgGalPerTxn} = ${fmt(r.newInsideStoreEstimate)}`)}
-
-      ${sectHd('Costs', 'var(--yellow)')}
-      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font-size:.84em">
-        <span style="color:var(--muted)">Membership Fee / mo</span>
-        ${memberCell}
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font-size:.84em">
-        <span style="color:var(--muted)">Price File Fee</span>
-        <span>${priceFeeCell}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;font-size:.84em">
-        <label for="sd-roiRewardsInvoice-${stopId}" style="color:var(--muted);flex:1;min-width:0">
-          Monthly Rewards Invoice
-          <div style="font-size:.7em;color:var(--muted);opacity:.7;margin-top:1px">
-            ${r.rewardsAutoNet != null
-              ? `auto = (YTD adds − redeems) ÷ ${r.rewardsMonthsElapsed} mo = ${fmtSig(r.rewardsAutoNet)}`
-              : `enter override or set YTD adds/redeems on the Membership card`}
-          </div>
-        </label>
-        <input id="sd-roiRewardsInvoice-${stopId}" type="number" step="0.01" inputmode="decimal"
-               style="${inS};width:130px;flex:none"
-               value="${rec.roiRewardsInvoice == null ? '' : rec.roiRewardsInvoice}"
-               placeholder="${r.rewardsAutoNet != null ? r.rewardsAutoNet.toFixed(2) : 'auto'}"
-               onblur="onMembershipChange('${stopId}', 'roiRewardsInvoice', this.value)"/>
-      </div>
-      <div style="display:flex;justify-content:flex-end;padding:0 0 4px;font-size:.78em">
-        ${r.rewardsHasData ? rewardsValueCell : ''}
-      </div>
-
-      ${sectHd('Net Monthly ROI', 'var(--green)')}
-      ${sumLine('Price File Fee savings (waived)', r.priceFileSavings, !r.priceFileFeeRemoved)}
-      ${sumLine('Value of New Gallons',           r.newGallonsValue,   false)}
-      ${sumLine('New DEF Sales value',            r.newDefValue,       false)}
-      ${sumLine('New Inside Store Sales value',   r.newInsideValue,    false)}
-      ${sumLine('Membership Fee',                 -(r.membership || 0), false)}
-      ${sumLine('Price File Fee',                 -r.priceFee,         r.priceFileFeeRemoved)}
-      ${sumLine('Monthly Rewards Invoice (net)',  r.rewardsInvoice,    !r.rewardsHasData)}
-      <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--border);margin-top:6px;padding-top:8px">
-        <span style="font-size:.78em;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text)">Net Monthly ROI</span>
-        ${netCell}
-      </div>
-
+      <table style="width:100%;font-size:.84em;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:4px 0;font-size:.7em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em"></th>
+            <th style="text-align:right;padding:4px 8px;font-size:.7em;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Current</th>
+            <th style="text-align:right;padding:4px 0;font-size:.7em;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Potential</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="color:var(--muted)">Membership cost</td><td style="text-align:right;padding:3px 8px">${memberCell}</td><td style="text-align:right;padding:3px 0">${memberCell}</td></tr>
+          <tr><td style="color:var(--muted)">Price File Fee ($295)</td><td style="text-align:right;padding:3px 8px">${priceFeeCell}</td><td style="text-align:right;padding:3px 0">${priceFeeCell}</td></tr>
+          <tr style="border-top:1px solid var(--border);font-weight:700"><td>COSTS</td><td style="text-align:right;padding:6px 8px 3px">${costCell}</td><td style="text-align:right;padding:6px 0 3px">${costCell}</td></tr>
+          <tr><td style="color:var(--muted)">Vendor savings — currently enrolled *</td><td style="text-align:right;padding:3px 8px"><span class="value">${fmt(r.vendorSavingsCurrent)}</span></td><td style="text-align:right;padding:3px 0"><span class="value">${fmt(r.vendorSavingsCurrent)}</span></td></tr>
+          <tr><td style="color:var(--muted)">+ Missed opportunity *</td><td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--muted)">—</span></td><td style="text-align:right;padding:3px 0"><span class="value" style="color:var(--yellow);font-weight:700">${fmt(r.vendorSavingsOpportunity)}</span></td></tr>
+          <tr style="border-top:1px solid var(--border);font-weight:700"><td>VALUE</td><td style="text-align:right;padding:6px 8px 3px"><span class="value">${fmt(r.valueCurrent)}</span></td><td style="text-align:right;padding:6px 0 3px"><span class="value">${fmt(r.valuePotential)}</span></td></tr>
+          <tr style="border-top:2px solid var(--border);font-size:1em;font-weight:800"><td style="padding-top:8px">NET / ROI</td><td style="text-align:right;padding:8px 8px 3px">${netCell(r.netCurrent)}</td><td style="text-align:right;padding:8px 0 3px">${netCell(r.netPotential)}</td></tr>
+        </tbody>
+      </table>
       <div class="roi-foot">
-        Fuel context: ${fmtGal(mtdGal)} gal MTD · ${fmtGal(ytdGal)} gal YTD · April 2026 report: ${fmtGal(stopTotalGallons(stopId, '2026-04'))} gal<br>
-        Margin model: REV_PER_GAL_GS $${REV_PER_GAL_GS.toFixed(2)} − COST_PER_GAL_GS $${COST_PER_GAL_GS.toFixed(2)} = $${(REV_PER_GAL_GS-COST_PER_GAL_GS).toFixed(2)}/gal net.<br>
-        Inside-store default: $${r.avgRing.toFixed(2)} avg ring × (Current Gallons ÷ ${r.avgGalPerTxn} avg gal/txn).
-        ${r.membershipMissing ? '<br>* Set Membership Cost on the Membership card above to include it in ROI.' : ''}
+        Fuel context: ${fmtGal(mtdGal)} gal MTD · ${fmtGal(ytdGal)} gal YTD<br>
+        ${r.membershipMissing ? '* Set Membership Cost on the Membership card above (or import via CSV) to compute ROI.<br>' : ''}
+        * Vendor savings are estimates based on network averages.
       </div>
     </div>
   `;
