@@ -4365,9 +4365,18 @@ function onMembershipChange(stopId, field, val){
   let coerced = val;
   if (field === 'priceFileFeeRemoved' || field === 'acceptsFuelman' || field === 'acceptsRcheck') {
     coerced = !!val;
-  } else if (field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' || field === 'ytdTotalGallons') {
-    const n = parseFloat(String(val).replace(/[$,\s]/g, ''));
-    coerced = isNaN(n) ? null : n;
+  } else if (
+    field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' || field === 'ytdTotalGallons' ||
+    field === 'roiPotentialNewGallons' || field === 'roiNewDefGallons' || field === 'roiNewDefPrice' ||
+    field === 'roiNewInsideStoreSales' || field === 'roiRewardsInvoice'
+  ) {
+    const s = String(val == null ? '' : val).replace(/[$,\s]/g, '');
+    if (s === '') {
+      coerced = null;  // empty string clears the override → fall back to auto-computed
+    } else {
+      const n = parseFloat(s);
+      coerced = isNaN(n) ? null : n;
+    }
   }
   saveStopRecord(stopId, {[field]: coerced});
   toast('Saved');
@@ -4811,69 +4820,247 @@ function parseDollarString(s){
 }
 function computeStopROI(stopId){
   const rec = loadStopRecord(stopId);
+
+  // ── Cost inputs ────────────────────────────────────────────────────────
   const membership = parseDollarString(rec.membershipCost);
-  const priceFee = rec.priceFileFeeRemoved ? 0 : 295;
+  const PRICE_FILE_FEE_RATE = 295;
+  const pffWaived = !!rec.priceFileFeeRemoved;
+  const priceFee = pffWaived ? 0 : PRICE_FILE_FEE_RATE;
+  const priceFileSavings = pffWaived ? PRICE_FILE_FEE_RATE : 0;
+  const cost = (membership == null) ? null : membership + priceFee;
+
+  // ── Vendor savings (existing logic — kept for the legacy current/potential view) ──
   const vendorSavingsCurrent = vendorSavingsForStop(stopId);
   const opps = vendorOpportunityForStop(stopId);
   const vendorSavingsOpportunity = opps.reduce((s, o) => s + (o.savings || 0), 0);
-  const cost = (membership == null) ? null : membership + priceFee;
   const valueCurrent   = vendorSavingsCurrent;
   const valuePotential = vendorSavingsCurrent + vendorSavingsOpportunity;
   const netCurrent   = (cost == null) ? null : valueCurrent   - cost;
   const netPotential = (cost == null) ? null : valuePotential - cost;
+
+  // ── Revenue / savings inputs ──────────────────────────────────────────
+  // Current Gallons: prefer the April 2026 seeded report total, fall back to
+  // the most recent month with data so the field still reads meaningfully
+  // outside an April-reporting context.
+  const aprGal = stopTotalGallons(stopId, '2026-04');
+  let currentGallons = aprGal;
+  if(!currentGallons){
+    // Walk backward from the current month to find the last non-zero month.
+    let m = currentMonthKey();
+    for(let i = 0; i < 12; i++){
+      const g = stopTotalGallons(stopId, m);
+      if(g > 0){ currentGallons = g; break; }
+      m = priorMonthKey(m);
+    }
+  }
+  const potentialNewGallons = +rec.roiPotentialNewGallons || 0;
+
+  // DEF: editable gallons; price defaults to CALC_DEFAULTS retail DEF price ($4.50).
+  const defPriceDefault = (CALC_DEFAULTS && CALC_DEFAULTS.retail && CALC_DEFAULTS.retail.def && CALC_DEFAULTS.retail.def.price) || 4.50;
+  const newDefGallons = +rec.roiNewDefGallons || 0;
+  const newDefPrice   = (rec.roiNewDefPrice != null && !isNaN(+rec.roiNewDefPrice)) ? +rec.roiNewDefPrice : defPriceDefault;
+  const newDefSales   = newDefGallons * newDefPrice;
+
+  // Inside store: default = avgRing × (currentGallons ÷ avgGalPerTxn).
+  // Matches the calculator's Inside Store section (line ~7493) which uses
+  // CALC_DEFAULTS.retail.inside.{avgGalPerTxn, avgRing}.
+  const insideDefaults = (CALC_DEFAULTS && CALC_DEFAULTS.retail && CALC_DEFAULTS.retail.inside) || {avgGalPerTxn:110, avgRing:18.32};
+  const avgGalPerTxn = +insideDefaults.avgGalPerTxn || 110;
+  const avgRing      = +insideDefaults.avgRing || 18.32;
+  const newInsideStoreEstimate = currentGallons > 0 ? (avgRing * (currentGallons / avgGalPerTxn)) : 0;
+  const newInsideStoreSales = (rec.roiNewInsideStoreSales != null && !isNaN(+rec.roiNewInsideStoreSales))
+    ? +rec.roiNewInsideStoreSales
+    : newInsideStoreEstimate;
+  const insideStoreIsOverridden = (rec.roiNewInsideStoreSales != null && !isNaN(+rec.roiNewInsideStoreSales));
+
+  // ── Monthly Rewards Invoice ───────────────────────────────────────────
+  // Auto: net = (YTD adds − YTD redeems) ÷ months elapsed.
+  // Positive net (adds > redeems) ⇒ ACH Credit (location is owed money).
+  // Negative net (redeems > adds) ⇒ ACH Debit (location owes money).
+  const monthsElapsed = Math.max(1, new Date().getMonth() + 1);
+  const addsYtd    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
+  const redeemsYtd = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
+  const rewardsAutoNet = (addsYtd != null && redeemsYtd != null) ? ((addsYtd - redeemsYtd) / monthsElapsed) : null;
+  const rewardsInvoiceOverridden = (rec.roiRewardsInvoice != null && !isNaN(+rec.roiRewardsInvoice));
+  const rewardsInvoice = rewardsInvoiceOverridden ? +rec.roiRewardsInvoice : (rewardsAutoNet || 0);
+  const rewardsAchType = rewardsInvoice >= 0 ? 'Credit' : 'Debit';
+  const rewardsHasData = rewardsInvoiceOverridden || rewardsAutoNet != null;
+
+  // ── New revenue / savings values ──────────────────────────────────────
+  const marginPerGallon = REV_PER_GAL_GS - COST_PER_GAL_GS;  // $0.03/gal net margin
+  const newGallonsValue = potentialNewGallons * marginPerGallon;
+  const newDefValue     = newDefSales;          // full sales counted as value
+  const newInsideValue  = newInsideStoreSales;  // full sales counted as value
+
+  // ── Net Monthly ROI ───────────────────────────────────────────────────
+  // + Price File Fee savings (when waived)
+  // + Value of New Gallons (× margin)
+  // + New DEF Sales value
+  // + New Inside Store Sales value
+  // − Membership Fee
+  // − Price File Fee (when not waived)
+  // ± Monthly Rewards Invoice (signed: positive helps, negative hurts)
+  const inflows  = priceFileSavings + newGallonsValue + newDefValue + newInsideValue + (rewardsInvoice > 0 ? rewardsInvoice : 0);
+  const outflows = (membership || 0) + priceFee + (rewardsInvoice < 0 ? -rewardsInvoice : 0);
+  const netMonthlyROI = (membership == null && !pffWaived && potentialNewGallons === 0 && newDefSales === 0 && newInsideStoreSales === 0 && !rewardsHasData)
+    ? null
+    : inflows - outflows;
+
   return {
-    membership, priceFee, priceFileFeeRemoved: !!rec.priceFileFeeRemoved,
+    // Costs
+    membership, membershipMissing: membership == null,
+    priceFee, priceFileFeeRemoved: pffWaived, priceFileSavings, priceFileFeeRate: PRICE_FILE_FEE_RATE,
     cost,
+
+    // Revenue/savings inputs
+    currentGallons, currentGallonsSource: aprGal ? '2026-04' : 'most-recent',
+    potentialNewGallons,
+    newDefGallons, newDefPrice, newDefSales, defPriceDefault,
+    newInsideStoreSales, newInsideStoreEstimate, insideStoreIsOverridden,
+    avgGalPerTxn, avgRing,
+
+    // Rewards
+    rewardsInvoice, rewardsAutoNet, rewardsInvoiceOverridden, rewardsAchType, rewardsHasData,
+    rewardsMonthsElapsed: monthsElapsed,
+
+    // Computed values
+    marginPerGallon,
+    newGallonsValue, newDefValue, newInsideValue,
+    netMonthlyROI,
+
+    // Legacy (still used by other parts of the file)
     vendorSavingsCurrent, vendorSavingsOpportunity,
     valueCurrent, valuePotential,
-    netCurrent, netPotential,
-    membershipMissing: membership == null
+    netCurrent, netPotential
   };
 }
 function drawerROIHTML(stopId){
   const r = computeStopROI(stopId);
-  const fmt = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  // Fuel context — reuse Phase 1 helpers
-  const m = currentMonthKey();
-  const mtdGal = stopTotalGallons(stopId, m);
-  const ytdGal = ytdGallonsForStop(stopId, m, 'total');
+  const rec = loadStopRecord(stopId);
+  const fmt    = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtSig = n => (n>=0?'+':'−') + '$' + Math.abs(Number(n||0)).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const fmtGal = n => Math.round(n).toLocaleString();
+  const inS = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;color:var(--text);font-size:.86em;width:100%;text-align:right;font-family:var(--fm)';
+  const lblS = 'font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700';
+  // Section header chip
+  const sectHd = (txt, color) => `<div style="font-size:.62em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${color};margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${txt}</div>`;
+  // Read-only display row (left label, right value)
+  const roRow = (label, val, sub) => `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font-size:.84em">
+      <span style="color:var(--muted)">${label}${sub ? ` <span style="font-size:.78em;color:var(--muted);opacity:.7">${sub}</span>` : ''}</span>
+      <span style="font-family:var(--fm);font-weight:700">${val}</span>
+    </div>`;
+  // Editable input row (number)
+  const inpRow = (label, field, val, placeholder, sub) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;font-size:.84em">
+      <label for="sd-${field}-${stopId}" style="color:var(--muted);flex:1;min-width:0">
+        ${label}${sub ? `<div style="font-size:.7em;color:var(--muted);opacity:.7;margin-top:1px">${sub}</div>` : ''}
+      </label>
+      <input id="sd-${field}-${stopId}" type="number" step="0.01" inputmode="decimal"
+             style="${inS};width:130px;flex:none"
+             value="${val == null ? '' : val}"
+             placeholder="${placeholder || '0'}"
+             onblur="onMembershipChange('${stopId}', '${field}', this.value)"/>
+    </div>`;
+  // ── Costs cells ────────────────────────────────────────────────────────
   const memberCell = r.membershipMissing
-    ? `<span class="value" style="color:var(--muted);font-style:italic">— *</span>`
-    : `<span class="value">${fmt(r.membership)}</span>`;
-  const priceFeeCell = `<span class="value">${r.priceFileFeeRemoved ? '$0.00 (✓ Removed)' : fmt(295)}</span>`;
-  const costCell = `<span class="value">${r.cost == null ? '—' : fmt(r.cost)}</span>`;
-  function netCell(net){
-    if(net == null) return `<span class="value" style="color:var(--muted);font-style:italic">—</span>`;
-    const sym = net > 0 ? ' ✓' : ' ✗';
-    return `<span class="value" style="font-weight:800;color:${net>0?'var(--green)':'var(--red)'}">${fmt(net)}${sym}</span>`;
-  }
-  // Render two-column table: rows are "label · current · potential"
+    ? `<span style="color:var(--muted);font-style:italic">— *</span>`
+    : `<span style="font-family:var(--fm);font-weight:700">${fmt(r.membership)}</span>`;
+  const priceFeeCell = r.priceFileFeeRemoved
+    ? `<span style="font-family:var(--fm);text-decoration:line-through;color:var(--muted)">${fmt(r.priceFileFeeRate)}</span> <span style="font-size:.74em;color:var(--green);font-weight:700">✓ Waived</span>`
+    : `<span style="font-family:var(--fm);font-weight:700">${fmt(r.priceFileFeeRate)}</span>`;
+  // ── Rewards cell ───────────────────────────────────────────────────────
+  const rewardsBadge = r.rewardsInvoice >= 0
+    ? `<span style="display:inline-block;font-size:.66em;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35);margin-left:8px">ACH CREDIT</span>`
+    : `<span style="display:inline-block;font-size:.66em;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35);margin-left:8px">ACH DEBIT</span>`;
+  const rewardsValueCell = r.rewardsHasData
+    ? `<span style="font-family:var(--fm);font-weight:700;color:${r.rewardsInvoice>=0?'var(--green)':'var(--red)'}">${fmtSig(r.rewardsInvoice)}</span>${rewardsBadge}`
+    : `<span style="color:var(--muted);font-style:italic">— enter override or YTD adds/redeems</span>`;
+  // ── ROI Summary line (signed) ──────────────────────────────────────────
+  const sumLine = (label, signedVal, struck) => {
+    const v = Number(signedVal || 0);
+    const color = struck ? 'var(--muted)' : (v >= 0 ? 'var(--green)' : 'var(--red)');
+    const styleVal = struck ? 'text-decoration:line-through;color:var(--muted)' : `color:${color};font-weight:700`;
+    return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:.84em">
+      <span style="color:var(--muted)">${label}</span>
+      <span style="font-family:var(--fm);${styleVal}">${fmtSig(v)}</span>
+    </div>`;
+  };
+  const netVal = r.netMonthlyROI;
+  const netCell = (netVal == null)
+    ? `<span style="color:var(--muted);font-style:italic">—</span>`
+    : `<span style="font-family:var(--fm);font-weight:800;font-size:1.15em;color:${netVal>=0?'var(--green)':'var(--red)'}">${fmtSig(netVal)} ${netVal>=0?'✓':'✗'}</span>`;
+  // Fuel context
+  const cmKey = currentMonthKey();
+  const mtdGal = stopTotalGallons(stopId, cmKey);
+  const ytdGal = ytdGallonsForStop(stopId, cmKey, 'total');
+  // ── Render ─────────────────────────────────────────────────────────────
   return `
     <div class="drawer-card green">
       <div class="drawer-card-hd">💰 Site Value / ROI — Monthly</div>
-      <table style="width:100%;font-size:.84em;border-collapse:collapse">
-        <thead>
-          <tr style="border-bottom:1px solid var(--border)">
-            <th style="text-align:left;padding:4px 0;font-size:.7em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em"></th>
-            <th style="text-align:right;padding:4px 8px;font-size:.7em;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Current</th>
-            <th style="text-align:right;padding:4px 0;font-size:.7em;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Potential</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td style="color:var(--muted)">Membership cost</td><td style="text-align:right;padding:3px 8px">${memberCell}</td><td style="text-align:right;padding:3px 0">${memberCell}</td></tr>
-          <tr><td style="color:var(--muted)">Price File Fee ($295)</td><td style="text-align:right;padding:3px 8px">${priceFeeCell}</td><td style="text-align:right;padding:3px 0">${priceFeeCell}</td></tr>
-          <tr style="border-top:1px solid var(--border);font-weight:700"><td>COSTS</td><td style="text-align:right;padding:6px 8px 3px">${costCell}</td><td style="text-align:right;padding:6px 0 3px">${costCell}</td></tr>
-          <tr><td style="color:var(--muted)">Vendor savings — currently enrolled *</td><td style="text-align:right;padding:3px 8px"><span class="value">${fmt(r.vendorSavingsCurrent)}</span></td><td style="text-align:right;padding:3px 0"><span class="value">${fmt(r.vendorSavingsCurrent)}</span></td></tr>
-          <tr><td style="color:var(--muted)">+ Missed opportunity *</td><td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--muted)">—</span></td><td style="text-align:right;padding:3px 0"><span class="value" style="color:var(--yellow);font-weight:700">${fmt(r.vendorSavingsOpportunity)}</span></td></tr>
-          <tr style="border-top:1px solid var(--border);font-weight:700"><td>VALUE</td><td style="text-align:right;padding:6px 8px 3px"><span class="value">${fmt(r.valueCurrent)}</span></td><td style="text-align:right;padding:6px 0 3px"><span class="value">${fmt(r.valuePotential)}</span></td></tr>
-          <tr style="border-top:2px solid var(--border);font-size:1em;font-weight:800"><td style="padding-top:8px">NET / ROI</td><td style="text-align:right;padding:8px 8px 3px">${netCell(r.netCurrent)}</td><td style="text-align:right;padding:8px 0 3px">${netCell(r.netPotential)}</td></tr>
-        </tbody>
-      </table>
+
+      ${sectHd('Revenue / Savings Inputs', 'var(--cyan)')}
+      ${roRow('Current Gallons',
+              `<span style="color:var(--cyan)">${fmtGal(r.currentGallons)} gal</span>`,
+              r.currentGallons > 0 ? `from ${r.currentGallonsSource === '2026-04' ? 'April 2026 report' : 'most recent monthly'}` : 'no monthly data yet')}
+      ${inpRow('Potential New Gallons', 'roiPotentialNewGallons',
+               rec.roiPotentialNewGallons, '0',
+               `× $${r.marginPerGallon.toFixed(2)} margin/gal`)}
+      ${inpRow('New DEF Gallons', 'roiNewDefGallons',
+               rec.roiNewDefGallons, '0',
+               `@ $${r.newDefPrice.toFixed(2)}/gal · sales = ${fmt(r.newDefSales)}`)}
+      ${inpRow('New Inside Store Sales ($)', 'roiNewInsideStoreSales',
+               rec.roiNewInsideStoreSales, r.newInsideStoreEstimate.toFixed(2),
+               r.insideStoreIsOverridden
+                 ? `auto = ${fmt(r.newInsideStoreEstimate)} (${r.avgRing.toFixed(2)} × ${fmtGal(r.currentGallons)} ÷ ${r.avgGalPerTxn}) — overridden`
+                 : `auto = ${r.avgRing.toFixed(2)} × ${fmtGal(r.currentGallons)} ÷ ${r.avgGalPerTxn} = ${fmt(r.newInsideStoreEstimate)}`)}
+
+      ${sectHd('Costs', 'var(--yellow)')}
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font-size:.84em">
+        <span style="color:var(--muted)">Membership Fee / mo</span>
+        ${memberCell}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font-size:.84em">
+        <span style="color:var(--muted)">Price File Fee</span>
+        <span>${priceFeeCell}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;font-size:.84em">
+        <label for="sd-roiRewardsInvoice-${stopId}" style="color:var(--muted);flex:1;min-width:0">
+          Monthly Rewards Invoice
+          <div style="font-size:.7em;color:var(--muted);opacity:.7;margin-top:1px">
+            ${r.rewardsAutoNet != null
+              ? `auto = (YTD adds − redeems) ÷ ${r.rewardsMonthsElapsed} mo = ${fmtSig(r.rewardsAutoNet)}`
+              : `enter override or set YTD adds/redeems on the Membership card`}
+          </div>
+        </label>
+        <input id="sd-roiRewardsInvoice-${stopId}" type="number" step="0.01" inputmode="decimal"
+               style="${inS};width:130px;flex:none"
+               value="${rec.roiRewardsInvoice == null ? '' : rec.roiRewardsInvoice}"
+               placeholder="${r.rewardsAutoNet != null ? r.rewardsAutoNet.toFixed(2) : 'auto'}"
+               onblur="onMembershipChange('${stopId}', 'roiRewardsInvoice', this.value)"/>
+      </div>
+      <div style="display:flex;justify-content:flex-end;padding:0 0 4px;font-size:.78em">
+        ${r.rewardsHasData ? rewardsValueCell : ''}
+      </div>
+
+      ${sectHd('Net Monthly ROI', 'var(--green)')}
+      ${sumLine('Price File Fee savings (waived)', r.priceFileSavings, !r.priceFileFeeRemoved)}
+      ${sumLine('Value of New Gallons',           r.newGallonsValue,   false)}
+      ${sumLine('New DEF Sales value',            r.newDefValue,       false)}
+      ${sumLine('New Inside Store Sales value',   r.newInsideValue,    false)}
+      ${sumLine('Membership Fee',                 -(r.membership || 0), false)}
+      ${sumLine('Price File Fee',                 -r.priceFee,         r.priceFileFeeRemoved)}
+      ${sumLine('Monthly Rewards Invoice (net)',  r.rewardsInvoice,    !r.rewardsHasData)}
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--border);margin-top:6px;padding-top:8px">
+        <span style="font-size:.78em;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text)">Net Monthly ROI</span>
+        ${netCell}
+      </div>
+
       <div class="roi-foot">
-        Fuel context: ${fmtGal(mtdGal)} gal MTD · ${fmtGal(ytdGal)} gal YTD<br>
-        ${r.membershipMissing ? '* Set Membership Cost on the Membership card above (or import via CSV) to compute ROI.<br>' : ''}
-        * Vendor savings are estimates based on network averages.
+        Fuel context: ${fmtGal(mtdGal)} gal MTD · ${fmtGal(ytdGal)} gal YTD · April 2026 report: ${fmtGal(stopTotalGallons(stopId, '2026-04'))} gal<br>
+        Margin model: REV_PER_GAL_GS $${REV_PER_GAL_GS.toFixed(2)} − COST_PER_GAL_GS $${COST_PER_GAL_GS.toFixed(2)} = $${(REV_PER_GAL_GS-COST_PER_GAL_GS).toFixed(2)}/gal net.<br>
+        Inside-store default: $${r.avgRing.toFixed(2)} avg ring × (Current Gallons ÷ ${r.avgGalPerTxn} avg gal/txn).
+        ${r.membershipMissing ? '<br>* Set Membership Cost on the Membership card above to include it in ROI.' : ''}
       </div>
     </div>
   `;
