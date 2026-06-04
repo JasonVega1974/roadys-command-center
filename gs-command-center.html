@@ -4747,6 +4747,14 @@ function _seedFuelmanActiveFor(rec, stopId){
   if(!afc.fuelman){ afc.fuelman = true; rec.acceptsFleetCards = afc; }
 }
 // ── /FUELMAN_ACTIVE_SITES ──
+// Per Roady's Comdata Price File program (see PROCESSOR_RATES row at line 1731:
+// "Comdata Admin Fee … $295 monthly … Roady's Members: $0") every member
+// location has the $295 Price File Fee waived. Default the checkbox to
+// checked for fresh records; an explicit user un-check (false) survives
+// because we only seed when the field is still undefined.
+function _seedPriceFileFeeRemovedFor(rec){
+  if(rec.priceFileFeeRemoved === undefined) rec.priceFileFeeRemoved = true;
+}
 function loadStopRecord(stopId){
   if(!stopdata[stopId]) stopdata[stopId] = {membershipCost:'', siteMgrName:'', siteMgrEmail:'', siteMgrPhone:'', notes:[], visits:[]};
   /* MEMBERSHIP_SEED_PATCH */ if(!stopdata[stopId].membershipCost && typeof _seedMembershipCostFor === 'function'){
@@ -4754,6 +4762,7 @@ function loadStopRecord(stopId){
     if(seed) stopdata[stopId].membershipCost = seed;
   } /* /MEMBERSHIP_SEED_PATCH */
   /* FUELMAN_SEED_PATCH */ if(typeof _seedFuelmanActiveFor === 'function') _seedFuelmanActiveFor(stopdata[stopId], stopId); /* /FUELMAN_SEED_PATCH */
+  /* PFF_SEED_PATCH */ _seedPriceFileFeeRemovedFor(stopdata[stopId]); /* /PFF_SEED_PATCH */
   return stopdata[stopId];
 }
 function saveStopRecord(stopId, partial){
