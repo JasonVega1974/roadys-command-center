@@ -8560,8 +8560,34 @@ function brBuildAutoData(stopId, period){
   const fmt$ = n => '$' + Math.round(+n||0).toLocaleString();
   const revenueAuto = totalGal * REV_PER_GAL_GS;
   const profitAuto = totalGal * (REV_PER_GAL_GS - COST_PER_GAL_GS);
-  const adds = (typeof rec.rewardsYtdAdds === 'number') ? rec.rewardsYtdAdds : 0;
-  const redeems = (typeof rec.rewardsYtdRedeems === 'number') ? rec.rewardsYtdRedeems : 0;
+
+  // ── Rewards YTD: mirror the drawer's resolution order ────────────────
+  // Manual override (rec.rewardsYtdAdds/Redeems) wins; otherwise sum the
+  // per-month seeds the same way drawerRewardsHTML does. Slides 2 and 11
+  // read d.adds / d.redeems directly, so this fix flows through to the
+  // KPI pillar redemption rate and the annual financial summary.
+  const monthlyRewards = [];
+  if(typeof REWARDS_2026_04_SEED === 'object' && REWARDS_2026_04_SEED && REWARDS_2026_04_SEED[stopId]){
+    const s = REWARDS_2026_04_SEED[stopId];
+    monthlyRewards.push({key:'2026-04', label:'April 2026',
+      addUsd:+s['a$']||0, redUsd:+s['r$']||0, addTx:+s.at||0, redTx:+s.rt||0, gallons:+s.g||0, rate:+s.rr||0});
+  }
+  if(typeof REWARDS_2026_05_SEED === 'object' && REWARDS_2026_05_SEED && REWARDS_2026_05_SEED[stopId]){
+    const s = REWARDS_2026_05_SEED[stopId];
+    monthlyRewards.push({key:'2026-05', label:'May 2026',
+      addUsd:+s['a$']||0, redUsd:+s['r$']||0, addTx:+s.at||0, redTx:+s.rt||0, gallons:+s.g||0, rate:+s.rr||0});
+  }
+  const seedAdds    = monthlyRewards.reduce((s, m) => s + m.addUsd, 0);
+  const seedRedeems = monthlyRewards.reduce((s, m) => s + m.redUsd, 0);
+  const hasRewardsSeed = monthlyRewards.length > 0;
+
+  const manualAdds    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
+  const manualRedeems = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
+  const adds    = manualAdds    != null ? manualAdds    : (hasRewardsSeed ? Math.round(seedAdds    * 100) / 100 : 0);
+  const redeems = manualRedeems != null ? manualRedeems : (hasRewardsSeed ? Math.round(seedRedeems * 100) / 100 : 0);
+  const rewardsAddsSource    = (manualAdds    != null) ? 'manual'    : (hasRewardsSeed ? 'seed' : 'none');
+  const rewardsRedeemsSource = (manualRedeems != null) ? 'manual'    : (hasRewardsSeed ? 'seed' : 'none');
+  const redemptionRateYtd    = (adds > 0) ? (redeems / adds) * 100 : null;
 
   // Membership $/mo from rec.membershipCost (e.g. "$1,500.00 /mo")
   const memMonthly = parseDollarString(rec.membershipCost) || 0;
@@ -8581,6 +8607,12 @@ function brBuildAutoData(stopId, period){
     totalGal, monthlyTotals,
     aggregators, fleets, enrolledVendors,
     revenueAuto, profitAuto, redeems, adds,
+    // Per-stop rewards seed data — Slide 9 reads these to render the
+    // read-only "Per-Stop Monthly Activity" section above the editable
+    // 12-month table. Empty array = no seed data for this stop.
+    monthlyRewards,
+    rewardsAddsSource, rewardsRedeemsSource,
+    redemptionRateYtd,
     memMonthly, memAnnual,
     // Default editable text per slide — built up by the renderer below.
     // Saved overrides live in `_brData.fields[slide][key]`.
@@ -9511,10 +9543,68 @@ function brSlide9(d){
       <td><input value="${esc(r.redUsd||'')}" onblur="brTblCell(9,'rows',${i},'redUsd',this.value)"></td>
       <td><input value="${esc(r.rate||'')}" onblur="brTblCell(9,'rows',${i},'rate',this.value)"></td>
     </tr>`).join('');
+
+  // ── Per-Stop Monthly Activity (read-only, seed-derived) ─────────────
+  // Renders only when this stop has data in REWARDS_2026_04_SEED or
+  // REWARDS_2026_05_SEED. Same fields and 60%/30% color thresholds the
+  // drawer uses. Sits above the existing editable 12-month table so the
+  // existing manual workflow is unchanged.
+  const fmtUsd = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const rateColor = rr => rr >= 60 ? '#0a8a3a' : (rr >= 30 ? '#b07b00' : '#b91c1c');
+  const seedRows = (d.monthlyRewards || []).map(m => `
+    <tr>
+      <td style="font-weight:700;color:var(--b-ink)">${esc(m.label)}</td>
+      <td style="text-align:right">${fmtUsd(m.addUsd)}</td>
+      <td style="text-align:right">${fmtUsd(m.redUsd)}</td>
+      <td style="text-align:right">${fmtN(m.addTx)}</td>
+      <td style="text-align:right">${fmtN(m.redTx)}</td>
+      <td style="text-align:right">${fmtN(m.gallons)}</td>
+      <td style="text-align:right;color:${rateColor(m.rate)};font-weight:700">${m.rate.toFixed(1)}%</td>
+    </tr>`).join('');
+  const ytdRate = (typeof d.redemptionRateYtd === 'number') ? d.redemptionRateYtd : null;
+  const ytdRateHTML = ytdRate != null
+    ? `<span style="color:${rateColor(ytdRate)};font-weight:700">${ytdRate.toFixed(1)}%</span>`
+    : '<span style="color:#94a3b8">—</span>';
+  const sourceLabel = (s) => s === 'manual' ? ' <span style="font-size:.7em;color:#64748b">(manual)</span>'
+                          :  s === 'seed'   ? ' <span style="font-size:.7em;color:#0a8a3a">(auto)</span>'
+                          :                   '';
+  const perStopHTML = (d.monthlyRewards && d.monthlyRewards.length) ? `
+    <div class="br-s9-perstop" style="margin-bottom:14px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <div style="font-size:.78em;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--b-ink)">📊 Per-Stop Monthly Activity</div>
+        <div style="font-size:.7em;color:#64748b">Source: Rewards CSV seed · ${d.monthlyRewards.length} month${d.monthlyRewards.length>1?'s':''} loaded</div>
+      </div>
+      <table class="br-tbl" style="width:100%;font-size:.78em">
+        <thead>
+          <tr>
+            <th style="text-align:left">Month</th>
+            <th style="text-align:right">Add $</th>
+            <th style="text-align:right">Redeem $</th>
+            <th style="text-align:right">Add Txns</th>
+            <th style="text-align:right">Redeem Txns</th>
+            <th style="text-align:right">Gallons Captured</th>
+            <th style="text-align:right">Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${seedRows}
+          <tr style="border-top:2px solid #cbd5e1;background:#f1f5f9">
+            <td style="font-weight:700;color:var(--b-ink)">YTD${sourceLabel(d.rewardsAddsSource === d.rewardsRedeemsSource ? d.rewardsAddsSource : 'manual')}</td>
+            <td style="text-align:right;font-weight:700">${fmtUsd(d.adds)}</td>
+            <td style="text-align:right;font-weight:700">${fmtUsd(d.redeems)}</td>
+            <td colspan="3" style="text-align:right;color:#64748b;font-style:italic">YTD Redemption Rate &rarr;</td>
+            <td style="text-align:right">${ytdRateHTML}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>` : '';
+
   return `
     <div class="br-slide${_brSlide===9?' active':''}" data-slide="9">
       ${brShead(9, 'Loyalty', 'Rewards Program Performance', String(d.year))}
       <div class="br-sbody">
+        ${perStopHTML}
         <div class="br-s9">
           <div class="br-s9-l">
             <table class="br-tbl">
