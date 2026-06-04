@@ -2683,77 +2683,7 @@ R01180,no,yes,yes,no,yes,no</code>
       <div class="detail-card">
         <h3 style="font-family:var(--ff);font-size:.9em;color:var(--accent);margin-bottom:14px">🗑️ Data Management</h3>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn" onclick="if(confirm('Clear all KPI data and reload sample data?')){kpiInit();kpiLoadSample();
-// ── REWARDS_2026_05 KD overlay ──
-// Source: rewards-by-truckstop-2026-05*.csv (6 pagination pages)
-//         aggregated across 143 of 368 MEMBERS.
-// Re-run C:\tmp\update_rewards_may_2026.py if any pages change.
-(function injectRewardsMay2026(){
-  try {
-    if(typeof KD !== 'object' || !KD) return;
-    const overlay = {
-      'Rewards Add Transactions':    45038,
-      'Rewards Redeem Transactions': 4607,
-      'Rewards Gallons Captured':    4227593.9,
-      'Issued Points (Add Dollars)': 46922.03,
-      'Redeemed Points':             32049.73,
-      'Redemption Rate':             0.6830
-    };
-    for(const k in overlay){
-      if(!KD[k]) KD[k] = {};
-      KD[k]['2026-05'] = overlay[k];
-    }
-  } catch(e){ console.warn('REWARDS_2026_05 overlay failed:', e); }
-})();
-// ── /REWARDS_2026_05 KD overlay ──
-// ── REWARDS_2026_04 KD overlay ──
-// Source: rewards-by-truckstop-2026-04*.csv (4 pagination pages)
-//         aggregated across 141 of 368 MEMBERS.
-// Re-run C:\tmp\update_rewards_apr_2026.py if any pages change.
-(function injectRewardsApr2026(){
-  try {
-    if(typeof KD !== 'object' || !KD) return;
-    const overlay = {
-      'Rewards Add Transactions':    49851,
-      'Rewards Redeem Transactions': 4930,
-      'Rewards Gallons Captured':    4692549.2,
-      'Issued Points (Add Dollars)': 52098.93,
-      'Redeemed Points':             34374.65,
-      'Redemption Rate':             0.6600
-    };
-    for(const k in overlay){
-      if(!KD[k]) KD[k] = {};
-      KD[k]['2026-04'] = overlay[k];
-    }
-  } catch(e){ console.warn('REWARDS_2026_04 overlay failed:', e); }
-})();
-// ── /REWARDS_2026_04 KD overlay ──
-
-
-// ── REWARDS_2026_05 KD overlay (PARTIAL — 50 of ~368 stops) ──
-// Source: rewards-by-truckstop-2026-05.csv aggregated across the 50 stops it contained.
-// Do NOT treat as authoritative — when a complete export lands, re-run
-// scripts/update_rewards_may_2026.py to refresh.
-(function injectRewardsMay2026(){
-  try {
-    if(typeof KD !== 'object' || !KD) return;
-    const overlay = {
-      'Rewards Add Transactions':    45038,
-      'Rewards Redeem Transactions': 4607,
-      'Rewards Gallons Captured':    4227593.9,
-      'Issued Points (Add Dollars)': 46922.03,
-      'Redeemed Points':             32049.73,
-      'Redemption Rate':             0.6830
-    };
-    for(const k in overlay){
-      if(!KD[k]) KD[k] = {};
-      KD[k]['2026-05'] = overlay[k];
-    }
-  } catch(e){ console.warn('REWARDS_2026_05 overlay failed:', e); }
-})();
-// ── /REWARDS_2026_05 KD overlay ──
-
-saveData();updateAll();toast('KPI data reset');}">Reset KPI Data</button>
+          <button class="btn" onclick="if(confirm('Clear all KPI data and reload sample data?')){kpiInit();kpiLoadSample();applyRewardsKDOverlays();saveData();updateAll();toast('KPI data reset');}">Reset KPI Data</button>
           <button class="btn" onclick="if(confirm('Clear all fuel gallon data and reload sample?')){GD={};loadSample();saveData();updateAll();toast('Fuel data reset');}">Reset Fuel Data</button>
           <button class="btn" style="background:rgba(255,71,87,.15);color:var(--red);border-color:rgba(255,71,87,.3)" onclick="if(confirm('Clear ALL data including settings? This cannot be undone.')){localStorage.clear();location.reload();}">Factory Reset</button>
         </div>
@@ -3728,6 +3658,51 @@ function kpiLoadSample(){
     'COGS - FuelMan','COGS - R-Check'];
   PL_KEYS.forEach(k=>{ if(S[k]){ if(!KD[k])KD[k]={}; Object.keys(S[k]).forEach(mo=>{ if(KD[k][mo]===undefined||KD[k][mo]===null) KD[k][mo]=S[k][mo]; }); } });
   VD={'Adelphi Environmental':{'2025-05':3},'Farmer Brothers':{'2025-05':46},'All Over Media':{'2025-05':163},'YES LLC':{'2025-05':2},'Warren Rogers':{'2025-05':1},'Sysco Corporate':{'2025-05':54},'Streamline':{'2025-05':3},'Sayle Oil Company':{'2025-05':1},'Quick & Pure':{'2025-05':2},'Lynco':{'2025-05':137},'Hi-Way Distributing':{'2025-05':2},'Cawley Company':{'2025-05':1},'CMA / USG Vending':{'2025-05':2},'Coca-Cola CCNA':{'2025-05':109},'DAS':{'2025-05':109},'Ecolab Corp':{'2025-05':5},'Entegra Procurement Services':{'2025-05':104},'Iowa Smokehouse':{'2025-05':6},'Global Payments (Heartland)':{'2025-05':2}};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// REWARDS_KD_OVERLAYS — DO NOT MOVE
+// Body managed by C:\tmp\update_rewards_apr_2026.py and update_rewards_may_2026.py.
+// They replace the slices between REWARDS_2026_XX overlay start/end. Called
+// once during init (after kpiLoadSample) and again from the Reset KPI button
+// so the overlay survives a sample reset. Supabase kpi_data sync that runs
+// later may override these per (metric_key, month) — that's the intended
+// "cloud wins" precedence.
+// ═══════════════════════════════════════════════════════════════════════
+function applyRewardsKDOverlays(){
+  if(typeof KD !== 'object' || !KD) return;
+  // ── REWARDS_KD_OVERLAYS:BODY_START ──
+  /* REWARDS_2026_05 overlay start */
+  // Source: rewards-by-truckstop-2026-05*.csv (6 pages, 143 of 368 MEMBERS).
+  // Re-run C:\tmp\update_rewards_may_2026.py to refresh.
+  try {
+    const m05 = {
+      'Rewards Add Transactions':    45038,
+      'Rewards Redeem Transactions': 4607,
+      'Rewards Gallons Captured':    4227593.9,
+      'Issued Points (Add Dollars)': 46922.03,
+      'Redeemed Points':             32049.73,
+      'Redemption Rate':             0.6830
+    };
+    for(const k in m05){ if(!KD[k]) KD[k] = {}; KD[k]['2026-05'] = m05[k]; }
+  } catch(e){ console.warn('REWARDS_2026_05 overlay failed:', e); }
+  /* REWARDS_2026_05 overlay end */
+  /* REWARDS_2026_04 overlay start */
+  // Source: rewards-by-truckstop-2026-04*.csv (4 pages, 141 of 368 MEMBERS).
+  // Re-run C:\tmp\update_rewards_apr_2026.py to refresh.
+  try {
+    const m04 = {
+      'Rewards Add Transactions':    49851,
+      'Rewards Redeem Transactions': 4930,
+      'Rewards Gallons Captured':    4692549.2,
+      'Issued Points (Add Dollars)': 52098.93,
+      'Redeemed Points':             34374.65,
+      'Redemption Rate':             0.6600
+    };
+    for(const k in m04){ if(!KD[k]) KD[k] = {}; KD[k]['2026-04'] = m04[k]; }
+  } catch(e){ console.warn('REWARDS_2026_04 overlay failed:', e); }
+  /* REWARDS_2026_04 overlay end */
+  // ── REWARDS_KD_OVERLAYS:BODY_END ──
 }
 
 // KPI helpers
@@ -8339,6 +8314,7 @@ function populateStopSelect(){
     kpiInit();
     loadData();
     kpiLoadSample();
+    applyRewardsKDOverlays();
     recalcRollups();
     recalcVendorRevenue();
     recalcRewardsRevenue();
