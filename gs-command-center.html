@@ -10361,7 +10361,10 @@ function brSlide10(d){
     cardsFromGallery.push({ vendor: v, logo, verbKey, amtKey, yrKey, _p: priorityOf(v.id) });
   }
   cardsFromGallery.sort((a, b) => a._p - b._p);
-  cardsFromGallery.length = Math.min(cardsFromGallery.length, 4); // cap at 4 cards on slide
+  // No cap — show every enrolled vendor the stop is on (provided the
+  // vendor has a logo in the deck_gallery). The grid below auto-wraps;
+  // padding shrinks at high counts so even 7-9 cards still fit on one
+  // printed slide.
   let cardsHtml;
   if(cardsFromGallery.length){
     cardsHtml = cardsFromGallery.map((c, i) => `
@@ -10409,7 +10412,16 @@ function brSlide10(d){
       ${brShead(10, 'Vendor Earnings', 'Programs at Work for Your Stop')}
       <div class="br-sbody">
         <div class="br-s10">
-          <div class="br-s10-rows" style="grid-template-columns:repeat(${Math.min(cardsFromGallery.length || 2, 3)},1fr)">${cardsHtml}</div>
+          <div class="br-s10-rows" style="grid-template-columns:repeat(${(() => {
+            // Column count by card count: 1=>1, 2=>2, 3=>3, 4=>2 (2x2), 5-6=>3, 7+=>4 (4-per-row).
+            const n = cardsFromGallery.length || 2;
+            if(n <= 1) return 1;
+            if(n === 2) return 2;
+            if(n === 3) return 3;
+            if(n === 4) return 2;
+            if(n <= 6) return 3;
+            return 4;
+          })()},1fr)">${cardsHtml}</div>
           <div class="br-s10-extra">
             <h4><span class="ico">${ICO('star')}</span>${brEditable(10,'addH','Additional Programs to Consider')}</h4>
             <div class="br-s10-extra-grid">${oppGrid}</div>
