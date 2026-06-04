@@ -8614,11 +8614,37 @@ function populateStopSelect(){
 // ═══════════════════════════════════════════════
 (function(){
   try{
-    // Version stamp — bump this when P&L data changes to force-clear stale localStorage KPI cache
-    const KPI_VER='2026-06-04-rewards-authoritative';  // bump to clear stale localStorage
-    if(localStorage.getItem('roadys_kpi_ver')!==KPI_VER){
-      localStorage.removeItem('roadys_kpi');
-      localStorage.setItem('roadys_kpi_ver',KPI_VER);
+    // Version stamp — bump this when P&L data changes to force-clear stale localStorage KPI cache.
+    // Diagnostics intentionally log to console so the user can confirm the
+    // clear is firing on the deployed site (paste DevTools console output
+    // if the dashboard still shows stale numbers after a hard refresh).
+    const KPI_VER='2026-06-04-rewards-authoritative-v2';
+    const _kpiVerCached = localStorage.getItem('roadys_kpi_ver');
+    console.log('[KPI_VER] code:', KPI_VER, '| cache:', _kpiVerCached);
+    if(_kpiVerCached !== KPI_VER){
+      // Wipe KD cache entirely so the new CSV-driven overlay populates from a
+      // clean slate. Also remove any stale per-cell dashboard overrides that
+      // might be pinning old values on the master Rewards card.
+      console.log('[KPI_VER] mismatch — wiping roadys_kpi + dashboard rewards overrides');
+      try { localStorage.removeItem('roadys_kpi'); } catch(e){}
+      try {
+        // Defensive: explicitly null out override cells that the master
+        // Rewards card reads via overrideOr(). These live inside roadys_kpi
+        // which we just wiped, but if it ever leaks (eg. another browser
+        // tab restoring stale state) the values would still show.
+        const raw = localStorage.getItem('roadys_kpi');
+        if(raw){
+          const obj = JSON.parse(raw);
+          if(obj && obj.KD){
+            ['Rewards Adds YTD (Override)','Rewards Redeems YTD (Override)','Rewards Expired YTD (Override)']
+              .forEach(k => { delete obj.KD[k]; });
+            localStorage.setItem('roadys_kpi', JSON.stringify(obj));
+          }
+        }
+      } catch(e){ console.warn('[KPI_VER] override-cleanup skipped:', e); }
+      localStorage.setItem('roadys_kpi_ver', KPI_VER);
+    } else {
+      console.log('[KPI_VER] cache matches — KD will load from localStorage then merge with Supabase');
     }
     loadSample();
     kpiInit();
@@ -15385,9 +15411,17 @@ if(typeof window !== 'undefined' && typeof saveData === 'function' && !saveData.
 function _supabaseRerender(){
   if(_supabaseRerender._timer) clearTimeout(_supabaseRerender._timer);
   _supabaseRerender._timer = setTimeout(() => {
+    // ALWAYS re-apply the rewards CSV overlay before re-rendering so the
+    // post-Supabase view matches the source-of-truth CSV totals. If cloud
+    // already has those same values (because the user ran the authoritative
+    // SQL), this is a no-op. If cloud has stale partial values from a prior
+    // run, this corrects them before the user sees them.
+    try { if(typeof applyRewardsKDOverlays === 'function') applyRewardsKDOverlays(); } catch(e){ console.warn('applyRewardsKDOverlays in _supabaseRerender:', e); }
+    try { if(typeof recalcRewardsRevenue === 'function') recalcRewardsRevenue(); } catch(e){}
     try { if(document.getElementById('master-kpis')) renderMaster(); } catch(e){}
     try { if(document.getElementById('pg-kpi-financial')?.classList.contains('active')) pgFinancial(); } catch(e){}
     try { if(document.getElementById('pg-master')?.classList.contains('active')) renderMaster(); } catch(e){}
+    try { if(document.getElementById('pg-kpi-rewards')?.classList.contains('active') && typeof pgKpiRewards === 'function') pgKpiRewards(); } catch(e){}
   }, 250);
 }
 
