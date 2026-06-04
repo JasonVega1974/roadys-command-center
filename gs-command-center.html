@@ -4249,6 +4249,426 @@ const REWARDS_2026_04_SEED = {
   'R03972':{at:433,rt:47,'a$':220.9,'r$':237.74,g:22272.2,rr:107.6},
 };
 // ── /REWARDS_2026_04_SEED ──
+
+// ── LOCATION_COST_COMPONENTS (auto-generated from fcc_report.csv) ──
+// Source: fcc_report.csv (Fuel Card Center export).
+// Coverage: 365 of 368 MEMBERS — non-matches are mostly
+//   offboarding/onboarding sites and test rows.
+// Per-stop keys (camelCase, $/gal unless noted):
+//   promilesId, opisId, opisRackId, opisProductCode, taxId,
+//   countyTax, cityTaxCpg, inspectionTax, environmentalTax, loadTax,
+//   miscTax, stateSalesTax (%), stateExciseTax, federalTax,
+//   federalOilSpillLiability, winterAdditive, winterAdditiveStart,
+//   winterAdditiveEnd, freightRate, freightRateFuelman
+// Only non-null fields are included; missing keys -> not set in CSV.
+const LOCATION_COST_COMPONENTS = {
+  'L03461':{promilesId:'77706',opisId:'72366',opisRackId:'680',opisProductCode:'858',taxId:'2572',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.1135,freightRateFuelman:0.13},
+  'L03465':{promilesId:'10022',opisId:'69770',opisRackId:'240',opisProductCode:'858',taxId:'2671',countyTax:0,cityTaxCpg:0,inspectionTax:0.0033,environmentalTax:0.1555,loadTax:0,miscTax:0,stateSalesTax:4,stateExciseTax:0.16,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'L03911':{promilesId:'3493',opisId:'66907',opisRackId:'435',opisProductCode:'858',taxId:'5043',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.1},
+  'L03935':{promilesId:'0',opisId:'0'},
+  'L03969':{promilesId:'828',opisId:'9161',opisRackId:'90',opisProductCode:'858'},
+  'P01224':{promilesId:'8096',opisId:'64862',opisRackId:'433',opisProductCode:'1791',taxId:'418',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.325,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'P01225':{promilesId:'4159',opisId:'63841',opisRackId:'635',opisProductCode:'858',taxId:'419',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.003,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.285,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.05},
+  'P03460':{promilesId:'0',opisId:'0',taxId:'2539',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:9.99,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03515':{promilesId:'239',opisId:'110',taxId:'3664',countyTax:0.09,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.371,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03595':{promilesId:'7002',opisId:'64030',opisRackId:'725',opisProductCode:'858',taxId:'3827',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03599':{promilesId:'12795',opisId:'70868',opisRackId:'866',opisProductCode:'856',taxId:'3826',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:14.5,stateExciseTax:0.454,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03600':{promilesId:'896',opisId:'7077',opisRackId:'460',opisProductCode:'858',taxId:'3971',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03604':{promilesId:'5600',opisId:'64021',opisRackId:'600',opisProductCode:'858',taxId:'3932',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03605':{promilesId:'6880',opisId:'64021',opisRackId:'600',opisProductCode:'12076',taxId:'3931',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03606':{promilesId:'6164',opisId:'64998',opisRackId:'725',opisProductCode:'858',taxId:'3933',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03607':{promilesId:'8437',opisId:'66820',opisRackId:'600',opisProductCode:'858',taxId:'3935',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03608':{promilesId:'5603',opisId:'66460',opisRackId:'600',opisProductCode:'858',taxId:'3937',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03609':{promilesId:'8832',opisId:'67077',opisRackId:'600',opisProductCode:'1791',taxId:'3936',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03610':{promilesId:'342',opisId:'67076',opisRackId:'600',opisProductCode:'858',taxId:'3940',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03611':{promilesId:'2324',opisId:'67078',opisRackId:'600',opisProductCode:'858',taxId:'3939',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03612':{promilesId:'8893',opisId:'5232',opisRackId:'730',opisProductCode:'858',taxId:'3941',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03613':{promilesId:'5607',opisId:'63760',opisRackId:'725',opisProductCode:'858',taxId:'3944',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03614':{promilesId:'505',opisId:'64049',opisRackId:'690',opisProductCode:'858',taxId:'3946',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03615':{promilesId:'6265',opisId:'64049',opisRackId:'725',opisProductCode:'858',taxId:'3947',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03616':{promilesId:'7434',opisId:'65022',opisRackId:'725',opisProductCode:'858',taxId:'3948',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03617':{promilesId:'2853',opisId:'61483',opisRackId:'745',opisProductCode:'858',taxId:'3949',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03618':{promilesId:'5614',opisId:'64059',opisRackId:'745',opisProductCode:'858',taxId:'3950',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03619':{promilesId:'2058',opisId:'52435',opisRackId:'690',opisProductCode:'858',taxId:'3956',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03620':{promilesId:'6243',opisId:'65030',opisRackId:'725',opisProductCode:'858',taxId:'3955',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03621':{promilesId:'4290',opisId:'62500',opisRackId:'690',opisProductCode:'858',taxId:'3953',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03622':{promilesId:'1182',opisId:'64060',opisRackId:'745',opisProductCode:'858',taxId:'3952',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03623':{promilesId:'9462',opisId:'66307',opisRackId:'600',opisProductCode:'12076',taxId:'3951',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03624':{promilesId:'5289',opisId:'67883',opisRackId:'725',opisProductCode:'858',taxId:'3934',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03639':{promilesId:'5608',opisId:'64036',opisRackId:'725',opisProductCode:'858',taxId:'3942',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03641':{promilesId:'5617',opisId:'6509',opisRackId:'725',opisProductCode:'858',taxId:'3943',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03642':{promilesId:'11823',opisId:'62480',opisRackId:'725',opisProductCode:'858',taxId:'3938',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03645':{promilesId:'2186',opisId:'1879',opisRackId:'448',opisProductCode:'858',taxId:'3958',winterAdditiveStart:'10/15/2025',winterAdditiveEnd:'03/15/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0.001,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.318,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0},
+  'P03647':{promilesId:'12319',opisId:'70690',opisRackId:'235',opisProductCode:'858',taxId:'3966',countyTax:0,cityTaxCpg:0,inspectionTax:0.0033,environmentalTax:0.1555,loadTax:0,miscTax:0,stateSalesTax:4.25,stateExciseTax:0.16,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03653':{promilesId:'0',opisId:'0'},
+  'P03654':{promilesId:'0',opisId:'0'},
+  'P03655':{promilesId:'0',opisId:'0'},
+  'P03656':{promilesId:'0',opisId:'0'},
+  'P03657':{promilesId:'0',opisId:'0'},
+  'P03658':{promilesId:'0',opisId:'0'},
+  'P03659':{promilesId:'2594',opisId:'20009',opisRackId:'475',opisProductCode:'858',taxId:'3962',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.003,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.304,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.12},
+  'P03660':{promilesId:'135',opisId:'6734',opisRackId:'803',opisProductCode:'858',taxId:'3926',countyTax:0,cityTaxCpg:0,inspectionTax:0.0031,environmentalTax:0.0125,loadTax:0.0093,miscTax:0,stateSalesTax:0,stateExciseTax:0.285,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.05},
+  'P03661':{promilesId:'2037',opisId:'66502',opisRackId:'690',opisProductCode:'858',taxId:'3945',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03662':{promilesId:'5955',opisId:'0',opisRackId:'600',opisProductCode:'1791'},
+  'P03663':{promilesId:'2054',opisId:'60979',opisRackId:'690',opisProductCode:'858',taxId:'3954',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03666':{promilesId:'0',opisId:'0'},
+  'P03667':{promilesId:'0',opisId:'0',taxId:'3974',countyTax:0.091,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.006,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.318,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03670':{promilesId:'0',opisId:'0'},
+  'P03671':{promilesId:'0',opisId:'0'},
+  'P03673':{promilesId:'2353',opisId:'66787',opisRackId:'620',opisProductCode:'858',taxId:'3961',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.18,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03674':{promilesId:'2347',opisId:'61145',opisRackId:'620',opisProductCode:'858',taxId:'3960',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.18,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'P03677':{promilesId:'0',opisId:'0'},
+  'P03681':{promilesId:'0',opisId:'0'},
+  'P03683':{promilesId:'0',opisId:'0'},
+  'P03685':{promilesId:'0',opisId:'0'},
+  'P03686':{promilesId:'0',opisId:'0'},
+  'P03688':{promilesId:'0',opisId:'0'},
+  'P03689':{promilesId:'0',opisId:'0'},
+  'P03701':{promilesId:'0',opisId:'0'},
+  'P03702':{promilesId:'0',opisId:'0'},
+  'P03703':{promilesId:'0',opisId:'0'},
+  'P03704':{promilesId:'0',opisId:'0'},
+  'P03705':{promilesId:'0',opisId:'0'},
+  'P03706':{promilesId:'0',opisId:'0'},
+  'P03713':{promilesId:'79186',opisId:'0'},
+  'P03714':{promilesId:'79188',opisId:'0'},
+  'P03715':{promilesId:'79185',opisId:'0'},
+  'P03716':{promilesId:'79187',opisId:'0'},
+  'P03718':{promilesId:'79189',opisId:'0',opisRackId:'573',opisProductCode:'858'},
+  'P03721':{promilesId:'0',opisId:'0'},
+  'P03742':{promilesId:'41447',opisId:'0',opisRackId:'400',opisProductCode:'858'},
+  'P03743':{promilesId:'79153',opisId:'0'},
+  'P03744':{promilesId:'60428',opisId:'0',opisRackId:'567',opisProductCode:'858'},
+  'P03745':{promilesId:'79154',opisId:'0'},
+  'P03746':{promilesId:'79156',opisId:'0'},
+  'P03748':{promilesId:'78122',opisId:'0'},
+  'P03749':{promilesId:'79155',opisId:'0',opisRackId:'567',opisProductCode:'858'},
+  'P03750':{promilesId:'79152',opisId:'0',opisRackId:'567',opisProductCode:'858'},
+  'P03930':{promilesId:'0',opisId:'0'},
+  'P03931':{promilesId:'0',opisId:'0'},
+  'R00076':{promilesId:'530',opisId:'6842',opisRackId:'175',opisProductCode:'858',taxId:'43',countyTax:0,cityTaxCpg:0,inspectionTax:0.0012,environmentalTax:0.0347,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.24,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0375},
+  'R00096':{promilesId:'4339',opisId:'64163',opisRackId:'46',opisProductCode:'12076',taxId:'157',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0025,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.403,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.03,freightRateFuelman:0.05},
+  'R00099':{promilesId:'761',opisId:'6219',opisRackId:'452',opisProductCode:'858',taxId:'159',cityTaxCpg:0,inspectionTax:0.00025,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.08,freightRateFuelman:0.087},
+  'R00111':{promilesId:'6188',opisId:'65359',opisRackId:'580',opisProductCode:'858',taxId:'163',cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.01875,miscTax:0,stateSalesTax:0,stateExciseTax:0.21,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.09,freightRateFuelman:0.1},
+  'R00112':{promilesId:'5411',opisId:'0',opisRackId:'966',opisProductCode:'858',taxId:'167',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.11543},
+  'R00118':{promilesId:'4375',opisId:'6326',opisRackId:'500',opisProductCode:'858',taxId:'174',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.025,freightRateFuelman:0.09},
+  'R00179':{promilesId:'3802',opisId:'1977',opisRackId:'977',opisProductCode:'858',taxId:'230',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0012,loadTax:0.0352,miscTax:0,stateSalesTax:0.3,stateExciseTax:0.494,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.065,freightRateFuelman:0.055},
+  'R00205':{promilesId:'1265',opisId:'5060',opisRackId:'910',opisProductCode:'858',taxId:'8',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.26,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.08,freightRateFuelman:0.08},
+  'R00208':{promilesId:'7363',opisId:'63691',taxId:'13',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0207,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.382,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.035},
+  'R00221':{promilesId:'1744',opisId:'60890',opisRackId:'510',opisProductCode:'1792',taxId:'83',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:7.25,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.03},
+  'R00244':{promilesId:'499',opisId:'6745',opisRackId:'600',opisProductCode:'858',taxId:'40',cityTaxCpg:0,inspectionTax:0.00125,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.039,freightRateFuelman:0.055},
+  'R00245':{promilesId:'5610',opisId:'64042',opisRackId:'725',opisProductCode:'858',taxId:'41',cityTaxCpg:0,inspectionTax:0.00125,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.024},
+  'R00252':{promilesId:'7460',opisId:'0',opisRackId:'260',opisProductCode:'858'},
+  'R00255':{promilesId:'5636',opisId:'64083',opisRackId:'325',opisProductCode:'858',taxId:'127',winterAdditiveStart:'12/15/2023',winterAdditiveEnd:'03/01/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:6,stateExciseTax:0.31,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.025,freightRate:0.0245,freightRateFuelman:0.05},
+  'R00262':{promilesId:'2220',opisId:'6047',opisRackId:'494',opisProductCode:'858',taxId:'51',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2891,federalTax:0.243,federalOilSpillLiability:0,freightRate:0.0603},
+  'R00286':{promilesId:'7239',opisId:'66025',opisRackId:'935',opisProductCode:'858',taxId:'181',cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0011,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.16},
+  'R00291':{promilesId:'5141',opisId:'0',opisRackId:'63',opisProductCode:'858'},
+  'R00292':{promilesId:'3219',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00294':{promilesId:'6197',opisId:'64294',opisRackId:'210',opisProductCode:'858',taxId:'189',cityTaxCpg:0,inspectionTax:0.0025,environmentalTax:0.005,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.28,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R00296':{promilesId:'3220',opisId:'0',opisRackId:'30',opisProductCode:'858'},
+  'R00297':{promilesId:'3221',opisId:'61599',opisRackId:'210',opisProductCode:'858',taxId:'191',cityTaxCpg:0,inspectionTax:0.0025,environmentalTax:0.005,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.28,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R00298':{promilesId:'7713',opisId:'0',opisRackId:'30',opisProductCode:'858'},
+  'R00315':{promilesId:'3871',opisId:'61830',opisRackId:'444',opisProductCode:'858',taxId:'231',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'04/01/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.0614,freightRateFuelman:0.0614},
+  'R00320':{promilesId:'8864',opisId:'66935',opisRackId:'444',opisProductCode:'858',taxId:'238',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'04/01/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.0539,freightRateFuelman:0.0539},
+  'R00321':{promilesId:'3839',opisId:'20119',opisRackId:'444',opisProductCode:'858',taxId:'239',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'04/01/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.0614,freightRateFuelman:0.0614},
+  'R00325':{promilesId:'7833',opisId:'65812',opisRackId:'395',opisProductCode:'858',taxId:'246',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'04/01/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.0234,freightRateFuelman:0.05},
+  'R00326':{promilesId:'9449',opisId:'67369',opisRackId:'444',opisProductCode:'858',taxId:'240',winterAdditiveStart:'10/01/2025',winterAdditiveEnd:'04/30/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.005,freightRate:0.048,freightRateFuelman:0.07},
+  'R00395':{promilesId:'8910',opisId:'66339',opisRackId:'176',opisProductCode:'858',taxId:'4911',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0207,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.382,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R00408':{promilesId:'2766',opisId:'67891',opisRackId:'680',opisProductCode:'1379',taxId:'208',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.065},
+  'R00448':{promilesId:'5754',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00449':{promilesId:'7708',opisId:'0',opisRackId:'42',opisProductCode:'858'},
+  'R00454':{promilesId:'0',opisId:'0'},
+  'R00497':{promilesId:'58585',opisId:'0',opisRackId:'42',opisProductCode:'858'},
+  'R00498':{promilesId:'79200',opisId:'0',opisRackId:'42',opisProductCode:'858'},
+  'R00581':{promilesId:'12331',opisId:'0',opisRackId:'900',opisProductCode:'858'},
+  'R00587':{promilesId:'79190',opisId:'0'},
+  'R00608':{promilesId:'8484',opisId:'0',opisRackId:'360',opisProductCode:'858',taxId:'5309',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R00614':{promilesId:'8001',opisId:'66029',opisRackId:'600',opisProductCode:'12076',taxId:'39',cityTaxCpg:0,inspectionTax:0.00125,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0476,freightRateFuelman:0.09},
+  'R00616':{promilesId:'6972',opisId:'0',opisRackId:'290',opisProductCode:'858'},
+  'R00639':{promilesId:'3938',opisId:'66337',opisRackId:'836',opisProductCode:'858',taxId:'252',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R00640':{promilesId:'2429',opisId:'3899',opisRackId:'807',opisProductCode:'858',taxId:'154',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2975,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R00641':{promilesId:'8392',opisId:'6527',opisRackId:'780',opisProductCode:'858',taxId:'156',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2975,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R00642':{promilesId:'2440',opisId:'4996',opisRackId:'780',opisProductCode:'858',taxId:'152',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2975,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R00670':{promilesId:'5259',opisId:'5079',opisRackId:'494',opisProductCode:'858',taxId:'148',cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2891,federalTax:0.243,federalOilSpillLiability:0,freightRate:0.0303},
+  'R00703':{promilesId:'5532',opisId:'5971',opisRackId:'20',opisProductCode:'858',taxId:'14',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0207,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.382,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.08,freightRateFuelman:0.08},
+  'R00717':{promilesId:'1711',opisId:'981',opisRackId:'825',opisProductCode:'858',taxId:'17',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.018},
+  'R00718':{promilesId:'1729',opisId:'60245',opisRackId:'785',opisProductCode:'858',taxId:'18',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.0426},
+  'R00723':{promilesId:'1712',opisId:'4525',opisRackId:'970',opisProductCode:'858',taxId:'22',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.0466},
+  'R00774':{promilesId:'643',opisId:'7300',opisRackId:'416',opisProductCode:'858',taxId:'141',winterAdditiveStart:'12/01/2023',winterAdditiveEnd:'02/15/2024',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.0185,freightRate:0.0541,freightRateFuelman:0.07},
+  'R00782':{promilesId:'290',opisId:'10053',opisRackId:'270',opisProductCode:'12076',taxId:'92',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:6.5,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.0503},
+  'R00800':{promilesId:'27059',opisId:'0'},
+  'R00809':{promilesId:'79174',opisId:'0',opisRackId:'820',opisProductCode:'858'},
+  'R00825':{promilesId:'79172',opisId:'0',opisRackId:'820',opisProductCode:'858'},
+  'R00826':{promilesId:'76252',opisId:'0',opisRackId:'816',opisProductCode:'858'},
+  'R00827':{promilesId:'79173',opisId:'0',opisRackId:'786',opisProductCode:'858'},
+  'R00828':{promilesId:'79161',opisId:'0',opisRackId:'780',opisProductCode:'858'},
+  'R00829':{promilesId:'79211',opisId:'0'},
+  'R00831':{promilesId:'79164',opisId:'0',opisRackId:'816',opisProductCode:'858'},
+  'R00832':{promilesId:'57736',opisId:'0',opisRackId:'780',opisProductCode:'858'},
+  'R00833':{promilesId:'79170',opisId:'0'},
+  'R00835':{promilesId:'79168',opisId:'0',opisRackId:'815',opisProductCode:'858'},
+  'R00836':{promilesId:'79162',opisId:'0',opisRackId:'780',opisProductCode:'858'},
+  'R00837':{promilesId:'9561',opisId:'0',opisRackId:'530',opisProductCode:'858'},
+  'R00839':{promilesId:'79165',opisId:'0',opisRackId:'816',opisProductCode:'858'},
+  'R00840':{promilesId:'79171',opisId:'0'},
+  'R00841':{promilesId:'79166',opisId:'0',opisRackId:'815',opisProductCode:'858'},
+  'R00842':{promilesId:'79167',opisId:'0',opisRackId:'815',opisProductCode:'858'},
+  'R00843':{promilesId:'27058',opisId:'0',opisRackId:'780',opisProductCode:'858'},
+  'R00844':{promilesId:'75528',opisId:'0'},
+  'R00845':{promilesId:'78977',opisId:'0',opisRackId:'355',opisProductCode:'858'},
+  'R00847':{promilesId:'79175',opisId:'0',opisRackId:'820',opisProductCode:'858'},
+  'R00848':{promilesId:'76377',opisId:'0'},
+  'R00849':{promilesId:'47228',opisId:'0',opisRackId:'786',opisProductCode:'858'},
+  'R00850':{promilesId:'79163',opisId:'0',opisRackId:'780',opisProductCode:'858'},
+  'R00852':{promilesId:'79145',opisId:'0',opisRackId:'250',opisProductCode:'858'},
+  'R00853':{promilesId:'79169',opisId:'0',opisRackId:'820',opisProductCode:'858'},
+  'R00854':{promilesId:'79206',opisId:'0',opisRackId:'42',opisProductCode:'858'},
+  'R00855':{promilesId:'79195',opisId:'0',opisRackId:'30',opisProductCode:'858'},
+  'R00856':{promilesId:'66263',opisId:'0',opisRackId:'42',opisProductCode:'858'},
+  'R00857':{promilesId:'79193',opisId:'0'},
+  'R00859':{promilesId:'79210',opisId:'0'},
+  'R00862':{promilesId:'79209',opisId:'0'},
+  'R00863':{promilesId:'79208',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00864':{promilesId:'79194',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00865':{promilesId:'70184',opisId:'0'},
+  'R00868':{promilesId:'79202',opisId:'0',opisRackId:'245',opisProductCode:'858'},
+  'R00869':{promilesId:'79205',opisId:'0'},
+  'R00870':{promilesId:'79201',opisId:'0'},
+  'R00871':{promilesId:'79203',opisId:'0',opisRackId:'135',opisProductCode:'858'},
+  'R00872':{promilesId:'79204',opisId:'0',opisRackId:'135',opisProductCode:'858'},
+  'R00873':{promilesId:'79196',opisId:'0',opisRackId:'30',opisProductCode:'858'},
+  'R00874':{promilesId:'79207',opisId:'0'},
+  'R00875':{promilesId:'79199',opisId:'0'},
+  'R00876':{promilesId:'79198',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00880':{promilesId:'79197',opisId:'0',opisRackId:'30',opisProductCode:'858'},
+  'R00881':{promilesId:'65737',opisId:'0'},
+  'R00882':{promilesId:'79180',opisId:'0'},
+  'R00884':{promilesId:'79176',opisId:'0'},
+  'R00887':{promilesId:'79182',opisId:'0'},
+  'R00888':{promilesId:'79183',opisId:'0'},
+  'R00890':{promilesId:'79179',opisId:'0'},
+  'R00891':{promilesId:'79178',opisId:'0'},
+  'R00892':{promilesId:'79177',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00893':{promilesId:'79181',opisId:'0',opisRackId:'210',opisProductCode:'858'},
+  'R00901':{promilesId:'9637',opisId:'67652',opisRackId:'400',opisProductCode:'858',taxId:'32',countyTax:0,cityTaxCpg:0,inspectionTax:0.0003,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.26,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.05,freightRateFuelman:0.06},
+  'R00917':{promilesId:'969',opisId:'1909',opisRackId:'835',opisProductCode:'858',taxId:'221',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0065,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.385,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.074,freightRateFuelman:0.11},
+  'R00930':{promilesId:'2060',opisId:'68626',opisRackId:'270',opisProductCode:'1788',taxId:'94',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:8,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.0389},
+  'R00931':{promilesId:'9157',opisId:'69200',opisRackId:'280',opisProductCode:'1792',taxId:'88',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:8.75,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.0226},
+  'R00932':{promilesId:'279',opisId:'66537',opisRackId:'270',opisProductCode:'1790',taxId:'85',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:8.25,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.0235},
+  'R00933':{promilesId:'3153',opisId:'4707',opisRackId:'165',opisProductCode:'858',taxId:'187',cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.741,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.056},
+  'R00935':{promilesId:'817',opisId:'66963',opisRackId:'420',opisProductCode:'858',taxId:'249',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0713},
+  'R00941':{promilesId:'6574',opisId:'69475',opisRackId:'483',opisProductCode:'858',taxId:'175',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0324,freightRateFuelman:0.0573},
+  'R00958':{promilesId:'3184',opisId:'69815',opisRackId:'780',opisProductCode:'858',taxId:'155',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2975,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R01017':{promilesId:'1396',opisId:'85',opisRackId:'800',opisProductCode:'858',taxId:'10',countyTax:0,cityTaxCpg:0,inspectionTax:0.0031,environmentalTax:0.0125,loadTax:0.0093,miscTax:0,stateSalesTax:0,stateExciseTax:0.285,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.03},
+  'R01018':{promilesId:'3762',opisId:'3699',opisRackId:'375',opisProductCode:'858',taxId:'30',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.59,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.065,freightRateFuelman:0.065},
+  'R01020':{promilesId:'2823',opisId:'0',opisRackId:'444',opisProductCode:'858',taxId:'309',winterAdditiveStart:'10/01/2025',winterAdditiveEnd:'04/30/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.005,freightRate:0.048},
+  'R01021':{promilesId:'7255',opisId:'0',opisRackId:'500',opisProductCode:'858'},
+  'R01022':{promilesId:'79124',opisId:'0'},
+  'R01023':{promilesId:'22362',opisId:'0',opisRackId:'252',opisProductCode:'858'},
+  'R01024':{promilesId:'56925',opisId:'0',opisRackId:'252',opisProductCode:'858'},
+  'R01025':{promilesId:'0',opisId:'0'},
+  'R01026':{promilesId:'79123',opisId:'0',opisRackId:'270',opisProductCode:'858'},
+  'R01027':{promilesId:'59881',opisId:'0',opisRackId:'270',opisProductCode:'858'},
+  'R01028':{promilesId:'26439',opisId:'0',opisRackId:'252',opisProductCode:'858'},
+  'R01029':{promilesId:'22360',opisId:'0',opisRackId:'368',opisProductCode:'858'},
+  'R01032':{promilesId:'2067',opisId:'6704',opisRackId:'100',opisProductCode:'858',taxId:'45',countyTax:0,cityTaxCpg:0,inspectionTax:0.0012,environmentalTax:0.0347,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.24,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0286},
+  'R01033':{promilesId:'531',opisId:'304',opisRackId:'100',opisProductCode:'858',taxId:'44',cityTaxCpg:0,inspectionTax:0.0012,environmentalTax:0.0347,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.24,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0241},
+  'R01036':{promilesId:'5343',opisId:'62991',opisRackId:'200',opisProductCode:'858',taxId:'185',cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.741,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0275},
+  'R01038':{promilesId:'5322',opisId:'67873',opisRackId:'755',opisProductCode:'5048',taxId:'211',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R01059':{promilesId:'361',opisId:'7416',opisRackId:'375',opisProductCode:'858',taxId:'29',winterAdditiveStart:'12/01/2023',winterAdditiveEnd:'03/01/2024',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.59,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.0795,freightRateFuelman:0.0561},
+  'R01063':{promilesId:'6942',opisId:'64888',opisRackId:'970',opisProductCode:'858',taxId:'20',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0426},
+  'R01066':{promilesId:'1591',opisId:'7299',opisRackId:'310',opisProductCode:'858',taxId:'138',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2891,federalTax:0.243,federalOilSpillLiability:0,freightRate:0.0394},
+  'R01067':{promilesId:'2289',opisId:'3946',opisRackId:'310',opisProductCode:'858',taxId:'142',cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2891,federalTax:0.243,federalOilSpillLiability:0,freightRate:0.046},
+  'R01072':{promilesId:'11367',opisId:'70282',opisRackId:'420',opisProductCode:'858',taxId:'233',winterAdditiveStart:'10/01/2025',winterAdditiveEnd:'04/30/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.005,freightRate:0.0399},
+  'R01075':{promilesId:'11651',opisId:'0',opisRackId:'465',opisProductCode:'858'},
+  'R01080':{promilesId:'6257',opisId:'64554',opisRackId:'615',opisProductCode:'858',taxId:'2',countyTax:0.03,cityTaxCpg:0,inspectionTax:0.0075,environmentalTax:0.012,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.3,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0646,freightRateFuelman:0.0658},
+  'R01083':{promilesId:'581',opisId:'67343',opisRackId:'360',opisProductCode:'858',taxId:'245',winterAdditiveStart:'12/01/2023',winterAdditiveEnd:'04/01/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.035,freightRate:0.0368,freightRateFuelman:0.0868},
+  'R01084':{promilesId:'10234',opisId:'69525',opisRackId:'740',opisProductCode:'1379',taxId:'203',cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0543,freightRateFuelman:0.05},
+  'R01099':{promilesId:'0',opisId:'0'},
+  'R01104':{promilesId:'303',opisId:'67371',opisRackId:'635',opisProductCode:'858',taxId:'7',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.003,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.285,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.14},
+  'R01106':{promilesId:'6252',opisId:'65504',opisRackId:'880',opisProductCode:'1792',taxId:'183',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'05/01/2024',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.001112,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.06,freightRateFuelman:0.0867},
+  'R01107':{promilesId:'1009',opisId:'5247',opisRackId:'420',opisProductCode:'858',taxId:'291',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.035,freightRateFuelman:0.045},
+  'R01118':{promilesId:'11291',opisId:'70222',opisRackId:'375',opisProductCode:'1788',taxId:'302',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'04/01/2024',cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.59,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.0467,freightRateFuelman:0.0546},
+  'R01120':{promilesId:'6474',opisId:'0',opisRackId:'365',opisProductCode:'858',taxId:'2077',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R01121':{promilesId:'3878',opisId:'52452',opisRackId:'444',opisProductCode:'858',taxId:'293',winterAdditiveStart:'11/15/2023',winterAdditiveEnd:'04/15/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.045,freightRateFuelman:0.0553},
+  'R01127':{promilesId:'12476',opisId:'70740',opisRackId:'574',opisProductCode:'858',taxId:'318',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:7.5,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.047},
+  'R01129':{promilesId:'6919',opisId:'65805',opisRackId:'444',opisProductCode:'858',taxId:'319',winterAdditiveStart:'10/01/2025',winterAdditiveEnd:'04/30/2026',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.005,freightRate:0.063},
+  'R01130':{promilesId:'13007',opisId:'0',opisRackId:'582',opisProductCode:'858',taxId:'359',winterAdditiveStart:'10/01/2025',winterAdditiveEnd:'04/30/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.005,freightRate:0.063},
+  'R01132':{promilesId:'5189',opisId:'61633',opisRackId:'405',opisProductCode:'858',taxId:'332',cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.065,freightRateFuelman:0.052},
+  'R01133':{promilesId:'13647',opisId:'71165',opisRackId:'135',opisProductCode:'858',taxId:'335',cityTaxCpg:0,inspectionTax:0.0025,environmentalTax:0.005,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.28,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0575,freightRateFuelman:0.0675},
+  'R01135':{promilesId:'79137',opisId:'0',opisRackId:'370',opisProductCode:'858'},
+  'R01136':{promilesId:'79138',opisId:'0'},
+  'R01140':{promilesId:'14560',opisId:'0',opisRackId:'444',opisProductCode:'858',taxId:'386',winterAdditiveStart:'10/01/2025',winterAdditiveEnd:'04/30/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.005,freightRate:0.048},
+  'R01143':{promilesId:'590',opisId:'3545',opisRackId:'450',opisProductCode:'858',taxId:'339',countyTax:0,cityTaxCpg:0,inspectionTax:0.001,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.318,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.03},
+  'R01151':{promilesId:'67534',opisId:'72376',opisRackId:'20',opisProductCode:'858',taxId:'361',countyTax:0.09,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.371,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0398},
+  'R01152':{promilesId:'79139',opisId:'0'},
+  'R01164':{promilesId:'3214',opisId:'3401',opisRackId:'46',opisProductCode:'858',taxId:'363',countyTax:0,cityTaxCpg:0,inspectionTax:0.0025,environmentalTax:0.005,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.28,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0732,freightRateFuelman:0.095},
+  'R01165':{promilesId:'3490',opisId:'3539',opisRackId:'740',opisProductCode:'858',taxId:'364',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.032,freightRateFuelman:0.04},
+  'R01167':{promilesId:'9255',opisId:'67113',opisRackId:'420',opisProductCode:'858',taxId:'366',winterAdditiveStart:'11/01/2023',winterAdditiveEnd:'04/15/2024',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.015,freightRate:0.03,freightRateFuelman:0.045},
+  'R01168':{promilesId:'7879',opisId:'66059',opisRackId:'405',opisProductCode:'858',taxId:'367',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0424,freightRateFuelman:0.065},
+  'R01169':{promilesId:'0',opisId:'0',taxId:'377',countyTax:0,cityTaxCpg:0.23,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.3,freightRateFuelman:0.3},
+  'R01171':{promilesId:'2973',opisId:'3383',opisRackId:'483',opisProductCode:'858',taxId:'369',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.03,freightRateFuelman:0.05},
+  'R01174':{promilesId:'79136',opisId:'0'},
+  'R01178':{promilesId:'12761',opisId:'71020',opisRackId:'670',opisProductCode:'1379',taxId:'375',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0349},
+  'R01179':{promilesId:'358',opisId:'7418',opisRackId:'370',opisProductCode:'858',taxId:'376',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.59,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.046},
+  'R01180':{promilesId:'0',opisId:'0'},
+  'R01182':{promilesId:'8128',opisId:'66172',opisRackId:'693',opisProductCode:'858',taxId:'380',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0176},
+  'R01183':{promilesId:'7884',opisId:'66173',opisRackId:'740',opisProductCode:'858',taxId:'379',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0696},
+  'R01184':{promilesId:'7952',opisId:'66174',opisRackId:'740',opisProductCode:'858',taxId:'381',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0683},
+  'R01186':{promilesId:'23372',opisId:'52430',opisRackId:'285',opisProductCode:'858',taxId:'384',countyTax:0.09,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.371,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.045},
+  'R01187':{promilesId:'4377',opisId:'424',opisRackId:'483',opisProductCode:'858',taxId:'383',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.04},
+  'R01188':{promilesId:'6563',opisId:'3578',opisRackId:'858',opisProductCode:'856',taxId:'385',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:14,stateExciseTax:0.454,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0591},
+  'R01201':{promilesId:'2783',opisId:'72387',opisRackId:'315',opisProductCode:'858',taxId:'392',countyTax:0.0143,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.47,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.15},
+  'R01205':{promilesId:'51970',opisId:'71798',opisRackId:'935',opisProductCode:'858',taxId:'403',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0012,loadTax:0.0352,miscTax:0,stateSalesTax:0.3,stateExciseTax:0.494,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.045},
+  'R01217':{promilesId:'7212',opisId:'0',opisRackId:'494',opisProductCode:'858'},
+  'R01219':{promilesId:'11193',opisId:'9550',opisRackId:'420',opisProductCode:'858',taxId:'414',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.062},
+  'R01220':{promilesId:'11750',opisId:'70385',opisRackId:'253',opisProductCode:'858',taxId:'415',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0631},
+  'R01222':{promilesId:'720',opisId:'3728',opisRackId:'12',opisProductCode:'858',taxId:'417',countyTax:0,cityTaxCpg:0,inspectionTax:0.0033,environmentalTax:0.1555,loadTax:0,miscTax:0,stateSalesTax:4,stateExciseTax:0.16,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.045},
+  'R01227':{promilesId:'4499',opisId:'65814',opisRackId:'420',opisProductCode:'858',taxId:'420',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0729},
+  'R01229':{promilesId:'2749',opisId:'67957',opisRackId:'64',opisProductCode:'858',taxId:'422',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02072,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.382,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'R01236':{promilesId:'5793',opisId:'63767',opisRackId:'700',opisProductCode:'1792',taxId:'430',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.041},
+  'R01240':{promilesId:'9585',opisId:'67970',opisRackId:'755',opisProductCode:'1379',taxId:'434',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0605},
+  'R01241':{promilesId:'3571',opisId:'67313',opisRackId:'610',opisProductCode:'1379',taxId:'433',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0615},
+  'R01243':{promilesId:'9078',opisId:'2030',opisRackId:'790',opisProductCode:'858',taxId:'439',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.036,freightRateFuelman:0.0356},
+  'R01244':{promilesId:'3937',opisId:'6850',opisRackId:'790',opisProductCode:'858',taxId:'438',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.0495},
+  'R01245':{promilesId:'5201',opisId:'3280',opisRackId:'790',opisProductCode:'858',taxId:'440',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.05,freightRate:0.0598},
+  'R01258':{promilesId:'6536',opisId:'67350',opisRackId:'360',opisProductCode:'858',taxId:'451',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.03,freightRateFuelman:0.08},
+  'R01259':{promilesId:'1745',opisId:'66439',opisRackId:'574',opisProductCode:'858',taxId:'453',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/01/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:8.25,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.02,freightRate:0.065},
+  'R01260':{promilesId:'14457',opisId:'71655',opisRackId:'415',opisProductCode:'858',taxId:'457',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.59,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'R01261':{promilesId:'6782',opisId:'63977',opisRackId:'415',opisProductCode:'12076',taxId:'452',countyTax:0,cityTaxCpg:0,inspectionTax:0.01,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.59,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.05},
+  'R01265':{promilesId:'79192',opisId:'0'},
+  'R01272':{promilesId:'0',opisId:'0'},
+  'R01273':{promilesId:'0',opisId:'0'},
+  'R01338':{promilesId:'3535',opisId:'174',opisRackId:'618',opisProductCode:'858',taxId:'660',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0485},
+  'R01437':{promilesId:'6296',opisId:'67695',opisRackId:'255',opisProductCode:'12076',taxId:'691',cityTaxCpg:0,inspectionTax:0,environmentalTax:0.014,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.234,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0675},
+  'R01569':{promilesId:'79217',opisId:'0',opisRackId:'582',opisProductCode:'858',taxId:'825',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'R01570':{promilesId:'74932',opisId:'0',opisRackId:'582',opisProductCode:'858',taxId:'824',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'R01602':{promilesId:'25983',opisId:'0',opisRackId:'582',opisProductCode:'858',taxId:'823',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'R01635':{promilesId:'79218',opisId:'73173',opisRackId:'582',opisProductCode:'858',taxId:'826',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.06},
+  'R01835':{promilesId:'971',opisId:'2087',opisRackId:'835',opisProductCode:'858',taxId:'1054',winterAdditiveStart:'10/31/2025',winterAdditiveEnd:'03/30/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0065,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.385,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.08},
+  'R01837':{promilesId:'8396',opisId:'3605',opisRackId:'400',opisProductCode:'858',taxId:'1087',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0525},
+  'R01866':{promilesId:'5891',opisId:'67945',opisRackId:'954',opisProductCode:'856',taxId:'1120',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:14.5,stateExciseTax:0.454,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.15},
+  'R01965':{promilesId:'70107',opisId:'72686',opisRackId:'574',opisProductCode:'858',taxId:'1219',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.011,loadTax:0,miscTax:0,stateSalesTax:7.25,stateExciseTax:0.545,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.075},
+  'R02229':{promilesId:'4974',opisId:'61106',opisRackId:'392',opisProductCode:'858',taxId:'1384',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0374},
+  'R02230':{promilesId:'2321',opisId:'1240',opisRackId:'400',opisProductCode:'858',taxId:'1385',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0794},
+  'R02231':{promilesId:'8426',opisId:'6165',opisRackId:'400',opisProductCode:'858',taxId:'1351',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,freightRate:0.0363},
+  'R02592':{promilesId:'942',opisId:'67297',opisRackId:'637',opisProductCode:'1379',taxId:'1582',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.1462},
+  'R03469':{promilesId:'12428',opisId:'70709',opisRackId:'540',opisProductCode:'858',taxId:'2803',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2891,federalTax:0.243,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.099},
+  'R03494':{promilesId:'8516',opisId:'6243',opisRackId:'535',opisProductCode:'858',taxId:'3398',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.295,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.085},
+  'R03495':{promilesId:'7988',opisId:'6502',opisRackId:'400',opisProductCode:'1791',taxId:'3397',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.295,federalTax:0.250191,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.09},
+  'R03500':{promilesId:'13504',opisId:'71140',opisRackId:'420',opisProductCode:'858',taxId:'3614',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03517':{promilesId:'79129',opisId:'0'},
+  'R03523':{promilesId:'11498',opisId:'70358',opisRackId:'248',opisProductCode:'858',taxId:'3615',countyTax:0,cityTaxCpg:0,inspectionTax:0.02,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03524':{promilesId:'6775',opisId:'68491',opisRackId:'880',opisProductCode:'1792',taxId:'3430',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0011,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.135},
+  'R03539':{promilesId:'1018',opisId:'7959',opisRackId:'795',opisProductCode:'858',taxId:'3533',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.061},
+  'R03541':{promilesId:'5487',opisId:'63802',opisRackId:'930',opisProductCode:'858',taxId:'3535',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.26,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.044},
+  'R03542':{promilesId:'7991',opisId:'67938',opisRackId:'835',opisProductCode:'858',taxId:'3536',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0065,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.385,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.087},
+  'R03543':{promilesId:'11390',opisId:'0',opisRackId:'835',opisProductCode:'858',taxId:'3537',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0065,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.385,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.109},
+  'R03544':{promilesId:'78050',opisId:'0',taxId:'3538',countyTax:0,cityTaxCpg:0,inspectionTax:0.0031,environmentalTax:0.0125,loadTax:0.0093,miscTax:0,stateSalesTax:0,stateExciseTax:0.285,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0321},
+  'R03596':{promilesId:'776',opisId:'7170',opisRackId:'573',opisProductCode:'858',taxId:'3829',countyTax:0.0143,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.47,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03597':{promilesId:'4877',opisId:'69944',opisRackId:'573',opisProductCode:'858',taxId:'3830',countyTax:0.0143,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.47,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03598':{promilesId:'12883',opisId:'70889',opisRackId:'305',opisProductCode:'858',taxId:'3828',countyTax:0.0143,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.47,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03601':{promilesId:'629',opisId:'5560',opisRackId:'310',opisProductCode:'858',taxId:'3959',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03602':{promilesId:'8333',opisId:'65989',opisRackId:'580',opisProductCode:'858',taxId:'3964',winterAdditiveStart:'11/01/2025',winterAdditiveEnd:'03/31/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0188,miscTax:0,stateSalesTax:0,stateExciseTax:0.21,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03603':{promilesId:'7080',opisId:'66237',opisRackId:'580',opisProductCode:'858',taxId:'3963',winterAdditiveStart:'11/01/2025',winterAdditiveEnd:'03/31/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0188,miscTax:0,stateSalesTax:0,stateExciseTax:0.21,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03625':{promilesId:'255',opisId:'68053',opisRackId:'825',opisProductCode:'858',taxId:'3694',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.001,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.037},
+  'R03626':{promilesId:'1535',opisId:'72532',opisRackId:'825',opisProductCode:'858',taxId:'3695',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.072},
+  'R03627':{promilesId:'1720',opisId:'5462',opisRackId:'825',opisProductCode:'858',taxId:'3696',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.037},
+  'R03628':{promilesId:'22355',opisId:'71888',opisRackId:'825',opisProductCode:'858',taxId:'3697',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.125},
+  'R03629':{promilesId:'14633',opisId:'71369',opisRackId:'785',opisProductCode:'858',taxId:'3727',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0336},
+  'R03630':{promilesId:'11274',opisId:'70217',opisRackId:'785',opisProductCode:'858',taxId:'3728',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.32,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0185},
+  'R03638':{promilesId:'9101',opisId:'66734',opisRackId:'18',opisProductCode:'858',taxId:'3793',countyTax:0.12,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.371,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.063},
+  'R03648':{promilesId:'2702',opisId:'20028',opisRackId:'910',opisProductCode:'858',taxId:'3965',countyTax:0.2306,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0075,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.27,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.04},
+  'R03649':{promilesId:'465',opisId:'7379',opisRackId:'460',opisProductCode:'858',taxId:'3930',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.014,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.234,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03650':{promilesId:'558',opisId:'5830',opisRackId:'431',opisProductCode:'858',taxId:'3957',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:6,stateExciseTax:0.31,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03664':{promilesId:'979',opisId:'6999',opisRackId:'180',opisProductCode:'858',taxId:'3973',countyTax:0.091,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.006,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.318,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.06},
+  'R03665':{promilesId:'982',opisId:'3767',opisRackId:'180',opisProductCode:'858',taxId:'3972',countyTax:0.091,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.006,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.318,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.06},
+  'R03676':{promilesId:'3196',opisId:'6765',opisRackId:'42',opisProductCode:'858',taxId:'3969',countyTax:0,cityTaxCpg:0,inspectionTax:0.0025,environmentalTax:0.005,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.28,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03693':{promilesId:'3027',opisId:'6633',opisRackId:'982',opisProductCode:'858',taxId:'4057',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0011,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.15},
+  'R03699':{promilesId:'997',opisId:'0',opisRackId:'962',opisProductCode:'858',taxId:'4423',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.0012,loadTax:0.0352,miscTax:0,stateSalesTax:0.3,stateExciseTax:0.494,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03791':{promilesId:'4662',opisId:'64356',opisRackId:'765',opisProductCode:'1379',taxId:'4387',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0672},
+  'R03792':{promilesId:'0',opisId:'0'},
+  'R03857':{promilesId:'11457',opisId:'65003',opisRackId:'590',opisProductCode:'858',taxId:'4651',countyTax:0,cityTaxCpg:0,inspectionTax:0.0013,environmentalTax:0.008,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.06},
+  'R03860':{promilesId:'0',opisId:'0'},
+  'R03863':{promilesId:'0',opisId:'0'},
+  'R03867':{promilesId:'0',opisId:'0'},
+  'R03870':{promilesId:'8900',opisId:'8895',opisRackId:'569',opisProductCode:'858',taxId:'4685',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03871':{promilesId:'3577',opisId:'65187',opisRackId:'740',opisProductCode:'858',taxId:'4827',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0009,miscTax:0,stateSalesTax:0,stateExciseTax:0.2,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03876':{promilesId:'1812',opisId:'69425',opisRackId:'640',opisProductCode:'858',taxId:'4717',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.01875,miscTax:0,stateSalesTax:0,stateExciseTax:0.21,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.175},
+  'R03877':{promilesId:'3052',opisId:'70228',opisRackId:'880',opisProductCode:'1792',taxId:'4783',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0.0011,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03889':{promilesId:'13729',opisId:'71222',opisRackId:'525',opisProductCode:'1793',taxId:'4792',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.19,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.08},
+  'R03903':{promilesId:'3202',opisId:'6058',opisRackId:'370',opisProductCode:'858',taxId:'4910',countyTax:0.0143,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.47,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03907':{promilesId:'79907',opisId:'65798',opisRackId:'444',opisProductCode:'858',taxId:'4876',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03913':{promilesId:'80117',opisId:'74203',taxId:'5111',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03915':{promilesId:'3830',opisId:'8898',opisRackId:'444',opisProductCode:'858',taxId:'5010',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.02,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.309,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.05},
+  'R03917':{promilesId:'2110',opisId:'5754',opisRackId:'406',opisProductCode:'858',taxId:'5078',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:6,stateExciseTax:0.31,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03918':{promilesId:'2300',opisId:'6232',opisRackId:'416',opisProductCode:'858',taxId:'5144',countyTax:0,cityTaxCpg:0,inspectionTax:0.0009,environmentalTax:0.004,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.295,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.067},
+  'R03920':{promilesId:'6716',opisId:'68644',opisRackId:'452',opisProductCode:'858',taxId:'5210',countyTax:0,cityTaxCpg:0,inspectionTax:0.00025,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.23,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03921':{promilesId:'2556',opisId:'7190',opisRackId:'341',opisProductCode:'858',taxId:'5276',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0.00025,stateSalesTax:0,stateExciseTax:0.23,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03922':{promilesId:'2552',opisId:'52585',opisRackId:'807',opisProductCode:'858',taxId:'5277',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0.00025,stateSalesTax:0,stateExciseTax:0.23,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03923':{promilesId:'2553',opisId:'2963',opisRackId:'390',opisProductCode:'858',taxId:'5278',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0.00025,stateSalesTax:0,stateExciseTax:0.23,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03924':{promilesId:'8920',opisId:'69480',opisRackId:'452',opisProductCode:'858',taxId:'5279',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0.00025,stateSalesTax:0,stateExciseTax:0.23,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0674},
+  'R03927':{promilesId:'0',opisId:'74393',taxId:'5243',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.13},
+  'R03929':{promilesId:'7955',opisId:'67906',opisRackId:'400',opisProductCode:'858',taxId:'5177',countyTax:0,cityTaxCpg:0,inspectionTax:0.0003,environmentalTax:0.01,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0.26,federalTax:0.2502,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03932':{promilesId:'0',opisId:'74423',taxId:'5507',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03933':{promilesId:'0',opisId:'0'},
+  'R03934':{promilesId:'80359',opisId:'74470',taxId:'5342',winterAdditiveStart:'12/01/2025',winterAdditiveEnd:'03/15/2026',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0.03,freightRate:0.06},
+  'R03967':{promilesId:'26005',opisId:'0',opisRackId:'444',opisProductCode:'858',taxId:'5474',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03968':{promilesId:'6872',opisId:'64519',opisRackId:'200',opisProductCode:'1788',taxId:'5375',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0.0415},
+  'R03970':{promilesId:'0',opisId:'73119',taxId:'5408',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03971':{promilesId:'0',opisId:'74628'},
+  'R03972':{promilesId:'9144',opisId:'65800',opisRackId:'444',opisProductCode:'858',taxId:'5441',countyTax:0,cityTaxCpg:0,inspectionTax:0,environmentalTax:0,loadTax:0,miscTax:0,stateSalesTax:0,stateExciseTax:0,federalTax:0,federalOilSpillLiability:0,winterAdditive:0,freightRate:0},
+  'R03973':{promilesId:'0',opisId:'0'},
+  'R09601':{promilesId:'62659',opisId:'0',opisRackId:'46',opisProductCode:'858'},
+  'R61502':{promilesId:'0',opisId:'0'},
+  'R61503':{promilesId:'0',opisId:'0'},
+  'R61504':{promilesId:'25979',opisId:'0',opisRackId:'372',opisProductCode:'858'},
+  'R61506':{promilesId:'77527',opisId:'0',opisRackId:'370',opisProductCode:'858'},
+  'R61507':{promilesId:'25705',opisId:'0'},
+  'R61508':{promilesId:'46578',opisId:'0',opisRackId:'365',opisProductCode:'858'},
+  'R61509':{promilesId:'0',opisId:'0'},
+};
+function _resolveLocationCostRack(stopId, gdRack){
+  // Merge static fcc_report.csv seed onto the per-month GD rack record.
+  // GD wins on overlap (any user edit on the rack survives), seed fills
+  // missing fields. Returns an object with BOTH camelCase keys (used by
+  // brBuildAutoData / Slide 4) and snake_case keys (used by pageRackHTML)
+  // populated, so consumers don't need to know the seed schema.
+  const r = (gdRack && typeof gdRack === 'object') ? Object.assign({}, gdRack) : {};
+  const seed = (typeof LOCATION_COST_COMPONENTS === 'object' && LOCATION_COST_COMPONENTS && LOCATION_COST_COMPONENTS[stopId]) || null;
+  if(!seed) return r;
+  const fill = (k, v) => { if(r[k] == null && v != null) r[k] = v; };
+  // camelCase (Slide 4 + brBuildAutoData consumers)
+  fill('freightRate',              seed.freightRate);
+  fill('freightRateFuelman',       seed.freightRateFuelman);
+  fill('federalOilSpillLiability', seed.federalOilSpillLiability);
+  fill('countyTax',                seed.countyTax);
+  fill('cityTaxCpg',               seed.cityTaxCpg);
+  fill('inspectionTax',            seed.inspectionTax);
+  fill('environmentalTax',         seed.environmentalTax);
+  fill('loadTax',                  seed.loadTax);
+  fill('miscTax',                  seed.miscTax);
+  fill('federalTax',               seed.federalTax);
+  fill('stateExciseTax',           seed.stateExciseTax);
+  fill('stateSalesTax',            seed.stateSalesTax);
+  fill('winterAdditive',           seed.winterAdditive);
+  fill('winterAdditiveStart',      seed.winterAdditiveStart);
+  fill('winterAdditiveEnd',        seed.winterAdditiveEnd);
+  fill('promilesId',               seed.promilesId);
+  fill('opisId',                   seed.opisId);
+  fill('opisRackId',               seed.opisRackId);
+  fill('opisProductCode',          seed.opisProductCode);
+  fill('taxId',                    seed.taxId);
+  // snake_case aliases (pageRackHTML reads these)
+  fill('freight',          seed.freightRate);
+  fill('federal_tax',      seed.federalTax);
+  fill('state_excise',     seed.stateExciseTax);
+  fill('state_sales_tax',  seed.stateSalesTax);
+  fill('misc_tax',         seed.miscTax);
+  fill('opis_id',          seed.opisId);
+  return r;
+}
+// ── /LOCATION_COST_COMPONENTS ──
 function loadStopRecord(stopId){
   if(!stopdata[stopId]) stopdata[stopId] = {membershipCost:'', siteMgrName:'', siteMgrEmail:'', siteMgrPhone:'', notes:[], visits:[]};
   /* MEMBERSHIP_SEED_PATCH */ if(!stopdata[stopId].membershipCost && typeof _seedMembershipCostFor === 'function'){
@@ -5486,21 +5906,54 @@ function pageRackHTML(stopId){
   let rack = {};
   try {
     const GD = loadFuelGD();
-    rack = GD[stopId]?.[currentMonthKey()]?.rack || {};
+    const gdRack = GD[stopId]?.[currentMonthKey()]?.rack || {};
+    rack = (typeof _resolveLocationCostRack === 'function')
+      ? _resolveLocationCostRack(stopId, gdRack)
+      : gdRack;
   } catch(e){}
   const fmtRate = n => (typeof n === 'number' && !isNaN(n)) ? '$' + n.toFixed(4) : '—';
+  const fmtPct  = n => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(3) + '%' : '—';
+  const dash    = v => (v == null || v === '') ? '—' : esc(String(v));
+  // Winter additive: only render the dates suffix when at least one is set.
+  const winterDates = (rack.winterAdditiveStart || rack.winterAdditiveEnd)
+    ? ` <span style="color:var(--muted);font-size:.82em">(${dash(rack.winterAdditiveStart)} → ${dash(rack.winterAdditiveEnd)})</span>` : '';
+  // Freight (Fuelman) is rarely populated; only show when set.
+  const freightFmRow = (rack.freightRateFuelman != null)
+    ? `<div class="sd-loc-row"><span class="lbl">Freight Rate (Fuelman)</span><span>${fmtRate(rack.freightRateFuelman)}/gal</span></div>` : '';
   return `
     <div class="drawer-card amber">
-      <div class="drawer-card-hd">⛽ Rack Information</div>
+      <div class="drawer-card-hd">⛽ Location Cost Components</div>
+
+      <div style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:2px;margin-bottom:4px">Identifiers</div>
       <div class="sd-rack">
-        <div class="sd-loc-row"><span class="lbl">Rack Index</span><span>${esc(rack.rack_index||'—')}</span></div>
-        <div class="sd-loc-row"><span class="lbl">OPIS ID</span><span>${esc(rack.opis_id||'—')}</span></div>
-        <div class="sd-loc-row"><span class="lbl">Index Type</span><span>${esc(rack.index_type||'—')}</span></div>
-        <div class="sd-loc-row"><span class="lbl">Freight Rate</span><span>${fmtRate(rack.freight)}/gal</span></div>
-        <div class="sd-loc-row"><span class="lbl">Federal Tax</span><span>${fmtRate(rack.federal_tax)}</span></div>
-        <div class="sd-loc-row"><span class="lbl">State Excise Tax</span><span>${fmtRate(rack.state_excise)}</span></div>
-        <div class="sd-loc-row"><span class="lbl">State Sales Tax</span><span>${rack.state_sales_tax !== undefined ? rack.state_sales_tax + '%' : '—'}</span></div>
-        <div class="sd-loc-row"><span class="lbl">Misc. Tax</span><span>${rack.misc_tax !== undefined ? '$' + rack.misc_tax : '—'}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Rack Index</span><span>${dash(rack.rack_index)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Promiles ID</span><span>${dash(rack.promilesId)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">OPIS ID</span><span>${dash(rack.opisId || rack.opis_id)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">OPIS Rack ID</span><span>${dash(rack.opisRackId)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">OPIS Product Code</span><span>${dash(rack.opisProductCode)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Tax ID</span><span>${dash(rack.taxId)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Index Type</span><span>${dash(rack.index_type)}</span></div>
+      </div>
+
+      <div style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:10px;margin-bottom:4px">Tax Components ($/gal unless noted)</div>
+      <div class="sd-rack">
+        <div class="sd-loc-row"><span class="lbl">Federal Tax</span><span>${fmtRate(rack.federalTax ?? rack.federal_tax)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Federal Oil Spill Liability</span><span>${fmtRate(rack.federalOilSpillLiability)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">State Excise Tax</span><span>${fmtRate(rack.stateExciseTax ?? rack.state_excise)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">State Sales Tax</span><span>${rack.stateSalesTax != null ? fmtPct(rack.stateSalesTax) : (rack.state_sales_tax !== undefined ? rack.state_sales_tax + '%' : '—')}</span></div>
+        <div class="sd-loc-row"><span class="lbl">County Tax</span><span>${fmtRate(rack.countyTax)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">City Tax (CPG)</span><span>${fmtRate(rack.cityTaxCpg)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Inspection Tax</span><span>${fmtRate(rack.inspectionTax)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Environmental Tax</span><span>${fmtRate(rack.environmentalTax)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">LOAD Tax</span><span>${fmtRate(rack.loadTax)}</span></div>
+        <div class="sd-loc-row"><span class="lbl">Misc. Tax</span><span>${fmtRate(rack.miscTax ?? rack.misc_tax)}</span></div>
+      </div>
+
+      <div style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:10px;margin-bottom:4px">Freight &amp; Additives</div>
+      <div class="sd-rack">
+        <div class="sd-loc-row"><span class="lbl">Freight Rate</span><span>${fmtRate(rack.freightRate ?? rack.freight)}/gal</span></div>
+        ${freightFmRow}
+        <div class="sd-loc-row"><span class="lbl">Winter Additive</span><span>${fmtRate(rack.winterAdditive)}${winterDates}</span></div>
       </div>
     </div>
   `;
@@ -8545,8 +8998,14 @@ function brBuildAutoData(stopId, period){
   const aggregators = Object.values(aggMap).sort((a,b) => b.gallons - a.gallons);
   const fleets = Object.values(fleetMap).sort((a,b) => b.gallons - a.gallons);
 
-  // Current month rack snapshot for Slide 8 left column
-  const curRack = GD[stopId]?.[cm]?.rack || {};
+  // Current month rack snapshot for Slide 8 left column + Slide 4 Cost
+  // Components. Layer the static fcc_report.csv seed onto whatever GD has
+  // so Slide 4's pre-existing cost fields (federalTax, stateExciseTax,
+  // freightRate, etc.) populate even when no per-month GD rack was set.
+  const gdRack = GD[stopId]?.[cm]?.rack || {};
+  const curRack = (typeof _resolveLocationCostRack === 'function')
+    ? _resolveLocationCostRack(stopId, gdRack)
+    : gdRack;
 
   // Vendor enrollments
   const stopVP = VPE[stopId] || {};
