@@ -4577,6 +4577,42 @@ function drawerRewardsHTML(stopId){
     const color = rate >= 60 ? 'var(--green)' : (rate >= 30 ? 'var(--yellow)' : 'var(--red)');
     rateLabel = `<span style="color:${color};font-weight:700">${rate.toFixed(1)}%</span>`;
   }
+
+  // Per-month panel renderer. Color-coded redemption rate uses the same
+  // 60%/30% thresholds as the YTD rate above. Returns '' when no seed
+  // entry exists for this stop in that month.
+  const monthPanel = (seed, label, accentColor) => {
+    if(typeof seed !== 'object' || !seed || !seed[stopId]) return '';
+    const d = seed[stopId];
+    const rateColor = d.rr >= 60 ? 'var(--green)' : (d.rr >= 30 ? 'var(--yellow)' : 'var(--red)');
+    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px 10px">
+      <div style="font-size:.62em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${accentColor};margin-bottom:6px">${label}</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;column-gap:8px;row-gap:3px;font-size:.78em">
+        <span style="color:var(--muted)">Add $</span>          <span style="font-family:var(--fm);font-weight:700;text-align:right">${fmt(d['a$'])}</span>
+        <span style="color:var(--muted)">Redeem $</span>       <span style="font-family:var(--fm);font-weight:700;text-align:right">${fmt(d['r$'])}</span>
+        <span style="color:var(--muted)">Add Txns</span>       <span style="font-family:var(--fm);text-align:right">${d.at.toLocaleString()}</span>
+        <span style="color:var(--muted)">Redeem Txns</span>    <span style="font-family:var(--fm);text-align:right">${d.rt.toLocaleString()}</span>
+        <span style="color:var(--muted)">Gallons Captured</span><span style="font-family:var(--fm);text-align:right">${Math.round(d.g).toLocaleString()}</span>
+        <span style="color:var(--muted)">Redemption Rate</span><span style="color:${rateColor};font-weight:700;text-align:right">${d.rr.toFixed(1)}%</span>
+      </div>
+    </div>`;
+  };
+
+  // Build "Rewards — Monthly Activity" section. April uses cyan accent,
+  // May uses yellow (more recent month gets the warmer color). Section
+  // is suppressed entirely when this stop has data in neither month.
+  const aprHTML = monthPanel(typeof REWARDS_2026_04_SEED !== 'undefined' ? REWARDS_2026_04_SEED : null, 'April 2026', 'var(--cyan)');
+  const mayHTML = monthPanel(typeof REWARDS_2026_05_SEED !== 'undefined' ? REWARDS_2026_05_SEED : null, 'May 2026',   'var(--yellow)');
+  const monthlyActivityHTML = (aprHTML || mayHTML) ? `
+    <div class="drawer-card amber" style="margin-top:14px">
+      <div class="drawer-card-hd">📊 Rewards — Monthly Activity</div>
+      <div style="display:grid;grid-template-columns:${(aprHTML && mayHTML) ? '1fr 1fr' : '1fr'};gap:8px">
+        ${mayHTML}${aprHTML}
+      </div>
+      ${(aprHTML && !mayHTML) ? '<div style="font-size:.66em;color:var(--muted);margin-top:6px">No May 2026 activity recorded for this stop.</div>' :
+        (mayHTML && !aprHTML) ? '<div style="font-size:.66em;color:var(--muted);margin-top:6px">No April 2026 activity recorded for this stop.</div>' : ''}
+    </div>` : '';
+
   return `
     <div class="drawer-card amber">
       <div class="drawer-card-hd">🎁 Rewards — Year to Date</div>
@@ -4595,37 +4631,8 @@ function drawerRewardsHTML(stopId){
         ${rateLabel}
       </div>
       ${(adds != null && redeems != null && adds > 0) ? `<div style="font-size:.66em;color:var(--muted);margin-top:6px">YTD Adds ${fmt(adds)} · YTD Redeems ${fmt(redeems)}</div>` : ''}
-      /* REWARDS_2026_05_PATCH:drawer */${(typeof REWARDS_2026_05_SEED === 'object' && REWARDS_2026_05_SEED[stopId]) ? (() => {
-        const d = REWARDS_2026_05_SEED[stopId];
-        const rateColor = d.rr >= 60 ? 'var(--green)' : (d.rr >= 30 ? 'var(--yellow)' : 'var(--red)');
-        return `<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border)">
-          <div style="font-size:.62em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--yellow);margin-bottom:6px">May 2026 — Monthly Activity</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.78em">
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Add $</span><span style="font-family:var(--fm);font-weight:700">${fmt(d['a$'])}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Redeem $</span><span style="font-family:var(--fm);font-weight:700">${fmt(d['r$'])}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Add Transactions</span><span style="font-family:var(--fm)">${d.at.toLocaleString()}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Redeem Transactions</span><span style="font-family:var(--fm)">${d.rt.toLocaleString()}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Gallons Captured</span><span style="font-family:var(--fm)">${Math.round(d.g).toLocaleString()}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Redemption Rate</span><span style="color:${rateColor};font-weight:700">${d.rr.toFixed(1)}%</span></div>
-          </div>
-        </div>`;
-      })() : ''}/* /REWARDS_2026_05_PATCH:drawer */
-      /* REWARDS_2026_04_PATCH:drawer */${(typeof REWARDS_2026_04_SEED === 'object' && REWARDS_2026_04_SEED[stopId]) ? (() => {
-        const d = REWARDS_2026_04_SEED[stopId];
-        const rateColor = d.rr >= 60 ? 'var(--green)' : (d.rr >= 30 ? 'var(--yellow)' : 'var(--red)');
-        return `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
-          <div style="font-size:.62em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);margin-bottom:6px">April 2026 — Monthly Activity</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.78em">
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Add $</span><span style="font-family:var(--fm);font-weight:700">${fmt(d['a$'])}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Redeem $</span><span style="font-family:var(--fm);font-weight:700">${fmt(d['r$'])}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Add Transactions</span><span style="font-family:var(--fm)">${d.at.toLocaleString()}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Redeem Transactions</span><span style="font-family:var(--fm)">${d.rt.toLocaleString()}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Gallons Captured</span><span style="font-family:var(--fm)">${Math.round(d.g).toLocaleString()}</span></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Redemption Rate</span><span style="color:${rateColor};font-weight:700">${d.rr.toFixed(1)}%</span></div>
-          </div>
-        </div>`;
-      })() : ''}/* /REWARDS_2026_04_PATCH:drawer */
     </div>
+    ${monthlyActivityHTML}
   `;
 }
 
