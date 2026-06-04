@@ -2684,20 +2684,20 @@ R01180,no,yes,yes,no,yes,no</code>
         <h3 style="font-family:var(--ff);font-size:.9em;color:var(--accent);margin-bottom:14px">🗑️ Data Management</h3>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn" onclick="if(confirm('Clear all KPI data and reload sample data?')){kpiInit();kpiLoadSample();
-// ── REWARDS_2026_05 KD overlay (PARTIAL — 50 of ~368 stops) ──
-// Source: rewards-by-truckstop-2026-05.csv aggregated across the 50 stops it contained.
-// Do NOT treat as authoritative — when a complete export lands, re-run
-// scripts/update_rewards_may_2026.py to refresh.
+// ── REWARDS_2026_05 KD overlay ──
+// Source: rewards-by-truckstop-2026-05*.csv (6 pagination pages)
+//         aggregated across 143 of 368 MEMBERS.
+// Re-run C:\tmp\update_rewards_may_2026.py if any pages change.
 (function injectRewardsMay2026(){
   try {
     if(typeof KD !== 'object' || !KD) return;
     const overlay = {
-      'Rewards Add Transactions':    11127,
-      'Rewards Redeem Transactions': 1208,
-      'Rewards Gallons Captured':    1019000.5,
-      'Issued Points (Add Dollars)': 11265.84,
-      'Redeemed Points':             8256.99,
-      'Redemption Rate':             0.7330
+      'Rewards Add Transactions':    45038,
+      'Rewards Redeem Transactions': 4607,
+      'Rewards Gallons Captured':    4227593.9,
+      'Issued Points (Add Dollars)': 46922.03,
+      'Redeemed Points':             32049.73,
+      'Redemption Rate':             0.6830
     };
     for(const k in overlay){
       if(!KD[k]) KD[k] = {};
@@ -2706,6 +2706,30 @@ R01180,no,yes,yes,no,yes,no</code>
   } catch(e){ console.warn('REWARDS_2026_05 overlay failed:', e); }
 })();
 // ── /REWARDS_2026_05 KD overlay ──
+
+// ── REWARDS_2026_05 KD overlay (PARTIAL — 50 of ~368 stops) ──
+// Source: rewards-by-truckstop-2026-05.csv aggregated across the 50 stops it contained.
+// Do NOT treat as authoritative — when a complete export lands, re-run
+// scripts/update_rewards_may_2026.py to refresh.
+(function injectRewardsMay2026(){
+  try {
+    if(typeof KD !== 'object' || !KD) return;
+    const overlay = {
+      'Rewards Add Transactions':    45038,
+      'Rewards Redeem Transactions': 4607,
+      'Rewards Gallons Captured':    4227593.9,
+      'Issued Points (Add Dollars)': 46922.03,
+      'Redeemed Points':             32049.73,
+      'Redemption Rate':             0.6830
+    };
+    for(const k in overlay){
+      if(!KD[k]) KD[k] = {};
+      KD[k]['2026-05'] = overlay[k];
+    }
+  } catch(e){ console.warn('REWARDS_2026_05 overlay failed:', e); }
+})();
+// ── /REWARDS_2026_05 KD overlay ──
+
 saveData();updateAll();toast('KPI data reset');}">Reset KPI Data</button>
           <button class="btn" onclick="if(confirm('Clear all fuel gallon data and reload sample?')){GD={};loadSample();saveData();updateAll();toast('Fuel data reset');}">Reset Fuel Data</button>
           <button class="btn" style="background:rgba(255,71,87,.15);color:var(--red);border-color:rgba(255,71,87,.3)" onclick="if(confirm('Clear ALL data including settings? This cannot be undone.')){localStorage.clear();location.reload();}">Factory Reset</button>

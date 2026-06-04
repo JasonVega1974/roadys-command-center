@@ -1,9 +1,9 @@
--- 2026-05-27 — Rewards KPIs for May 2026 (PARTIAL DATA)
+-- 2026-05-27 — Rewards KPIs for May 2026
 --
--- Source: rewards-by-truckstop-2026-05.csv covered only 50 of ~368 stops
--- (alphabet range A–E, ending at 'Eco Travel Plaza'). Network aggregates
--- below are sums across only those 50 stops. Re-import with a complete
--- export when available; this upsert will overwrite the partial figures.
+-- Source: rewards-by-truckstop-2026-05*.csv merged across 6 pagination
+-- pages. Coverage: 143 of 368 MEMBERS. 8 CSV rows had no MEMBERS match
+-- (mostly offboarding sites — listed in the runner output, not included below).
+-- Re-import if you receive new pages; this upsert will overwrite.
 
 -- Schema reminder: kpi_data(metric_key text, month text, value numeric,
 --                            PRIMARY KEY (metric_key, month))
@@ -11,12 +11,12 @@
 BEGIN;
 
 INSERT INTO public.kpi_data (metric_key, month, value) VALUES
-  ('Rewards Add Transactions',    '2026-05', 11127),
-  ('Rewards Redeem Transactions', '2026-05', 1208),
-  ('Rewards Gallons Captured',    '2026-05', 1019000.5),
-  ('Issued Points (Add Dollars)', '2026-05', 11265.84),
-  ('Redeemed Points',             '2026-05', 8256.99),
-  ('Redemption Rate',             '2026-05', 0.7330)
+  ('Rewards Add Transactions',    '2026-05', 45038),
+  ('Rewards Redeem Transactions', '2026-05', 4607),
+  ('Rewards Gallons Captured',    '2026-05', 4227593.9),
+  ('Issued Points (Add Dollars)', '2026-05', 46922.03),
+  ('Redeemed Points',             '2026-05', 32049.73),
+  ('Redemption Rate',             '2026-05', 0.6830)
 ON CONFLICT (metric_key, month) DO UPDATE SET
   value = EXCLUDED.value;
 
