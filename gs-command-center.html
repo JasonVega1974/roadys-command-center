@@ -4669,12 +4669,91 @@ function _resolveLocationCostRack(stopId, gdRack){
   return r;
 }
 // ── /LOCATION_COST_COMPONENTS ──
+
+// ── FUELMAN_ACTIVE_SITES (auto-generated from Fuelman Reimbursement PDFs) ──
+// Source: Week 18-21 (Apr 27 - May 24 2026) Merchant Reimbursement Reports.
+// 57 of the unique sites in the PDFs were matched to MEMBERS stop IDs.
+// 15 PDF sites had no MEMBERS match (Lambo's, Jones Auto, Jud's #5, etc.)
+// and are intentionally NOT in this seed — they're on Fuelman but not in
+// the Roady's MEMBERS list. Stored as {stop_id: {name, mids[]}} for
+// traceability when a question comes up about why a stop is Fuelman-flagged.
+const FUELMAN_ACTIVE_SITES = {
+  'R00099':{name:'Schatz Crossroads',mids:['335857']},
+  'R00111':{name:'Roadrunner Travel Center',mids:['335833','550606']},
+  'R00118':{name:'Kanza Travel Plaza',mids:['586935','586936']},
+  'R00179':{name:'Gee Cee\'s Truck Stop',mids:['333652']},
+  'R00205':{name:'Crazy Fred\'s Truck Stop',mids:['606864']},
+  'R00244':{name:'Tiger Truck Stop',mids:['335863','376348']},
+  'R00255':{name:'Big Daddys Truck Stop',mids:['601880']},
+  'R00320':{name:'Francis Creek Travel Plaza-CITGO',mids:['682394']},
+  'R00325':{name:'Plainfield T/P-CITGO',mids:['675062']},
+  'R00326':{name:'BP Kenosha Travel Plaza',mids:['983873']},
+  'R00608':{name:'Bear Creek T/P-CITGO',mids:['689580']},
+  'R00614':{name:'Lucky Deuces Truck Stop',mids:['601687']},
+  'R00616':{name:'Good to Go #10',mids:['401985','440775']},
+  'R00703':{name:'Waco Travel Center',mids:['333526']},
+  'R00941':{name:'Guthrie Travel Center',mids:['339544']},
+  'R01018':{name:'Warren Travel Plaza',mids:['335856']},
+  'R01059':{name:'Good to Go #40',mids:['324934','390461']},
+  'R01072':{name:'BP Pleasant Springs Travel Plaza',mids:['422925']},
+  'R01075':{name:'Riverside 2 Go',mids:['424603','424609']},
+  'R01080':{name:'Fackler Texaco Truckstop',mids:['335887']},
+  'R01083':{name:'Eagle Express Travel Center',mids:['602254']},
+  'R01084':{name:'Dilley Truck Stop',mids:['424490','424491']},
+  'R01107':{name:'Edgerton Travel Plaza',mids:['598322','640135','657654']},
+  'R01118':{name:'Good To Go #45',mids:['352008','404382']},
+  'R01121':{name:'Planeview Travel Plaza',mids:['657659']},
+  'R01132':{name:'Eco Travel Plaza',mids:['606147']},
+  'R01133':{name:'Palmetto Express #115',mids:['550609','550612']},
+  'R01135':{name:'Good To Go #14',mids:['550682']},
+  'R01136':{name:'Good To Go #32',mids:['550610']},
+  'R01140':{name:'Somer\'s Amoco',mids:['596137','596138']},
+  'R01143':{name:'Stockmen\'s Truck Stop',mids:['606863']},
+  'R01151':{name:'Super B Express',mids:['564140','603142']},
+  'R01152':{name:'Good To Go #73',mids:['552135']},
+  'R01164':{name:'Grand Central Station - Pops Mart Fuels',mids:['602248','602249']},
+  'R01167':{name:'Refuel Pantry-Columbus West',mids:['602251','602252']},
+  'R01178':{name:'Fast Trac 21',mids:['383449']},
+  'R01219':{name:'Mauston Interstate BP',mids:['683640']},
+  'R01635':{name:'Station Hwy 33 Citgo',mids:['597247']},
+  'R03629':{name:'80254 Mr. Gas Boise #21',mids:['317704']},
+  'R03630':{name:'80249 Mr. Gas',mids:['745492']},
+  'R03792':{name:'Good to Go #37',mids:['330671']},
+  'R03871':{name:'Qmart',mids:['596134','596135']},
+  'R03876':{name:'5R Travel Center',mids:['324938']},
+  'R03877':{name:'Talent Travel Center',mids:['575650','575981']},
+  'R03903':{name:'Motor Inn Travel Plaza',mids:['603143','721463']},
+  'R03907':{name:'Station Wild Goose',mids:['597198']},
+  'R03917':{name:'Road Trip Oasis',mids:['460297']},
+  'R03927':{name:'Goldendale Travel Plaza',mids:['575649','575651']},
+  'R03971':{name:'Super Station',mids:['579647','580921']},
+  'R09601':{name:'Fill Good #17',mids:['440037']},
+  'R61502':{name:'Good To Go #34',mids:['330669']},
+  'R61503':{name:'Good To Go #35',mids:['330670']},
+  'R61504':{name:'Good To Go #70',mids:['330674']},
+  'R61506':{name:'Good To Go #95',mids:['330677']},
+  'R61507':{name:'Good To Go #22',mids:['398804']},
+  'R61508':{name:'Good To Go #50',mids:['330672']},
+  'R61509':{name:'Good To Go #24',mids:['330668']},
+};
+function _seedFuelmanActiveFor(rec, stopId){
+  if(typeof FUELMAN_ACTIVE_SITES !== 'object' || !FUELMAN_ACTIVE_SITES) return;
+  if(!FUELMAN_ACTIVE_SITES[stopId]) return;
+  // Sets two flags so both legacy code paths (rec.acceptsFuelman boolean)
+  // and the newer fleet-cards map agree. Never sets to false — user
+  // un-checks on the drawer survive because we only add, never remove.
+  if(rec.acceptsFuelman !== true) rec.acceptsFuelman = true;
+  const afc = (rec.acceptsFleetCards && typeof rec.acceptsFleetCards === 'object') ? rec.acceptsFleetCards : {};
+  if(!afc.fuelman){ afc.fuelman = true; rec.acceptsFleetCards = afc; }
+}
+// ── /FUELMAN_ACTIVE_SITES ──
 function loadStopRecord(stopId){
   if(!stopdata[stopId]) stopdata[stopId] = {membershipCost:'', siteMgrName:'', siteMgrEmail:'', siteMgrPhone:'', notes:[], visits:[]};
   /* MEMBERSHIP_SEED_PATCH */ if(!stopdata[stopId].membershipCost && typeof _seedMembershipCostFor === 'function'){
     const seed = _seedMembershipCostFor(stopId);
     if(seed) stopdata[stopId].membershipCost = seed;
   } /* /MEMBERSHIP_SEED_PATCH */
+  /* FUELMAN_SEED_PATCH */ if(typeof _seedFuelmanActiveFor === 'function') _seedFuelmanActiveFor(stopdata[stopId], stopId); /* /FUELMAN_SEED_PATCH */
   return stopdata[stopId];
 }
 function saveStopRecord(stopId, partial){
