@@ -2706,6 +2706,29 @@ R01180,no,yes,yes,no,yes,no</code>
   } catch(e){ console.warn('REWARDS_2026_05 overlay failed:', e); }
 })();
 // ── /REWARDS_2026_05 KD overlay ──
+// ── REWARDS_2026_04 KD overlay ──
+// Source: rewards-by-truckstop-2026-04*.csv (4 pagination pages)
+//         aggregated across 141 of 368 MEMBERS.
+// Re-run C:\tmp\update_rewards_apr_2026.py if any pages change.
+(function injectRewardsApr2026(){
+  try {
+    if(typeof KD !== 'object' || !KD) return;
+    const overlay = {
+      'Rewards Add Transactions':    49851,
+      'Rewards Redeem Transactions': 4930,
+      'Rewards Gallons Captured':    4692549.2,
+      'Issued Points (Add Dollars)': 52098.93,
+      'Redeemed Points':             34374.65,
+      'Redemption Rate':             0.6600
+    };
+    for(const k in overlay){
+      if(!KD[k]) KD[k] = {};
+      KD[k]['2026-04'] = overlay[k];
+    }
+  } catch(e){ console.warn('REWARDS_2026_04 overlay failed:', e); }
+})();
+// ── /REWARDS_2026_04 KD overlay ──
+
 
 // ── REWARDS_2026_05 KD overlay (PARTIAL — 50 of ~368 stops) ──
 // Source: rewards-by-truckstop-2026-05.csv aggregated across the 50 stops it contained.
