@@ -156,11 +156,22 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .import-preview-tbl th{font-size:.66em;text-transform:uppercase;color:var(--muted)}
 /* Phase 4 — Stop Detail Page */
 #p-stop-detail .container{padding:14px 16px}
-.sd-header{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--cyan);border-radius:6px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+/* Sticky stop-detail header: stays pinned below the topbar (top:46px) so
+   the truck-stop name + section-nav + actions always stay visible while
+   the user scrolls through the page. */
+.sd-header{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--cyan);border-radius:6px;padding:10px 14px;display:flex;flex-direction:column;align-items:stretch;margin-bottom:14px;gap:8px;position:sticky;top:46px;z-index:50;box-shadow:0 4px 10px -6px rgba(0,0,0,.35)}
+.sd-header-top{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
 .sd-header .sd-name{font-size:1.05em;font-weight:800;margin-left:12px}
 .sd-header .sd-meta{font-size:.74em;color:var(--muted);margin-left:8px}
-.sd-actions{display:flex;gap:6px}
+.sd-nav{display:flex;flex-wrap:wrap;gap:4px;padding-top:6px;border-top:1px solid var(--border)}
+.sd-nav .btn{font-size:.7em;padding:4px 9px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-weight:600;display:inline-flex;align-items:center;gap:5px;border-radius:5px;cursor:pointer;transition:background .12s,border-color .12s}
+.sd-nav .btn:hover{background:var(--surface);border-color:var(--cyan)}
+.sd-nav .btn .ico{font-size:1.05em;line-height:1}
+.sd-actions{display:flex;flex-wrap:wrap;gap:6px;padding-top:6px;border-top:1px solid var(--border)}
 .sd-actions .btn{font-size:.72em}
+/* Scroll-margin so anchored sections land BELOW the sticky header instead
+   of underneath it. Updated dynamically when the header is measured. */
+.sd-group{scroll-margin-top:160px}
 .sd-section-label{font-size:.65em;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;font-weight:700}
 .sd-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
 .sd-kpi{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--cyan);border-radius:5px;padding:10px}
@@ -233,7 +244,9 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .sd-toolbar-presets{display:flex;gap:4px;align-items:center;border-right:1px solid var(--border);padding-right:8px;margin-right:4px}
 .sd-toolbar-presets .btn{font-size:.68em;padding:4px 8px}
 @media print {
-  .topbar, .tabs, #site-drawer, #stopdata-import-modal, .sd-actions, #toast, .sd-toolbar { display: none !important; }
+  .topbar, .tabs, #site-drawer, #stopdata-import-modal, .sd-actions, .sd-nav, #toast, .sd-toolbar { display: none !important; }
+  /* Sticky doesn't make sense on paper -- release the pin so all content prints linearly. */
+  #p-stop-detail .sd-header { position: static !important; box-shadow: none !important; }
   body, .panel, .container { background: #fff !important; color: #000 !important; }
   .panel { display: none !important; }
   #p-stop-detail { display: block !important; }
@@ -6722,6 +6735,25 @@ function closeStopDetailPage(suppressDrawer){
   _stopDetailReturnTab = null;
   if(sid && !suppressDrawer) openSiteDrawer(sid);
 }
+// Single source of truth for the stop-detail section group headers. The
+// section-nav buttons in the sticky header and the actual section group
+// titles in the left/right columns both read from this list, so adding /
+// renaming / reordering a section happens in one place.
+const SD_SECTIONS = [
+  // Left column
+  { id:'sd-sec-identity',  icon:'📍', label:'Identity & Membership' },
+  { id:'sd-sec-rewards',   icon:'🎁', label:'Programs & Rewards' },
+  { id:'sd-sec-rack',      icon:'⛽', label:'Rack & Pricing' },
+  { id:'sd-sec-engage',    icon:'📋', label:'Engagement History' },
+  // Right column
+  { id:'sd-sec-financial', icon:'💰', label:'Financial Performance' },
+  { id:'sd-sec-vendors',   icon:'🏢', label:'Vendor Programs' },
+  { id:'sd-sec-discounts', icon:'💲', label:'Discounts & CRM' },
+  { id:'sd-sec-history',   icon:'📊', label:'History & Analysis' },
+  { id:'sd-sec-reports',   icon:'📑', label:'Reports' },
+];
+const _SD_SEC = id => SD_SECTIONS.find(s => s.id === id) || { id, icon:'', label:'' };
+
 function renderStopDetailPage(stopId){
   const stop = MEMBERS.find(m => m.id === stopId);
   if(!stop){ document.getElementById('stop-detail-content').innerHTML = ''; return; }
@@ -6735,19 +6767,23 @@ function renderStopDetailPage(stopId){
   // marker div that the post-processor consumes to add collapsibility.
   const card = (key, defClosed, html) =>
     `<div class="sd-card-wrap" data-card-key="${key}" data-default-collapsed="${defClosed?1:0}">${html}</div>`;
-  const grp = (icon, label, count) =>
-    `<div class="sd-group"><span class="sd-group-icon">${icon}</span>${esc(label)}${count!=null?`<span class="sd-group-count">${count}</span>`:''}</div>`;
+  // Section group header. Anchored with id from SD_SECTIONS so the sticky
+  // header nav buttons can jump straight to it via sdScrollToSection().
+  const grp = (sectionId, count) => {
+    const s = _SD_SEC(sectionId);
+    return `<div class="sd-group" id="${s.id}"><span class="sd-group-icon">${s.icon}</span>${esc(s.label)}${count!=null?`<span class="sd-group-count">${count}</span>`:''}</div>`;
+  };
   // Left column — narrow (identity, programs, engagement)
   const left = `
-    ${grp('📍','Identity & Membership')}
+    ${grp('sd-sec-identity')}
     ${card('location',      false, pageLocationDetailsHTML(stopId))}
     ${card('membership',    false, drawerMembershipHTML(stopId))}
-    ${grp('🎁','Programs & Rewards')}
+    ${grp('sd-sec-rewards')}
     ${card('rewards',       false, drawerRewardsHTML(stopId))}
     ${card('valueprop',     true,  drawerValuePropHTML(stopId))}
-    ${grp('⛽','Rack & Pricing')}
+    ${grp('sd-sec-rack')}
     ${card('rack',          true,  pageRackHTML(stopId))}
-    ${grp('📋','Engagement History')}
+    ${grp('sd-sec-engage')}
     ${card('activitylog',   true,  pageActivityLogHTML(stopId))}
     ${card('visits',        true,  pageVisitsHTML(stopId))}
     ${card('reviews',       true,  pagePastReviewsHTML(stopId))}
@@ -6755,21 +6791,21 @@ function renderStopDetailPage(stopId){
   `;
   // Right column — wide (performance, vendors, analysis)
   const right = `
-    ${grp('💰','Financial Performance')}
+    ${grp('sd-sec-financial')}
     ${card('revprofit',     false, pageRevProfitHTML(stopId))}
     ${card('roi',           false, drawerROIHTML(stopId))}
     ${card('trends',        false, pageChartsHTML(stopId))}
     ${card('fuel',          true,  drawerFuelHTML(stopId))}
-    ${grp('🏢','Vendor Programs')}
+    ${grp('sd-sec-vendors')}
     ${card('vendors',       false, drawerVendorStubHTML(stopId))}
     ${card('vendorops',     false, drawerVendorOpportunityHTML(stopId))}
-    ${grp('💲','Discounts & CRM')}
+    ${grp('sd-sec-discounts')}
     ${card('discounts',     true,  pageDiscountsHTML(stopId))}
     ${card('crmtasks',      true,  drawerCRMTasksHTML(stopId))}
-    ${grp('📊','History & Analysis')}
+    ${grp('sd-sec-history')}
     ${card('history',       true,  pageHistoryTableHTML(stopId))}
     ${card('calculations',  true,  pageCalculationsHTML(stopId))}
-    ${grp('📑','Reports')}
+    ${grp('sd-sec-reports')}
     ${card('businessreview',true,  pageBusinessReviewHTML(stopId))}
   `;
   document.getElementById('stop-detail-content').innerHTML = `
@@ -6967,13 +7003,20 @@ function pageHeaderHTML(stopId){
   const rank = ranked.findIndex(r => r.id === stopId) + 1;
   const total = ranked.length;
   const gsName = MANAGER_MAP[stop.state] || 'Unassigned';
+  // Section jump nav -- one button per SD_SECTIONS entry. Buttons render in
+  // their natural order (left column first, then right column) so the
+  // visual order matches what the user sees scrolling down.
+  const navHTML = SD_SECTIONS.map(s =>
+    `<button class="btn" onclick="sdScrollToSection('${s.id}')" title="Jump to ${esc(s.label)}"><span class="ico">${s.icon}</span>${esc(s.label)}</button>`
+  ).join('');
   return `
     <div class="sd-header">
-      <div style="display:flex;align-items:center;flex-wrap:wrap">
+      <div class="sd-header-top">
         <button class="btn" onclick="closeStopDetailPage()" style="font-size:.72em">← Back</button>
         <span class="sd-name">${esc(stop.name)}</span>
         <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)} · Network rank #${rank} of ${total}</span>
       </div>
+      <div class="sd-nav">${navHTML}</div>
       <div class="sd-actions">
         <button class="btn" onclick="copyShareSummary('${esc(stopId)}')">📋 Copy</button>
         <button class="btn" onclick="emailShareSummary('${esc(stopId)}')">📧 Email</button>
@@ -6985,6 +7028,38 @@ function pageHeaderHTML(stopId){
       </div>
     </div>
   `;
+}
+
+// Smooth-scroll to the section group header with the given id. Accounts
+// for the sticky topbar + sticky stop-detail header heights so the target
+// section lands flush below them instead of underneath them. Also expands
+// the section's first card if it was collapsed, so the user actually sees
+// content after the jump.
+function sdScrollToSection(sectionId){
+  const el = document.getElementById(sectionId);
+  if(!el) return;
+  // If the next sibling is a collapsed card, expand it so the jump is useful.
+  let sib = el.nextElementSibling;
+  while (sib && !sib.classList.contains('sd-card-wrap') && !sib.classList.contains('sd-group')) sib = sib.nextElementSibling;
+  if (sib && sib.classList.contains('sd-card-wrap')) {
+    const card = sib.querySelector(':scope > .drawer-card');
+    if (card && card.classList.contains('sd-collapsible') && card.classList.contains('sd-collapsed')) {
+      card.classList.remove('sd-collapsed');
+      try {
+        const key = card.dataset.cardKey;
+        if (key && typeof _sdLoadCollapseState === 'function') {
+          const st = _sdLoadCollapseState();
+          delete st[key];
+          if (typeof _sdSaveCollapseState === 'function') _sdSaveCollapseState(st);
+        }
+      } catch(e){}
+    }
+  }
+  const topbar   = document.querySelector('.topbar');
+  const sdHeader = document.querySelector('#p-stop-detail .sd-header');
+  const offset   = (topbar?.offsetHeight || 0) + (sdHeader?.offsetHeight || 0) + 12;
+  const y = el.getBoundingClientRect().top + window.scrollY - offset;
+  window.scrollTo({ top: y, behavior: 'smooth' });
 }
 function brOpenFromHeader(stopId){
   // Use the period currently selected at the bottom of the page if it exists,
