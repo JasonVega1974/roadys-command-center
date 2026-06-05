@@ -4991,30 +4991,92 @@ function renderMaster(){
     totGalYTD = yearMonths.reduce((s, mo) => s + totalGallons(mo), 0);
   }
   let legacyAggYTD = 0, newAggYTD = 0, fleetYTD = 0, fuelmanYTD = 0, rcheckYTD = 0;
-  try {
-    yearMonths.forEach(mo => {
-      Object.values(GD).forEach(sd => {
-        const rec = sd[mo]; if(!rec) return;
-        (rec.aggregators||[]).forEach(a => {
-          const name = (a.name||'').trim();
-          const gal = +a.gallons || 0;
-          // Order matters: Fuelman / R-Check first (they get their own
-          // sub-rows below), then NEW by name, then everything else =
-          // LEGACY catch-all. Placeholder entries from applyFuelOverlay
-          // ("Aggregator (May 2026 report)") don't match the New roster
-          // so they land in Legacy where they belong (QPN, RTS, TCS, etc.
-          // were also miscategorized before because the old dispatch
-          // matched processor not name).
-          if(/fuelman/i.test(name))           fuelmanYTD  += gal;
-          else if(/r[-\s]?check/i.test(name)) rcheckYTD   += gal;
-          else if(isNewAggregator(name))      newAggYTD   += gal;
-          else                                legacyAggYTD += gal;
+
+  // Seed-aware YTD breakdown ------------------------------------------------
+  // The headline YTD is the sum of FUEL_*_2026_DATA[stop].ytd (15,410,356.46
+  // for 2026-05). The seed gives per-stop ag/fl for ONE month (the seeded
+  // month) plus the cumulative Jan-current-month ytd -- it does NOT carry
+  // per-month ag/fl splits for Jan-Mar 2026. So a naive Jan-Mar GD loop
+  // only catches the Apr+May overlay placeholders (~5.2M) and the breakdown
+  // sub-rows undercount by ~10.3M of "missing" Jan-Mar volume.
+  //
+  // Fix: distribute each stop's cumulative ytd across aggregator/fleet
+  // using its single-month ag/fl ratio as a proxy for the Jan-Mar mix.
+  // Network sum is then exactly the headline ytd by construction. Then
+  // overlay any explicit GD entries (sample / Supabase / manual) whose
+  // NAME matches Fuelman / R-Check / a New aggregator (AtoB / Motive /
+  // CloudTrucks), MOVING those gallons from Legacy into the right bucket
+  // so the seed-derived total stays invariant.
+  const SEED_FOR_YTD = (m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object') ? FUEL_MAY_2026_DATA
+                    : (m === '2026-04' && typeof FUEL_APR_2026_DATA === 'object') ? FUEL_APR_2026_DATA
+                    : null;
+
+  if (SEED_FOR_YTD) {
+    let aggYTD = 0;
+    for (const sid in SEED_FOR_YTD) {
+      const d = SEED_FOR_YTD[sid];
+      const ytd = +d.ytd || 0;
+      const monthAg = +d.ag || 0;
+      const monthFl = +d.fl || 0;
+      const monthTot = monthAg + monthFl;
+      if (monthTot > 0) {
+        // Use the stop's own ratio when available.
+        aggYTD   += ytd * (monthAg / monthTot);
+        fleetYTD += ytd * (monthFl / monthTot);
+      } else if (ytd > 0) {
+        // Stop has zero gallons in the seeded month but nonzero ytd
+        // (volume in earlier months). Network May ratio is ~93% ag /
+        // ~7% fl; apply that as the fallback split.
+        aggYTD   += ytd * 0.931;
+        fleetYTD += ytd * 0.069;
+      }
+    }
+    legacyAggYTD = aggYTD;  // default: all aggregator -> Legacy (seed placeholders carry no name detail)
+
+    // Layer GD-iteration on top to route explicit named entries to their
+    // proper bucket. The seed-derived totals already include these stops'
+    // gallons in Legacy, so we MOVE gallons (Legacy -> Fuelman / R-Check
+    // / New) instead of adding -- which keeps the seed-derived network
+    // total invariant.
+    try {
+      yearMonths.forEach(mo => {
+        Object.values(GD).forEach(sd => {
+          const rec = sd[mo]; if(!rec) return;
+          (rec.aggregators||[]).forEach(a => {
+            const name = (a.name||'').trim();
+            const gal = +a.gallons || 0;
+            // Skip the overlay placeholder rows -- they're already part
+            // of the seed-derived total above (no double counting).
+            if(/^Aggregator \([A-Za-z]+ \d+ report\)$/.test(name)) return;
+            if(/fuelman/i.test(name))           { fuelmanYTD += gal; legacyAggYTD = Math.max(0, legacyAggYTD - gal); }
+            else if(/r[-\s]?check/i.test(name)) { rcheckYTD  += gal; legacyAggYTD = Math.max(0, legacyAggYTD - gal); }
+            else if(isNewAggregator(name))      { newAggYTD  += gal; legacyAggYTD = Math.max(0, legacyAggYTD - gal); }
+            // Otherwise it's a real legacy aggregator (QPN, RTS, TCS,
+            // Fleet Tech, etc.) -- already counted in the seed-derived
+            // Legacy bucket, don't double-count.
+          });
         });
-        // Sum fleet entries (separate array on the GD record from aggregators).
-        (rec.fleets||[]).forEach(f => { fleetYTD += +f.gallons || 0; });
       });
-    });
-  } catch(e){}
+    } catch(e){}
+  } else {
+    // No seed for this month -- fall back to GD-iteration breakdown.
+    try {
+      yearMonths.forEach(mo => {
+        Object.values(GD).forEach(sd => {
+          const rec = sd[mo]; if(!rec) return;
+          (rec.aggregators||[]).forEach(a => {
+            const name = (a.name||'').trim();
+            const gal = +a.gallons || 0;
+            if(/fuelman/i.test(name))           fuelmanYTD  += gal;
+            else if(/r[-\s]?check/i.test(name)) rcheckYTD   += gal;
+            else if(isNewAggregator(name))      newAggYTD   += gal;
+            else                                legacyAggYTD += gal;
+          });
+          (rec.fleets||[]).forEach(f => { fleetYTD += +f.gallons || 0; });
+        });
+      });
+    } catch(e){}
+  }
   const totGalDisplay = overrideOr('Total Gallons YTD (Override)', totGalYTD);
   const fuelSubsHTML =
     subRow('YTD Legacy Aggregators', overrideOr('Legacy Aggregator Gallons YTD (Override)', legacyAggYTD), '', 'Legacy Aggregator Gallons YTD (Override)', m) +
