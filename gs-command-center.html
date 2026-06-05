@@ -2615,38 +2615,98 @@ function vendorContact(id, master){
   return m.progDetails.find(p => p.vid === id) || null;
 }
 
-function currentMonthKey(){
-  // Matches index.html's GD/KD period keys exactly.
-  const d = new Date();
+// Latest fully-reported data month. Fuel + rewards seeds lag the calendar
+// by a few days/weeks. Returning today's calendar month makes every
+// dashboard card show 0 / -100% MoM right after a month rolls over and
+// before the new seed lands, which is the bug that caused June 2026 to
+// show 0 gal everywhere while May 2026 had real data.
+function latestDataMonthKey(){
+  // `typeof X === 'object'` on a const declared but not yet initialized
+  // throws a TDZ ReferenceError, so wrap probe in try.
+  try { if(typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA) return '2026-05'; } catch(e){}
+  try { if(typeof FUEL_APR_2026_DATA === 'object' && FUEL_APR_2026_DATA) return '2026-04'; } catch(e){}
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+// User-selected override from the month picker in the drawer Fuel Business
+// header. Null = use the latest-data default.
+let _viewMonthOverride = null;
+function currentMonthKey(){
+  // Matches index.html's GD/KD period keys exactly. Returns the user's
+  // picked month if set, otherwise the latest seeded data month.
+  return _viewMonthOverride || latestDataMonthKey();
+}
+function setViewMonth(m){
+  // Treat selecting the latest-data default as "no override" so the
+  // dashboard auto-advances when a new seed lands.
+  _viewMonthOverride = (m && m !== latestDataMonthKey()) ? m : null;
+  try { localStorage.setItem('roadys_gs_view_month', _viewMonthOverride || ''); } catch(e){}
+  // Re-render the open drawer (so the Fuel Business card refreshes) and
+  // the per-GS / master dashboard cards.
+  const drawer = document.getElementById('site-drawer');
+  if (drawer && drawer.classList.contains('open') && _drawerActiveStopId && typeof openSiteDrawer === 'function') {
+    openSiteDrawer(_drawerActiveStopId);
+  }
+  if (typeof renderDashboard === 'function') {
+    try { renderDashboard(); } catch(e){ console.warn('renderDashboard after setViewMonth:', e); }
+  }
+}
+// Restore the persisted override (if any) on load. Wrapped in try in case
+// localStorage is unavailable.
+try {
+  const saved = localStorage.getItem('roadys_gs_view_month');
+  if (saved) _viewMonthOverride = saved;
+} catch(e){}
+
+// Render the month picker for any container — used in the drawer Fuel
+// Business header. Generates the last 18 months ending one month past
+// the latest-data month (so a user can preview the not-yet-reported
+// month if they really want to). Highlights the current view month.
+function renderMonthPicker(opts){
+  const o = opts || {};
+  const handler = o.onchange || 'setViewMonth(this.value)';
+  const current = currentMonthKey();
+  const latest = latestDataMonthKey();
+  const [ly, lm] = latest.split('-').map(Number);
+  const months = [];
+  // Go back 18 months from latest, forward 1.
+  for (let i = -1; i <= 17; i++) {
+    const d = new Date(ly, lm - 1 - i, 1);
+    const k = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const lbl = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear();
+    months.push({k, lbl});
+  }
+  return `<select onchange="${handler}" style="font-size:.78em;padding:2px 6px;border-radius:6px;background:var(--card);border:1px solid var(--border);color:var(--ink);cursor:pointer;margin-left:8px">
+    ${months.map(m => `<option value="${m.k}" ${m.k===current?'selected':''}>${m.lbl}${m.k===latest?' · latest':''}</option>`).join('')}
+  </select>`;
 }
 
 function fuelStatsForStops(stops){
   // GD[stopId][periodKey] = { gallons, aggregators, fleets, rack }.
-  // We only sum the .gallons number — the structured aggregator/fleet
-  // detail is owned by the Fuelman page in index.html.
+  // YTD now goes through ytdGallonsForStop() which has seed short-
+  // circuits for 2026-04 / 2026-05 returning the authoritative YTD
+  // straight from FUEL_APR_2026_DATA / FUEL_MAY_2026_DATA. Without
+  // this short-circuit the loop only summed months actually present in
+  // GD -- which is just April+May from the seeds -- and undercounted
+  // by ~9M gallons (Jan-Mar was missing).
   const GD = loadFuelGD();
   const month = currentMonthKey();
-  const yearPrefix = month.slice(0,4) + '-';
   let mtd = 0, ytd = 0, active = 0;
   const perStop = [];
   for(const s of stops){
-    const stopData = GD[s.id];
-    if(!stopData) continue;
-    const cur = (stopData[month]?.gallons) || 0;
+    const cur = stopTotalGallons(s.id, month);
     if(cur > 0) active++;
     mtd += cur;
-    let stopYtd = 0;
-    for(const k in stopData){
-      if(k.startsWith(yearPrefix)) stopYtd += (stopData[k]?.gallons || 0);
-    }
+    const stopYtd = ytdGallonsForStop(s.id, month, 'total');
     ytd += stopYtd;
     if(cur > 0 || stopYtd > 0){
       perStop.push({ id: s.id, name: s.name, city: s.city, state: s.state, mtd: cur, ytd: stopYtd });
     }
   }
   perStop.sort((a,b) => b.mtd - a.mtd);
-  return { mtd, ytd, active, avg: active ? mtd/active : 0, perStop, hasData: Object.keys(GD).length > 0 };
+  let mayHas = false;
+  try { mayHas = (typeof FUEL_MAY_2026_DATA === 'object' && Object.keys(FUEL_MAY_2026_DATA||{}).length > 0); } catch(e){}
+  return { mtd, ytd, active, avg: active ? mtd/active : 0, perStop, hasData: Object.keys(GD).length > 0 || mayHas };
 }
 
 function rewardsStatsNetwork(){
@@ -3493,7 +3553,8 @@ function renderMasterDashboard(){
         <div class="kpi purple"><div class="kpi-val" style="font-size:1.15em">${fmtK(totalCostPlusPotential)}</div><div class="kpi-label">Cost+ Potential</div></div>
         <div class="kpi red"><div class="kpi-val">${totalCritical}</div><div class="kpi-label">Critical Items</div></div>
         <div class="kpi orange"><div class="kpi-val">${totalRecentLogs}</div><div class="kpi-label">Logs (30d)</div></div>
-        <div class="kpi cyan"><div class="kpi-val">${fG(networkFuel.mtd)}</div><div class="kpi-label">Fuel Gal MTD</div></div>
+        <div class="kpi cyan"><div class="kpi-val">${fG(networkFuel.mtd)}</div><div class="kpi-label">Fuel Gal — ${formatMonthLabel(currentMonthKey())}</div></div>
+        <div class="kpi cyan"><div class="kpi-val">${fG(networkFuel.ytd)}</div><div class="kpi-label">Fuel Gal YTD</div></div>
         <div class="kpi green"><div class="kpi-val" style="font-size:1.15em">${fmtK(networkRewards.mtd)}</div><div class="kpi-label">Rewards MTD</div></div>
         <div class="kpi yellow"><div class="kpi-val">${networkVendor.totalEnrollments}</div><div class="kpi-label">Vendor Enrolls</div></div>
       </div>
@@ -5831,7 +5892,10 @@ function drawerFuelHTML(stopId){
   const fmtN = n => Math.round(n).toLocaleString();
   return `
     <div class="drawer-card cyan">
-      <div class="drawer-card-hd">⛽ Fuel Business — ${monthLbl}</div>
+      <div class="drawer-card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <span>⛽ Fuel Business — ${monthLbl}</span>
+        <span style="font-size:.72em;font-weight:500;color:var(--muted);display:inline-flex;align-items:center">View month:${renderMonthPicker()}</span>
+      </div>
       <div class="fuel-tile-grid">
         <div class="fuel-tile">
           <div class="fuel-tile-lbl">Total Gallons</div>
