@@ -4815,10 +4815,30 @@ function ecTab(id,el){
 // ═══════════════════════════════════════════════
 // KPI PAGES
 // ═══════════════════════════════════════════════
-// Aggregator processors that count as "Legacy" vs "New" on the dashboard
-// Fuel breakdown. Anything not listed here, and not Fuelman/R-Check by
-// name, falls into "New Aggregators". Tweak this set as the network
-// evolves — the rest of the breakdown logic in renderMaster() reads it.
+// "New" aggregators on the Executive Summary Fuel breakdown. Anything
+// whose aggregator NAME (not processor) matches one of these is bucketed
+// as New; everything else (excluding Fuelman / R-Check, which get their
+// own sub-rows) falls into "Legacy". Add aggregators here as the new-
+// generation roster expands -- this is the single source of truth.
+//
+// Matching is case- and whitespace-insensitive via _normalizeAggName, so
+// "A to B", "AtoB", "a-to-b" all hit the same bucket.
+const NEW_AGGREGATOR_NAMES = [
+  'AtoB',         // A to B
+  'Motive',
+  'CloudTrucks',  // Cloud Trucks
+];
+function _normalizeAggName(s){
+  return String(s || '').toLowerCase().replace(/[\s\-_/]+/g, '');
+}
+const _NEW_AGG_NORMS = new Set(NEW_AGGREGATOR_NAMES.map(_normalizeAggName));
+function isNewAggregator(name){
+  return _NEW_AGG_NORMS.has(_normalizeAggName(name));
+}
+
+// Kept for backwards compatibility with any legacy callers that imported
+// the constant. The renderMaster() Fuel breakdown no longer uses it --
+// it dispatches on aggregator NAME via isNewAggregator() above.
 const LEGACY_AGG_PROCESSORS = new Set([
   'Comdata','EFS','TCH','Fleet One','Fleet One/TCH','EFS/Fleet One/TCH','EFS / TCH','Fleet One (TCH)'
 ]);
@@ -4978,10 +4998,17 @@ function renderMaster(){
         (rec.aggregators||[]).forEach(a => {
           const name = (a.name||'').trim();
           const gal = +a.gallons || 0;
+          // Order matters: Fuelman / R-Check first (they get their own
+          // sub-rows below), then NEW by name, then everything else =
+          // LEGACY catch-all. Placeholder entries from applyFuelOverlay
+          // ("Aggregator (May 2026 report)") don't match the New roster
+          // so they land in Legacy where they belong (QPN, RTS, TCS, etc.
+          // were also miscategorized before because the old dispatch
+          // matched processor not name).
           if(/fuelman/i.test(name))           fuelmanYTD  += gal;
           else if(/r[-\s]?check/i.test(name)) rcheckYTD   += gal;
-          else if(LEGACY_AGG_PROCESSORS.has(a.processor)) legacyAggYTD += gal;
-          else                                newAggYTD   += gal;
+          else if(isNewAggregator(name))      newAggYTD   += gal;
+          else                                legacyAggYTD += gal;
         });
         // Sum fleet entries (separate array on the GD record from aggregators).
         (rec.fleets||[]).forEach(f => { fleetYTD += +f.gallons || 0; });
