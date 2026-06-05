@@ -7025,71 +7025,155 @@ function pageBusinessReviewHTML(stopId){
   `;
 }
 function pageKpiHeroHTML(stopId){
+  // ── At-a-Glance: 3 cards in dashboard style (Fuel · Rewards · Vendor) ──
+  // Replaces the old 8-tile grid. Membership, ROI, Est Revenue / Profit,
+  // Aggregators / Fleets tiles were removed -- those metrics still live in
+  // their respective full drawer cards further down the page.
   const m = currentMonthKey();
   const pm = priorMonthKey(m);
-  const totalMtd = stopTotalGallons(stopId, m);
+  const monthLbl = formatMonthLabel(m);
+  const fmtN  = n => Math.round(+n||0).toLocaleString();
+  const fmt$  = n => '$' + Math.round(+n||0).toLocaleString();
+  const fmt$2 = n => '$' + (Math.round((+n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  // Variance pill -- green ≥ +5%, red ≤ -5%, yellow in between. Matches
+  // the red/yellow/green pattern used on other dashboard variance chips.
+  const trendPill = (cur, prior, label) => {
+    if(!prior || prior <= 0) return '<span style="color:var(--muted)">— '+label+'</span>';
+    const d = ((cur - prior) / prior) * 100;
+    const color = d >= 5 ? 'var(--green)' : (d <= -5 ? 'var(--red)' : 'var(--yellow)');
+    const arrow = d >= 0 ? '▲' : '▼';
+    return `<span style="color:${color};font-weight:700">${arrow} ${Math.abs(d).toFixed(1)}% ${label}</span>`;
+  };
+
+  // ── Card 1: Fuel Gallons ──────────────────────────────────────────────
+  const totalMtd   = stopTotalGallons(stopId, m);
   const totalPrior = stopTotalGallons(stopId, pm);
-  const totalYtd = ytdGallonsForStop(stopId, m, 'total');
-  const revMtd = estRevenueGS(totalMtd);
-  const revPrior = estRevenueGS(totalPrior);
-  const revYtd = estRevenueGS(totalYtd);
-  const profitMtd = estProfitGS(totalMtd);
-  const fmtN = n => Math.round(+n||0).toLocaleString();
-  const fmt$ = n => '$' + Math.round(+n||0).toLocaleString();
-  const fmt$k = n => { const v = Math.round(+n||0); return v >= 1000 ? '$' + (v/1000).toFixed(1) + 'k' : fmt$(v); };
-  // Pull GD record for aggregator/fleet counts
-  let aggCount = 0, fleetCount = 0, aggGal = 0, fleetGal = 0;
+  const totalYtd   = ytdGallonsForStop(stopId, m, 'total');
+  const fuelCard = `
+    <div class="drawer-card cyan" style="margin-top:0">
+      <div class="drawer-card-hd">⛽ Fuel Gallons — ${esc(monthLbl)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start">
+        <div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total Gallons MTD</div>
+          <div style="font-size:1.55em;font-weight:800;color:var(--cyan);line-height:1.05;margin-top:2px">${fmtN(totalMtd)}</div>
+          <div style="font-size:.66em;margin-top:6px">${trendPill(totalMtd, totalPrior, 'vs prior month')}</div>
+        </div>
+        <div style="border-left:1px solid var(--border);padding-left:10px">
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Gallons</div>
+          <div style="font-size:1.55em;font-weight:800;color:var(--cyan);line-height:1.05;margin-top:2px">${fmtN(totalYtd)}</div>
+          <div style="font-size:.66em;margin-top:6px;color:var(--muted)">Jan – ${esc(monthLbl.split(' ')[0])} ${esc(monthLbl.split(' ')[1])}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // ── Card 2: Rewards ───────────────────────────────────────────────────
+  // MTD comes from the per-month rewards seed for the selected month.
+  // Prior-month uses the same lookup against pm so the variance pill
+  // works even when the user picks a non-current month.
+  const rec = loadStopRecord(stopId);
+  function rewardsSeedFor(mKey){
+    try {
+      if(mKey === '2026-05' && typeof REWARDS_2026_05_SEED === 'object') return REWARDS_2026_05_SEED[stopId] || null;
+      if(mKey === '2026-04' && typeof REWARDS_2026_04_SEED === 'object') return REWARDS_2026_04_SEED[stopId] || null;
+    } catch(e){}
+    return null;
+  }
+  const sMtd  = rewardsSeedFor(m);
+  const sPrev = rewardsSeedFor(pm);
+  const mtdAdds      = sMtd  ? (+sMtd['a$']  || 0) : 0;
+  const mtdRedeems   = sMtd  ? (+sMtd['r$']  || 0) : 0;
+  const mtdRate      = sMtd  ? (+sMtd.rr     || 0) : null;
+  const priorAdds    = sPrev ? (+sPrev['a$'] || 0) : 0;
+  const priorRedeems = sPrev ? (+sPrev['r$'] || 0) : 0;
+  // YTD: manual override wins, otherwise sum across every per-month seed.
+  // Add new REWARDS_2026_MM_SEED constants in the two probes below.
+  const manualAdds    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
+  const manualRedeems = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
+  let seedYtdAdds = 0, seedYtdRedeems = 0;
   try {
-    const GD = loadFuelGD();
-    const rec = GD[stopId]?.[m];
-    if(rec){
-      aggCount = (rec.aggregators||[]).length;
-      fleetCount = (rec.fleets||[]).length;
-      aggGal = (rec.aggregators||[]).reduce((s,a)=>s+(+a.gallons||0),0);
-      fleetGal = (rec.fleets||[]).reduce((s,f)=>s+(+f.gallons||0),0);
+    if(typeof REWARDS_2026_04_SEED === 'object' && REWARDS_2026_04_SEED?.[stopId]){
+      seedYtdAdds    += +REWARDS_2026_04_SEED[stopId]['a$'] || 0;
+      seedYtdRedeems += +REWARDS_2026_04_SEED[stopId]['r$'] || 0;
+    }
+    if(typeof REWARDS_2026_05_SEED === 'object' && REWARDS_2026_05_SEED?.[stopId]){
+      seedYtdAdds    += +REWARDS_2026_05_SEED[stopId]['a$'] || 0;
+      seedYtdRedeems += +REWARDS_2026_05_SEED[stopId]['r$'] || 0;
     }
   } catch(e){}
-  // Vendor counts
+  const ytdAdds    = manualAdds    != null ? manualAdds    : seedYtdAdds;
+  const ytdRedeems = manualRedeems != null ? manualRedeems : seedYtdRedeems;
+  const rateColor  = mtdRate == null ? 'var(--muted)' : (mtdRate >= 60 ? 'var(--green)' : (mtdRate >= 30 ? 'var(--yellow)' : 'var(--red)'));
+  const rateLabel  = mtdRate == null ? '—' : mtdRate.toFixed(1) + '%';
+  const rewardsCard = `
+    <div class="drawer-card amber" style="margin-top:0">
+      <div class="drawer-card-hd">🎁 Rewards — ${esc(monthLbl)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px">
+        <div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Adds $ MTD</div>
+          <div style="font-size:1.05em;font-weight:800;color:var(--yellow);line-height:1.1;margin-top:2px">${fmt$2(mtdAdds)}</div>
+          <div style="font-size:.62em;margin-top:3px">${trendPill(mtdAdds, priorAdds, 'vs prior')}</div>
+        </div>
+        <div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Redeems $ MTD</div>
+          <div style="font-size:1.05em;font-weight:800;color:var(--yellow);line-height:1.1;margin-top:2px">${fmt$2(mtdRedeems)}</div>
+          <div style="font-size:.62em;margin-top:3px">${trendPill(mtdRedeems, priorRedeems, 'vs prior')}</div>
+        </div>
+        <div style="grid-column:1/-1;padding-top:8px;border-top:1px solid var(--border);margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Redemption Rate</span>
+          <span style="font-size:1.05em;font-weight:800;color:${rateColor}">${rateLabel}</span>
+        </div>
+        <div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Adds $</div>
+          <div style="font-size:.95em;font-weight:700;margin-top:2px">${fmt$2(ytdAdds)}</div>
+        </div>
+        <div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Redeems $</div>
+          <div style="font-size:.95em;font-weight:700;margin-top:2px">${fmt$2(ytdRedeems)}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // ── Card 3: Vendor Programs ───────────────────────────────────────────
   const VPE = loadVendorEnrolls();
+  const master = loadVendorMaster();
   const stopVP = VPE[stopId];
-  const enrolledCount = (stopVP && typeof stopVP === 'object')
-    ? Object.values(stopVP).filter(v => v === true).length
-    : 0;
-  const opps = vendorOpportunityForStop(stopId);
-  const missedTop = Math.min(opps.length, 10);
-  // Rewards redemption rate
-  const rec = loadStopRecord(stopId);
-  const adds = (typeof rec.rewardsYtdAdds === 'number') ? rec.rewardsYtdAdds : null;
-  const redeems = (typeof rec.rewardsYtdRedeems === 'number') ? rec.rewardsYtdRedeems : null;
-  const redemptionRate = (adds != null && redeems != null && adds > 0) ? ((redeems/adds)*100) : null;
-  const redemptionLabel = redemptionRate != null ? redemptionRate.toFixed(1) + '%' : '—';
-  const redemptionSub = (adds != null && redeems != null) ? `YTD adds ${fmt$k(adds)} · redeems ${fmt$k(redeems)}` : 'set on Rewards card';
-  // ROI
-  const roi = computeStopROI(stopId);
-  const netCurrentLbl = roi.netCurrent != null ? fmt$(roi.netCurrent) + (roi.netCurrent > 0 ? ' ✓' : ' ✗') : '—';
-  const netPotLbl = roi.netPotential != null ? 'Potential: ' + fmt$(roi.netPotential) + (roi.netPotential > 0 ? ' ✓' : '') : '—';
-  // Membership chips
-  const memChips = [];
-  if(rec.priceFileFeeRemoved) memChips.push('PFF removed');
-  if(rec.acceptsFuelman) memChips.push('Fuelman ✓');
-  if(rec.acceptsRcheck) memChips.push('R-Check ✓');
-  const memLabel = rec.membershipCost ? esc(rec.membershipCost) : '—';
-  const trendPill = (cur, prior) => {
-    if(!prior || prior <= 0) return '<span style="color:var(--muted)">—</span>';
-    const d = ((cur - prior) / prior) * 100;
-    return `<span style="color:${d>=0?'var(--green)':'var(--red)'}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% MoM</span>`;
-  };
+  const enrolledIds = (stopVP && typeof stopVP === 'object')
+    ? Object.entries(stopVP).filter(([_, on]) => on === true).map(([vid]) => vid)
+    : [];
+  const enrolledNames = enrolledIds
+    .map(vid => master.VP_VENDORS.find(v => v.id === vid))
+    .filter(v => v)
+    .map(v => v.name);
+  const opps = vendorOpportunityForStop(stopId).slice(0, 5);
+  const chip = (txt, color) =>
+    `<span style="display:inline-block;background:var(--bg2);color:${color};border:1px solid var(--border);border-radius:10px;padding:2px 8px;font-size:.68em;font-weight:600;margin:2px 3px 0 0">${esc(txt)}</span>`;
+  const enrolledChips = enrolledNames.length
+    ? enrolledNames.map(n => chip(n, 'var(--green)')).join('')
+    : '<span style="color:var(--muted);font-size:.7em">No programs enrolled</span>';
+  const missedChips = opps.length
+    ? opps.map(o => chip(o.name, 'var(--yellow)')).join('')
+    : '<span style="color:var(--green);font-size:.7em">All active vendors enrolled ✓</span>';
+  const vendorCard = `
+    <div class="drawer-card purple" style="margin-top:0">
+      <div class="drawer-card-hd">🤝 Vendor Programs</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">
+        <span style="font-size:1.55em;font-weight:800;color:var(--purple);line-height:1">${enrolledNames.length}</span>
+        <span style="font-size:.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">enrolled program${enrolledNames.length===1?'':'s'}</span>
+      </div>
+      <div style="margin-top:8px">
+        <div style="font-size:.58em;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">✓ Enrolled</div>
+        <div>${enrolledChips}</div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:.58em;color:var(--yellow);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">⚠ Missed Opportunities${opps.length ? ' (top '+opps.length+')' : ''}</div>
+        <div>${missedChips}</div>
+      </div>
+    </div>`;
+
   return `
-    <div class="sd-section-label">📊 At-a-Glance — ${(() => { const [y,mo]=m.split('-').map(Number); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo-1]+' '+y; })()}</div>
-    <div class="sd-kpi-grid">
-      <div class="sd-kpi"><div class="sd-kpi-lbl">Total Gallons MTD</div><div class="sd-kpi-val">${fmtN(totalMtd)}</div><div class="sd-kpi-sub">${trendPill(totalMtd, totalPrior)} · YTD ${fmtN(totalYtd)}</div></div>
-      <div class="sd-kpi green"><div class="sd-kpi-lbl">Est. Revenue MTD</div><div class="sd-kpi-val">${fmt$(revMtd)}</div><div class="sd-kpi-sub">${trendPill(revMtd, revPrior)} · YTD ${fmt$k(revYtd)}</div></div>
-      <div class="sd-kpi purple"><div class="sd-kpi-lbl">Est. Profit MTD</div><div class="sd-kpi-val" style="color:var(--green)">${fmt$(profitMtd)}</div><div class="sd-kpi-sub">$${(REV_PER_GAL_GS-COST_PER_GAL_GS).toFixed(4)} margin/gal</div></div>
-      <div class="sd-kpi amber"><div class="sd-kpi-lbl">Net to Site (ROI)</div><div class="sd-kpi-val" style="color:${roi.netCurrent != null && roi.netCurrent > 0 ? 'var(--green)' : (roi.netCurrent != null ? 'var(--red)' : 'var(--muted)')}">${netCurrentLbl}</div><div class="sd-kpi-sub">${netPotLbl}</div></div>
-      <div class="sd-kpi"><div class="sd-kpi-lbl">Aggregators / Fleets</div><div class="sd-kpi-val">${aggCount} / ${fleetCount}</div><div class="sd-kpi-sub">${fmtN(aggGal)} gal agg · ${fmtN(fleetGal)} gal fleet</div></div>
-      <div class="sd-kpi amber"><div class="sd-kpi-lbl">Vendor Programs</div><div class="sd-kpi-val">${enrolledCount} enrolled</div><div class="sd-kpi-sub"><span style="color:var(--yellow)">${missedTop} missed (top 10)</span></div></div>
-      <div class="sd-kpi amber"><div class="sd-kpi-lbl">Rewards Redemption</div><div class="sd-kpi-val" style="color:${redemptionRate != null && redemptionRate >= 60 ? 'var(--green)' : (redemptionRate != null && redemptionRate >= 30 ? 'var(--yellow)' : 'var(--muted)')}">${redemptionLabel}</div><div class="sd-kpi-sub">${redemptionSub}</div></div>
-      <div class="sd-kpi purple"><div class="sd-kpi-lbl">Membership · Programs</div><div class="sd-kpi-val">${memLabel}</div><div class="sd-kpi-sub">${memChips.length ? memChips.join(' · ') : 'no programs flagged'}</div></div>
+    <div class="sd-section-label">📊 At-a-Glance — ${esc(monthLbl)}</div>
+    <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:10px;margin-bottom:14px;align-items:stretch">
+      ${fuelCard}${rewardsCard}${vendorCard}
     </div>
   `;
 }
