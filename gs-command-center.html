@@ -10213,6 +10213,26 @@ function brBuildAutoData(stopId, period){
   const aggregators = Object.values(aggMap).sort((a,b) => b.gallons - a.gallons);
   const fleets = Object.values(fleetMap).sort((a,b) => b.gallons - a.gallons);
 
+  // ── Authoritative YTD from the May 2026 seed ─────────────────────────
+  // The period loop above only sees months actually present in GD --
+  // which is just March+April+May 2026 from the two seed merges. For
+  // Gee Cee's (R00179) that summed to ~99,589, but the CSV authority
+  // says YTD Jan-May = 233,673.964. Switch to the seed YTD via
+  // ytdGallonsForStop(), which already has the 2026-05 / 2026-04
+  // short-circuits returning FUEL_*_2026_DATA[sid].ytd directly.
+  // Every slide consumer of d.totalGal (Slide 1 chip, Slide 2 pillar,
+  // Slide 8 hero, Slide 11 diesel-sales auto-calc) reads YTD now.
+  const ytdGal = ytdGallonsForStop(stopId, currentMonthKey(), 'total');
+  if (ytdGal > 0) totalGal = ytdGal;
+  // Per-stop May 2026 monthly gallons from the seed -- useful when a
+  // slide wants the latest-month single-period number.
+  let mtdGalAuth = 0;
+  try {
+    if (typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA[stopId]) {
+      mtdGalAuth = +FUEL_MAY_2026_DATA[stopId].g || 0;
+    }
+  } catch(e){}
+
   // Current month rack snapshot for Slide 8 left column + Slide 4 Cost
   // Components. Layer the static fcc_report.csv seed onto whatever GD has
   // so Slide 4's pre-existing cost fields (federalTax, stateExciseTax,
@@ -10278,7 +10298,7 @@ function brBuildAutoData(stopId, period){
       gs: gsName
     },
     rack: curRack,
-    totalGal, monthlyTotals,
+    totalGal, ytdGal, mtdGalAuth, monthlyTotals,
     aggregators, fleets, enrolledVendors,
     revenueAuto, profitAuto, redeems, adds,
     // Per-stop rewards seed data — Slide 9 reads these to render the
@@ -10882,8 +10902,8 @@ function brSlide1(d){
           <div class="br-cover-meta">${brEditable(1,'period', d.periodLabel)} · ${esc(d.stop.city||'')}, ${esc(d.stop.state||'')}</div>
           <div class="br-cover-chips">
             <div class="br-cover-chip">
-              <div class="lbl">Total Gallons</div>
-              <div class="val br-num">${fmtN(d.totalGal)}</div>
+              <div class="lbl">YTD Gallons (${d.year})</div>
+              <div class="val br-num">${fmtN(d.ytdGal || d.totalGal)}</div>
             </div>
             <div class="br-cover-chip">
               <div class="lbl">Aggregators</div>
@@ -10914,7 +10934,7 @@ function brSlide2(d){
   const enrolledCount = (d.enrolledVendors||[]).length;
   const redeemRate = (d.adds > 0) ? ((d.redeems / d.adds) * 100).toFixed(1) + '%' : '—';
   const pillars = [
-    { cls:'',     ico:'fuel',   h:'Fuel Programs',   p:'Real-time pricing data, aggregator and fleet networks, settlement support, and Comdata integration.', mLbl:'Total gallons',  mVal: fmtN(d.totalGal) },
+    { cls:'',     ico:'fuel',   h:'Fuel Programs',   p:'Real-time pricing data, aggregator and fleet networks, settlement support, and Comdata integration.', mLbl:'YTD gallons ('+d.year+')',  mVal: fmtN(d.ytdGal || d.totalGal) },
     { cls:'gold', ico:'reward', h:'Rewards',         p:'Drive repeat traffic with Roady\'s Rewards. Track adds, redemptions, and capture rate per location.', mLbl:'Redemption rate', mVal: redeemRate },
     { cls:'g',    ico:'tag',    h:'Vendor Programs', p:'Stack savings and rebates from a curated network of supplier partners — Coca-Cola, Sysco, Lynco and more.', mLbl:'Enrolled programs', mVal: enrolledCount + '' },
     { cls:'r',    ico:'map',    h:'Marketing',       p:'Listings on TruckerPath, Trucker’s Friend, Pilot Flying J, Tripaxle and Google Maps with consistent NAP.', mLbl:'Est. period revenue', mVal: fmt$k(d.revenueAuto) }
@@ -11130,9 +11150,9 @@ function brSlide8(d){
             <div class="br-s8-hero">
               <div>${ICO('fuel')}</div>
               <div>
-                <div class="lbl">${brEditable(8,'volL','Total Gallons')}</div>
-                <div class="num br-num">${fmtN(d.totalGal)}</div>
-                <div class="sub">${esc(d.periodLabel)}</div>
+                <div class="lbl">${brEditable(8,'volL','YTD Gallons ('+d.year+')')}</div>
+                <div class="num br-num">${fmtN(d.ytdGal || d.totalGal)}</div>
+                <div class="sub">YTD Jan – ${formatMonthLabel(currentMonthKey()).split(' ')[0]} ${d.year}</div>
               </div>
             </div>
             <div class="br-s8-rack">

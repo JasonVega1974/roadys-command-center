@@ -4951,7 +4951,25 @@ function renderMaster(){
   // independent of the per-month overrides so edits to Fuelman page
   // months don't fight with a one-off YTD number set on the dashboard.
   const yearMonths = MOS.filter(mo => mo.slice(0,4) === m.slice(0,4) && mo <= m);
-  const totGalYTD = yearMonths.reduce((s, mo) => s + totalGallons(mo), 0);
+  // Network YTD — prefer the per-stop FUEL_*_2026_DATA seed when the
+  // selected month matches a seeded period. GD's per-month gallons only
+  // covers Apr+May from applyFuelOverlay (Jan-Mar aren't in the seed),
+  // so summing totalGallons(mo) across Jan-May undercounts by ~9M and
+  // gave the Executive Summary "doesn't match 15,410,356.46" bug.
+  let totGalYTD;
+  function _seedNetworkYTD(SEED){
+    if (typeof SEED !== 'object' || !SEED) return null;
+    let s = 0;
+    for (const sid in SEED) s += +SEED[sid]?.ytd || 0;
+    return s;
+  }
+  if (m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object') {
+    totGalYTD = _seedNetworkYTD(FUEL_MAY_2026_DATA);
+  } else if (m === '2026-04' && typeof FUEL_APR_2026_DATA === 'object') {
+    totGalYTD = _seedNetworkYTD(FUEL_APR_2026_DATA);
+  } else {
+    totGalYTD = yearMonths.reduce((s, mo) => s + totalGallons(mo), 0);
+  }
   let legacyAggYTD = 0, newAggYTD = 0, fleetYTD = 0, fuelmanYTD = 0, rcheckYTD = 0;
   try {
     yearMonths.forEach(mo => {
@@ -6582,7 +6600,18 @@ function renderOverview(){
   document.getElementById('ov-period').textContent=periodLabel(m);
 
   const totalG=totalGallons(m), totalGP=p?totalGallons(p):null;
-  const ytdG=MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+totalGallons(mo),0);
+  // YTD: prefer the FUEL_*_2026_DATA seed totals so the network YTD on
+  // this overview matches the Executive Summary (15,410,356.46 for
+  // 2026-05). Without this, summing totalGallons(mo) across Jan-May
+  // only picks up Apr+May from the overlay and undercounts ~9M.
+  let ytdG;
+  if (m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA) {
+    ytdG = Object.values(FUEL_MAY_2026_DATA).reduce((s,d)=>s+(+d.ytd||0),0);
+  } else if (m === '2026-04' && typeof FUEL_APR_2026_DATA === 'object' && FUEL_APR_2026_DATA) {
+    ytdG = Object.values(FUEL_APR_2026_DATA).reduce((s,d)=>s+(+d.ytd||0),0);
+  } else {
+    ytdG = MOS.slice(0,MOS.indexOf(m)+1).reduce((s,mo)=>s+totalGallons(mo),0);
+  }
   const lyG=ytdG*0.92; // simulated LY
   const activeStops=Object.keys(GD).filter(sid=>stopGallons(sid,m)>0).length;
   const totalStops=Object.keys(GD).length;
