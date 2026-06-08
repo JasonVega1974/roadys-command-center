@@ -2997,7 +2997,10 @@ async function syncToCloud(){
       const SIZE = 200;
       for(let i=0;i<rows.length;i+=SIZE){
         const chunk = rows.slice(i,i+SIZE);
-        const {error} = await sb.from(table).upsert(chunk, {onConflict: table==='gs_stop_records'?'stop_id,gs_name':'id'});
+        const conflict = table==='gs_stop_records' ? 'stop_id,gs_name'
+                       : table==='gs_managers'      ? 'name'
+                       : 'id';
+        const {error} = await sb.from(table).upsert(chunk, {onConflict: conflict});
         if(error) errors.push(table+': '+error.message);
       }
     }
@@ -3073,13 +3076,26 @@ async function syncToCloud(){
     await upsert('gs_stop_records', stopRows);
     await upsert('gs_scenarios', scenRows);
 
-    // Managers (global key, not per-GS)
+    // Managers: derived from the live REGIONS config (keyed by GS/manager
+    // name -> {states, color, label}), which already reflects any Phase-5
+    // overrides applied on load. PIN + role come from GS_PINS, reverse-
+    // looked-up by name. (The old path read localStorage 'gs_cmd_managers',
+    // but that key holds an object {MANAGER_MAP, REGIONS, ...}, not an
+    // array, so it never synced.)
     try{
-      const mgrs = JSON.parse(localStorage.getItem('gs_cmd_managers')||'[]');
-      if(Array.isArray(mgrs) && mgrs.length){
-        const mgrRows = mgrs.map(m=>({name:m.name||m.id||'', pin:m.pin||'', role:m.role||'team', regions:m.regions||[], color:m.color||'', updated_at:new Date().toISOString()})).filter(m=>m.name);
-        await upsert('gs_managers', mgrRows);
+      const pinByName = {};
+      for(const [pin,info] of Object.entries(GS_PINS||{})){
+        if(info && info.name && !pinByName[info.name]) pinByName[info.name] = {pin, role:info.role||''};
       }
+      const mgrRows = Object.entries(REGIONS||{}).map(([name,r])=>({
+        name,
+        pin: (pinByName[name]||{}).pin || '',
+        role: (pinByName[name]||{}).role || 'Growth Strategist',
+        regions: (r && r.states) || [],
+        color: (r && r.color) || '',
+        updated_at: new Date().toISOString()
+      })).filter(m=>m.name);
+      if(mgrRows.length) await upsert('gs_managers', mgrRows);
     }catch(e){}
 
     if(errors.length){

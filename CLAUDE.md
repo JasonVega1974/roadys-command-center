@@ -55,18 +55,28 @@ fixed the two functions that pre-existed without `search_path` pinned
 (`touch_updated_at`, `deck_gallery_touch_updated_at`). New functions must
 ship pinned from day one.
 
-## Tables today (2026-05-27)
+## Tables today (2026-06-08)
 
+Core (from `index.html` / `value-props.html`):
 `crm_leads`, `deck_gallery`, `fleet_gallon_reports`, `fleet_status`,
 `fuel_data`, `geo_cache`, `impl_sites`, `kpi_data`, `pnl_notes`,
 `sd_tickets`, `value_props`, `vp_enroll`. All grants and RLS confirmed
 via the 2026-05-27 migration batch in `sql/`.
 
-`stop_records` is **proposed but not created** — sketched in
-`sql/membership_supabase_notes.sql`. Until/unless it's created, all
-membership and site-contact data lives in per-GS `localStorage` namespaces
-(`stopdata` in gs-command-center.html, seeded inline from
-`COMPANY_MEMBERSHIP_DATA` and `MANAGER_CONTACTS_SEED`).
+GS Command Center cloud sync (Phase 10, from `gs-command-center.html`):
+`gs_activity_logs`, `gs_scheduled_calls`, `gs_critical_items`, `gs_tasks`,
+`gs_stop_records`, `gs_scenarios`, `gs_managers`. RLS + grants added in
+`sql/2026-06-08-gs-command-center-tables.sql`. All PKs are **text**
+(client ids like `'log_'+Date.now()`); `gs_stop_records` keys on the
+composite `(stop_id, gs_name)`, `gs_managers` on `name`, the rest on `id`.
+
+`gs_stop_records` is the cloud mirror of the per-GS `stopdata` /`extras`
+`localStorage` namespaces (membership + site-contact data). Those
+namespaces remain the source of truth on each GS device, seeded inline
+from `COMPANY_MEMBERSHIP_DATA` and `MANAGER_CONTACTS_SEED`; the Phase 10
+sync upserts them to the cloud. (The earlier proposed `stop_records`
+table in `sql/membership_supabase_notes.sql` was never built — superseded
+by `gs_stop_records`.)
 
 ## Project structure quick reference
 
@@ -76,7 +86,10 @@ membership and site-contact data lives in per-GS `localStorage` namespaces
 - `gs-command-center.html` — Growth Strategist workstation. Reads
   `roadys_fuel` / `roadys_kpi` / `roadys_vp_enroll` from `localStorage`
   (mirrors written by `index.html`). Owns its own `stopdata` per-GS
-  namespace. Does NOT write to Supabase today.
+  namespace. **Writes the seven `gs_*` tables** via the Phase 10
+  `syncToCloud()` (manual ☁️ Sync button) — upserts per-GS activity logs,
+  scheduled calls, critical items, tasks, stop records, scenarios, and the
+  manager/region config. Uses the Supabase SDK (`getRoadysSB()`).
 - `value-props.html` — Value-prop wizard. Owns `value_props`, `geo_cache`,
   `fleet_status`, `fleet_gallon_reports`. Uses plain `fetch(... /rest/v1/...)`
   instead of the Supabase SDK.
