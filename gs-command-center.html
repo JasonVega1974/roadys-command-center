@@ -6755,16 +6755,18 @@ function closeStopDetailPage(suppressDrawer){
 // section-nav buttons in the sticky header and the actual section group
 // titles in the left/right columns both read from this list, so adding /
 // renaming / reordering a section happens in one place.
+// Order here drives the sticky-header tab/nav row (flat map). Column
+// placement of each section's cards is set independently in the left/right
+// templates below; the nav jumps to a section's anchor wherever it lives.
 const SD_SECTIONS = [
-  // Left column
   { id:'sd-sec-identity',  icon:'📍', label:'Details' },
+  { id:'sd-sec-fuel',      icon:'⛽', label:'Fuel' },
   { id:'sd-sec-rewards',   icon:'🎁', label:'Rewards' },
-  { id:'sd-sec-rack',      icon:'⛽', label:'Rack & Pricing' },
+  { id:'sd-sec-vendors',   icon:'🏢', label:'Vendor Programs' },
+  { id:'sd-sec-rack',      icon:'🛢️', label:'Rack & Pricing' },
   { id:'sd-sec-engage',    icon:'📋', label:'Engagement History' },
   { id:'sd-sec-notes',     icon:'📝', label:'Notes' },
-  // Right column
   { id:'sd-sec-financial', icon:'💰', label:'Financial Performance' },
-  { id:'sd-sec-vendors',   icon:'🏢', label:'Vendor Programs' },
   { id:'sd-sec-discounts', icon:'💲', label:'Discounts & CRM' },
   { id:'sd-sec-history',   icon:'📊', label:'History & Analysis' },
   { id:'sd-sec-reports',   icon:'📑', label:'Reports' },
@@ -6809,11 +6811,12 @@ function renderStopDetailPage(stopId){
   `;
   // Right column — wide (performance, vendors, analysis)
   const right = `
+    ${grp('sd-sec-fuel')}
+    ${card('fuel',          false, drawerFuelHTML(stopId))}
     ${grp('sd-sec-financial')}
     ${card('revprofit',     false, pageRevProfitHTML(stopId))}
     ${card('roi',           false, drawerROIHTML(stopId))}
     ${card('trends',        false, pageChartsHTML(stopId))}
-    ${card('fuel',          true,  drawerFuelHTML(stopId))}
     ${grp('sd-sec-vendors')}
     ${card('vendors',       false, drawerVendorStubHTML(stopId))}
     ${card('vendorops',     false, drawerVendorOpportunityHTML(stopId))}
