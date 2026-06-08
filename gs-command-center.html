@@ -6757,10 +6757,11 @@ function closeStopDetailPage(suppressDrawer){
 // renaming / reordering a section happens in one place.
 const SD_SECTIONS = [
   // Left column
-  { id:'sd-sec-identity',  icon:'📍', label:'Identity & Membership' },
-  { id:'sd-sec-rewards',   icon:'🎁', label:'Programs & Rewards' },
+  { id:'sd-sec-identity',  icon:'📍', label:'Details' },
+  { id:'sd-sec-rewards',   icon:'🎁', label:'Rewards' },
   { id:'sd-sec-rack',      icon:'⛽', label:'Rack & Pricing' },
   { id:'sd-sec-engage',    icon:'📋', label:'Engagement History' },
+  { id:'sd-sec-notes',     icon:'📝', label:'Notes' },
   // Right column
   { id:'sd-sec-financial', icon:'💰', label:'Financial Performance' },
   { id:'sd-sec-vendors',   icon:'🏢', label:'Vendor Programs' },
@@ -6803,7 +6804,8 @@ function renderStopDetailPage(stopId){
     ${card('activitylog',   true,  pageActivityLogHTML(stopId))}
     ${card('visits',        true,  pageVisitsHTML(stopId))}
     ${card('reviews',       true,  pagePastReviewsHTML(stopId))}
-    ${card('notes',         true,  pageNotesHTML(stopId))}
+    ${grp('sd-sec-notes')}
+    ${card('notes',         false, pageNotesHTML(stopId))}
   `;
   // Right column — wide (performance, vendors, analysis)
   const right = `
