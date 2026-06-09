@@ -3402,10 +3402,9 @@ function renderDashboard(){
 
 function renderMyStopsCard(stops){
   const m = currentMonthKey();
-  const pm = priorMonthKey(m);
   const rows = stops.map(s => {
     const mtd = stopTotalGallons(s.id, m);
-    const prior = stopTotalGallons(s.id, pm);
+    const prior = stopPriorMonthTotalGallons(s.id, m);
     const ytd = ytdGallonsForStop(s.id, m, 'total');
     const delta = (prior > 0) ? ((mtd-prior)/prior)*100 : null;
     const trendCell = (delta === null)
@@ -3836,14 +3835,13 @@ function renderUSAMapInline(){
   const sg = document.getElementById('states-group');
   if(!sg) return;
   const m = currentMonthKey();
-  const pm = priorMonthKey(m);
   const empty = document.getElementById('map-empty');
   // Build per-state aggregates
   const stateData = {};
   ALL_STATES.forEach(st => {
     const stops = MEMBERS.filter(mb => mb.state === st);
     const g = stops.reduce((s, mb) => s + stopTotalGallons(mb.id, m), 0);
-    const gp = pm ? stops.reduce((s, mb) => s + stopTotalGallons(mb.id, pm), 0) : 0;
+    const gp = stops.reduce((s, mb) => s + stopPriorMonthTotalGallons(mb.id, m), 0);
     const rev = estRevenueGS(g);
     const mgr = MANAGER_MAP[st] || 'Unassigned';
     const growth = (gp > 0) ? ((g - gp) / gp * 100) : null;
@@ -4351,6 +4349,18 @@ function priorMonthKey(m){
   const [y,mo] = m.split('-').map(Number);
   const d = new Date(y, mo-2, 1);
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+// Prior-month TOTAL gallons for MoM variance. Prefer the CURRENT month
+// report's own prior-month column (gA) so MoM is internally consistent with
+// this month's `g`. The standalone April seed disagrees for some stops
+// (e.g. R00179: 9,489 there vs the May report's 40,384), which made every
+// MoM fuel pill read ~401% instead of ~18%. Falls back to the prior month's
+// stored total when the current month's seed has no gA.
+function stopPriorMonthTotalGallons(stopId, m){
+  if(m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA[stopId]){
+    return +FUEL_MAY_2026_DATA[stopId].gA || 0;
+  }
+  return stopTotalGallons(stopId, priorMonthKey(m));
 }
 function priorYearMonthKey(m){
   const [y,mo] = m.split('-').map(Number);
@@ -5918,7 +5928,7 @@ function drawerFuelHTML(stopId){
     return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo-1] + ' ' + y;
   })();
   const total = stopTotalGallons(stopId, m);
-  const totalP = stopTotalGallons(stopId, pm);
+  const totalP = stopPriorMonthTotalGallons(stopId, m);
   const totalY = stopTotalGallons(stopId, py);
   const totalYTD = ytdGallonsForStop(stopId, m, 'total');
   const fleet = stopFleetGallons(stopId, m);
@@ -6590,17 +6600,8 @@ function roadysContributedValue(stopId){
 
   // Contributed gallons — same figure as the Fuel Business "Total Gallons".
   const gMonth = stopTotalGallons(stopId, m);
-  // Prior month: prefer the CURRENT month report's own prior-month column
-  // (FUEL_MAY_2026_DATA.gA), which is internally consistent with this
-  // month's `g`. The standalone April seed (FUEL_APR_2026_DATA.g) disagrees
-  // for some stops — e.g. R00179 is 9,489 there vs the May report's 40,384
-  // — which made the MoM variance read ~401% instead of ~18%.
-  let gPrior;
-  if(m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA[stopId]){
-    gPrior = +FUEL_MAY_2026_DATA[stopId].gA || 0;
-  } else {
-    gPrior = stopTotalGallons(stopId, pm);
-  }
+  // Prior month uses the shared gA-aware helper so every MoM surface agrees.
+  const gPrior = stopPriorMonthTotalGallons(stopId, m);
   const gYTD  = ytdGallonsForStop(stopId, m, 'total');
   // 12-month projection: prefer the seed's authoritative rolling-12 total
   // (FUEL_MAY_2026_DATA.r12) when present; otherwise annualize the YTD run-rate.
@@ -7373,7 +7374,7 @@ function pageKpiHeroHTML(stopId){
 
   // ── Card 1: Fuel Gallons ──────────────────────────────────────────────
   const totalMtd   = stopTotalGallons(stopId, m);
-  const totalPrior = stopTotalGallons(stopId, pm);
+  const totalPrior = stopPriorMonthTotalGallons(stopId, m);
   const totalYtd   = ytdGallonsForStop(stopId, m, 'total');
   const fuelCard = `
     <div class="drawer-card cyan" style="margin-top:0">
@@ -7987,7 +7988,7 @@ function buildShareSummary(stopId){
   const gsName = MANAGER_MAP[stop.state] || 'Unassigned';
 
   const totalMtd = stopTotalGallons(stopId, m);
-  const totalPrior = stopTotalGallons(stopId, pm);
+  const totalPrior = stopPriorMonthTotalGallons(stopId, m);
   const totalYtd = ytdGallonsForStop(stopId, m, 'total');
   const revMtd = estRevenueGS(totalMtd);
   const profitMtd = estProfitGS(totalMtd);
