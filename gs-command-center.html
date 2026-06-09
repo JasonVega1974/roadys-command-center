@@ -7792,8 +7792,10 @@ function pageHistoryTableHTML(stopId){
   const rows = months.map((mo, i) => {
     const d = GD[stopId]?.[mo.key] || {};
     const gal = +d.gallons || 0;
-    // Compare against the row above (i-1) which is the prior month
-    const prior = i > 0 ? (+(GD[stopId]?.[months[i-1].key]?.gallons) || 0) : null;
+    // Prior month via the shared gA-aware helper (see stopPriorMonthTotalGallons)
+    // so May's change uses the May report's prior-month total, not the
+    // standalone April seed. For earlier rows this equals the row above.
+    const prior = i > 0 ? stopPriorMonthTotalGallons(stopId, mo.key) : null;
     const aggCount = (d.aggregators||[]).length;
     const fleetCount = (d.fleets||[]).length;
     const aggNames = (d.aggregators||[]).map(a => (a.name||'').split(' ')[0]).filter(Boolean).slice(0,3).join(', ');
