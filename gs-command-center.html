@@ -5879,7 +5879,8 @@ function onMembershipChange(stopId, field, val){
   } else if (
     field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' || field === 'ytdTotalGallons' ||
     field === 'roiPotentialNewGallons' || field === 'roiNewDefGallons' || field === 'roiNewInsideStoreSales' ||
-    field === 'roiFuelMarginPerGal' || field === 'roiFuelPricePerGal' || field === 'roiFuelCostPerGal'
+    field === 'roiFuelMarginPerGal' || field === 'roiFuelPricePerGal' || field === 'roiFuelCostPerGal' ||
+    field === 'roiRackPricePerGal'
   ) {
     // Empty string clears the field (reverts to auto/default); non-empty parses as number.
     const s = String(val == null ? '' : val).replace(/[$,\s]/g, '');
@@ -6523,6 +6524,62 @@ function computeStopROI(stopId){
 //   Site value   = fuel profit + inside sales + DEF
 // Shared by the panel (roadysContributedHTML) and the ROI table row /
 // totals (computeStopROI) so both read identical numbers.
+// ── Location cost build-up ─────────────────────────────────────────────
+// Computes a stop's all-in cost/gal from the manual Rack Price (stored as
+// roiRackPricePerGal) plus the stored Location Cost Components (fcc_report
+// seed, resolved the same way pageRackHTML displays them):
+//   cost = rack + federalTax + oilSpill + stateExcise
+//        + (stateSalesTax% × retail) + county + city + inspection
+//        + environmental + load + misc + freight
+// Returns the total, every component, and flags for whether a rack price is
+// set and whether cost components exist for the stop.
+function stopFuelCostBreakdown(stopId){
+  const rec = loadStopRecord(stopId);
+  const C = (CALC_DEFAULTS && CALC_DEFAULTS.retail) || {};
+  const retailDefault = (C.current && +C.current.price) || 3.889;
+  const retailPrice = (rec.roiFuelPricePerGal != null && !isNaN(+rec.roiFuelPricePerGal))
+    ? +rec.roiFuelPricePerGal : retailDefault;
+
+  const haveRack  = rec.roiRackPricePerGal != null && !isNaN(+rec.roiRackPricePerGal);
+  const rackPrice = haveRack ? +rec.roiRackPricePerGal : 0;
+
+  // Resolve cost components (per-month GD rack + fcc_report seed), exactly
+  // as pageRackHTML does, so the build-up matches what's displayed.
+  let rack = {};
+  try {
+    const GD = loadFuelGD();
+    const gdRack = GD[stopId]?.[currentMonthKey()]?.rack || {};
+    rack = (typeof _resolveLocationCostRack === 'function') ? _resolveLocationCostRack(stopId, gdRack) : gdRack;
+  } catch(e){}
+
+  const num = v => (typeof v === 'number' && !isNaN(v)) ? v : (v != null && v !== '' && !isNaN(+v) ? +v : 0);
+  const federalTax    = num(rack.federalTax ?? rack.federal_tax);
+  const oilSpill      = num(rack.federalOilSpillLiability);
+  const stateExcise   = num(rack.stateExciseTax ?? rack.state_excise);
+  const stateSalesPct = num(rack.stateSalesTax ?? rack.state_sales_tax);   // stored as a percent
+  const salesTax      = (stateSalesPct / 100) * retailPrice;
+  const countyTax     = num(rack.countyTax);
+  const cityTax       = num(rack.cityTaxCpg);
+  const inspection    = num(rack.inspectionTax);
+  const environmental = num(rack.environmentalTax);
+  const loadTax       = num(rack.loadTax);
+  const miscTax       = num(rack.miscTax ?? rack.misc_tax);
+  const freight       = num(rack.freightRate ?? rack.freight);
+
+  const hasComponents = !!(typeof LOCATION_COST_COMPONENTS === 'object' && LOCATION_COST_COMPONENTS && LOCATION_COST_COMPONENTS[stopId]);
+
+  const taxesAndFreight = federalTax + oilSpill + stateExcise + salesTax + countyTax
+                        + cityTax + inspection + environmental + loadTax + miscTax + freight;
+  const total = rackPrice + taxesAndFreight;
+
+  return {
+    haveRack, hasComponents, rackPrice, retailPrice,
+    federalTax, oilSpill, stateExcise, stateSalesPct, salesTax, countyTax,
+    cityTax, inspection, environmental, loadTax, miscTax, freight,
+    taxesAndFreight, total
+  };
+}
+
 function roadysContributedValue(stopId){
   const rec = loadStopRecord(stopId);
   const m   = currentMonthKey();
@@ -6563,13 +6620,22 @@ function roadysContributedValue(stopId){
   const costDefault   = retailDefault - marginDefault;   // implied wholesale cost/gal
 
   // Editable per-stop inputs
-  const haveRetail = rec.roiFuelPricePerGal != null && !isNaN(+rec.roiFuelPricePerGal);
-  const haveCost   = rec.roiFuelCostPerGal  != null && !isNaN(+rec.roiFuelCostPerGal);
+  const haveRetail     = rec.roiFuelPricePerGal != null && !isNaN(+rec.roiFuelPricePerGal);
+  const haveCostManual = rec.roiFuelCostPerGal  != null && !isNaN(+rec.roiFuelCostPerGal);
   const retailPrice = haveRetail ? +rec.roiFuelPricePerGal : retailDefault;
-  const costPerGal  = haveCost   ? +rec.roiFuelCostPerGal  : costDefault;
-  // Margin auto-derives from retail − cost when BOTH are filled in; otherwise
-  // it falls back to the manual margin field (or the network default).
-  const marginDerived = haveRetail && haveCost;
+
+  // Cost/gal precedence: calculated (Rack Price + Location Cost Components)
+  // > manual Cost/gal field > implied default. When the rack price is filled
+  // and the stop has cost components, cost is the calculated build-up.
+  const costCalc = stopFuelCostBreakdown(stopId);
+  let costPerGal, costSource;
+  if(costCalc.haveRack && costCalc.hasComponents){ costPerGal = costCalc.total; costSource = 'rack'; }
+  else if(haveCostManual){ costPerGal = +rec.roiFuelCostPerGal; costSource = 'manual'; }
+  else { costPerGal = costDefault; costSource = 'default'; }
+
+  // Margin auto-derives as retail − cost whenever a real cost is present
+  // (rack build-up or manual); otherwise the manual margin field / default.
+  const marginDerived = (costSource === 'rack' || costSource === 'manual');
   const fuelMargin = marginDerived
     ? (retailPrice - costPerGal)
     : ((rec.roiFuelMarginPerGal != null && !isNaN(+rec.roiFuelMarginPerGal)) ? +rec.roiFuelMarginPerGal : marginDefault);
@@ -6586,7 +6652,8 @@ function roadysContributedValue(stopId){
     m, pm, mo, monthLbl,
     gMonth, gPrior, gYTD, gProj, projIsRolling,
     GAL_PER_STOP, INSIDE_RING, DEF_PCT, retailDefault, marginDefault, costDefault,
-    fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCost,
+    fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCostManual,
+    costSource, costCalc,
     vMonth: value(gMonth), vPrior: value(gPrior), vYTD: value(gYTD), vProj: value(gProj)
   };
 }
@@ -6597,8 +6664,20 @@ function roadysContributedHTML(stopId){
   const cg = roadysContributedValue(stopId);
   const { monthLbl, gMonth, gYTD, gProj, gPrior, projIsRolling, GAL_PER_STOP,
           INSIDE_RING, DEF_PCT, retailDefault, marginDefault, costDefault,
-          fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCost,
+          fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCostManual,
+          costSource, costCalc,
           vMonth, vPrior, vYTD, vProj } = cg;
+
+  // Readable cost build-up (non-zero parts), shown when cost is rack-derived.
+  const costSummary = () => {
+    const cc = costCalc, seg = [`rack $${cc.rackPrice.toFixed(3)}`];
+    const add = (lbl, v) => { if(v) seg.push(`${lbl} $${v.toFixed(4)}`); };
+    add('fed', cc.federalTax); add('oil-spill', cc.oilSpill); add('excise', cc.stateExcise);
+    if(cc.salesTax) seg.push(`sales $${cc.salesTax.toFixed(4)} (${cc.stateSalesPct}%×$${cc.retailPrice.toFixed(3)})`);
+    add('county', cc.countyTax); add('city', cc.cityTax); add('insp', cc.inspection);
+    add('env', cc.environmental); add('load', cc.loadTax); add('misc', cc.miscTax); add('freight', cc.freight);
+    return seg.join(' + ');
+  };
 
   const fmt    = n => '$' + Number(n||0).toLocaleString('en-US', {maximumFractionDigits:0});
   const fmt2   = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -6632,12 +6711,14 @@ function roadysContributedHTML(stopId){
                    title="Retail diesel price per gallon — feeds margin (retail − cost) and DEF"
                    onblur="onMembershipChange('${stopId}', 'roiFuelPricePerGal', this.value)"/>
           </label>
-          <label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Cost / gal
-            <input type="number" step="0.001" inputmode="decimal" style="${inS}"
-                   value="${haveCost ? costPerGal.toFixed(3) : ''}" placeholder="${costDefault.toFixed(3)}"
-                   title="Wholesale cost per gallon — fill alongside Retail price to auto-derive margin"
-                   onblur="onMembershipChange('${stopId}', 'roiFuelCostPerGal', this.value)"/>
-          </label>
+          ${costSource === 'rack'
+            ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Cost / gal
+                 <span style="${inS};display:inline-block" title="Auto from Rack Price + Location Cost Components">$${costPerGal.toFixed(3)}</span></span>`
+            : `<label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Cost / gal
+                 <input type="number" step="0.001" inputmode="decimal" style="${inS}"
+                        value="${haveCostManual ? costPerGal.toFixed(3) : ''}" placeholder="${costDefault.toFixed(3)}"
+                        title="Wholesale cost per gallon — or set Rack Price on the Location Cost Components card to auto-calc"
+                        onblur="onMembershipChange('${stopId}', 'roiFuelCostPerGal', this.value)"/></label>`}
           ${marginDerived
             ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Margin / gal
                  <span style="${inS};display:inline-block;color:var(--green);font-weight:700" title="Auto-derived: retail − cost">$${fuelMargin.toFixed(3)}</span></span>`
@@ -6648,6 +6729,7 @@ function roadysContributedHTML(stopId){
                         onblur="onMembershipChange('${stopId}', 'roiFuelMarginPerGal', this.value)"/></label>`}
         </div>
       </div>
+      ${costSource === 'rack' ? `<div style="font-size:.68em;color:var(--muted);margin-top:-2px;margin-bottom:8px;line-height:1.5"><b style="color:var(--text)">Cost / gal ${fmt2(costPerGal)}</b> = ${costSummary()}</div>` : ''}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
         ${tile('This Month',       fmt(vMonth.total), fmtGal(gMonth)+' gal')}
         ${tile('vs Prior Month',   varBig,            varSub)}
@@ -7457,6 +7539,12 @@ function pageRackHTML(stopId){
   const fmtRate = n => (typeof n === 'number' && !isNaN(n)) ? '$' + n.toFixed(4) : '—';
   const fmtPct  = n => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(3) + '%' : '—';
   const dash    = v => (v == null || v === '') ? '—' : esc(String(v));
+  // Rack Price (manual) + calculated all-in Cost/gal build-up. The rack
+  // price feeds the Site Value/ROI Contributed Gallons panel's Cost/gal.
+  const rec = loadStopRecord(stopId);
+  const calc = stopFuelCostBreakdown(stopId);
+  const rackInS = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:.92em;width:92px;text-align:right;font-family:var(--fm)';
+  const rackVal = (rec.roiRackPricePerGal != null && !isNaN(+rec.roiRackPricePerGal)) ? (+rec.roiRackPricePerGal).toFixed(4) : '';
   // Winter additive: only render the dates suffix when at least one is set.
   const winterDates = (rack.winterAdditiveStart || rack.winterAdditiveEnd)
     ? ` <span style="color:var(--muted);font-size:.82em">(${dash(rack.winterAdditiveStart)} → ${dash(rack.winterAdditiveEnd)})</span>` : '';
@@ -7480,6 +7568,7 @@ function pageRackHTML(stopId){
 
       <div style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:10px;margin-bottom:4px">Tax Components ($/gal unless noted)</div>
       <div class="sd-rack">
+        <div class="sd-loc-row"><span class="lbl">Rack Price / gal</span><span><input type="number" step="0.0001" inputmode="decimal" style="${rackInS}" value="${rackVal}" placeholder="0.0000" title="Base wholesale rack price per gallon — feeds the all-in Cost/gal below and the ROI panel" onblur="onMembershipChange('${stopId}', 'roiRackPricePerGal', this.value)"/></span></div>
         <div class="sd-loc-row"><span class="lbl">Federal Tax</span><span>${fmtRate(rack.federalTax ?? rack.federal_tax)}</span></div>
         <div class="sd-loc-row"><span class="lbl">Federal Oil Spill Liability</span><span>${fmtRate(rack.federalOilSpillLiability)}</span></div>
         <div class="sd-loc-row"><span class="lbl">State Excise Tax</span><span>${fmtRate(rack.stateExciseTax ?? rack.state_excise)}</span></div>
@@ -7490,6 +7579,7 @@ function pageRackHTML(stopId){
         <div class="sd-loc-row"><span class="lbl">Environmental Tax</span><span>${fmtRate(rack.environmentalTax)}</span></div>
         <div class="sd-loc-row"><span class="lbl">LOAD Tax</span><span>${fmtRate(rack.loadTax)}</span></div>
         <div class="sd-loc-row"><span class="lbl">Misc. Tax</span><span>${fmtRate(rack.miscTax ?? rack.misc_tax)}</span></div>
+        <div class="sd-loc-row" style="border-top:1px solid var(--border);font-weight:700;margin-top:3px;padding-top:5px"><span class="lbl">Calculated Cost / gal</span><span>${calc.haveRack ? `<b style="color:var(--green)">$${calc.total.toFixed(4)}</b>` : `<span style="color:var(--muted)">— enter rack price</span>`}</span></div>
       </div>
 
       <div style="font-size:.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:10px;margin-bottom:4px">Freight &amp; Additives</div>
