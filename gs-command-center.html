@@ -5879,7 +5879,7 @@ function onMembershipChange(stopId, field, val){
   } else if (
     field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' || field === 'ytdTotalGallons' ||
     field === 'roiPotentialNewGallons' || field === 'roiNewDefGallons' || field === 'roiNewInsideStoreSales' ||
-    field === 'roiFuelMarginPerGal'
+    field === 'roiFuelMarginPerGal' || field === 'roiFuelPricePerGal' || field === 'roiFuelCostPerGal'
   ) {
     // Empty string clears the field (reverts to auto/default); non-empty parses as number.
     const s = String(val == null ? '' : val).replace(/[$,\s]/g, '');
@@ -5891,22 +5891,20 @@ function onMembershipChange(stopId, field, val){
     }
   }
   saveStopRecord(stopId, {[field]: coerced});
-  // Fuel-margin edits refresh just the Contributed-Gallons panel in place —
-  // works in both the drawer and the stop-detail page, and avoids a full
-  // re-render that would reset card collapse state / scroll position.
-  if (field === 'roiFuelMarginPerGal') {
-    const panel = document.getElementById('roadys-contrib-' + stopId);
-    if (panel && typeof roadysContributedHTML === 'function') {
-      panel.innerHTML = roadysContributedHTML(stopId);
-      toast('Saved');
-      return;
-    }
-  }
   toast('Saved');
-  // Re-render the drawer if open so the ROI / Rewards cards reflect the change
+  // Re-render whichever stop view is showing so the ROI table (incl. the
+  // contributed-gallons row + totals) and the panel reflect the change.
+  // Card collapse state is persisted, so a full re-render restores it; we
+  // also preserve the page scroll position so an edit mid-page isn't jarring.
   const drawer = document.getElementById('site-drawer');
   if (drawer && drawer.classList.contains('open') && typeof openSiteDrawer === 'function') {
     openSiteDrawer(stopId);
+  }
+  if (typeof _stopDetailActiveStopId !== 'undefined' && _stopDetailActiveStopId === stopId
+      && typeof renderStopDetailPage === 'function') {
+    const y = window.scrollY;
+    renderStopDetailPage(stopId);
+    window.scrollTo(0, y);
   }
 }
 
@@ -6472,18 +6470,26 @@ function computeStopROI(stopId){
   const newDefValue     = newDefSales;
   const newInsideValue  = newInsideStoreSales;
 
+  // ── Roady's contributed-gallons fuel profit (current month) ───────────
+  // Realized monthly fuel profit from the stop's actual contributed gallons
+  // (gallons × editable fuel margin/gal). Shown as its own VALUE row and
+  // folded into the ROI total. Inside-store + DEF stay in the panel only.
+  const cg = roadysContributedValue(stopId);
+  const contributedFuelProfit  = cg.vMonth.fuelProfit;
+  const contributedGallonsMonth = cg.gMonth;
+  const contributedMargin       = cg.fuelMargin;
+
   // ── Totals ────────────────────────────────────────────────────────────
   const cost = (membership == null) ? null : membership + priceFeeStandard;
 
-  // CURRENT value: realized savings only (PFF savings if waived + currently
-  // enrolled vendor programs). The "upside" lines below are scenario
-  // projections and live in the POTENTIAL column.
-  const valueCurrent = priceFileFeeSavings + vendorSavingsCurrent;
+  // CURRENT value: realized savings (PFF if waived + currently enrolled
+  // vendor programs) plus this month's contributed-gallons fuel profit.
+  const valueCurrent = priceFileFeeSavings + vendorSavingsCurrent + contributedFuelProfit;
 
-  // POTENTIAL value: current + vendor opportunity + projected new gallons /
-  // DEF / inside-store sales.
-  const valuePotential = valueCurrent + vendorSavingsOpportunity
-                       + newGallonsValue + newDefValue + newInsideValue;
+  // POTENTIAL value: current + missed vendor opportunity. (Inside-store and
+  // DEF upside live in the Roady's Contributed Gallons panel, driven by
+  // actual Fuel Business gallons rather than the old manual inputs.)
+  const valuePotential = valueCurrent + vendorSavingsOpportunity;
 
   const netCurrent   = (cost == null) ? null : valueCurrent   - cost;
   const netPotential = (cost == null) ? null : valuePotential - cost;
@@ -6499,23 +6505,25 @@ function computeStopROI(stopId){
     avgGalPerTxn, avgRing,
     marginPerGallon,
     newGallonsValue, newDefValue, newInsideValue,
+    contributedFuelProfit, contributedGallonsMonth, contributedMargin,
     valueCurrent, valuePotential,
     netCurrent, netPotential
   };
 }
 // ── Roady's Contributed Gallons — data-driven site-value model ─────────
 // Replaces the old manual "+ Potential New Gallons" upside line. Pulls the
-// stop's contributed gallons straight from Fuel Business (current selected
-// month, YTD Jan→current, and a 12-month run-rate projection) and values
-// them with a simple profit model the GS can tune per location:
-//   Fuel profit  = gallons × fuel margin/gal (editable; defaults to the
-//                  REV_PER_GAL_GS − COST_PER_GAL_GS network margin)
+// stop's contributed gallons (fleet + aggregator — the Fuel Business
+// "Total Gallons" figure) for the current month, YTD Jan→current, and a
+// rolling-12 projection (seed r12, falling back to YTD run-rate), and values
+// them with a profit model the GS can tune per stop:
+//   Fuel profit  = gallons × fuel margin/gal      (margin auto = retail − cost
+//                  when both filled; else manual field / network default)
 //   Inside sales = (gallons ÷ 110 avg gal/txn) × $18.32 avg ring
-//   DEF          = diesel sales (gallons × diesel price) × 2%
+//   DEF          = gallons × retail price/gal × 2% (retail price editable)
 //   Site value   = fuel profit + inside sales + DEF
-// Returned as the inner HTML of the #roadys-contrib-<stopId> wrapper so a
-// margin edit can refresh it in place (see onMembershipChange).
-function roadysContributedHTML(stopId){
+// Shared by the panel (roadysContributedHTML) and the ROI table row /
+// totals (computeStopROI) so both read identical numbers.
+function roadysContributedValue(stopId){
   const rec = loadStopRecord(stopId);
   const m   = currentMonthKey();
   const pm  = priorMonthKey(m);
@@ -6523,34 +6531,74 @@ function roadysContributedHTML(stopId){
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthLbl = MON[mo-1] + ' ' + yy;
 
-  // Contributed gallons straight from Fuel Business
+  // Contributed gallons — same figure as the Fuel Business "Total Gallons".
   const gMonth = stopTotalGallons(stopId, m);
-  const gPrior = stopTotalGallons(stopId, pm);
-  const gYTD   = ytdGallonsForStop(stopId, m, 'total');
-  const gProj  = mo > 0 ? (gYTD / mo) * 12 : gMonth * 12;   // YTD run-rate annualized
+  // Prior month: prefer the CURRENT month report's own prior-month column
+  // (FUEL_MAY_2026_DATA.gA), which is internally consistent with this
+  // month's `g`. The standalone April seed (FUEL_APR_2026_DATA.g) disagrees
+  // for some stops — e.g. R00179 is 9,489 there vs the May report's 40,384
+  // — which made the MoM variance read ~401% instead of ~18%.
+  let gPrior;
+  if(m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA[stopId]){
+    gPrior = +FUEL_MAY_2026_DATA[stopId].gA || 0;
+  } else {
+    gPrior = stopTotalGallons(stopId, pm);
+  }
+  const gYTD  = ytdGallonsForStop(stopId, m, 'total');
+  // 12-month projection: prefer the seed's authoritative rolling-12 total
+  // (FUEL_MAY_2026_DATA.r12) when present; otherwise annualize the YTD run-rate.
+  const seedR12 = (m === '2026-05' && typeof FUEL_MAY_2026_DATA === 'object'
+                   && FUEL_MAY_2026_DATA[stopId]) ? +FUEL_MAY_2026_DATA[stopId].r12 || 0 : 0;
+  const projIsRolling = seedR12 > 0;
+  const gProj = projIsRolling ? seedR12 : (mo > 0 ? (gYTD / mo) * 12 : gMonth * 12);
 
   // Constants (Calculator defaults, with fallbacks)
   const C = (CALC_DEFAULTS && CALC_DEFAULTS.retail) || {};
-  const GAL_PER_STOP = (C.inside  && +C.inside.avgGalPerTxn) || 110;
-  const INSIDE_RING  = (C.inside  && +C.inside.avgRing)      || 18.32;
-  const DEF_PCT      = (C.def     && +C.def.pct)             || 2;
-  const DIESEL_PRICE = (C.current && +C.current.price)       || 3.889;
-
-  // Editable fuel margin/gal — defaults to the network REV−COST margin
+  const GAL_PER_STOP  = (C.inside  && +C.inside.avgGalPerTxn) || 110;
+  const INSIDE_RING   = (C.inside  && +C.inside.avgRing)      || 18.32;
+  const DEF_PCT       = (C.def     && +C.def.pct)             || 2;
+  const retailDefault = (C.current && +C.current.price)       || 3.889;
   const marginDefault = (typeof REV_PER_GAL_GS === 'number' && typeof COST_PER_GAL_GS === 'number')
     ? REV_PER_GAL_GS - COST_PER_GAL_GS : 0.03;
-  const fuelMargin = (rec.roiFuelMarginPerGal != null && !isNaN(+rec.roiFuelMarginPerGal))
-    ? +rec.roiFuelMarginPerGal : marginDefault;
+  const costDefault   = retailDefault - marginDefault;   // implied wholesale cost/gal
 
-  const siteValue = g => {
+  // Editable per-stop inputs
+  const haveRetail = rec.roiFuelPricePerGal != null && !isNaN(+rec.roiFuelPricePerGal);
+  const haveCost   = rec.roiFuelCostPerGal  != null && !isNaN(+rec.roiFuelCostPerGal);
+  const retailPrice = haveRetail ? +rec.roiFuelPricePerGal : retailDefault;
+  const costPerGal  = haveCost   ? +rec.roiFuelCostPerGal  : costDefault;
+  // Margin auto-derives from retail − cost when BOTH are filled in; otherwise
+  // it falls back to the manual margin field (or the network default).
+  const marginDerived = haveRetail && haveCost;
+  const fuelMargin = marginDerived
+    ? (retailPrice - costPerGal)
+    : ((rec.roiFuelMarginPerGal != null && !isNaN(+rec.roiFuelMarginPerGal)) ? +rec.roiFuelMarginPerGal : marginDefault);
+
+  const value = g => {
     const gal = +g || 0;
     const fuelProfit = gal * fuelMargin;
     const inside     = (gal / GAL_PER_STOP) * INSIDE_RING;
-    const def        = (gal * DIESEL_PRICE) * (DEF_PCT / 100);
-    return { fuelProfit, inside, def, total: fuelProfit + inside + def };
+    const def        = gal * retailPrice * (DEF_PCT / 100);
+    return { gal, fuelProfit, inside, def, total: fuelProfit + inside + def };
   };
-  const vMonth = siteValue(gMonth), vPrior = siteValue(gPrior),
-        vYTD   = siteValue(gYTD),   vProj  = siteValue(gProj);
+
+  return {
+    m, pm, mo, monthLbl,
+    gMonth, gPrior, gYTD, gProj, projIsRolling,
+    GAL_PER_STOP, INSIDE_RING, DEF_PCT, retailDefault, marginDefault, costDefault,
+    fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCost,
+    vMonth: value(gMonth), vPrior: value(gPrior), vYTD: value(gYTD), vProj: value(gProj)
+  };
+}
+
+// Panel UI for the Site Value/ROI card (and the drawer). Returned as the
+// inner HTML of the #roadys-contrib-<stopId> wrapper.
+function roadysContributedHTML(stopId){
+  const cg = roadysContributedValue(stopId);
+  const { monthLbl, gMonth, gYTD, gProj, gPrior, projIsRolling, GAL_PER_STOP,
+          INSIDE_RING, DEF_PCT, retailDefault, marginDefault, costDefault,
+          fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCost,
+          vMonth, vPrior, vYTD, vProj } = cg;
 
   const fmt    = n => '$' + Number(n||0).toLocaleString('en-US', {maximumFractionDigits:0});
   const fmt2   = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -6575,26 +6623,42 @@ function roadysContributedHTML(stopId){
 
   return `
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <div style="font-size:.78em;font-weight:800;letter-spacing:.04em;color:var(--green)">⛽ Roady's Contributed Gallons — ${monthLbl}</div>
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Fuel margin / gal
-          <input type="number" step="0.001" inputmode="decimal" style="${inS}"
-                 value="${fuelMargin.toFixed(3)}" placeholder="${marginDefault.toFixed(3)}"
-                 title="Net profit per contributed gallon — adjust per location"
-                 onblur="onMembershipChange('${stopId}', 'roiFuelMarginPerGal', this.value)"/>
-        </label>
+        <div style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Retail price / gal
+            <input type="number" step="0.001" inputmode="decimal" style="${inS}"
+                   value="${haveRetail ? retailPrice.toFixed(3) : ''}" placeholder="${retailDefault.toFixed(3)}"
+                   title="Retail diesel price per gallon — feeds margin (retail − cost) and DEF"
+                   onblur="onMembershipChange('${stopId}', 'roiFuelPricePerGal', this.value)"/>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Cost / gal
+            <input type="number" step="0.001" inputmode="decimal" style="${inS}"
+                   value="${haveCost ? costPerGal.toFixed(3) : ''}" placeholder="${costDefault.toFixed(3)}"
+                   title="Wholesale cost per gallon — fill alongside Retail price to auto-derive margin"
+                   onblur="onMembershipChange('${stopId}', 'roiFuelCostPerGal', this.value)"/>
+          </label>
+          ${marginDerived
+            ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Margin / gal
+                 <span style="${inS};display:inline-block;color:var(--green);font-weight:700" title="Auto-derived: retail − cost">$${fuelMargin.toFixed(3)}</span></span>`
+            : `<label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Margin / gal
+                 <input type="number" step="0.001" inputmode="decimal" style="${inS}"
+                        value="${fuelMargin.toFixed(3)}" placeholder="${marginDefault.toFixed(3)}"
+                        title="Net profit per gallon — or fill Retail price + Cost to auto-derive"
+                        onblur="onMembershipChange('${stopId}', 'roiFuelMarginPerGal', this.value)"/></label>`}
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
         ${tile('This Month',       fmt(vMonth.total), fmtGal(gMonth)+' gal')}
         ${tile('vs Prior Month',   varBig,            varSub)}
         ${tile('YTD',              fmt(vYTD.total),   fmtGal(gYTD)+' gal')}
-        ${tile('12-Mo Projection', fmt(vProj.total),  fmtGal(gProj)+' gal run-rate')}
+        ${tile('12-Mo Projection', fmt(vProj.total),  fmtGal(gProj)+(projIsRolling?' gal rolling 12-mo':' gal run-rate'))}
       </div>
       <div style="font-size:.7em;color:var(--muted);margin-top:8px;line-height:1.5">
         <b style="color:var(--text)">This month:</b>
         Fuel profit ${fmt2(vMonth.fuelProfit)} <span style="opacity:.6">(${fmtGal(gMonth)} gal × $${fuelMargin.toFixed(3)})</span>
         · Inside ${fmt2(vMonth.inside)} <span style="opacity:.6">(${fmtGal(gMonth)} ÷ ${GAL_PER_STOP} × ${fmt2(INSIDE_RING)})</span>
-        · DEF ${fmt2(vMonth.def)} <span style="opacity:.6">(${DEF_PCT}% of ${fmt(gMonth*DIESEL_PRICE)} diesel)</span>
+        · DEF ${fmt2(vMonth.def)} <span style="opacity:.6">(${DEF_PCT}% of ${fmt(gMonth*retailPrice)} retail)</span>
         ${noData ? '<br><span style="color:var(--yellow)">No fuel data for this month — values stay $0 until <code>roadys_fuel</code> is populated.</span>' : ''}
       </div>
     </div>`;
@@ -6602,13 +6666,11 @@ function roadysContributedHTML(stopId){
 
 function drawerROIHTML(stopId){
   const r = computeStopROI(stopId);
-  const rec = loadStopRecord(stopId);
   const fmt = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const fmtGal = n => Math.round(+n||0).toLocaleString();
   const m = currentMonthKey();
   const mtdGal = stopTotalGallons(stopId, m);
   const ytdGal = ytdGallonsForStop(stopId, m, 'total');
-  const inS = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:.82em;width:90px;text-align:right;font-family:var(--fm)';
 
   // ── Cost cells ─────────────────────────────────────────────────────────
   const memberCell = r.membershipMissing
@@ -6630,13 +6692,6 @@ function drawerROIHTML(stopId){
     return `<span class="value" style="font-weight:800;color:${net>0?'var(--green)':'var(--red)'}">${fmt(net)}${sym}</span>`;
   }
 
-  // ── Editable input cell for Potential-column upside rows ──────────────
-  const inpCell = (field, val, placeholder) =>
-    `<input type="number" step="0.01" inputmode="decimal" style="${inS}"
-            value="${val == null ? '' : val}"
-            placeholder="${placeholder || '0'}"
-            onblur="onMembershipChange('${stopId}', '${field}', this.value)"/>`;
-
   // ── PFF savings row (rendered only when waived) ───────────────────────
   const pffSavingsRow = r.priceFileFeeRemoved ? `
     <tr>
@@ -6644,12 +6699,6 @@ function drawerROIHTML(stopId){
       <td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--green);font-weight:700">${fmt(r.priceFileFeeSavings)}</span></td>
       <td style="text-align:right;padding:3px 0"><span class="value" style="color:var(--green);font-weight:700">${fmt(r.priceFileFeeSavings)}</span></td>
     </tr>` : '';
-
-  // ── Upside rows (Potential column only — editable inputs persist) ─────
-  const defSub     = `× $${r.defPriceDefault.toFixed(2)}/gal · sales = ${fmt(r.newDefSales)}`;
-  const insideSub  = r.insideStoreIsOverridden
-    ? `manual override — auto would be ${fmt(r.newInsideStoreEstimate)} (${r.avgRing.toFixed(2)} × ${fmtGal(r.currentGallons)} ÷ ${r.avgGalPerTxn})`
-    : `auto = ${r.avgRing.toFixed(2)} × ${fmtGal(r.currentGallons)} ÷ ${r.avgGalPerTxn} = ${fmt(r.newInsideStoreEstimate)}`;
 
   return `
     <div class="drawer-card green">
@@ -6673,14 +6722,9 @@ function drawerROIHTML(stopId){
           <tr><td style="color:var(--muted)">+ Vendor savings — currently enrolled *</td><td style="text-align:right;padding:3px 8px"><span class="value">${fmt(r.vendorSavingsCurrent)}</span></td><td style="text-align:right;padding:3px 0"><span class="value">${fmt(r.vendorSavingsCurrent)}</span></td></tr>
           <tr><td style="color:var(--muted)">+ Missed vendor opportunity *</td><td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--muted)">—</span></td><td style="text-align:right;padding:3px 0"><span class="value" style="color:var(--yellow);font-weight:700">${fmt(r.vendorSavingsOpportunity)}</span></td></tr>
           <tr>
-            <td style="color:var(--muted)">+ New DEF Gallons<div style="font-size:.7em;color:var(--muted);opacity:.7">${defSub}</div></td>
-            <td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--muted)">—</span></td>
-            <td style="text-align:right;padding:3px 0">${inpCell('roiNewDefGallons', rec.roiNewDefGallons, 'gal')}<div style="font-size:.7em;color:var(--muted);margin-top:2px">= ${fmt(r.newDefValue)}</div></td>
-          </tr>
-          <tr>
-            <td style="color:var(--muted)">+ New Inside Store Sales ($)<div style="font-size:.7em;color:var(--muted);opacity:.7">${insideSub}</div></td>
-            <td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--muted)">—</span></td>
-            <td style="text-align:right;padding:3px 0">${inpCell('roiNewInsideStoreSales', rec.roiNewInsideStoreSales, r.newInsideStoreEstimate.toFixed(2))}<div style="font-size:.7em;color:var(--muted);margin-top:2px">= ${fmt(r.newInsideValue)}</div></td>
+            <td style="color:var(--muted)">+ Roady's Contributed Gallons<div style="font-size:.7em;color:var(--muted);opacity:.7">${fmtGal(r.contributedGallonsMonth)} gal × $${r.contributedMargin.toFixed(3)}/gal margin</div></td>
+            <td style="text-align:right;padding:3px 8px"><span class="value" style="color:var(--green);font-weight:700">${fmt(r.contributedFuelProfit)}</span></td>
+            <td style="text-align:right;padding:3px 0"><span class="value" style="color:var(--green);font-weight:700">${fmt(r.contributedFuelProfit)}</span></td>
           </tr>
           <tr style="border-top:1px solid var(--border);font-weight:700"><td>VALUE / SAVINGS</td><td style="text-align:right;padding:6px 8px 3px"><span class="value">${fmt(r.valueCurrent)}</span></td><td style="text-align:right;padding:6px 0 3px"><span class="value">${fmt(r.valuePotential)}</span></td></tr>
 
