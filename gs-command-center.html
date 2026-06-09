@@ -2042,8 +2042,13 @@ const FUEL_MAY_2026_DATA = {
 
 function _fuelMergeMay2026Seed(GD){
   // May 2026 authoritative: overwrites whatever is in GD for 2026-05.
-  // April back-calc only fills if April slot is empty (FUEL_APR_2026_DATA
-  // is the primary April source and runs first via _fuelMergeApr2026Seed).
+  // The May report's prior-month column (gA) is the authoritative April
+  // TOTAL — the standalone April seed (FUEL_APR_2026_DATA.g, applied first
+  // via _fuelMergeApr2026Seed) disagrees for some stops (e.g. R00179: 9,489
+  // vs 40,384). So when gA carries a real value we OVERRIDE April's total
+  // with it; the April agg/fleet/rack detail is preserved (it comes from the
+  // April report and may not re-sum to gA — the total is authoritative).
+  // YTD is unaffected: ytdGallonsForStop short-circuits to the seed `.ytd`.
   if(typeof FUEL_MAY_2026_DATA !== 'object') return GD;
   const merged = (GD && typeof GD === 'object') ? Object.assign({}, GD) : {};
   for(const sid in FUEL_MAY_2026_DATA){
@@ -2056,9 +2061,11 @@ function _fuelMergeMay2026Seed(GD){
       fleets:      [{name:'Fleet Cards (May 2026 report)', processor:'', gallons: d.fl}],
       rack: mayPrev.rack || {}
     });
-    if(!existing['2026-04'] || (+existing['2026-04'].gallons||0) === 0){
+    // gA > 0 → reconcile (override) April's total; otherwise keep prior
+    // fill-if-empty behavior so stops with no real gA aren't zeroed out.
+    if(+d.gA > 0 || !existing['2026-04'] || (+existing['2026-04'].gallons||0) === 0){
       existing['2026-04'] = Object.assign({}, existing['2026-04']||{}, {
-        gallons: d.gA,
+        gallons: +d.gA || 0,
         aggregators: existing['2026-04']?.aggregators || [],
         fleets:      existing['2026-04']?.fleets || [],
         rack:        existing['2026-04']?.rack || {}
