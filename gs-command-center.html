@@ -671,6 +671,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-img-slot{position:relative;background:linear-gradient(135deg,var(--b-bg-3),var(--b-bg-2));border:1.5px dashed var(--b-line-2);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--b-mute-2);font-size:.84em;font-weight:500;overflow:hidden;transition:all .15s}
 .br-img-slot:not(.has-img):hover{border-color:#0ea5e9;color:#0ea5e9;background:linear-gradient(135deg,#eff6ff,#dbeafe);cursor:pointer}
 .br-img-slot img{width:100%;height:100%;object-fit:cover;display:block}
+.br-img-slot.br-img-drag{border-color:var(--b-blue);background:var(--b-blue-100)}
 .br-img-slot .br-img-empty{display:flex;align-items:center;justify-content:center;text-align:center;padding:0 14px;line-height:1.4;pointer-events:none}
 .br-img-slot.has-img .br-img-empty{display:none}
 .br-img-slot.img-broken .br-img-empty{display:flex}
@@ -793,6 +794,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s4-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;flex:1;min-height:0}
 .br-s4-photo{flex:0 0 30%;min-height:0;margin-top:16px;position:relative}
 .br-s4-photo .br-img-slot{height:100%}
+.br-s4-photo .br-img-slot.has-img{background:#fff;border:1px solid var(--b-line)}
+.br-s4-photo .br-img-slot img{object-fit:contain}
 .br-cost-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:.84em}
 .br-cost-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--b-line);align-items:center}
 .br-cost-row:last-child{border-bottom:none}
@@ -10836,7 +10839,7 @@ function brImgSlot(slot, label, opts){
     ? `<a class="br-img-link-wrap" href="${esc(linkTo)}" target="_blank" rel="noopener" title="Open ${esc(linkTo)}">${imgTag}</a>`
     : imgTag;
   return `
-    <div class="br-img-slot${has}${linkCls} ${cls}" style="${style}" data-br-slot="${esc(slot)}"${fromGallery ? ' data-from-gallery="1"' : ''}>
+    <div class="br-img-slot${has}${linkCls} ${cls}" style="${style}" data-br-slot="${esc(slot)}"${fromGallery ? ' data-from-gallery="1"' : ''} ondragover="event.preventDefault();this.classList.add('br-img-drag')" ondragleave="this.classList.remove('br-img-drag')" ondrop="brOnDrop(event,'${esc(slot)}')">
       ${wrapped}
       <span class="br-img-empty">📷 ${esc(label || 'Click or drop image')}</span>
       <input type="file" accept="image/*" class="br-img-overlay" onchange="brOnImage(event,'${esc(slot)}')"/>
@@ -10858,6 +10861,38 @@ function brTriggerUpload(slot){
 function brIsLogoLikeSlot(slot){
   return slot === 'logo' || /(?:^logo$|^s2-|^s10-|aom|cocacola)/i.test(slot);
 }
+// Detect a uniform solid border around an image (a screenshot's white margins
+// or ragged/uneven edges) and return the content crop box, or null if there's
+// nothing meaningful to trim. Lets us auto-clean dropped screenshots so they
+// fill the slot without ragged borders. Bails out if the trim would be too
+// aggressive (so a mostly-blank image isn't cropped to nothing).
+function brAutoTrimBox(img, w, h){
+  try {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0);
+    const data = cx.getImageData(0, 0, w, h).data;
+    const off = (x, y) => ((y * w + x) << 2);
+    const at  = (x, y) => { const i = off(x, y); return [data[i], data[i+1], data[i+2]]; };
+    // Reference border colour = average of the four corners
+    const cn = [at(0,0), at(w-1,0), at(0,h-1), at(w-1,h-1)];
+    const ref = [0,1,2].map(k => Math.round((cn[0][k] + cn[1][k] + cn[2][k] + cn[3][k]) / 4));
+    const tol = 20;
+    const isRef = i => Math.abs(data[i]-ref[0]) <= tol && Math.abs(data[i+1]-ref[1]) <= tol && Math.abs(data[i+2]-ref[2]) <= tol;
+    const rowUniform = y => { for(let x=0;x<w;x++){ if(!isRef(off(x,y))) return false; } return true; };
+    const colUniform = x => { for(let y=0;y<h;y++){ if(!isRef(off(x,y))) return false; } return true; };
+    let top=0, bottom=h-1, left=0, right=w-1;
+    while(top < bottom && rowUniform(top)) top++;
+    while(bottom > top && rowUniform(bottom)) bottom--;
+    while(left < right && colUniform(left)) left++;
+    while(right > left && colUniform(right)) right--;
+    const cw = right - left + 1, ch = bottom - top + 1;
+    if(left===0 && top===0 && right===w-1 && bottom===h-1) return null;   // nothing trimmed
+    if(cw < w*0.2 || ch < h*0.2 || cw < 16 || ch < 16) return null;       // too aggressive
+    return { x:left, y:top, w:cw, h:ch };
+  } catch(e){ return null; }
+}
 function brResizeImageToDataURL(file, opts){
   const o = opts || {};
   const isLogo = !!o.logo;
@@ -10872,8 +10907,15 @@ function brResizeImageToDataURL(file, opts){
       const img = new Image();
       img.onerror = () => reject(new Error('decode failed'));
       img.onload = () => {
-        let w = img.naturalWidth || img.width;
-        let h = img.naturalHeight || img.height;
+        // Source rect = full image, unless auto-trim finds a solid border to crop.
+        let sx = 0, sy = 0;
+        let sw = img.naturalWidth || img.width;
+        let sh = img.naturalHeight || img.height;
+        if(o.trim){
+          const box = brAutoTrimBox(img, sw, sh);
+          if(box){ sx = box.x; sy = box.y; sw = box.w; sh = box.h; }
+        }
+        let w = sw, h = sh;
         if(w > maxDim || h > maxDim){
           const ratio = Math.min(maxDim / w, maxDim / h);
           w = Math.max(1, Math.round(w * ratio));
@@ -10887,7 +10929,7 @@ function brResizeImageToDataURL(file, opts){
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, w, h);
         }
-        ctx.drawImage(img, 0, 0, w, h);
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
         try { resolve(canvas.toDataURL(mime, quality)); }
         catch(e){ reject(e); }
       };
@@ -10913,12 +10955,16 @@ function brStorageBytes(){
   } catch(e){}
   return total;
 }
-function brOnImage(ev, slot){
-  const f = ev.target.files && ev.target.files[0];
-  if(ev.target) ev.target.value = '';
+// Slots whose images are screenshots/photos we want auto-trimmed (ragged
+// borders removed) and contain-fit to the slot. Extend as needed.
+function brIsScreenshotSlot(slot){
+  return slot === 's4-photo';
+}
+function brProcessImageFile(f, slot){
   if(!f) return;
+  if(f.type && !/^image\//.test(f.type)){ toast('Please choose an image file'); return; }
   const isLogo = brIsLogoLikeSlot(slot);
-  brResizeImageToDataURL(f, { logo: isLogo }).then(dataUrl => {
+  brResizeImageToDataURL(f, { logo: isLogo, trim: brIsScreenshotSlot(slot) }).then(dataUrl => {
     if(!_brData.images) _brData.images = {};
     _brData.images[slot] = dataUrl;
     try {
@@ -10939,6 +10985,22 @@ function brOnImage(ev, slot){
     console.error('br image load failed', err);
     toast('Could not load image — please try a different file.');
   });
+}
+function brOnImage(ev, slot){
+  const f = ev.target.files && ev.target.files[0];
+  if(ev.target) ev.target.value = '';
+  brProcessImageFile(f, slot);
+}
+// Drag-and-drop onto a slot (works for empty slots and to replace an existing
+// image). preventDefault on the drop cancels the file input's native handling,
+// so the file is only processed once.
+function brOnDrop(ev, slot){
+  ev.preventDefault();
+  const el = ev.currentTarget;
+  if(el) el.classList.remove('br-img-drag');
+  const dt = ev.dataTransfer;
+  const f = dt && dt.files && dt.files[0];
+  if(f) brProcessImageFile(f, slot);
 }
 function brRemoveImage(slot){
   if(_brData && _brData.images) delete _brData.images[slot];
