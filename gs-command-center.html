@@ -12069,15 +12069,28 @@ function brTblCell(slide, key, idx, field, value){
 function brRender(){
   const stop = MEMBERS.find(m => m.id === _brStopId);
   if(!stop){ brClose(); return; }
-  const d = brBuildAutoData(_brStopId, _brPeriod);
+  let d;
+  try { d = brBuildAutoData(_brStopId, _brPeriod); }
+  catch(e){ console.error('Business Review: data build failed', e); alert('Could not build the Business Review:\n' + ((e && e.message) || e)); return; }
   if(!d){ brClose(); return; }
 
   const headerStop = `${esc(d.stop.name)} — ${esc(d.stop.id)}`;
-  const slides = [
-    brSlide1(d), brSlide2(d), brSlide3(d), brSlide4(d), brSlide5(d),
-    brSlide6(d), brSlide7(d), brSlide8(d), brSlide9(d), brSlide10(d),
-    brSlide11(d), brSlide12(d), brSlide13(d)
-  ];
+  // Build each slide independently so one slide throwing can't blank the whole
+  // deck — a failed slide renders an inline error (with the message) instead.
+  const builders = [brSlide1, brSlide2, brSlide3, brSlide4, brSlide5,
+    brSlide6, brSlide7, brSlide8, brSlide9, brSlide10,
+    brSlide11, brSlide12, brSlide13];
+  const slides = builders.map((fn, i) => {
+    try { return fn(d); }
+    catch(e){
+      console.error('Business Review: slide ' + (i+1) + ' failed to render', e);
+      return `<div class="br-slide${(i+1)===_brSlide?' active':''}" data-slide="${i+1}">`
+        + `<div style="padding:60px 40px;text-align:center;color:#b91c1c;font-family:system-ui,sans-serif">`
+        + `<h2 style="margin:0 0 8px">Slide ${i+1} couldn’t render</h2>`
+        + `<p style="color:#64748b;font-size:.9em;margin:0">${esc((e && e.message) || 'Unknown error')}</p>`
+        + `</div></div>`;
+    }
+  });
   const thumbs = slides.map((_, i) => `<div class="br-thumb${(i+1)===_brSlide?' active':''}" onclick="brGoSlide(${i+1})">${i+1}</div>`).join('');
 
   document.getElementById('br-overlay').innerHTML = `
