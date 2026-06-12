@@ -748,13 +748,13 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-cover-chip .lbl{font-size:.62em;letter-spacing:.16em;text-transform:uppercase;color:rgba(203,213,225,.7);font-weight:700;margin-bottom:3px}
 .br-cover-chip .val{font-size:1.15em;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
 .br-cover-chip .val .sub{font-size:.6em;font-weight:500;color:rgba(203,213,225,.6);margin-left:4px}
-.br-cover-r{position:relative;overflow:hidden;background:#0f172a;display:flex;flex-direction:column}
+.br-cover-r{position:relative;overflow:hidden;background:#0f172a;display:flex;flex-direction:column;gap:8px}
 .br-cover-r .br-img-slot{position:absolute;inset:0;border-radius:0;border:none;background:#0f172a}
 .br-cover-r .br-img-slot:hover{background:#1e293b}
 .br-cover-r::after{content:'';position:absolute;left:0;top:0;bottom:0;width:80px;background:linear-gradient(90deg,rgba(15,23,42,.4) 0%,transparent 100%);pointer-events:none;z-index:2}
 /* Right panel = two stacked photo zones: main 70% (landscape), satellite 30% */
-.br-cover-photo-main{position:relative;flex:0 0 70%;min-height:0;overflow:hidden}
-.br-cover-photo-sat{position:relative;flex:0 0 30%;min-height:0;overflow:hidden;border-top:2px solid rgba(255,255,255,.14)}
+.br-cover-photo-main{position:relative;flex:0 0 calc(70% - 4px);min-height:0;overflow:hidden}
+.br-cover-photo-sat{position:relative;flex:0 0 calc(30% - 4px);min-height:0;overflow:hidden}
 .br-cover-sat-label{position:absolute;left:12px;top:10px;z-index:3;display:inline-flex;align-items:center;gap:5px;background:rgba(15,23,42,.82);border:1px solid rgba(148,163,184,.3);color:#e2e8f0;font-size:.6em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:4px 9px;border-radius:6px;backdrop-filter:blur(6px)}
 .br-cover-credit{position:absolute;bottom:24px;right:32px;font-size:.66em;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;font-weight:600;z-index:3;text-align:right}
 .br-cover-credit .gs{color:rgba(255,255,255,.85);font-weight:700;font-size:1.1em;letter-spacing:.04em;text-transform:none;display:block;margin-bottom:2px}
@@ -762,6 +762,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-stopphoto-saved{font-size:.72em;color:#a5f3fc;border-color:rgba(34,211,238,.4)}
 .br-stopphoto-saved b{color:#fff;font-weight:700}
 .br-stopphoto-publish .br-btn{padding:7px 14px;font-size:.78em}
+.br-stopphoto-dismiss{background:transparent;border:none;color:#a5f3fc;font-size:1.05em;line-height:1;cursor:pointer;padding:0 2px;opacity:.75}
+.br-stopphoto-dismiss:hover{opacity:1;color:#fff}
 
 /* ─── SLIDE 2 — KPI Pillars ──────────────────────────────────────────── */
 .br-pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;min-height:0}
@@ -11286,7 +11288,7 @@ function brStopPhotoSaveBtn(d){
   const existing = _galleryCache.find(r => r.slot_key === slot);
   const alreadyPublished = existing && existing.data_url === perDeck;
   if(alreadyPublished) {
-    return `<div class="br-stopphoto-saved">📚 Published to gallery as <b>${esc(d.stop.name)}</b> — future decks for this stop will auto-pull this photo.</div>`;
+    return `<div class="br-stopphoto-saved">📚 Published to gallery as <b>${esc(d.stop.name)}</b> — future decks for this stop will auto-pull this photo.<button class="br-stopphoto-dismiss" title="Dismiss" onclick="this.closest('.br-stopphoto-saved').remove()">✕</button></div>`;
   }
   const stopJs = (d.stop.id || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const nameJs = (d.stop.name || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
