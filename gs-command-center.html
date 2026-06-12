@@ -791,6 +791,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 
 /* ─── SLIDE 4 — Competition + Cost Components ─────────────────────────── */
 .br-s4-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;flex:1;min-height:0}
+.br-s4-photo{flex:0 0 30%;min-height:0;margin-top:16px;position:relative}
+.br-s4-photo .br-img-slot{height:100%}
 .br-cost-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:.84em}
 .br-cost-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--b-line);align-items:center}
 .br-cost-row:last-child{border-bottom:none}
@@ -11474,6 +11476,9 @@ function brSlide4(d){
             <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('doc')} Cost Components</span></div>
             <div class="br-cost-grid">${costRows}</div>
           </div>
+        </div>
+        <div class="br-s4-photo">
+          ${brImgSlot('s4-photo','Click or drop an image — price board, lane map, signage…',{style:'height:100%'})}
         </div>
       </div>
       ${brSfoot(d, 4)}
