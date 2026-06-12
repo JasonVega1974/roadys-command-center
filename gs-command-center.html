@@ -739,7 +739,10 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-cover-eyebrow{font-size:.78em;font-weight:600;letter-spacing:.32em;text-transform:uppercase;color:#fca5a5;margin-bottom:14px;position:relative;z-index:1}
 .br-cover-h1{font-size:3.6em;font-weight:800;line-height:.98;letter-spacing:-.025em;color:#fff;margin:0 0 16px;position:relative;z-index:1}
 .br-cover-stop{font-size:1.3em;font-weight:600;color:rgba(255,255,255,.85);margin:0 0 6px;position:relative;z-index:1}
-.br-cover-meta{font-size:.84em;color:rgba(203,213,225,.7);font-weight:500;margin-bottom:24px;position:relative;z-index:1;font-variant-numeric:tabular-nums}
+.br-cover-meta{font-size:.84em;color:rgba(203,213,225,.7);font-weight:500;margin-bottom:18px;position:relative;z-index:1;font-variant-numeric:tabular-nums}
+.br-cover-mission{position:relative;z-index:1;margin-bottom:6px}
+.br-cover-mission-h{font-size:.64em;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#fca5a5;margin-bottom:6px}
+.br-cover-mission-p{font-size:.9em;line-height:1.5;color:rgba(255,255,255,.82);font-weight:500}
 .br-cover-chips{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:auto;position:relative;z-index:1}
 .br-cover-chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px}
 .br-cover-chip .lbl{font-size:.62em;letter-spacing:.16em;text-transform:uppercase;color:rgba(203,213,225,.7);font-weight:700;margin-bottom:3px}
@@ -11316,6 +11319,10 @@ function brSlide1(d){
           <h1 class="br-cover-h1">${brEditable(1,'title','Business Review',{tag:'span'})}</h1>
           <div class="br-cover-stop">${brEditable(1,'stop', d.stop.name, {tag:'span'})}</div>
           <div class="br-cover-meta">${brEditable(1,'period', d.periodLabel)} · ${esc(d.stop.city||'')}, ${esc(d.stop.state||'')}</div>
+          <div class="br-cover-mission">
+            <div class="br-cover-mission-h">${brEditable(1,'missionH','Our Mission')}</div>
+            <div class="br-cover-mission-p">${brEditable(1,'missionP','To make our stops more successful. We reach this goal primarily through fleet fuel marketing, our loyalty rewards and a variety of vendor programs.',{tag:'span'})}</div>
+          </div>
           <div class="br-cover-chips">
             <div class="br-cover-chip">
               <div class="lbl">YTD Gallons (${d.year})</div>
