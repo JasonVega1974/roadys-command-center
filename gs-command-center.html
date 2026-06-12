@@ -729,7 +729,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-stat.success .val{color:var(--b-success)}
 
 /* ─── SLIDE 1 — COVER ────────────────────────────────────────────────── */
-.br-cover{position:absolute;inset:0;display:grid;grid-template-columns:1.05fr 1fr}
+.br-cover{position:absolute;inset:0;display:grid;grid-template-columns:40% 60%}
 .br-cover-l{background:var(--b-cover);color:#fff;padding:48px 44px 36px;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .br-cover-l::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:var(--b-red)}
 .br-cover-l::after{content:'';position:absolute;right:-200px;bottom:-200px;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(220,38,38,.15) 0%,transparent 60%)}
@@ -745,10 +745,14 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-cover-chip .lbl{font-size:.62em;letter-spacing:.16em;text-transform:uppercase;color:rgba(203,213,225,.7);font-weight:700;margin-bottom:3px}
 .br-cover-chip .val{font-size:1.15em;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
 .br-cover-chip .val .sub{font-size:.6em;font-weight:500;color:rgba(203,213,225,.6);margin-left:4px}
-.br-cover-r{position:relative;overflow:hidden;background:#0f172a}
+.br-cover-r{position:relative;overflow:hidden;background:#0f172a;display:flex;flex-direction:column}
 .br-cover-r .br-img-slot{position:absolute;inset:0;border-radius:0;border:none;background:#0f172a}
 .br-cover-r .br-img-slot:hover{background:#1e293b}
 .br-cover-r::after{content:'';position:absolute;left:0;top:0;bottom:0;width:80px;background:linear-gradient(90deg,rgba(15,23,42,.4) 0%,transparent 100%);pointer-events:none;z-index:2}
+/* Right panel = two stacked photo zones: main 70% (landscape), satellite 30% */
+.br-cover-photo-main{position:relative;flex:0 0 70%;min-height:0;overflow:hidden}
+.br-cover-photo-sat{position:relative;flex:0 0 30%;min-height:0;overflow:hidden;border-top:2px solid rgba(255,255,255,.14)}
+.br-cover-sat-label{position:absolute;left:12px;top:10px;z-index:3;display:inline-flex;align-items:center;gap:5px;background:rgba(15,23,42,.82);border:1px solid rgba(148,163,184,.3);color:#e2e8f0;font-size:.6em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:4px 9px;border-radius:6px;backdrop-filter:blur(6px)}
 .br-cover-credit{position:absolute;bottom:24px;right:32px;font-size:.66em;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;font-weight:600;z-index:3;text-align:right}
 .br-cover-credit .gs{color:rgba(255,255,255,.85);font-weight:700;font-size:1.1em;letter-spacing:.04em;text-transform:none;display:block;margin-bottom:2px}
 .br-stopphoto-publish,.br-stopphoto-saved{position:absolute;left:24px;bottom:24px;display:flex;align-items:center;gap:10px;background:rgba(15,23,42,.85);border:1px solid rgba(148,163,184,.25);padding:8px 12px;border-radius:10px;backdrop-filter:blur(6px);z-index:3;max-width:calc(100% - 200px)}
@@ -11328,11 +11332,17 @@ function brSlide1(d){
           </div>
         </div>
         <div class="br-cover-r">
-          ${brImgSlot('s1-photo','Click to upload truck-stop photo',{ gallery: { stopId: d.stop.id } })}
-          ${brStopPhotoSaveBtn(d)}
-          <div class="br-cover-credit">
-            <span class="gs">${brEditable(1,'gsName', d.stop.gs)}</span>
-            <span>${brEditable(1,'gsRole','Growth Strategist')}</span>
+          <div class="br-cover-photo-main">
+            ${brImgSlot('s1-photo','Click to upload truck-stop photo',{ gallery: { stopId: d.stop.id } })}
+            ${brStopPhotoSaveBtn(d)}
+            <div class="br-cover-credit">
+              <span class="gs">${brEditable(1,'gsName', d.stop.gs)}</span>
+              <span>${brEditable(1,'gsRole','Growth Strategist')}</span>
+            </div>
+          </div>
+          <div class="br-cover-photo-sat">
+            ${brImgSlot('s1-satellite','Click to upload Google Satellite View',{ gallery: { stopId: d.stop.id } })}
+            <span class="br-cover-sat-label">🛰 Google Satellite View</span>
           </div>
         </div>
       </div>
