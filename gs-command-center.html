@@ -10556,6 +10556,31 @@ let _brSlide = 1;
 let _brData = null;        // {slides:{1:{...}, ...}, images:{slot:dataUrl}, period}
 let _brGallonsChart = null;
 let _brRewardsChart = null;
+let _brGlobal = null;       // render-scoped cache of the global brand/defaults store
+let _brApplyAll = false;    // manager "apply edits to all stops" mode (9999 view only)
+function brGlobalGet(){ return _brGlobal || (_brGlobal = brLoadGlobal()); }
+function brApplyAllActive(){ return !!(_brApplyAll && currentUser && currentUser.isManager); }
+function brSetGlobalField(slide, key, value){
+  const g = brLoadGlobal();
+  if(!g.fields) g.fields = {};
+  if(!g.fields[slide]) g.fields[slide] = {};
+  g.fields[slide][key] = value;
+  try { brSaveGlobal(g); _brGlobal = null; } catch(e){}
+}
+function brSetGlobalImage(slot, dataUrl){
+  const g = brLoadGlobal();
+  g[slot] = dataUrl;
+  try { brSaveGlobal(g); _brGlobal = null; toast('📌 Photo applied to all stops'); }
+  catch(e){ toast('Could not apply photo to all — storage full'); }
+}
+function brToggleApplyAll(){
+  _brApplyAll = !_brApplyAll;
+  try { localStorage.setItem('br_apply_all', _brApplyAll ? '1' : '0'); } catch(e){}
+  toast(_brApplyAll
+    ? '📌 Apply-to-all ON — text edits & photo uploads now set the default for EVERY stop'
+    : 'Apply-to-all OFF — edits affect this stop only');
+  brRender();
+}
 
 function brLoadAll(){
   try { return JSON.parse(localStorage.getItem(BR_LS_KEY) || '{}') || {}; } catch(e){ return {}; }
@@ -10749,6 +10774,7 @@ function brOpen(stopId, period){
   _brData = saved || { fields: {}, images: {}, period: _brPeriod, savedAt: null };
   if(!_brData.fields) _brData.fields = {};
   if(!_brData.images) _brData.images = {};
+  try { _brApplyAll = localStorage.getItem('br_apply_all') === '1'; } catch(e){}
   _brSlide = 1;
   document.getElementById('br-overlay').classList.add('show');
   brRender();
@@ -10792,7 +10818,9 @@ function brNext(){ brGoSlide(_brSlide + 1); }
 // Field reader/writer with auto-data fallback.
 function brField(slide, key, defaultVal){
   const f = _brData.fields[slide];
-  if(f && Object.prototype.hasOwnProperty.call(f, key)) return f[key];
+  if(f && Object.prototype.hasOwnProperty.call(f, key)) return f[key];   // per-deck override wins
+  const gf = brGlobalGet().fields;                                       // manager "apply to all" default
+  if(gf && gf[slide] && Object.prototype.hasOwnProperty.call(gf[slide], key)) return gf[slide][key];
   return defaultVal;
 }
 function brFieldChanged(slide, key, value){
@@ -10825,7 +10853,7 @@ function brImgSlot(slot, label, opts){
   const galleryOpts = o.gallery || null;   // { vendorId, stopId } — extras for the gallery lookup
   const perDeck = (_brData && _brData.images && _brData.images[slot]) || '';
   const galleryUrl = !perDeck ? gallerySrc(Object.assign({ slot }, galleryOpts || {})) : '';
-  const globalDefault = (!perDeck && !galleryUrl) ? (brLoadGlobal()[slot] || '') : '';
+  const globalDefault = (!perDeck && !galleryUrl) ? (brGlobalGet()[slot] || '') : '';
   const src = perDeck || galleryUrl || globalDefault || fileDefault;
   const has = src ? ' has-img' : '';
   const linkCls = linkTo ? ' has-link' : '';
@@ -10969,6 +10997,7 @@ function brProcessImageFile(f, slot){
     _brData.images[slot] = dataUrl;
     try {
       brSave();
+      if(brApplyAllActive()) brSetGlobalImage(slot, dataUrl);   // 9999: set photo default for all stops
       brRender();
     } catch(err){
       // Save failed — roll back so we don't display a phantom image
@@ -11245,6 +11274,7 @@ function brBindEditables(){
       if(!slide || !key) return;
       brFieldChanged(slide, key, el.innerText);
       brSave();
+      if(brApplyAllActive()) brSetGlobalField(slide, key, el.innerText);   // 9999: propagate to all stops
       if(slide === 11) brRecalcSlide11();
     });
   });
@@ -12069,6 +12099,7 @@ function brTblCell(slide, key, idx, field, value){
 function brRender(){
   const stop = MEMBERS.find(m => m.id === _brStopId);
   if(!stop){ brClose(); return; }
+  _brGlobal = brLoadGlobal();   // refresh global-defaults cache for this render
   let d;
   try { d = brBuildAutoData(_brStopId, _brPeriod); }
   catch(e){ console.error('Business Review: data build failed', e); alert('Could not build the Business Review:\n' + ((e && e.message) || e)); return; }
@@ -12108,6 +12139,7 @@ function brRender(){
       <span class="br-page-ind" id="br-page-ind">Slide ${_brSlide} of 13</span>
       <button class="br-btn" onclick="brNext()">Next →</button>
       <button class="br-btn" onclick="brResetSlide()" title="Clear edits on the current slide">↺ Reset slide</button>
+      ${currentUser?.isManager ? `<button class="br-btn${_brApplyAll?' primary':''}" onclick="brToggleApplyAll()" title="Manager only: when ON, your text edits and photo uploads become the default for EVERY stop's review (a stop's own edits still take priority)">📌 Apply to all: ${_brApplyAll?'ON':'OFF'}</button>` : ''}
       <div class="br-menu" id="br-menu">
         <button class="br-btn" onclick="brToggleMenu(event)" title="Theme & brand assets">🎨 Brand ▾</button>
         <div class="br-menu-pop" id="br-menu-pop"></div>
