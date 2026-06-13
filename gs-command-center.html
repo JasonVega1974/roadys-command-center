@@ -10326,6 +10326,13 @@ const VENDOR_LEGACY_SLOTS = {
   'V00033': 's10-cocacola',   // Coca-Cola
   'V00005': 's10-aom'         // All Over Media
 };
+// Default "Potential Savings" text per vendor — pre-fills the Slide 10
+// Additional-Programs savings box when that program is selected (editable).
+const VENDOR_SAVINGS = {
+  'V00022': '3-4%',       // Lynco
+  'V00002': '5%',         // Farmer Brothers
+  'V00033': '$5 / BiB'    // Coca-Cola
+};
 function gallerySrc(opts){
   // Synchronous lookup — returns a data URL / asset path or '' if no match.
   // The gallery cache is primed via galleryLoad() (the deck primes it on open).
@@ -12018,11 +12025,13 @@ function brSlide10(d){
   const oppDefaults = ['V00040', 'V00134', 'V00112'];
   const oppGrid = [0, 1, 2].map(i => {
     const sel = brField(10, 'oppVid' + i, oppDefaults[i]);
+    const savKey = 'pSav-' + (sel || i);
+    const savDefault = (sel && VENDOR_SAVINGS[sel]) || '$0';
     return `<div class="br-s10-opp">
       ${brImgSlot('s10-opplogo-' + i, 'Upload / replace logo', { gallery:{ vendorId: sel }, cls:'br-s10-opp-logo' })}
       <select class="br-s10-opp-sel" onchange="brFieldChanged(10,'oppVid${i}',this.value);brSave();brRender()">${vendorOptions(sel)}</select>
       <div class="br-s10-opp-savlbl">Potential Savings</div>
-      <div class="br-s10-opp-sav">$ ${brEditable(10, 'pSav' + i, '0', {tag:'span'})}</div>
+      <div class="br-s10-opp-sav">${brEditable(10, savKey, savDefault, {tag:'span'})}</div>
     </div>`;
   }).join('');
   return `
