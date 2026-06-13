@@ -10298,30 +10298,31 @@ async function galleryLoad(force){
   return _galleryLoading;
 }
 
+// Bundled vendor-logo assets (committed under assets/vendor-logos/), keyed by
+// vendor id. Used as a fallback when the shared gallery has no entry for the
+// vendor — so these logos render without a Supabase upload.
+const VENDOR_LOGO_ASSETS = {
+  'V00134': 'assets/vendor-logos/V00134.png',  // Cintas
+  'V00040': 'assets/vendor-logos/V00040.png',  // Entegra
+  'V00112': 'assets/vendor-logos/V00112.png'   // Truck Parking Club
+};
 function gallerySrc(opts){
-  // Synchronous lookup — returns a data URL or '' if no match. The cache must
-  // be primed first via galleryLoad(); the deck primes it on open.
+  // Synchronous lookup — returns a data URL / asset path or '' if no match.
+  // The gallery cache is primed via galleryLoad() (the deck primes it on open).
   const o = opts || {};
-  if(!_galleryCache.length) return '';
   const slot = o.slot || '';
   const vendorId = o.vendorId || '';
   const stopId = o.stopId || '';
-  // 1. exact slot match
-  if(slot){
-    const m = _galleryCache.find(r => r.slot_key === slot);
-    if(m && m.data_url) return m.data_url;
+  if(_galleryCache.length){
+    // 1. exact slot match
+    if(slot){ const m = _galleryCache.find(r => r.slot_key === slot); if(m && m.data_url) return m.data_url; }
+    // 2. stop-photo:<id>
+    if(stopId){ const k = 'stop-photo:' + stopId; const m = _galleryCache.find(r => r.slot_key === k); if(m && m.data_url) return m.data_url; }
+    // 3. vendor:<id>
+    if(vendorId){ const m = _galleryCache.find(r => r.vendor_id === vendorId); if(m && m.data_url) return m.data_url; }
   }
-  // 2. stop-photo:<id>
-  if(stopId){
-    const k = 'stop-photo:' + stopId;
-    const m = _galleryCache.find(r => r.slot_key === k);
-    if(m && m.data_url) return m.data_url;
-  }
-  // 3. vendor:<id>
-  if(vendorId){
-    const m = _galleryCache.find(r => r.vendor_id === vendorId);
-    if(m && m.data_url) return m.data_url;
-  }
+  // 4. bundled vendor-logo asset fallback (gallery upload always wins over this)
+  if(vendorId && VENDOR_LOGO_ASSETS[vendorId]) return VENDOR_LOGO_ASSETS[vendorId];
   return '';
 }
 
@@ -11976,16 +11977,12 @@ function brSlide10(d){
         </div>
       </div>`;
   }
-  // Build "additional programs" suggestions from non-enrolled high-priority vendors
-  const enrolledIds = new Set(enrolled.map(v => v.id));
-  const masterForOpps = master || loadVendorMaster();
-  const opps = masterForOpps.VP_VENDORS
-    .filter(v => v.priority === 'High' && v.status === 'Active' && !enrolledIds.has(v.id))
-    .slice(0, 3);
-  const oppList = opps.length ? opps : [
-    { id:'', name:'Lynco Products' },
-    { id:'', name:'Truck Parking Club' },
-    { id:'', name:'Sysco' }
+  // Additional Programs to Consider — featured upsell vendors. Logos resolve
+  // via the shared gallery or the bundled vendor-logo assets (VENDOR_LOGO_ASSETS).
+  const oppList = [
+    { id:'V00040', name:'Entegra' },
+    { id:'V00134', name:'Cintas' },
+    { id:'V00112', name:'Truck Parking Club' }
   ];
   const oppGrid = oppList.map((v, i) => {
     const logo = v.id ? gallerySrc({ vendorId: v.id }) : '';
