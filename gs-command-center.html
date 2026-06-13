@@ -626,12 +626,14 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 #br-overlay:-webkit-full-screen .br-slide{width:min(98vw, calc((100vh - 120px) * 16 / 9));font-size:calc(min(98vw, (100vh - 120px) * 16 / 9) * .0118)}
 /* Presenting: hide in-slide editing controls (dropdowns, image hover controls) */
 #br-overlay:fullscreen .br-s10-opp-sel,
+#br-overlay:fullscreen .br-s8-photo-btn,
 #br-overlay:fullscreen .br-img-rep,
 #br-overlay:fullscreen .br-img-rm,
 #br-overlay:fullscreen .br-img-gallery-tag,
 #br-overlay:fullscreen .br-img-overlay,
 #br-overlay:fullscreen .br-img-empty{display:none!important}
 #br-overlay:-webkit-full-screen .br-s10-opp-sel,
+#br-overlay:-webkit-full-screen .br-s8-photo-btn,
 #br-overlay:-webkit-full-screen .br-img-rep,
 #br-overlay:-webkit-full-screen .br-img-rm,
 #br-overlay:-webkit-full-screen .br-img-gallery-tag,
@@ -880,29 +882,42 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s7-link{background:var(--b-blue);color:#fff;padding:8px 14px;border-radius:8px;font-weight:600;font-size:.78em;letter-spacing:.01em;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 
 /* ─── SLIDE 8 — Volume Performance ───────────────────────────────────── */
-.br-s8{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;flex:1;min-height:0}
-.br-s8-l{display:flex;flex-direction:column;gap:10px;min-height:0}
-.br-s8-hero{background:linear-gradient(135deg,var(--b-blue) 0%,var(--b-blue-deep) 100%);color:#fff;border-radius:14px;padding:18px 22px;display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;position:relative;overflow:hidden;box-shadow:0 12px 24px -8px rgba(29,78,216,.35)}
-.br-s8-hero::after{content:'';position:absolute;right:-60px;top:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%)}
-.br-s8-hero .lbl{font-size:.68em;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85}
-.br-s8-hero .num{font-size:2.6em;font-weight:800;line-height:.95;font-variant-numeric:tabular-nums;letter-spacing:-.025em;margin-top:2px}
-.br-s8-hero .sub{font-size:.74em;font-weight:500;opacity:.75;margin-top:4px}
-.br-s8-rack{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:.76em}
-.br-s8-rack-cell{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:8px;padding:8px 10px}
-.br-s8-rack-cell .l{font-size:.84em;color:var(--b-mute-2);font-weight:600}
-.br-s8-rack-cell .v{font-weight:700;color:var(--b-ink);font-variant-numeric:tabular-nums;margin-top:2px}
-.br-s8-chart{flex:1;background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:12px 14px;position:relative;min-height:140px;display:flex;flex-direction:column}
-.br-s8-chart .hd{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:6px}
+.br-s8{display:grid;grid-template-columns:1.45fr 1fr;grid-template-rows:1fr 1fr;gap:12px;flex:1;min-height:0}
+.br-s8-cell{min-height:0;min-width:0;position:relative}
+.br-s8-panel{position:relative;height:100%;background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;overflow:hidden}
+.br-s8-panel.br-img-drag{border-color:var(--b-blue);box-shadow:inset 0 0 0 2px var(--b-blue-100)}
+.br-s8-panel-content{position:absolute;inset:0;padding:14px;overflow:hidden}
+.br-s8-photoslot{position:absolute;inset:0;border-radius:14px;background:#fff}
+.br-s8-photoslot img{width:100%;height:100%;object-fit:contain}
+.br-s8-photo-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.92);border:1px solid var(--b-line);border-radius:8px;padding:2px 8px;font-size:.9em;line-height:1.35;cursor:pointer;z-index:4;opacity:.4;transition:opacity .15s}
+.br-s8-panel:hover .br-s8-photo-btn{opacity:1}
+.br-s8-tl-grid{display:grid;grid-template-columns:1.02fr 1fr;gap:12px;height:100%}
+.br-s8-rk{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;gap:6px;align-content:start;overflow:hidden}
+.br-s8-rk-cell{background:#fff;border:1px solid var(--b-line);border-radius:8px;padding:6px 8px;overflow:hidden}
+.br-s8-rk-cell .l{font-size:.6em;color:var(--b-mute-2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.br-s8-rk-cell .v{font-size:.82em;font-weight:700;color:var(--b-ink);margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.br-s8-chartbox{display:flex;flex-direction:column;min-height:0;min-width:0}
+.br-s8-chartbox .hd{font-size:.66em;letter-spacing:.1em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:4px}
+.br-s8-chartbox .num{font-size:1.05em;font-weight:800;color:var(--b-ink);margin-bottom:6px;font-variant-numeric:tabular-nums}
 .br-s8-chart-wrap{flex:1;position:relative;min-height:0}
-.br-s8-r{display:flex;flex-direction:column;gap:8px;min-height:0}
-.br-s8-mix{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:14px;flex:1;min-height:0;display:flex;flex-direction:column}
-.br-s8-mix .hd{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:8px}
-.br-s8-mix-list{font-size:.8em;line-height:1.6;flex:1;overflow:hidden}
-.br-s8-mix-list .row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:3px 0;border-bottom:1px dotted var(--b-line);font-variant-numeric:tabular-nums}
-.br-s8-mix-list .row:last-child{border-bottom:none}
-.br-s8-mix-list .row .name{color:var(--b-ink-2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.br-s8-mix-list .row .gal{color:var(--b-mute);font-weight:600}
-.br-s8-mix-list .empty{color:var(--b-mute-2);font-style:italic;font-size:.92em}
+.br-s8-tr{height:100%;background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:16px 18px;overflow:auto}
+.br-s8-vi-h{margin:0 0 10px;font-size:1.25em;font-weight:800;color:var(--b-ink)}
+.br-s8-vi-lbl{font-size:.8em;color:var(--b-mute);font-weight:600}
+.br-s8-vi-num{font-size:2.3em;font-weight:800;color:var(--b-blue);line-height:1;margin:2px 0 10px;font-variant-numeric:tabular-nums}
+.br-s8-vi-sub{margin:10px 0 3px;font-size:.95em;font-weight:700;color:var(--b-ink)}
+.br-s8-vi-p{font-size:.82em;line-height:1.55;color:var(--b-mute)}
+.br-s8-tbl{width:100%;border-collapse:collapse;font-size:.64em}
+.br-s8-tbl th{text-align:left;font-weight:700;color:var(--b-mute-2);padding:4px 6px;border-bottom:1px solid var(--b-line);white-space:nowrap}
+.br-s8-tbl td{padding:3px 6px;border-bottom:1px solid var(--b-line);font-variant-numeric:tabular-nums;white-space:nowrap}
+.br-s8-tbl td.nm{font-weight:600;color:var(--b-ink-2)}
+.br-s8-tbl td.g{text-align:right}
+.br-s8-tbl .empty{color:var(--b-mute-2);font-style:italic;text-align:center;padding:18px}
+.br-s8-br{height:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+.br-s8-agg{background:#eff6ff;border:1px solid var(--b-blue-100);border-radius:12px;padding:12px 14px;overflow:auto;min-height:0}
+.br-s8-agg.new{background:#ecfeff;border-color:#a5f3fc}
+.br-s8-agg-h{font-size:.95em;font-weight:800;color:var(--b-blue);margin-bottom:6px}
+.br-s8-agg.new .br-s8-agg-h{color:#0e7490}
+.br-s8-agg .br-bullets{font-size:.85em;color:var(--b-ink-2);margin:0;padding-left:1.1em}
 
 /* ─── SLIDE 9 — Rewards Performance ──────────────────────────────────── */
 .br-s9{display:grid;grid-template-columns:1.05fr 1fr;gap:14px;flex:1;min-height:0}
@@ -10742,13 +10757,15 @@ function brBuildAutoData(stopId, period){
     if(r){
       (r.aggregators||[]).forEach(a => {
         const id = a.id || a.name || 'unk';
-        if(!aggMap[id]) aggMap[id] = { id, name: a.name||'—', processor: a.processor||'', gallons: 0 };
+        if(!aggMap[id]) aggMap[id] = { id, name: a.name||'—', processor: a.processor||'', gallons: 0, monthly: {}, costPlus: a.cost_plus, retailMinus: a.retail_minus };
         aggMap[id].gallons += +(a.gallons||0);
+        aggMap[id].monthly[m.key] = (aggMap[id].monthly[m.key]||0) + (+(a.gallons||0));
       });
       (r.fleets||[]).forEach(f => {
         const id = f.id || f.name || 'unk';
-        if(!fleetMap[id]) fleetMap[id] = { id, name: f.name||'—', processor: f.processor||'', gallons: 0 };
+        if(!fleetMap[id]) fleetMap[id] = { id, name: f.name||'—', processor: f.processor||'', gallons: 0, monthly: {} };
         fleetMap[id].gallons += +(f.gallons||0);
+        fleetMap[id].monthly[m.key] = (fleetMap[id].monthly[m.key]||0) + (+(f.gallons||0));
       });
     }
   }
@@ -11838,49 +11855,99 @@ function brSlide7(d){
 }
 
 // ─── SLIDE 8 — Volume Performance ─────────────────────────────────────
+// A Slide-8 left panel: shows auto-content by default, but a dropped/uploaded
+// photo (per-deck image slot) replaces it. Drag a file onto the panel or use
+// the 📷 button; remove the photo (✕) to revert to the auto-content.
+function brS8Panel(slot, contentHtml){
+  const img = (_brData && _brData.images && _brData.images[slot]) || '';
+  if(img){
+    return `<div class="br-s8-panel">${brImgSlot(slot, '', { style:'height:100%', cls:'br-s8-photoslot' })}</div>`;
+  }
+  return `<div class="br-s8-panel" ondragover="event.preventDefault();this.classList.add('br-img-drag')" ondragleave="this.classList.remove('br-img-drag')" ondrop="brOnDrop(event,'${esc(slot)}')">
+    <div class="br-s8-panel-content">${contentHtml}</div>
+    <label class="br-s8-photo-btn" title="Replace this panel with a photo (or drag one in)">📷
+      <input type="file" accept="image/*" style="display:none" onchange="brOnImage(event,'${esc(slot)}')">
+    </label>
+  </div>`;
+}
 function brSlide8(d){
-  const fmtN = n => Math.round(+n||0).toLocaleString();
+  const fmtN  = n => Math.round(+n||0).toLocaleString();
+  const fmtN3 = n => (+n||0).toLocaleString('en-US', { maximumFractionDigits:3 });
   const rk = d.rack || {};
-  const aggRows = (d.aggregators||[]).slice(0, 8).map(a =>
-    `<div class="row"><span class="name">${esc(a.name)}</span><span class="gal">${fmtN(a.gallons)} gal</span></div>`
-  ).join('') || '<div class="empty">No aggregator data on file for this period.</div>';
-  const fleetRows = (d.fleets||[]).slice(0, 8).map(f =>
-    `<div class="row"><span class="name">${esc(f.name)}</span><span class="gal">${fmtN(f.gallons)} gal</span></div>`
-  ).join('') || '<div class="empty">No fleet data on file for this period.</div>';
+  const last4 = (d.monthlyTotals || []).slice(-4);
+  const total4 = last4.reduce((s,m) => s + (+m.gallons||0), 0);   // Volume Insights = last 4 months
+
+  // ── Top-left: rack components (auto) + gallons chart ────────────────
+  const money = v => (v==null||v==='') ? '—' : ('$' + (isNaN(+v) ? esc(String(v)) : (+v).toFixed(4)));
+  const rkCell = (l,v) => `<div class="br-s8-rk-cell"><div class="l">${esc(l)}</div><div class="v">${v}</div></div>`;
+  const tlContent = `
+    <div class="br-s8-tl-grid">
+      <div class="br-s8-rk">
+        ${rkCell('OPIS Rack Id', esc(rk.opisRackId || '—'))}
+        ${rkCell('OPIS Rack', esc(rk.opisRack || rk.rack_index || '—'))}
+        ${rkCell('Rack Price Type', esc(rk.rackPriceType || 'Contract Average'))}
+        ${rkCell('Rack Fuel Type', esc(rk.rackFuelType || rk.opisProductCode || '—'))}
+        ${rkCell('Federal Tax', money(rk.federalTax ?? rk.federal_tax))}
+        ${rkCell('State Excise Tax', money(rk.stateExciseTax ?? rk.state_excise))}
+        ${rkCell('State Sales Tax %', (rk.stateSalesTax!=null ? (rk.stateSalesTax+'%') : (rk.state_sales_tax!=null ? rk.state_sales_tax+'%' : '0')))}
+        ${rkCell('Misc Tax', money(rk.miscTax ?? rk.misc_tax))}
+        ${rkCell('Freight Rate', money(rk.freightRate ?? rk.freight))}
+      </div>
+      <div class="br-s8-chartbox">
+        <div class="hd">Total Gallons: ${fmtN3(total4)}</div>
+        <div class="br-s8-chart-wrap"><canvas id="br-s8-chart"></canvas></div>
+      </div>
+    </div>`;
+
+  // ── Bottom-left: aggregator / fleet monthly table (auto) ────────────
+  const rows = [...(d.aggregators||[]), ...(d.fleets||[])];
+  const num$ = v => (v==null||v==='') ? '' : ('$' + (+v).toFixed(2));
+  const monthCols = last4.map(m => `<th>${esc(m.label)}</th>`).join('');
+  const bodyRows = rows.length ? rows.map(r => `
+    <tr>
+      <td class="nm">${esc(r.name)}</td>
+      <td>${esc(r.id||'')}</td>
+      <td>${esc(r.processor||'')}</td>
+      <td>${r.costPlus!=null ? num$(r.costPlus) : ''}</td>
+      <td>${r.retailMinus!=null ? num$(r.retailMinus) : ''}</td>
+      ${last4.map(m => `<td class="g">${(r.monthly && r.monthly[m.key]) ? fmtN(r.monthly[m.key]) : ''}</td>`).join('')}
+    </tr>`).join('') : `<tr><td colspan="${5+last4.length}" class="empty">No aggregator / fleet data on file for this period.</td></tr>`;
+  const blContent = `
+    <table class="br-s8-tbl">
+      <thead><tr><th>Fleet</th><th>Fleet Id</th><th>Processor</th><th>C+</th><th>R-</th>${monthCols}</tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>`;
+
+  // ── Top-right: Volume Insights (auto total + editable copy) ─────────
+  const trContent = `
+    <h3 class="br-s8-vi-h">${brEditable(8,'viTitle','Volume Insights')}</h3>
+    <div class="br-s8-vi-lbl">Total Gallons</div>
+    <div class="br-s8-vi-num br-num">${fmtN(total4)}</div>
+    <h4 class="br-s8-vi-sub">${brEditable(8,'viPerfH','Monthly Performance')}</h4>
+    <div class="br-s8-vi-p">${brEditable(8,'viPerf','The chart on the left illustrates the monthly gallon report for '+(d.stop.name||'this stop')+'. Growth trends are visible across the current period compared to historical data.',{tag:'div'})}</div>
+    <h4 class="br-s8-vi-sub">${brEditable(8,'viFidH','Data Fidelity')}</h4>
+    <div class="br-s8-vi-p">${brEditable(8,'viFid','Real-time sync from Merchant Console ensures accuracy in billing and location performance tracking.',{tag:'div'})}</div>`;
+
+  // ── Bottom-right: aggregator lists (same across decks, editable) ─────
+  const brContent = `
+    <div class="br-s8-agg">
+      <div class="br-s8-agg-h">${brEditable(8,'legacyH','Legacy Aggregators')}</div>
+      ${brBulletList(8,'legacyList',['RTS','QPN','TCS','Edge','TATS','OIDA','TSD','RXO','OTP Capital','Prime Advantage'])}
+    </div>
+    <div class="br-s8-agg new">
+      <div class="br-s8-agg-h">${brEditable(8,'newH','New Aggregators')}</div>
+      ${brBulletList(8,'newList',['Motive','Haul Pay','Green Lane','Load Connex','TOA','Cloud Trucks','AtoB','Onramp','Octane'])}
+    </div>`;
+
   return `
     <div class="br-slide${_brSlide===8?' active':''}" data-slide="8">
-      ${brShead(8, 'Volume', 'Gallons Performance')}
+      ${brShead(8, 'Merchant Console', 'Gallons')}
       <div class="br-sbody">
         <div class="br-s8">
-          <div class="br-s8-l">
-            <div class="br-s8-hero">
-              <div>${ICO('fuel')}</div>
-              <div>
-                <div class="lbl">${brEditable(8,'volL','YTD Gallons ('+d.year+')')}</div>
-                <div class="num br-num">${fmtN(d.ytdGal || d.totalGal)}</div>
-                <div class="sub">YTD Jan – ${formatMonthLabel(currentMonthKey()).split(' ')[0]} ${d.year}</div>
-              </div>
-            </div>
-            <div class="br-s8-rack">
-              <div class="br-s8-rack-cell"><div class="l">OPIS Rack</div><div class="v">${esc(rk.opisRack || 'El Paso, TX')}</div></div>
-              <div class="br-s8-rack-cell"><div class="l">Rack Type</div><div class="v">${esc(rk.rackPriceType || 'Contract Average')}</div></div>
-              <div class="br-s8-rack-cell"><div class="l">Freight</div><div class="v">$${(typeof rk.freightRate==='number'?rk.freightRate:0.175).toFixed(3)}</div></div>
-            </div>
-            <div class="br-s8-chart">
-              <div class="hd">Monthly Trend</div>
-              <div class="br-s8-chart-wrap"><canvas id="br-s8-chart"></canvas></div>
-            </div>
-          </div>
-          <div class="br-s8-r">
-            <div class="br-s8-mix">
-              <div class="hd"><span style="display:inline-flex;align-items:center;gap:6px">${ICO('briefcase')} Aggregators (${(d.aggregators||[]).length})</span></div>
-              <div class="br-s8-mix-list">${aggRows}</div>
-            </div>
-            <div class="br-s8-mix">
-              <div class="hd"><span style="display:inline-flex;align-items:center;gap:6px">${ICO('users')} Fleets (${(d.fleets||[]).length})</span></div>
-              <div class="br-s8-mix-list">${fleetRows}</div>
-            </div>
-          </div>
+          <div class="br-s8-cell">${brS8Panel('s8-photo-tl', tlContent)}</div>
+          <div class="br-s8-cell br-s8-tr">${trContent}</div>
+          <div class="br-s8-cell">${brS8Panel('s8-photo-bl', blContent)}</div>
+          <div class="br-s8-cell br-s8-br">${brContent}</div>
         </div>
       </div>
       ${brSfoot(d, 8)}
@@ -11894,28 +11961,16 @@ function brRenderGallonsChart(){
   if(_brGallonsChart){ try{_brGallonsChart.destroy();}catch(e){} _brGallonsChart = null; }
   const c = document.getElementById('br-s8-chart');
   if(!c || typeof Chart === 'undefined') return;
-  // Gradient fill
-  const ctx = c.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, c.offsetHeight || 200);
-  grad.addColorStop(0, 'rgba(29,78,216,.45)');
-  grad.addColorStop(1, 'rgba(29,78,216,.05)');
+  // Last 4 months — bars with a trend line overlay (matches the deck mockup).
+  const last4 = (data.monthlyTotals || []).slice(-4);
   _brGallonsChart = new Chart(c, {
-    type: 'line',
+    type: 'bar',
     data: {
-      labels: data.monthlyTotals.map(m => m.label),
-      datasets: [{
-        label:'Gallons',
-        data: data.monthlyTotals.map(m => m.gallons),
-        borderColor:'#1d4ed8',
-        backgroundColor: grad,
-        tension:.35,
-        fill:true,
-        pointRadius:3,
-        pointBackgroundColor:'#1d4ed8',
-        pointBorderColor:'#fff',
-        pointBorderWidth:1.5,
-        borderWidth:2
-      }]
+      labels: last4.map(m => m.label),
+      datasets: [
+        { type:'bar',  label:'Gallons', data: last4.map(m => m.gallons), backgroundColor:'#1d4ed8', borderRadius:4, order:2, maxBarThickness:54 },
+        { type:'line', label:'Trend',   data: last4.map(m => m.gallons), borderColor:'#f59e0b', backgroundColor:'transparent', tension:.35, pointRadius:3, pointBackgroundColor:'#f59e0b', pointBorderColor:'#fff', pointBorderWidth:1, borderWidth:2, order:1 }
+      ]
     },
     options: {
       responsive:true,
