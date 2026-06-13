@@ -10595,6 +10595,7 @@ async function gallerySaveStopPhoto(stopId, stopName, dataUrl){
 const BR_LS_KEY = 'gs_cmd_business_review_v1';
 let _brStopId = null;
 let _brPeriod = 'last12';
+let _brYear = null;          // selected review year (null = latest data year)
 let _brSlide = 1;
 let _brData = null;        // {slides:{1:{...}, ...}, images:{slot:dataUrl}, period}
 let _brGallonsChart = null;
@@ -10629,7 +10630,13 @@ function brLoadAll(){
   try { return JSON.parse(localStorage.getItem(BR_LS_KEY) || '{}') || {}; } catch(e){ return {}; }
 }
 function brSaveAll(all){ try { localStorage.setItem(BR_LS_KEY, JSON.stringify(all)); } catch(e){ console.warn('br save failed', e); } }
-function brKey(stopId, period){ return stopId + '|' + period; }
+function brDataYear(){ try { return +(latestDataMonthKey().slice(0,4)) || new Date().getFullYear(); } catch(e){ return new Date().getFullYear(); } }
+function brKey(stopId, period){
+  // Year is part of the deck identity. The default (latest data) year keeps the
+  // legacy key so existing decks aren't orphaned; other years get their own.
+  const y = _brYear || brDataYear();
+  return (y === brDataYear()) ? (stopId + '|' + period) : (stopId + '|' + period + '|' + y);
+}
 function brLoad(stopId, period){
   const all = brLoadAll();
   return all[brKey(stopId, period)] || null;
@@ -10643,10 +10650,12 @@ function brSave(){
 }
 
 // Period helpers — returns {label, months:[{key,label}]}.
-function brPeriodMonths(period){
+function brPeriodMonths(period, yearOverride){
   const today = new Date();
-  const y = today.getFullYear();
-  const mo = today.getMonth(); // 0-11
+  const curY = today.getFullYear();
+  const y = (yearOverride && /^\d{4}$/.test(String(yearOverride))) ? +yearOverride : curY;
+  // For a non-current year the whole year is in scope (through December).
+  const mo = (y === curY) ? today.getMonth() : 11; // 0-11
   const months = [];
   if(period === 'ytd'){
     for(let i = 0; i <= mo; i++){
@@ -10678,7 +10687,10 @@ function brBuildAutoData(stopId, period){
   const GD = loadFuelGD();
   const VPE = loadVendorEnrolls();
   const master = loadVendorMaster();
-  const periodInfo = brPeriodMonths(period);
+  const periodInfo = brPeriodMonths(period, _brYear);
+  // 2026-seed authoritative figures only apply to the data year; for other
+  // selected years the deck starts blank (GD has no data) for manual entry.
+  const isDataYear = periodInfo.year === brDataYear();
   const cm = currentMonthKey();
 
   // Sum gallons across the period
@@ -10716,13 +10728,16 @@ function brBuildAutoData(stopId, period){
   // short-circuits returning FUEL_*_2026_DATA[sid].ytd directly.
   // Every slide consumer of d.totalGal (Slide 1 chip, Slide 2 pillar,
   // Slide 8 hero, Slide 11 diesel-sales auto-calc) reads YTD now.
-  const ytdGal = ytdGallonsForStop(stopId, currentMonthKey(), 'total');
-  if (ytdGal > 0) totalGal = ytdGal;
+  let ytdGal = 0;
+  if (isDataYear) {
+    ytdGal = ytdGallonsForStop(stopId, currentMonthKey(), 'total');
+    if (ytdGal > 0) totalGal = ytdGal;
+  }
   // Per-stop May 2026 monthly gallons from the seed -- useful when a
   // slide wants the latest-month single-period number.
   let mtdGalAuth = 0;
   try {
-    if (typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA[stopId]) {
+    if (isDataYear && typeof FUEL_MAY_2026_DATA === 'object' && FUEL_MAY_2026_DATA[stopId]) {
       mtdGalAuth = +FUEL_MAY_2026_DATA[stopId].g || 0;
     }
   } catch(e){}
@@ -10755,12 +10770,12 @@ function brBuildAutoData(stopId, period){
   // read d.adds / d.redeems directly, so this fix flows through to the
   // KPI pillar redemption rate and the annual financial summary.
   const monthlyRewards = [];
-  if(typeof REWARDS_2026_04_SEED === 'object' && REWARDS_2026_04_SEED && REWARDS_2026_04_SEED[stopId]){
+  if(isDataYear && typeof REWARDS_2026_04_SEED === 'object' && REWARDS_2026_04_SEED && REWARDS_2026_04_SEED[stopId]){
     const s = REWARDS_2026_04_SEED[stopId];
     monthlyRewards.push({key:'2026-04', label:'April 2026',
       addUsd:+s['a$']||0, redUsd:+s['r$']||0, addTx:+s.at||0, redTx:+s.rt||0, gallons:+s.g||0, rate:+s.rr||0});
   }
-  if(typeof REWARDS_2026_05_SEED === 'object' && REWARDS_2026_05_SEED && REWARDS_2026_05_SEED[stopId]){
+  if(isDataYear && typeof REWARDS_2026_05_SEED === 'object' && REWARDS_2026_05_SEED && REWARDS_2026_05_SEED[stopId]){
     const s = REWARDS_2026_05_SEED[stopId];
     monthlyRewards.push({key:'2026-05', label:'May 2026',
       addUsd:+s['a$']||0, redUsd:+s['r$']||0, addTx:+s.at||0, redTx:+s.rt||0, gallons:+s.g||0, rate:+s.rr||0});
@@ -10839,7 +10854,7 @@ function brToggleFullscreen(){
 function brClose(){
   if(document.fullscreenElement || document.webkitFullscreenElement){ try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch(e){} }
   document.getElementById('br-overlay').classList.remove('show');
-  _brStopId = null; _brData = null;
+  _brStopId = null; _brData = null; _brYear = null;
   if(_brGallonsChart){ try{_brGallonsChart.destroy();}catch(e){} _brGallonsChart = null; }
   if(_brRewardsChart){ try{_brRewardsChart.destroy();}catch(e){} _brRewardsChart = null; }
 }
@@ -10848,6 +10863,12 @@ function brSwitchPeriod(p){
   // Persist the current period's edits before switching
   brSave();
   brOpen(_brStopId, p);
+}
+function brSwitchYear(y){
+  if(!_brStopId) return;
+  brSave();                                          // save current year's deck
+  _brYear = /^\d{4}$/.test(String(y)) ? +y : null;   // null = latest data year
+  brOpen(_brStopId, _brPeriod);                       // reload deck for the new year's key
 }
 function brGoSlide(n){
   const total = 13;
@@ -12171,6 +12192,10 @@ function brRender(){
       <span class="br-title">📊 Business Review Deck</span>
       <span class="br-sub">${headerStop} · ${esc(d.periodLabel)}</span>
       <span class="br-spacer"></span>
+      <span style="font-size:.74em;color:#94a3b8">Year:</span>
+      <select id="br-year-sel" onchange="brSwitchYear(this.value)">
+        ${[2025,2026,2027].map(y => `<option value="${y}"${(_brYear||brDataYear())===y?' selected':''}>${y}</option>`).join('')}
+      </select>
       <span style="font-size:.74em;color:#94a3b8">Period:</span>
       <select id="br-period-sel" onchange="brSwitchPeriod(this.value)">
         <option value="last12"${_brPeriod==='last12'?' selected':''}>Last 12 months</option>
