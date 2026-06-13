@@ -811,6 +811,13 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s4-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;flex:1;min-height:0}
 .br-s4-photo{flex:0 0 30%;min-height:0;margin-top:16px;position:relative}
 .br-s4-photo .br-img-slot{height:100%}
+.br-s4-comp{display:flex;flex-direction:column;min-height:0}
+.br-s4-comp-photo{flex:1;min-height:90px;margin-top:10px}
+.br-s4-comp-photo .br-img-slot{width:100%;height:100%}
+.br-s4-comp-photo .br-img-slot img{object-fit:contain}
+.br-cost-val{font-variant-numeric:tabular-nums;font-weight:600;color:var(--b-ink);text-align:right}
+.br-cost-total{grid-column:1 / -1;border-top:1px solid var(--b-line-2);margin-top:4px;padding-top:7px}
+.br-cost-total .lbl,.br-cost-total .br-cost-val{font-weight:800;color:var(--b-blue)}
 .br-s4-photo .br-img-slot.has-img{background:#fff;border:1px solid var(--b-line)}
 .br-s4-photo .br-img-slot img{object-fit:contain}
 .br-cost-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:.84em}
@@ -11569,48 +11576,54 @@ function brSlide4(d){
       <td><input value="${esc(r.def||'')}" onblur="brTblCell(4,'competitors',${i},'def',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
     </tr>`).join('');
 
-  const rk = d.rack || {};
-  const costFields = [
-    { k:'freight',  l:'Freight Rate',     v:(typeof rk.freightRate==='number' ? rk.freightRate.toFixed(4) : (rk.freightRate ?? '0.1750')) },
-    { k:'freightFm',l:'Freight (Fuelman)',v: rk.freightRateFuelman ?? '' },
-    { k:'fedSpill', l:'Fed Oil Spill Liab.', v: rk.federalOilSpillLiability ?? '0' },
-    { k:'countyTax',l:'County Tax',       v: rk.countyTax ?? '0' },
-    { k:'inspTax',  l:'Inspection Tax',   v: rk.inspectionTax ?? '0' },
-    { k:'envTax',   l:'Environmental Tax',v: rk.environmentalTax ?? '0' },
-    { k:'loadTax',  l:'LOAD Tax',         v: rk.loadTax ?? '0.01875' },
-    { k:'miscTax',  l:'Misc. Tax',        v: rk.miscTax ?? '0' },
-    { k:'fedTax',   l:'Federal Tax',      v:(typeof rk.federalTax==='number' ? rk.federalTax.toFixed(4) : (rk.federalTax ?? '0.2502')) },
-    { k:'stateTax', l:'State Excise',     v:(typeof rk.stateExciseTax==='number' ? rk.stateExciseTax.toFixed(2) : (rk.stateExciseTax ?? '0.21')) },
-    { k:'winterAdd',  l:'Winter Additive',v: rk.winterAdditive ?? '0' },
-    { k:'winterDates',l:'Winter Dates',   v: (rk.winterAdditiveStart || '') + (rk.winterAdditiveEnd ? ' → '+rk.winterAdditiveEnd : '') }
+  // Fuel Cost Components — read-only, auto-imported from each site's stored
+  // cost components (fcc_report seed via d.rack) plus the Rack Price set on
+  // the site (stopFuelCostBreakdown gives the price + all-in build-up).
+  const rk  = d.rack || {};
+  const fcc = (typeof stopFuelCostBreakdown === 'function') ? stopFuelCostBreakdown(d.stop.id) : null;
+  const cNum = v => (v == null || v === '') ? '—' : (isNaN(+v) ? esc(String(v)) : (+v).toFixed(4));
+  const cPct = v => (v == null || v === '') ? '—' : (isNaN(+v) ? esc(String(v)) : (+v).toFixed(3) + '%');
+  const costData = [
+    ['Rack Price / gal',    (fcc && fcc.haveRack) ? '$' + fcc.rackPrice.toFixed(4) : '—'],
+    ['Freight Rate',        cNum(rk.freightRate ?? rk.freight)],
+    ['Freight (Fuelman)',   rk.freightRateFuelman != null ? cNum(rk.freightRateFuelman) : '—'],
+    ['Federal Tax',         cNum(rk.federalTax ?? rk.federal_tax)],
+    ['Fed Oil Spill Liab.', cNum(rk.federalOilSpillLiability)],
+    ['State Excise Tax',    cNum(rk.stateExciseTax ?? rk.state_excise)],
+    ['Sales Tax %',         cPct(rk.stateSalesTax ?? rk.state_sales_tax)],
+    ['County Tax',          cNum(rk.countyTax)],
+    ['City Tax (CPG)',      cNum(rk.cityTaxCpg)],
+    ['Inspection Tax',      cNum(rk.inspectionTax)],
+    ['Environmental Tax',   cNum(rk.environmentalTax)],
+    ['LOAD Tax',            cNum(rk.loadTax)],
+    ['Misc. Tax',           cNum(rk.miscTax ?? rk.misc_tax)],
+    ['Winter Additive',     cNum(rk.winterAdditive)]
   ];
-  const costRows = costFields.map(f => `
-    <div class="br-cost-row">
-      <span class="lbl">${esc(f.l)}</span>
-      <input value="${esc(brField(4,'cost_'+f.k, String(f.v)))}" onblur="brFieldChanged(4,'cost_${f.k}',this.value);brSave()"/>
-    </div>
-  `).join('');
+  const costRows = costData.map(([l, v]) =>
+    `<div class="br-cost-row"><span class="lbl">${esc(l)}</span><span class="br-cost-val">${v}</span></div>`).join('')
+    + ((fcc && fcc.haveRack)
+      ? `<div class="br-cost-row br-cost-total"><span class="lbl">Calculated Cost / gal</span><span class="br-cost-val">$${fcc.total.toFixed(4)}</span></div>`
+      : '');
 
   return `
     <div class="br-slide${_brSlide===4?' active':''}" data-slide="4">
       ${brShead(4, 'Fuel Pricing', 'Competitive Position & Cost Components')}
       <div class="br-sbody">
         <div class="br-s4-grid">
-          <div class="br-card flat">
-            <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('search')} Monitored Lanes</span></div>
+          <div class="br-card flat br-s4-comp">
+            <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('search')} Competition (Monitored Lanes)</span></div>
             <table class="br-tbl">
               <thead><tr><th>Truck Stop</th><th>Exit</th><th>City</th><th>ST</th><th>Dist</th><th>Diesel</th><th>DEF</th></tr></thead>
               <tbody>${trs}</tbody>
             </table>
-            <div style="font-size:.7em;color:var(--b-mute-2);margin-top:6px;font-style:italic">Click any cell to edit. Real-time price feeds via OPIS / Trucker Path push updates here.</div>
+            <div style="font-size:.68em;color:var(--b-mute-2);margin-top:6px;font-style:italic">Click any cell to edit competitor pricing.</div>
+            <div class="br-s4-comp-photo">${brImgSlot('s4-photo','Click or drop a photo — price board, competitor signage, lane map…', {style:'height:100%'})}</div>
           </div>
           <div class="br-card flat">
-            <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('doc')} Cost Components</span></div>
+            <div class="br-card-hd"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--b-blue)">${ICO('doc')} Fuel Cost Components</span></div>
             <div class="br-cost-grid">${costRows}</div>
+            <div style="font-size:.66em;color:var(--b-mute-2);margin-top:8px;font-style:italic">Auto-imported from this site's stored cost components (FCC seed + Rack Price in Site Details).</div>
           </div>
-        </div>
-        <div class="br-s4-photo">
-          ${brImgSlot('s4-photo','Click or drop an image — price board, lane map, signage…',{style:'height:100%'})}
         </div>
       </div>
       ${brSfoot(d, 4)}
