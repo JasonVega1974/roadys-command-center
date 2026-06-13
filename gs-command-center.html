@@ -624,6 +624,9 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 #br-overlay:-webkit-full-screen .br-stage{padding:8px;align-items:center}
 #br-overlay:-webkit-full-screen .br-deck{max-width:none}
 #br-overlay:-webkit-full-screen .br-slide{width:min(98vw, calc((100vh - 120px) * 16 / 9));font-size:calc(min(98vw, (100vh - 120px) * 16 / 9) * .0118)}
+/* Presenting: hide in-slide editing controls (program dropdowns) */
+#br-overlay:fullscreen .br-s10-opp-sel{display:none}
+#br-overlay:-webkit-full-screen .br-s10-opp-sel{display:none}
 
 /* Slide canvas — fixed 1100×618.75 (16:9) for predictable typography */
 .br-slide{width:1100px;max-width:100%;aspect-ratio:16/9;background:#fff;color:#0f172a;border-radius:16px;box-shadow:0 24px 60px -12px rgba(0,0,0,.6),0 0 0 1px rgba(148,163,184,.08);overflow:hidden;display:none;position:relative;font-size:13px;line-height:1.5;font-feature-settings:'cv11','ss01';
@@ -909,12 +912,12 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 
 /* ─── SLIDE 10 — Vendor Programs ─────────────────────────────────────── */
 .br-s10{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
-.br-s10-rows{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.br-s10-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:18px;display:grid;grid-template-columns:1fr 1.3fr;gap:14px;align-items:center;position:relative;overflow:hidden}
+.br-s10-rows{display:grid;grid-template-columns:1fr 1fr;gap:.9em}
+.br-s10-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:1.35em;display:grid;grid-template-columns:1fr 1.3fr;gap:1.05em;align-items:center;position:relative;overflow:hidden}
 .br-s10-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--b-success)}
 .br-s10-card.earn::before{background:var(--b-gold)}
-.br-s10-logoslot{height:80px;background:#fff;border:1px solid var(--b-line);border-radius:8px}
-.br-s10-logoslot img{object-fit:contain;padding:5px}
+.br-s10-logoslot{height:6em;background:#fff;border:1px solid var(--b-line);border-radius:8px}
+.br-s10-logoslot img{object-fit:contain;padding:.4em}
 .br-s10-stat{display:flex;flex-direction:column}
 .br-s10-stat .verb{font-size:.7em;letter-spacing:.16em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:2px}
 .br-s10-stat .amt{font-size:2em;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;letter-spacing:-.022em;line-height:1}
@@ -925,12 +928,12 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s10-extra h4 .ico{width:32px;height:32px;border-radius:8px;background:#fef3c7;color:var(--b-gold);display:inline-flex;align-items:center;justify-content:center;flex:none}
 .br-s10-extra-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .br-s10-opp{display:flex;flex-direction:column;align-items:center;gap:5px}
-.br-s10-opp-logo{width:100%;height:64px;background:#fff;border:1px solid var(--b-line);border-radius:10px}
-.br-s10-opp-logo img{object-fit:contain;padding:7px}
+.br-s10-opp-logo{width:100%;height:4.8em;background:#fff;border:1px solid var(--b-line);border-radius:10px}
+.br-s10-opp-logo img{object-fit:contain;padding:.55em}
 .br-s10-opp-sel{width:100%;font-size:.72em;padding:4px 6px;border:1px solid var(--b-line-2);border-radius:6px;background:#fff;color:var(--b-ink);font-weight:600;cursor:pointer}
 .br-s10-opp-noimg{font-weight:700;color:var(--b-ink-2);font-size:.9em;text-align:center;padding:6px}
 .br-s10-opp-savlbl{font-size:.58em;text-transform:uppercase;letter-spacing:.1em;color:var(--b-mute-2);font-weight:700}
-.br-s10-opp-sav{background:#fff;border:1px solid var(--b-line-2);border-radius:8px;padding:5px 12px;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;min-width:90px;text-align:center;font-size:1.05em}
+.br-s10-opp-sav{background:#fff;border:1px solid var(--b-line-2);border-radius:8px;padding:.4em .9em;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;min-width:6.5em;text-align:center;font-size:1.15em}
 
 /* ─── SLIDE 11 — P&L Summary ─────────────────────────────────────────── */
 .br-s11{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:14px;flex:1;min-height:0}
