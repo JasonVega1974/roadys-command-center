@@ -11998,40 +11998,24 @@ function brSlide10(d){
   const vendorOptions = sel => '<option value="">— Select program —</option>' +
     allVendors.map(v => `<option value="${esc(v.id)}"${v.id===sel?' selected':''}>${esc(v.name)}</option>`).join('');
 
-  // Programs at Work for Your Stop — one card per enrolled vendor, each with an
-  // uploadable logo (defaults to the vendor's gallery / bundled logo).
-  let cardsHtml;
-  if(enrolled.length){
-    cardsHtml = enrolled.map((v, i) => `
-      <div class="br-s10-card${i % 2 ? ' earn' : ''}">
-        ${brImgSlot('s10-logo-' + v.id, (v.name || 'Vendor') + ' logo', { gallery:{ vendorId: v.id }, cls:'br-s10-logoslot' })}
-        <div class="br-s10-stat">
-          <div class="verb">${brEditable(10, 's10-verb-' + v.id, i % 2 ? 'Earned' : 'Saved')}</div>
-          <div class="amt br-num">$${brEditable(10, 's10-amt-' + v.id, '0', {tag:'span'})}</div>
-          <div class="yr">${esc(v.name)} · ${brEditable(10, 's10-yr-' + v.id, 'in ' + d.year)}</div>
-        </div>
-      </div>`).join('');
-  } else {
-    // Fallback: two uploadable cards when the stop has no enrollments yet.
-    cardsHtml = `
-      <div class="br-s10-card">
-        ${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logoslot'})}
-        <div class="br-s10-stat">
-          <div class="verb">${brEditable(10,'cokeLbl','Saved')}</div>
-          <div class="amt br-num">$${brEditable(10,'cokeAmt','2,529',{tag:'span'})}</div>
-          <div class="yr">${brEditable(10,'cokeYr','in '+d.year)}</div>
-        </div>
+  // Programs at Work for Your Stop — Coca-Cola and AllOver Media are baseline
+  // programs every Roady's stop is on, so they're always shown and merged
+  // (deduped) with the stop's own enrollments. Each card has an uploadable logo
+  // (defaults to the vendor's gallery / bundled / legacy logo).
+  const programs = [];
+  const seenP = new Set();
+  [{ id:'V00033', name:'Coca-Cola' }, { id:'V00005', name:'All Over Media' }, ...enrolled]
+    .forEach(v => { if(v && v.id && !seenP.has(v.id)){ seenP.add(v.id); programs.push(v); } });
+  const cardsHtml = programs.map((v, i) => `
+    <div class="br-s10-card${i % 2 ? ' earn' : ''}">
+      ${brImgSlot('s10-logo-' + v.id, (v.name || 'Vendor') + ' logo', { gallery:{ vendorId: v.id }, cls:'br-s10-logoslot' })}
+      <div class="br-s10-stat">
+        <div class="verb">${brEditable(10, 's10-verb-' + v.id, i % 2 ? 'Earned' : 'Saved')}</div>
+        <div class="amt br-num">$${brEditable(10, 's10-amt-' + v.id, '0', {tag:'span'})}</div>
+        <div class="yr">${esc(v.name)} · ${brEditable(10, 's10-yr-' + v.id, 'in ' + d.year)}</div>
       </div>
-      <div class="br-s10-card earn">
-        ${brImgSlot('s10-aom','AllOver Media logo',{cls:'br-s10-logoslot'})}
-        <div class="br-s10-stat">
-          <div class="verb">${brEditable(10,'aomLbl','Earned')}</div>
-          <div class="amt br-num">$${brEditable(10,'aomAmt','380',{tag:'span'})}</div>
-          <div class="yr">${brEditable(10,'aomYr','in '+d.year)}</div>
-        </div>
-      </div>`;
-  }
-  const cardCount = enrolled.length || 2;
+    </div>`).join('');
+  const cardCount = programs.length;
   // Additional Programs to Consider — 3 selectable slots. Pick a program from
   // the dropdown (logo auto-loads from the gallery / bundled asset) and use the
   // slot's ↻ Replace to upload a different logo. Defaults: Entegra/Cintas/TPC.
