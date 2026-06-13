@@ -920,10 +920,15 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s10-card.earn .br-s10-stat .amt{color:var(--b-gold)}
 .br-s10-stat .yr{font-size:.78em;color:var(--b-mute);font-weight:500;margin-top:2px}
 .br-s10-extra{background:linear-gradient(180deg,var(--b-bg) 0%,var(--b-bg-2) 100%);border:1px solid var(--b-line);border-radius:14px;padding:14px 18px}
-.br-s10-extra h4{margin:0 0 10px;font-size:.92em;font-weight:700;color:var(--b-ink);display:flex;align-items:center;gap:8px}
-.br-s10-extra h4 .ico{width:24px;height:24px;border-radius:6px;background:#fef3c7;color:var(--b-gold);display:inline-flex;align-items:center;justify-content:center}
-.br-s10-extra-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.br-s10-extra-grid div{background:#fff;border:1px solid var(--b-line);border-radius:10px;padding:10px 12px;font-size:.84em;color:var(--b-ink-2);font-weight:600;text-align:center}
+.br-s10-extra h4{margin:0 0 12px;font-size:1.4em;font-weight:800;letter-spacing:-.01em;color:var(--b-ink);display:flex;align-items:center;gap:10px}
+.br-s10-extra h4 .ico{width:32px;height:32px;border-radius:8px;background:#fef3c7;color:var(--b-gold);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.br-s10-extra-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.br-s10-opp{display:flex;flex-direction:column;align-items:center;gap:6px}
+.br-s10-opp-logo{width:100%;height:72px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--b-line);border-radius:10px;padding:8px}
+.br-s10-opp-logo img{max-width:100%;max-height:100%;object-fit:contain}
+.br-s10-opp-noimg{font-weight:700;color:var(--b-ink-2);font-size:.9em;text-align:center;padding:6px}
+.br-s10-opp-savlbl{font-size:.58em;text-transform:uppercase;letter-spacing:.1em;color:var(--b-mute-2);font-weight:700}
+.br-s10-opp-sav{background:#fff;border:1px solid var(--b-line-2);border-radius:8px;padding:5px 12px;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;min-width:90px;text-align:center;font-size:1.05em}
 
 /* ─── SLIDE 11 — P&L Summary ─────────────────────────────────────────── */
 .br-s11{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:14px;flex:1;min-height:0}
@@ -11977,9 +11982,22 @@ function brSlide10(d){
   const opps = masterForOpps.VP_VENDORS
     .filter(v => v.priority === 'High' && v.status === 'Active' && !enrolledIds.has(v.id))
     .slice(0, 3);
-  const oppGrid = opps.length
-    ? opps.map((v, i) => `<div>${brEditable(10, 'p' + i, v.name)}</div>`).join('')
-    : `<div>${brEditable(10,'p1','Lynco Products')}</div><div>${brEditable(10,'p2','Truck Parking Club')}</div><div>${brEditable(10,'p3','Sysco')}</div>`;
+  const oppList = opps.length ? opps : [
+    { id:'', name:'Lynco Products' },
+    { id:'', name:'Truck Parking Club' },
+    { id:'', name:'Sysco' }
+  ];
+  const oppGrid = oppList.map((v, i) => {
+    const logo = v.id ? gallerySrc({ vendorId: v.id }) : '';
+    const top = logo
+      ? `<div class="br-s10-opp-logo"><img src="${esc(logo)}" alt="${esc(v.name)}"></div>`
+      : `<div class="br-s10-opp-logo br-s10-opp-noimg">${brEditable(10, 'p' + i, v.name)}</div>`;
+    return `<div class="br-s10-opp">
+      ${top}
+      <div class="br-s10-opp-savlbl">Potential Savings</div>
+      <div class="br-s10-opp-sav">$ ${brEditable(10, 'pSav' + i, '0', {tag:'span'})}</div>
+    </div>`;
+  }).join('');
   return `
     <div class="br-slide${_brSlide===10?' active':''}" data-slide="10">
       ${brShead(10, 'Vendor Earnings', 'Programs at Work for Your Stop')}
