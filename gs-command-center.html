@@ -782,6 +782,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-pillar .met{margin-top:auto;padding-top:10px;border-top:1px solid var(--b-line)}
 .br-pillar .met-num{font-size:1.5em;font-weight:800;color:var(--b-ink);font-variant-numeric:tabular-nums;letter-spacing:-.018em;line-height:1}
 .br-pillar .met-lbl{font-size:.64em;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--b-mute-2);margin-top:3px}
+.br-pillar-img{flex:1;min-height:0;margin-top:10px;display:flex;align-items:flex-start;justify-content:center}
+.br-pillar-img img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
 
 /* ─── SLIDE 3 — Service grid ─────────────────────────────────────────── */
 .br-svc{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:14px;flex:1;min-height:0}
@@ -11460,20 +11462,27 @@ function brSlide2(d){
   const redeemRate = (d.adds > 0) ? ((d.redeems / d.adds) * 100).toFixed(1) + '%' : '—';
   const pillars = [
     { cls:'',     ico:'fuel',   h:'Fuel Programs',   p:'Real-time pricing data, aggregator and fleet networks, settlement support, and Comdata integration.', mLbl:'YTD gallons ('+d.year+')',  mVal: fmtN(d.ytdGal || d.totalGal) },
-    { cls:'gold', ico:'reward', h:'Rewards',         p:'Drive repeat traffic with Roady\'s Rewards. Track adds, redemptions, and capture rate per location.', mLbl:'Redemption rate', mVal: redeemRate },
+    { cls:'gold', ico:'reward', h:'Rewards',         p:'Drive repeat traffic and loyalty with Roady\'s Rewards.', mLbl:'Redemption rate', mVal: redeemRate },
     { cls:'g',    ico:'tag',    h:'Vendor Programs', p:'Stack savings and rebates from a curated network of supplier partners — Coca-Cola, Sysco, Lynco and more.', mLbl:'Enrolled programs', mVal: enrolledCount + '' },
     { cls:'r',    ico:'map',    h:'Marketing',       p:'Listings on TruckerPath, Trucker’s Friend, Pilot Flying J, Tripaxle and Google Maps with consistent NAP.', mLbl:'Est. period revenue', mVal: fmt$k(d.revenueAuto) }
   ];
-  const cards = pillars.map((c, i) => `
+  const cards = pillars.map((c, i) => {
+    // Rewards pillar features the Roady's Rewards app screenshot (full image,
+    // top-aligned) instead of a metric — redemption rate removed.
+    const body = (i === 1)
+      ? `<div class="br-pillar-img"><img src="assets/rewards-app.png" alt="Roady's Rewards app"></div>`
+      : `<div class="met">
+        <div class="met-num br-num">${esc(c.mVal)}</div>
+        <div class="met-lbl">${brEditable(2,'l'+i,c.mLbl)}</div>
+      </div>`;
+    return `
     <div class="br-pillar ${c.cls}">
       <div class="ico">${ICO(c.ico)}</div>
       <h4>${brEditable(2,'h'+i,c.h)}</h4>
       <p>${brEditable(2,'p'+i,c.p,{tag:'div'})}</p>
-      <div class="met">
-        <div class="met-num br-num">${esc(c.mVal)}</div>
-        <div class="met-lbl">${brEditable(2,'l'+i,c.mLbl)}</div>
-      </div>
-    </div>`).join('');
+      ${body}
+    </div>`;
+  }).join('');
   return `
     <div class="br-slide${_brSlide===2?' active':''}" data-slide="2">
       ${brShead(2, 'Partnership Overview', 'How Roady\'s Powers Your Operation')}
