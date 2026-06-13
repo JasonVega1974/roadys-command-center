@@ -686,6 +686,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 [contenteditable="true"]{outline:none;transition:box-shadow .12s,background .12s}
 [contenteditable="true"]:hover{background:rgba(34,211,238,.06)}
 [contenteditable="true"]:focus{background:rgba(34,211,238,.1);box-shadow:inset 0 0 0 1.5px #22d3ee;border-radius:4px}
+.br-bullets{margin:0;padding-left:1.2em;list-style:disc}
+.br-bullets li{margin-bottom:.3em;min-height:1.1em}
 .br-edit-hint{display:inline-block;font-size:.64em;color:#0ea5e9;margin-left:6px;vertical-align:middle;font-style:italic;font-weight:500}
 
 /* Image upload slot */
@@ -10947,6 +10949,17 @@ function brEditable(slide, key, defaultVal, opts){
     + (style ? ' style="' + style + '"' : '')
     + '>' + esc(v == null ? '' : String(v)) + '</' + tag + '>';
 }
+// Editable bullet list — Enter adds a new bullet (Word-style), Backspace on an
+// empty bullet removes it. Stored as an array in field <key>. Reusable on any
+// slide; behaviour is wired up by brBindBullets().
+function brBulletList(slide, key, defaultItems){
+  const stored = brField(slide, key, null);
+  let items = Array.isArray(stored) ? stored : (Array.isArray(defaultItems) ? defaultItems : ['']);
+  if(!items.length) items = [''];
+  return '<ul class="br-bullets" data-br-bslide="' + slide + '" data-br-bkey="' + esc(key) + '">'
+    + items.map(t => '<li contenteditable="true">' + esc(t == null ? '' : String(t)) + '</li>').join('')
+    + '</ul>';
+}
 // Image slot — resolution priority:
 //   1. per-deck override (_brData.images[slot])
 //   2. shared gallery (slot_key match, vendor match, or stop-photo:<id>)
@@ -11385,6 +11398,66 @@ function brBindEditables(){
       if(brApplyAllActive()) brSetGlobalField(slide, key, el.innerText);   // 9999: propagate to all stops
       if(slide === 11) brRecalcSlide11();
     });
+  });
+}
+function brPlaceCaret(el, atStart){
+  if(!el) return;
+  el.focus();
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(!!atStart);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } catch(e){}
+}
+// Wire up editable bullet lists (brBulletList): Enter splits/adds a bullet,
+// Backspace on an empty bullet removes it; the list is persisted as an array.
+function brBindBullets(){
+  document.querySelectorAll('#br-overlay .br-bullets').forEach(ul => {
+    if(ul._brBulletsBound) return;
+    ul._brBulletsBound = true;
+    const slide = +ul.getAttribute('data-br-bslide');
+    const key = ul.getAttribute('data-br-bkey');
+    const save = () => {
+      let items = Array.prototype.map.call(ul.querySelectorAll('li'), li => li.innerText.replace(/\n/g,' ').trim());
+      while(items.length > 1 && items[items.length-1] === '') items.pop();
+      if(!items.length) items = [''];
+      brFieldChanged(slide, key, items);
+      brSave();
+      if(brApplyAllActive()) brSetGlobalField(slide, key, items);
+    };
+    ul.addEventListener('keydown', e => {
+      const li = (e.target && e.target.closest) ? e.target.closest('li') : null;
+      if(!li || li.parentElement !== ul) return;
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        const nl = document.createElement('li');
+        nl.setAttribute('contenteditable', 'true');
+        // Split at the caret: anything after the caret moves to the new bullet.
+        try {
+          const sel = window.getSelection();
+          if(sel && sel.rangeCount){
+            const r = sel.getRangeAt(0);
+            const after = r.cloneRange();
+            after.selectNodeContents(li);
+            after.setStart(r.endContainer, r.endOffset);
+            nl.appendChild(after.extractContents());
+          }
+        } catch(err){}
+        li.after(nl);
+        brPlaceCaret(nl, true);
+        save();
+      } else if(e.key === 'Backspace' && li.innerText.trim() === '' && ul.querySelectorAll('li').length > 1){
+        e.preventDefault();
+        const prev = li.previousElementSibling;
+        li.remove();
+        brPlaceCaret(prev, false);
+        save();
+      }
+    });
+    ul.addEventListener('blur', save, true);   // capture phase catches li blur
   });
 }
 
@@ -12127,7 +12200,7 @@ function brSlide12(d){
     <div class="br-s12-card" data-num="${i+1}">
       <div class="ico">${ICO(c.ico)}</div>
       <h4>${brEditable(12,'h'+i, c.h)}</h4>
-      <ul>${c.items.map((t,j) => '<li>' + brEditable(12,'i'+i+'_'+j, t) + '</li>').join('')}</ul>
+      ${brBulletList(12, 'items'+i, c.items.map((t,j) => brField(12,'i'+i+'_'+j, t)))}
     </div>`).join('');
   return `
     <div class="br-slide${_brSlide===12?' active':''}" data-slide="12">
@@ -12239,6 +12312,7 @@ function brRender(){
     <div class="br-thumbs">${thumbs}</div>
   `;
   brBindEditables();
+  brBindBullets();
   brApplyTheme();
   // Defer chart render to next tick so the canvas is in the DOM
   if(_brSlide === 8) setTimeout(brRenderGallonsChart, 0);
