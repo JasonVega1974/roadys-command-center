@@ -913,7 +913,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s10-card{background:var(--b-bg-2);border:1px solid var(--b-line);border-radius:14px;padding:18px;display:grid;grid-template-columns:1fr 1.3fr;gap:14px;align-items:center;position:relative;overflow:hidden}
 .br-s10-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--b-success)}
 .br-s10-card.earn::before{background:var(--b-gold)}
-.br-s10-logoslot{height:80px}
+.br-s10-logoslot{height:80px;background:#fff;border:1px solid var(--b-line);border-radius:8px}
+.br-s10-logoslot img{object-fit:contain;padding:5px}
 .br-s10-stat{display:flex;flex-direction:column}
 .br-s10-stat .verb{font-size:.7em;letter-spacing:.16em;text-transform:uppercase;color:var(--b-mute-2);font-weight:700;margin-bottom:2px}
 .br-s10-stat .amt{font-size:2em;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;letter-spacing:-.022em;line-height:1}
@@ -923,9 +924,10 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .br-s10-extra h4{margin:0 0 12px;font-size:1.4em;font-weight:800;letter-spacing:-.01em;color:var(--b-ink);display:flex;align-items:center;gap:10px}
 .br-s10-extra h4 .ico{width:32px;height:32px;border-radius:8px;background:#fef3c7;color:var(--b-gold);display:inline-flex;align-items:center;justify-content:center;flex:none}
 .br-s10-extra-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.br-s10-opp{display:flex;flex-direction:column;align-items:center;gap:6px}
-.br-s10-opp-logo{width:100%;height:72px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--b-line);border-radius:10px;padding:8px}
-.br-s10-opp-logo img{max-width:100%;max-height:100%;object-fit:contain}
+.br-s10-opp{display:flex;flex-direction:column;align-items:center;gap:5px}
+.br-s10-opp-logo{width:100%;height:64px;background:#fff;border:1px solid var(--b-line);border-radius:10px}
+.br-s10-opp-logo img{object-fit:contain;padding:7px}
+.br-s10-opp-sel{width:100%;font-size:.72em;padding:4px 6px;border:1px solid var(--b-line-2);border-radius:6px;background:#fff;color:var(--b-ink);font-weight:600;cursor:pointer}
 .br-s10-opp-noimg{font-weight:700;color:var(--b-ink-2);font-size:.9em;text-align:center;padding:6px}
 .br-s10-opp-savlbl{font-size:.58em;text-transform:uppercase;letter-spacing:.1em;color:var(--b-mute-2);font-weight:700}
 .br-s10-opp-sav{background:#fff;border:1px solid var(--b-line-2);border-radius:8px;padding:5px 12px;font-weight:800;color:var(--b-success);font-variant-numeric:tabular-nums;min-width:90px;text-align:center;font-size:1.05em}
@@ -11935,41 +11937,27 @@ function brRenderRewardsChart(){
 // matches exist so existing decks keep their layout.
 function brSlide10(d){
   const enrolled = (d.enrolledVendors || []);
-  // Find which enrolled vendors have a gallery logo, sorted by vendor priority
-  const master = (typeof loadVendorMaster === 'function') ? loadVendorMaster() : null;
-  const priorityOf = (vid) => {
-    const m = master && master.VP_VENDORS.find(v => v.id === vid);
-    return m ? ({High:0, Medium:1, Low:2})[m.priority] ?? 3 : 3;
-  };
-  const cardsFromGallery = [];
-  for(const v of enrolled){
-    const logo = gallerySrc({ vendorId: v.id });
-    if(!logo) continue;
-    const verbKey = 's10-verb-' + v.id;
-    const amtKey  = 's10-amt-'  + v.id;
-    const yrKey   = 's10-yr-'   + v.id;
-    cardsFromGallery.push({ vendor: v, logo, verbKey, amtKey, yrKey, _p: priorityOf(v.id) });
-  }
-  cardsFromGallery.sort((a, b) => a._p - b._p);
-  // No cap — show every enrolled vendor the stop is on (provided the
-  // vendor has a logo in the deck_gallery). The grid below auto-wraps;
-  // padding shrinks at high counts so even 7-9 cards still fit on one
-  // printed slide.
+  const master = (typeof loadVendorMaster === 'function') ? loadVendorMaster() : { VP_VENDORS: [] };
+  const allVendors = (master.VP_VENDORS || []).map(v => ({ id: v.vid || v.id, name: v.name }))
+    .filter(v => v.id && v.name).sort((a, b) => a.name.localeCompare(b.name));
+  const vendorOptions = sel => '<option value="">— Select program —</option>' +
+    allVendors.map(v => `<option value="${esc(v.id)}"${v.id===sel?' selected':''}>${esc(v.name)}</option>`).join('');
+
+  // Programs at Work for Your Stop — one card per enrolled vendor, each with an
+  // uploadable logo (defaults to the vendor's gallery / bundled logo).
   let cardsHtml;
-  if(cardsFromGallery.length){
-    cardsHtml = cardsFromGallery.map((c, i) => `
+  if(enrolled.length){
+    cardsHtml = enrolled.map((v, i) => `
       <div class="br-s10-card${i % 2 ? ' earn' : ''}">
-        <div class="br-s10-logoslot" style="height:80px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:8px;padding:6px">
-          <img src="${esc(c.logo)}" alt="${esc(c.vendor.name)}" style="max-height:100%;max-width:100%;object-fit:contain"/>
-        </div>
+        ${brImgSlot('s10-logo-' + v.id, (v.name || 'Vendor') + ' logo', { gallery:{ vendorId: v.id }, cls:'br-s10-logoslot' })}
         <div class="br-s10-stat">
-          <div class="verb">${brEditable(10, c.verbKey, i % 2 ? 'Earned' : 'Saved')}</div>
-          <div class="amt br-num">$${brEditable(10, c.amtKey, '0', {tag:'span'})}</div>
-          <div class="yr">${esc(c.vendor.name)} · ${brEditable(10, c.yrKey, 'in ' + d.year)}</div>
+          <div class="verb">${brEditable(10, 's10-verb-' + v.id, i % 2 ? 'Earned' : 'Saved')}</div>
+          <div class="amt br-num">$${brEditable(10, 's10-amt-' + v.id, '0', {tag:'span'})}</div>
+          <div class="yr">${esc(v.name)} · ${brEditable(10, 's10-yr-' + v.id, 'in ' + d.year)}</div>
         </div>
       </div>`).join('');
   } else {
-    // Fallback: legacy two-card layout (Coca-Cola + AllOver Media) — same as before.
+    // Fallback: two uploadable cards when the stop has no enrollments yet.
     cardsHtml = `
       <div class="br-s10-card">
         ${brImgSlot('s10-cocacola','Coca-Cola logo',{cls:'br-s10-logoslot'})}
@@ -11988,20 +11976,16 @@ function brSlide10(d){
         </div>
       </div>`;
   }
-  // Additional Programs to Consider — featured upsell vendors. Logos resolve
-  // via the shared gallery or the bundled vendor-logo assets (VENDOR_LOGO_ASSETS).
-  const oppList = [
-    { id:'V00040', name:'Entegra' },
-    { id:'V00134', name:'Cintas' },
-    { id:'V00112', name:'Truck Parking Club' }
-  ];
-  const oppGrid = oppList.map((v, i) => {
-    const logo = v.id ? gallerySrc({ vendorId: v.id }) : '';
-    const top = logo
-      ? `<div class="br-s10-opp-logo"><img src="${esc(logo)}" alt="${esc(v.name)}"></div>`
-      : `<div class="br-s10-opp-logo br-s10-opp-noimg">${brEditable(10, 'p' + i, v.name)}</div>`;
+  const cardCount = enrolled.length || 2;
+  // Additional Programs to Consider — 3 selectable slots. Pick a program from
+  // the dropdown (logo auto-loads from the gallery / bundled asset) and use the
+  // slot's ↻ Replace to upload a different logo. Defaults: Entegra/Cintas/TPC.
+  const oppDefaults = ['V00040', 'V00134', 'V00112'];
+  const oppGrid = [0, 1, 2].map(i => {
+    const sel = brField(10, 'oppVid' + i, oppDefaults[i]);
     return `<div class="br-s10-opp">
-      ${top}
+      ${brImgSlot('s10-opplogo-' + i, 'Upload / replace logo', { gallery:{ vendorId: sel }, cls:'br-s10-opp-logo' })}
+      <select class="br-s10-opp-sel" onchange="brFieldChanged(10,'oppVid${i}',this.value);brSave();brRender()">${vendorOptions(sel)}</select>
       <div class="br-s10-opp-savlbl">Potential Savings</div>
       <div class="br-s10-opp-sav">$ ${brEditable(10, 'pSav' + i, '0', {tag:'span'})}</div>
     </div>`;
@@ -12013,7 +11997,7 @@ function brSlide10(d){
         <div class="br-s10">
           <div class="br-s10-rows" style="grid-template-columns:repeat(${(() => {
             // Column count by card count: 1=>1, 2=>2, 3=>3, 4=>2 (2x2), 5-6=>3, 7+=>4 (4-per-row).
-            const n = cardsFromGallery.length || 2;
+            const n = cardCount;
             if(n <= 1) return 1;
             if(n === 2) return 2;
             if(n === 3) return 3;
