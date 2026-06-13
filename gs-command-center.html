@@ -10319,6 +10319,13 @@ const VENDOR_LOGO_ASSETS = {
   'V00040': 'assets/vendor-logos/V00040.png',  // Entegra
   'V00112': 'assets/vendor-logos/V00112.png'   // Truck Parking Club
 };
+// Vendors whose logos were uploaded under legacy Slide-10 slot keys (the old
+// Coca-Cola / AllOver Media fallback) rather than keyed by vendor id. Lets
+// those logos surface for stops actually enrolled in the program.
+const VENDOR_LEGACY_SLOTS = {
+  'V00033': 's10-cocacola',   // Coca-Cola
+  'V00005': 's10-aom'         // All Over Media
+};
 function gallerySrc(opts){
   // Synchronous lookup — returns a data URL / asset path or '' if no match.
   // The gallery cache is primed via galleryLoad() (the deck primes it on open).
@@ -10336,6 +10343,13 @@ function gallerySrc(opts){
   }
   // 4. bundled vendor-logo asset fallback (gallery upload always wins over this)
   if(vendorId && VENDOR_LOGO_ASSETS[vendorId]) return VENDOR_LOGO_ASSETS[vendorId];
+  // 5. legacy slot fallback — Coca-Cola / AllOver Media logos uploaded to the
+  //    old s10-* slots (in the gallery or the global brand store).
+  const legacy = vendorId && VENDOR_LEGACY_SLOTS[vendorId];
+  if(legacy){
+    if(_galleryCache.length){ const m = _galleryCache.find(r => r.slot_key === legacy); if(m && m.data_url) return m.data_url; }
+    try { const g = (typeof brGlobalGet === 'function') ? brGlobalGet() : null; if(g && g[legacy]) return g[legacy]; } catch(e){}
+  }
   return '';
 }
 
