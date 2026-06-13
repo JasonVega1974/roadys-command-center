@@ -11494,7 +11494,9 @@ function brSlide2(d){
   const metric = (c, i) => `<div class="met"><div class="met-num br-num">${esc(c.mVal)}</div><div class="met-lbl">${brEditable(2,'l'+i,c.mLbl)}</div></div>`;
   const cards = pillars.map((c, i) => {
     let body;
-    if(i === 1){                                  // Rewards: app screenshot (no metric)
+    if(i === 0){                                  // Fuel Programs: comprehensive-solutions infographic
+      body = `<div class="br-pillar-img"><img src="assets/fuel-programs.png" alt="Comprehensive fuel data solutions"></div>`;
+    } else if(i === 1){                           // Rewards: app screenshot (no metric)
       body = `<div class="br-pillar-img"><img src="assets/rewards-app.png" alt="Roady's Rewards app"></div>`;
     } else if(i === 2 && vendorLogos.length){     // Vendor Programs: partner logo grid (even count → balanced 2-col fill)
       const n = vendorLogos.length >= 6 ? 6 : (vendorLogos.length >= 4 ? 4 : vendorLogos.length);
