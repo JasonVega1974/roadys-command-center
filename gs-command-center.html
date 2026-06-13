@@ -11559,22 +11559,25 @@ function brSlide3(d){
 
 // ─── SLIDE 4 — Competition + Cost Components ──────────────────────────
 function brSlide4(d){
-  const rows = brField(4,'competitors',[
+  const compDefault = [
     { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' },
     { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' },
     { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' },
     { name:'', loc:'', addr:'', city:'', st:'', dist:'', diesel:'', def:'' }
-  ]);
-  const trs = rows.map((r, i) => `
+  ];
+  const rowsRaw = brField(4,'competitors', compDefault);
+  const rows = Array.isArray(rowsRaw) ? rowsRaw : compDefault;
+  // Guard against null / malformed saved rows so one bad entry can't blank the slide.
+  const trs = rows.map((r, i) => { const c = r || {}; return `
     <tr>
-      <td><input value="${esc(r.name||'')}" onblur="brTblCell(4,'competitors',${i},'name',this.value)" placeholder="Truck stop name"></td>
-      <td><input value="${esc(r.loc||'')}" onblur="brTblCell(4,'competitors',${i},'loc',this.value)" placeholder="Exit"></td>
-      <td><input value="${esc(r.city||'')}" onblur="brTblCell(4,'competitors',${i},'city',this.value)" placeholder="City"></td>
-      <td><input value="${esc(r.st||'')}" onblur="brTblCell(4,'competitors',${i},'st',this.value)" style="width:36px" placeholder="ST"></td>
-      <td><input value="${esc(r.dist||'')}" onblur="brTblCell(4,'competitors',${i},'dist',this.value)" style="width:48px" placeholder="mi"></td>
-      <td><input value="${esc(r.diesel||'')}" onblur="brTblCell(4,'competitors',${i},'diesel',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
-      <td><input value="${esc(r.def||'')}" onblur="brTblCell(4,'competitors',${i},'def',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
-    </tr>`).join('');
+      <td><input value="${esc(c.name||'')}" onblur="brTblCell(4,'competitors',${i},'name',this.value)" placeholder="Truck stop name"></td>
+      <td><input value="${esc(c.loc||'')}" onblur="brTblCell(4,'competitors',${i},'loc',this.value)" placeholder="Exit"></td>
+      <td><input value="${esc(c.city||'')}" onblur="brTblCell(4,'competitors',${i},'city',this.value)" placeholder="City"></td>
+      <td><input value="${esc(c.st||'')}" onblur="brTblCell(4,'competitors',${i},'st',this.value)" style="width:36px" placeholder="ST"></td>
+      <td><input value="${esc(c.dist||'')}" onblur="brTblCell(4,'competitors',${i},'dist',this.value)" style="width:48px" placeholder="mi"></td>
+      <td><input value="${esc(c.diesel||'')}" onblur="brTblCell(4,'competitors',${i},'diesel',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
+      <td><input value="${esc(c.def||'')}" onblur="brTblCell(4,'competitors',${i},'def',this.value)" style="width:64px;text-align:right" placeholder="$0.00"></td>
+    </tr>`; }).join('');
 
   // Fuel Cost Components — read-only, auto-imported from each site's stored
   // cost components (fcc_report seed via d.rack) plus the Rack Price set on
