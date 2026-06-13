@@ -2269,6 +2269,17 @@ const GS_PINS = {
   '1006':{name:'Steph Leslie',role:'Growth Strategist'},
   '9999':{name:'Manager',role:'Manager — All Territories',isManager:true}
 };
+// Growth Strategist contact info, keyed by name (matches MANAGER_MAP / REGIONS).
+// Auto-fills the GS email/phone on the Business Review Thank-You slide (and
+// anywhere GS contact is shown). Edits in a deck still override these.
+const GS_CONTACTS = {
+  'Maria Coleman':      { email:'maria@roadyscorp.com',    phone:'(208) 810-4249' },
+  'Steph Leslie':       { email:'steph@roadyscorp.com',    phone:'(208) 391-5344' },
+  'Stefanie Ritter':    { email:'stefanie@roadyscorp.com', phone:'(208) 402-8365' },
+  'Shannon Bumbalough': { email:'',                        phone:'(615) 200-0989' },
+  'Logan Resinkin':     { email:'logan@roadyscorp.com',    phone:'(208) 495-5186' },
+  'Burt Newman':        { email:'bnewman@roadyscorp.com',  phone:'(615) 319-0541' }
+};
 let pinEntry = '';
 
 function initLogin(){
@@ -12105,6 +12116,7 @@ function brSlide12(d){
 
 // ─── SLIDE 13 — Contacts / Thank You ──────────────────────────────────
 function brSlide13(d){
+  const gsc = (typeof GS_CONTACTS === 'object' && GS_CONTACTS[d.stop.gs]) || {};
   return `
     <div class="br-slide${_brSlide===13?' active':''}" data-slide="13">
       ${brShead(13, 'Thank You', 'Your Roady\'s Team')}
@@ -12113,8 +12125,8 @@ function brSlide13(d){
           <div class="br-s13-card gs">
             <h4><span class="ico">${ICO('user')}</span>${brEditable(13,'kH','Your Growth Strategist')}</h4>
             <div class="br-s13-row"><span class="l">Name</span><span class="v">${brEditable(13,'gsName', d.stop.gs)}</span></div>
-            <div class="br-s13-row"><span class="l">Email</span><span class="v"><a href="#">${brEditable(13,'gsEmail','—')}</a></span></div>
-            <div class="br-s13-row"><span class="l">Phone</span><span class="v">${brEditable(13,'gsPhone','—')}</span></div>
+            <div class="br-s13-row"><span class="l">Email</span><span class="v"><a href="#">${brEditable(13,'gsEmail', gsc.email || '—')}</a></span></div>
+            <div class="br-s13-row"><span class="l">Phone</span><span class="v">${brEditable(13,'gsPhone', gsc.phone || '—')}</span></div>
             <div class="br-s13-row"><span class="l">Region</span><span class="v">${brEditable(13,'gsRegion', d.stop.state || '—')}</span></div>
           </div>
           <div class="br-s13-card">
