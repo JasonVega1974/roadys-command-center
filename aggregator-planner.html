@@ -231,7 +231,7 @@
 .agp-stage.collapsed .agp-stage-body{display:none}
 .agp-stage.collapsed .chev{transform:rotate(-90deg)}
 .agp-stage-body{padding:4px 0}
-.agp-step{display:grid;grid-template-columns:1.6fr 130px 110px 130px;gap:10px;align-items:start;padding:11px 15px;border-top:1px solid var(--agp-line-soft)}
+.agp-step{display:grid;grid-template-columns:1.6fr 130px 110px 130px;gap:10px;align-items:start;padding:11px 15px;border-top:1px solid var(--agp-line-soft);background:var(--agp-surface)}
 .agp-step:first-child{border-top:0}
 .agp-step .sname{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
 .agp-step .shint{font-size:11px;color:var(--agp-faint);margin-top:2px;font-weight:400}
@@ -249,14 +249,16 @@
 .agp-select.stsel-na{opacity:.6}
 .agp-select.agsel-no_contract{border-color:var(--agp-grey)}
 /* checklist scroll + frozen column header */
-.agp-checklist-scroll{max-height:64vh;overflow:auto;border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius)}
-.agp-checklist-head{position:sticky;top:0;z-index:6;display:grid;grid-template-columns:1.6fr 130px 110px 130px;gap:10px;padding:10px 15px;background:var(--agp-surface-2);border-bottom:1px solid var(--agp-line);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--agp-muted);font-weight:700}
+.agp-checklist-scroll{max-height:64vh;overflow:auto;scroll-padding-top:42px;border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius)}
+/* opaque + above all rows so nothing bleeds into the header band while scrolling.
+   padding-x:16px = stage border(1px) + step padding(15px), so header columns line up with .agp-step */
+.agp-checklist-head{position:sticky;top:0;z-index:20;display:grid;grid-template-columns:1.6fr 130px 110px 130px;gap:10px;padding:10px 16px;background:var(--agp-surface-2);border-bottom:1px solid var(--agp-line);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--agp-muted);font-weight:700}
 .agp-checklist-head .ch-sort{cursor:pointer;user-select:none;white-space:nowrap}
 .agp-checklist-head .ch-sort:hover,.agp-checklist-head .ch-step:hover{color:var(--agp-text)}
 .agp-checklist-head .ch-step{cursor:pointer;user-select:none}
 .agp-checklist-head .sorted{color:var(--agp-amber)}
-.agp-checklist-scroll .agp-stage{margin:12px;border-color:var(--agp-line-soft)}
-.agp-checklist-scroll .agp-stage-h{position:sticky;top:38px;z-index:4}
+/* stages scroll normally (no per-stage sticky) — full width so columns align with the frozen header */
+.agp-checklist-scroll .agp-stage{margin:12px 0 0;background:var(--agp-surface);border-color:var(--agp-line-soft)}
 /* pipeline card status section */
 .agp-card-status{margin-top:12px;border-top:1px solid var(--agp-line-soft);padding-top:10px;display:flex;flex-direction:column;gap:5px}
 .agp-card-status .cs-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -266,7 +268,7 @@
 .agp-card-status .cs-note{font-size:11px;color:var(--agp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agp-card-status .cs-warn{font-size:11px;font-weight:700;color:var(--agp-red);background:var(--agp-red-soft);padding:4px 9px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;align-self:flex-start}
 .agp-chip.risk{background:var(--agp-red-soft);color:var(--agp-red)}
-@media(max-width:880px){.agp-checklist-head{display:none}.agp-checklist-scroll .agp-stage-h{top:0}}
+@media(max-width:880px){.agp-checklist-head{display:none}}
 
 /* ---------- locations table ---------- */
 .agp-loc-controls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;background:var(--agp-surface-2);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:14px;margin-bottom:14px}
