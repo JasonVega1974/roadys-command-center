@@ -241,6 +241,32 @@
 .sd-done{background:var(--agp-green)} .sd-in_progress{background:var(--agp-blue)}
 .sd-at_risk{background:var(--agp-yellow)} .sd-blocked{background:var(--agp-red)}
 .sd-not_started{background:var(--agp-grey)} .sd-na{background:var(--agp-faint)}
+/* colored status dropdowns (step + aggregator) */
+.agp-select.stsel-done,.agp-select.agsel-active{border-color:var(--agp-green);box-shadow:0 0 0 2px rgba(52,211,153,.16)}
+.agp-select.stsel-in_progress,.agp-select.agsel-in_process{border-color:var(--agp-blue);box-shadow:0 0 0 2px rgba(96,165,250,.16)}
+.agp-select.stsel-at_risk,.agp-select.agsel-on_hold{border-color:var(--agp-yellow);box-shadow:0 0 0 2px rgba(251,191,36,.16)}
+.agp-select.stsel-blocked{border-color:var(--agp-red);box-shadow:0 0 0 2px rgba(248,113,113,.16)}
+.agp-select.stsel-na{opacity:.6}
+.agp-select.agsel-no_contract{border-color:var(--agp-grey)}
+/* checklist scroll + frozen column header */
+.agp-checklist-scroll{max-height:64vh;overflow:auto;border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius)}
+.agp-checklist-head{position:sticky;top:0;z-index:6;display:grid;grid-template-columns:1.6fr 130px 110px 130px;gap:10px;padding:10px 15px;background:var(--agp-surface-2);border-bottom:1px solid var(--agp-line);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--agp-muted);font-weight:700}
+.agp-checklist-head .ch-sort{cursor:pointer;user-select:none;white-space:nowrap}
+.agp-checklist-head .ch-sort:hover,.agp-checklist-head .ch-step:hover{color:var(--agp-text)}
+.agp-checklist-head .ch-step{cursor:pointer;user-select:none}
+.agp-checklist-head .sorted{color:var(--agp-amber)}
+.agp-checklist-scroll .agp-stage{margin:12px;border-color:var(--agp-line-soft)}
+.agp-checklist-scroll .agp-stage-h{position:sticky;top:38px;z-index:4}
+/* pipeline card status section */
+.agp-card-status{margin-top:12px;border-top:1px solid var(--agp-line-soft);padding-top:10px;display:flex;flex-direction:column;gap:5px}
+.agp-card-status .cs-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.agp-card-status .cs-stage{font-size:11.5px;color:var(--agp-muted);font-weight:600}
+.agp-card-status .cs-lab{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--agp-faint);font-weight:700;margin-right:5px}
+.agp-card-status .cs-next{font-size:11.5px;color:var(--agp-text)}
+.agp-card-status .cs-note{font-size:11px;color:var(--agp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agp-card-status .cs-warn{font-size:11px;font-weight:700;color:var(--agp-red);background:var(--agp-red-soft);padding:4px 9px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;align-self:flex-start}
+.agp-chip.risk{background:var(--agp-red-soft);color:var(--agp-red)}
+@media(max-width:880px){.agp-checklist-head{display:none}.agp-checklist-scroll .agp-stage-h{top:0}}
 
 /* ---------- locations table ---------- */
 .agp-loc-controls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;background:var(--agp-surface-2);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:14px;margin-bottom:14px}
@@ -615,7 +641,7 @@ function seed(){
        notes:"NDA 04/07/26. 2.40% transaction fee + interchange (~240 bps on Visa). Needs unique acquirer IDs per station (send as spreadsheet)."}),
   ];
   const descriptions={};aggregators.forEach(a=>{descriptions[a.id]=descSeed(a);});
-  return {version:1,ui:{tab:"pipeline",currentAgg:"motive",locSort:{key:"code",dir:1},locFilter:OPTIN_OPTS.slice()},aggregators,
+  return {version:1,ui:{tab:"pipeline",currentAgg:"motive",locSort:{key:"code",dir:1},locFilter:OPTIN_OPTS.slice(),stepSort:{key:"",dir:1}},aggregators,
     locations:rosterLocations(),optins:rosterOptins(),descriptions,
     processDescription:PROCESS_SEED,rosterSeeded:true};
 }
@@ -692,6 +718,7 @@ function migrate(){
   // view prefs for the locations table
   if(!S.ui.locSort)S.ui.locSort={key:"code",dir:1};
   if(!Array.isArray(S.ui.locFilter))S.ui.locFilter=OPTIN_OPTS.slice();
+  if(!S.ui.stepSort)S.ui.stepSort={key:"",dir:1};
 }
 let saveTimer=null;
 function markDirty(){const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.add("dirty");t.textContent="Saving…";}}
@@ -713,6 +740,22 @@ function stageState(a,stageId){
   if(tot===0)return"empty";if(done===tot)return"done";if(done>0)return"partial";return"empty";
 }
 function aggRisk(a){let n=0;ALL_STEPS.forEach(s=>{const st=a.steps[s.id];if(st&&(st.status==="blocked"||st.status==="at_risk"))n++;});return n;}
+function currentStage(a){for(const s of STAGES){if(stageState(a,s.id)!=="done")return s;}return null;}
+function nextOpenStep(a){
+  for(const s of ALL_STEPS){const st=a.steps[s.id];if(!st||st.status==="na")continue;
+    if(st.status!=="done")return {name:s.name,owner:st.owner||STEP_OWNER_DEFAULT[s.id]||"",status:st.status};}
+  return null;
+}
+function latestNote(a){
+  if(a.notes&&a.notes.trim())return a.notes.trim();
+  let note="";ALL_STEPS.forEach(s=>{const st=a.steps[s.id];if(st&&st.notes&&st.notes.trim())note=st.notes.trim();});
+  return note;
+}
+function todayISO(){try{return new Date().toISOString().slice(0,10);}catch(e){return"";}}
+function isBehind(a){
+  if(a.status==="active"||a.launchActual)return false;
+  if(!a.deadline)return false;const t=todayISO();return t&&a.deadline<t;
+}
 function discLabel(type,val){
   if(type==="none"||!type)return"—";if(type==="BO")return"Better Of"+(val?" ("+val+"¢)":"");
   const t=type==="R-"?"Retail −":"Cost +";return t+" "+(val||"?")+"¢";
@@ -760,6 +803,20 @@ function renderPipeline(){
     const pct=aggProgress(a),risk=aggRisk(a);
     const stageHtml=STAGES.map(s=>{const st=stageState(a,s.id);return `<span class="${st==="done"?"done":st==="partial"?"partial":""}" title="${s.name}"></span>`;}).join("");
     const launch=a.launchTarget||a.deadline;
+    const statusLabel=(AGG_STATUS.find(s=>s.v===a.status)||{}).l||a.status;
+    const cs=currentStage(a),next=nextOpenStep(a),note=latestNote(a),behind=isBehind(a);
+    const stageTxt=cs?`Stage ${cs.id} · ${esc(cs.name)}`:"All stages complete";
+    const noteShort=note?esc(note.length>92?note.slice(0,92)+"…":note):"";
+    const statusSection=`<div class="agp-card-status">
+      <div class="cs-top">
+        <span class="agp-badge b-${a.status}">${esc(statusLabel)}</span>
+        <span class="cs-stage">${stageTxt}</span>
+        ${risk?`<span class="agp-chip risk">${risk} at risk</span>`:""}
+      </div>
+      <div class="cs-next"><span class="cs-lab">Next</span>${next?`${esc(next.name)}${next.owner?` · ${esc(next.owner)}`:""}`:"All steps complete 🎉"}</div>
+      ${noteShort?`<div class="cs-note"><span class="cs-lab">Note</span>${noteShort}</div>`:""}
+      ${behind?`<div class="cs-warn">⚠ Behind deadline — was due ${fmtDate(a.deadline)}</div>`:""}
+    </div>`;
     return `<div class="agp-agg-card" data-open-agg="${a.id}">
       <div class="row1">
         <div><div class="name">${esc(a.name)}</div><div class="rail">${esc(a.rail||"Payment rail TBD")}</div></div>
@@ -768,10 +825,7 @@ function renderPipeline(){
       <div class="agp-progress ${pct===100?"green":""}"><i style="width:${pct}%"></i></div>
       <div class="agp-mini-meta"><span>${pct}% complete</span><span>${esc(discLabel(a.discountType,a.discountValue))}</span></div>
       <div class="agp-stagebar">${stageHtml}</div>
-      <div class="agp-mini-meta" style="margin-top:10px">
-        <span class="agp-badge b-${a.status}">${esc((AGG_STATUS.find(s=>s.v===a.status)||{}).l||a.status)}</span>
-        ${risk?`<span class="agp-chip" style="background:var(--agp-red-soft);color:var(--agp-red)">${risk} at risk</span>`:`<span class="agp-chip">${esc(a.contactName||"No contact")}</span>`}
-      </div>
+      ${statusSection}
     </div>`;
   }).join("");
 }
@@ -797,7 +851,7 @@ function renderAggWorkspace(){
       <div class="agp-progress ${pct===100?"green":""}"><i style="width:${pct}%"></i></div></div>
     </div>
     <div class="agp-grid-3">
-      <div class="agp-field"><label>Status</label>${selectHtml("aggf","status",AGG_STATUS,a.status)}</div>
+      <div class="agp-field"><label>Status</label>${selectHtml("aggf","status",AGG_STATUS,a.status,null,"agsel-"+a.status)}</div>
       <div class="agp-field"><label>Payment rail</label><input class="agp-input" data-aggf="rail" value="${esc(a.rail)}"></div>
       <div class="agp-field"><label># Carriers / drivers</label><input class="agp-input" data-aggf="carriers" value="${esc(a.carriers)}"></div>
     </div>
@@ -824,19 +878,28 @@ function renderAggWorkspace(){
     <div class="agp-field" style="margin-top:14px"><label>Notes</label><textarea class="agp-textarea" data-aggf="notes">${esc(a.notes)}</textarea></div>
   </div>`;
 
+  const ssort=S.ui.stepSort||{key:"",dir:1};
+  const sortSteps=steps=>{
+    if(!ssort.key)return steps;
+    const rank=s=>{const st=a.steps[s.id]||{status:"not_started"};
+      if(ssort.key==="status")return STATUS_OPTS.findIndex(o=>o.v===(st.status||"not_started"));
+      if(ssort.key==="target")return st.target||"9999-99-99";
+      return 0;};
+    return steps.slice().sort((p,q)=>{const rp=rank(p),rq=rank(q);if(rp<rq)return -ssort.dir;if(rp>rq)return ssort.dir;return 0;});
+  };
   const stages=STAGES.map(stage=>{
     const collapsedKey="agp_stage_"+stage.id+"_"+a.id;
     const collapsed=ssGet(collapsedKey)==="1";
     let done=0,tot=0;stage.steps.forEach(s=>{const st=a.steps[s.id];if(!st||st.status==="na")return;tot++;if(st.status==="done")done++;});
     const complete=tot>0&&done===tot;
-    const rows=stage.steps.map(s=>{
+    const rows=sortSteps(stage.steps).map(s=>{
       const st=a.steps[s.id]||{status:"not_started",owner:"",target:"",done:"",notes:""};
       return `<div class="agp-step">
         <div>
           <div class="sname"><span class="agp-statusdot sd-${st.status}"></span>${esc(s.name)}</div>
           <div class="shint">${esc(s.hint||"")}</div>
         </div>
-        ${selectHtml("step","status",STATUS_OPTS,st.status,{agg:a.id,step:s.id})}
+        ${selectHtml("step","status",STATUS_OPTS,st.status,{agg:a.id,step:s.id},"stsel-"+st.status)}
         <input class="agp-input" data-step-field="owner" data-agg="${a.id}" data-step="${s.id}" value="${esc(st.owner)}" placeholder="Owner">
         <input class="agp-input" type="date" data-step-field="target" data-agg="${a.id}" data-step="${s.id}" value="${esc(st.target)}">
         <div class="note-wrap"><input class="agp-input" data-step-field="notes" data-agg="${a.id}" data-step="${s.id}" value="${esc(st.notes)}" placeholder="Notes…"></div>
@@ -853,16 +916,24 @@ function renderAggWorkspace(){
     </div>`;
   }).join("");
 
+  const sind=k=>ssort.key===k?(ssort.dir>0?" ▲":" ▼"):"";
+  const checklistHead=`<div class="agp-checklist-head">
+    <div class="ch-step" data-stepsort="none" title="Reset to process order">Step</div>
+    <div class="ch-sort ${ssort.key==="status"?"sorted":""}" data-stepsort="status" title="Sort by status">Status${sind("status")}</div>
+    <div>Owner</div>
+    <div class="ch-sort ${ssort.key==="target"?"sorted":""}" data-stepsort="target" title="Sort by target date">Target${sind("target")}</div>
+  </div>`;
+
   $("#agpAggWorkspace").innerHTML=head+`
   <div class="agp-panel">
-    <div class="agp-section-h"><h2>Onboarding checklist</h2><div class="sub" style="margin:0 0 0">Set a status, owner, target date and note per step. Stages roll up to the % above.</div></div>
-    ${stages}
+    <div class="agp-section-h"><h2>Onboarding checklist</h2><div class="sub" style="margin:0 0 0">Set a status, owner, target date and note per step. Stages roll up to the % above. Click <strong>Status</strong> or <strong>Target</strong> to sort within each stage.</div></div>
+    <div class="agp-checklist-scroll">${checklistHead}${stages}</div>
   </div>`;
 }
 
-function selectHtml(kind,field,opts,val,data){
+function selectHtml(kind,field,opts,val,data,extraClass){
   const attrs=data?Object.entries(data).map(([k,v])=>`data-${k}="${esc(v)}"`).join(" "):"";
-  return `<select class="agp-select" data-${kind}-field="${field}" ${attrs}>`+
+  return `<select class="agp-select${extraClass?" "+esc(extraClass):""}" data-${kind}-field="${field}" ${attrs}>`+
     opts.map(o=>`<option value="${esc(o.v)}" ${o.v===val?"selected":""}>${esc(o.l)}</option>`).join("")+`</select>`;
 }
 
@@ -1082,6 +1153,16 @@ function bind(){
     if(e.target.closest("[data-optfilter-none]")){S.ui.locFilter=[];commit();renderLocations();return;}
   });
 
+  // onboarding checklist: sort steps within stages
+  document.addEventListener("click",e=>{
+    const h=e.target.closest("[data-stepsort]");if(!h)return;
+    const k=h.dataset.stepsort;const s=S.ui.stepSort||{key:"",dir:1};
+    if(k==="none")S.ui.stepSort={key:"",dir:1};
+    else if(s.key===k)S.ui.stepSort={key:k,dir:-s.dir};
+    else S.ui.stepSort={key:k,dir:1};
+    commit();renderAggWorkspace();
+  });
+
   // process desc
   $("#agpProcessDesc").addEventListener("input",e=>{S.processDescription=e.target.value;commit();});
 
@@ -1120,7 +1201,7 @@ function onFieldChange(e){
   const t=e.target;
   // aggregator status select
   if(t.dataset.aggfField){const a=aggById(S.ui.currentAgg);if(a){a[t.dataset.aggfField]=t.value;commit();renderPipeline();
-    if(t.dataset.aggfField==="discountType")renderAggWorkspace();}}
+    if(t.dataset.aggfField==="discountType"||t.dataset.aggfField==="status")renderAggWorkspace();}}
   // step status
   if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderAggWorkspace();renderPipeline();}}
   // optin selects
