@@ -956,8 +956,9 @@ function isBehind(a){
   if(!a.deadline)return false;const t=todayISO();return t&&a.deadline<t;
 }
 function discLabel(type,val){
-  if(type==="none"||!type)return"—";if(type==="BO")return"Better Of"+(val?" ("+val+"¢)":"");
-  const t=type==="R-"?"Retail −":"Cost +";return t+" "+(val||"?")+"¢";
+  if(type==="none"||!type)return"—";
+  if(type==="BO")return val?("C + "+val+", R - "+val+" / BO"):"Better Of";
+  return (type==="R-"?"R - ":"C + ")+(val||"?");
 }
 function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?`${p[1]}/${p[2]}/${p[0].slice(2)}`:d;}
 function optinClass(v){return v==="Yes"?"opt-yes":v==="No"?"opt-no":v==="N/A"?"opt-na":(v==="No Response"||v==="Other"||v==="Select")?"opt-pending":"";}
