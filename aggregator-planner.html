@@ -124,6 +124,7 @@
 .agp-save{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--agp-muted);margin-right:4px}
 .agp-dot{width:8px;height:8px;border-radius:50%;background:var(--agp-green);box-shadow:0 0 0 3px var(--agp-green-soft)}
 .agp-dot.dirty{background:var(--agp-yellow);box-shadow:0 0 0 3px var(--agp-yellow-soft)}
+.agp-dot.offline{background:var(--agp-red);box-shadow:0 0 0 3px var(--agp-red-soft)}
 
 /* ---------- buttons ---------- */
 .agp-btn{
@@ -512,13 +513,18 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
                     markup, discountType('R-'|'C+'|'BO'|'none'), discountValue,
                     discountTarget, notes,
                     steps:{ stepId:{status,owner,target,done,notes} } }],
-     locations:[{id,name,city,state,code}],
+     locations:[{id,name,city,state,code,gs}],
      optins:{ aggId:{ locId:{status,discountType,retailMinus,costPlus,notes} } },
      descriptions:{ aggId:"text" },
      processDescription:"text",
-     rosterSeeded:true   // set once the spreadsheet roster has been merged in
+     rosterSeeded:true   // + doneMotiveAtoB / ownersV2: local migration flags
    }
-   To move to Supabase: swap AGP.load()/AGP.save() for table I/O.
+   PERSISTENCE: Supabase is the source of truth (tables agp_aggregators,
+   agp_steps, agp_locations, agp_optins, agp_descriptions, agp_settings).
+   localStorage[KEY] is an OFFLINE CACHE only. UI prefs (ui.*, collapsed
+   stages) live only in the cache and never sync. See the SUPABASE SYNC
+   block above: loadLocal()->render fast, then syncInit() pulls/seeds, and
+   commit() upserts just the changed rows (debounced).
    ===================================================================== */
 (function(){
 "use strict";
@@ -530,6 +536,175 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const uid=p=>(p||"id")+"_"+Math.random().toString(36).slice(2,8);
 const ssGet=k=>{try{return sessionStorage.getItem(k);}catch(e){return null;}};
 const ssSet=(k,v)=>{try{sessionStorage.setItem(k,v);}catch(e){}};
+
+/* =====================================================================
+   SUPABASE SYNC  (cloud is source of truth; localStorage is offline cache)
+   Setup copied verbatim from gs-command-center.html (same project/anon key).
+   Tables: agp_aggregators, agp_steps, agp_locations, agp_optins,
+           agp_descriptions, agp_settings.  UI prefs never sync.
+   ===================================================================== */
+const ROADYS_SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
+const ROADYS_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
+let _sbClient = null;
+let _lastSyncedEntities = null;   // baseline for change diffing
+let _syncState = "syncing";
+function ensureSupabaseLib(){
+  if(typeof window !== 'undefined' && window.supabase) return Promise.resolve(window.supabase);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+    s.onload = () => window.supabase ? resolve(window.supabase) : reject(new Error('supabase-js loaded but window.supabase undefined'));
+    s.onerror = () => reject(new Error('supabase-js CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+function getRoadysSB(){
+  if(_sbClient) return _sbClient;
+  if(typeof window !== 'undefined' && window.supabase){
+    try { _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON); return _sbClient; }
+    catch(e){ console.warn('getRoadysSB: ' + e.message); return null; }
+  }
+  return null;
+}
+function nowISO(){try{return new Date().toISOString();}catch(e){return null;}}
+
+/* ---- column mapping: JS state <-> table rows (date/empty -> null) ---- */
+const SB_TABLE={agg:"agp_aggregators",step:"agp_steps",loc:"agp_locations",optin:"agp_optins",desc:"agp_descriptions",setting:"agp_settings"};
+const SB_CONFLICT={agg:"id",step:"aggregator_id,step_id",loc:"id",optin:"aggregator_id,location_id",desc:"aggregator_id",setting:"key"};
+const SB_ORDER=["agg","step","loc","optin","desc","setting"];
+function aggToRow(a,idx){return {id:a.id,name:a.name||"",rail:a.rail||"",status:a.status||"not_started",
+  launch_target:a.launchTarget||null,deadline:a.deadline||null,launch_actual:a.launchActual||null,
+  contact_name:a.contactName||"",contact_role:a.contactRole||"",phone:a.phone||"",email:a.email||"",
+  location:a.location||"",carriers:a.carriers||"",markup:(a.markup===""||a.markup==null||isNaN(+a.markup))?null:+a.markup,
+  discount_type:a.discountType||"",discount_value:a.discountValue||"",discount_target:a.discountTarget||"",
+  notes:a.notes||"",sort_index:idx};}
+function rowToAgg(r){return {id:r.id,name:r.name||"",rail:r.rail||"",status:r.status||"not_started",
+  launchTarget:r.launch_target||"",deadline:r.deadline||"",launchActual:r.launch_actual||"",
+  contactName:r.contact_name||"",contactRole:r.contact_role||"",phone:r.phone||"",email:r.email||"",
+  location:r.location||"",carriers:r.carriers||"",markup:r.markup==null?2:r.markup,
+  discountType:r.discount_type||"",discountValue:r.discount_value||"",discountTarget:r.discount_target||"",
+  notes:r.notes||"",steps:{}};}
+function stepToRow(aggId,stepId,st){return {aggregator_id:aggId,step_id:stepId,status:st.status||"not_started",
+  owner:st.owner||"",target:st.target||null,done:st.done||null,notes:st.notes||""};}
+function rowToStep(r){return {status:r.status||"not_started",owner:r.owner||"",target:r.target||"",done:r.done||"",notes:r.notes||""};}
+function locToRow(l){return {id:l.id,name:l.name||"",city:l.city||"",state:l.state||"",code:l.code||"",gs:l.gs||""};}
+function rowToLoc(r){return {id:r.id,name:r.name||"",city:r.city||"",state:r.state||"",code:r.code||"",gs:r.gs||""};}
+function optinToRow(aggId,locId,o){return {aggregator_id:aggId,location_id:locId,status:o.status||"Select",
+  discount_type:o.discountType||"",discount_value:o.discountValue||"",retail_minus:o.retailMinus||"",cost_plus:o.costPlus||"",notes:o.notes||""};}
+function rowToOptin(r){return {status:r.status||"Select",discountType:r.discount_type||"",discountValue:r.discount_value||"",
+  retailMinus:r.retail_minus||"",costPlus:r.cost_plus||"",notes:r.notes||""};}
+
+/* ---- entity sets keyed by PK (for change diffing; excludes updated_at + UI) ---- */
+function buildEntities(St){
+  const E={agg:{},step:{},loc:{},optin:{},desc:{},setting:{}};
+  (St.aggregators||[]).forEach((a,idx)=>{
+    E.agg[a.id]=aggToRow(a,idx);
+    Object.keys(a.steps||{}).forEach(sid=>{E.step[a.id+"|"+sid]=stepToRow(a.id,sid,a.steps[sid]);});
+  });
+  (St.locations||[]).forEach(l=>{E.loc[l.id]=locToRow(l);});
+  Object.keys(St.optins||{}).forEach(aggId=>Object.keys(St.optins[aggId]||{}).forEach(locId=>{
+    E.optin[aggId+"|"+locId]=optinToRow(aggId,locId,St.optins[aggId][locId]);}));
+  Object.keys(St.descriptions||{}).forEach(aggId=>{E.desc[aggId]={aggregator_id:aggId,body:St.descriptions[aggId]||""};});
+  E.setting["process_description"]={key:"process_description",value:St.processDescription||""};
+  return E;
+}
+function diffEntities(cur,prev){
+  const out={};
+  SB_ORDER.forEach(t=>{const ups=[],dels=[];
+    Object.keys(cur[t]).forEach(k=>{const c=cur[t][k],p=prev&&prev[t]?prev[t][k]:undefined;
+      if(!p||JSON.stringify(p)!==JSON.stringify(c))ups.push(c);});
+    if(prev&&prev[t])Object.keys(prev[t]).forEach(k=>{if(!(k in cur[t]))dels.push(k);});
+    out[t]={ups,dels};});
+  return out;
+}
+
+/* ---- remote I/O ---- */
+async function sbSelectAll(sb,t){
+  const PAGE=1000;let from=0,out=[];
+  while(true){
+    const {data,error}=await sb.from(t).select("*").range(from,from+PAGE-1);
+    if(error)throw new Error(t+" select: "+error.message);
+    out=out.concat(data||[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return out;
+}
+async function fetchAllRemote(sb){
+  const [aggregators,steps,locations,optins,descriptions,settings]=await Promise.all(
+    ["agp_aggregators","agp_steps","agp_locations","agp_optins","agp_descriptions","agp_settings"].map(t=>sbSelectAll(sb,t)));
+  return {aggregators,steps,locations,optins,descriptions,settings};
+}
+async function sbUpsert(sb,table,rows,onConflict){
+  const CH=500;
+  for(let i=0;i<rows.length;i+=CH){
+    const {error}=await sb.from(table).upsert(rows.slice(i,i+CH),{onConflict});
+    if(error)throw new Error(table+" upsert: "+error.message);
+  }
+}
+async function pushFullState(sb,St){
+  const E=buildEntities(St),ts=nowISO();
+  for(const t of SB_ORDER){
+    const rows=Object.values(E[t]).map(r=>Object.assign({},r,{updated_at:ts}));
+    if(rows.length)await sbUpsert(sb,SB_TABLE[t],rows,SB_CONFLICT[t]);
+  }
+  _lastSyncedEntities=E;
+}
+function assembleFromRemote(remote,ui){
+  const aggregators=remote.aggregators.slice().sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)).map(rowToAgg);
+  const byId={};aggregators.forEach(a=>byId[a.id]=a);
+  remote.steps.forEach(r=>{const a=byId[r.aggregator_id];if(a)a.steps[r.step_id]=rowToStep(r);});
+  aggregators.forEach(a=>ALL_STEPS.forEach(s=>{if(!a.steps[s.id])a.steps[s.id]={status:"not_started",owner:STEP_OWNER_DEFAULT[s.id]||"",target:"",done:"",notes:""};}));
+  const locations=remote.locations.map(rowToLoc);
+  const optins={};remote.optins.forEach(r=>{(optins[r.aggregator_id]=optins[r.aggregator_id]||{})[r.location_id]=rowToOptin(r);});
+  const descriptions={};remote.descriptions.forEach(r=>{descriptions[r.aggregator_id]=r.body||"";});
+  aggregators.forEach(a=>{if(descriptions[a.id]===undefined)descriptions[a.id]=descSeed(a);});
+  const set={};remote.settings.forEach(r=>{set[r.key]=r.value;});
+  const newUi=ui||{tab:"pipeline",currentAgg:aggregators[0]&&aggregators[0].id,locSort:{key:"code",dir:1},locFilter:OPTIN_OPTS.slice(),stepSort:{key:"",dir:1}};
+  if(!newUi.currentAgg||!byId[newUi.currentAgg])newUi.currentAgg=aggregators[0]&&aggregators[0].id;
+  return {version:1,ui:newUi,aggregators,locations,optins,descriptions,
+    processDescription:set.process_description!==undefined?set.process_description:PROCESS_SEED,
+    rosterSeeded:true,doneMotiveAtoB:true,ownersV2:true};
+}
+async function doSync(sb){
+  const remote=await fetchAllRemote(sb);
+  if(!remote.aggregators.length){ await pushFullState(sb,S); return "seeded"; }
+  S=assembleFromRemote(remote,S.ui);_lastSyncedEntities=buildEntities(S);saveCache();render();return "assembled";
+}
+async function syncInit(){
+  setSyncState("syncing");
+  try{ await ensureSupabaseLib(); }catch(e){ console.warn(e.message); setSyncState("offline"); return; }
+  const sb=getRoadysSB(); if(!sb){ setSyncState("offline"); return; }
+  _sbClient=sb;
+  try{
+    const r=await doSync(sb);
+    if(r==="assembled"&&S.ui.tab&&S.ui.tab!=="pipeline")gotoTab(S.ui.tab);
+    setSyncState("synced");
+  }catch(e){ console.warn("syncInit: "+(e&&e.message||e)); setSyncState("offline"); }
+}
+// Upsert ONLY the rows that changed vs the last synced baseline (debounced via commit()).
+async function syncToRemote(){
+  const sb=_sbClient; if(!sb){ setSyncState("offline"); return; }
+  const cur=buildEntities(S), d=diffEntities(cur,_lastSyncedEntities), ts=nowISO();
+  try{
+    for(const t of SB_ORDER){
+      if(d[t].ups.length){const rows=d[t].ups.map(r=>Object.assign({},r,{updated_at:ts}));await sbUpsert(sb,SB_TABLE[t],rows,SB_CONFLICT[t]);}
+    }
+    for(const id of d.loc.dels){ await sb.from("agp_locations").delete().eq("id",id);
+      await sb.from("agp_optins").delete().eq("location_id",id); }
+    for(const k of d.optin.dels){ const p=k.split("|");
+      await sb.from("agp_optins").delete().match({aggregator_id:p[0],location_id:p[1]}); }
+    _lastSyncedEntities=cur;
+    setSyncState("synced");
+  }catch(e){ console.warn("syncToRemote: "+(e&&e.message||e)); setSyncState("offline"); }
+}
+function setSyncState(st){
+  _syncState=st;const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(!d)return;
+  d.classList.remove("dirty","offline");
+  if(st==="syncing"){d.classList.add("dirty");if(t)t.textContent="Syncing…";}
+  else if(st==="offline"){d.classList.add("offline");if(t)t.textContent="Offline — not syncing";}
+  else if(t)t.textContent="Synced";
+}
 
 /* ---------- canonical process (7 stages) ---------- */
 const STAGES=[
@@ -707,7 +882,8 @@ Each aggregator carries a Launch Target (the date we're aiming for) and a Deadli
 
 /* ---------- state ---------- */
 let S=null;
-function load(){try{const r=localStorage.getItem(KEY);if(r){S=JSON.parse(r);migrate();return;}}catch(e){}S=seed();save();}
+// Offline cache only — render instantly from here, then syncInit() reconciles with Supabase.
+function loadLocal(){try{const r=localStorage.getItem(KEY);if(r){S=JSON.parse(r);migrate();return;}}catch(e){}S=seed();saveCache();}
 function migrate(){
   if(!S.ui)S.ui={tab:"pipeline",currentAgg:S.aggregators[0]&&S.aggregators[0].id};
   if(!S.optins)S.optins={};if(!S.descriptions)S.descriptions={};if(!S.locations)S.locations=[];
@@ -742,12 +918,14 @@ function migrate(){
   }
 }
 let saveTimer=null;
-function markDirty(){const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.add("dirty");t.textContent="Saving…";}}
-function save(){
-  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){toast("Storage full — export a backup");}
-  const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.remove("dirty");t.textContent="Saved";}
+function saveCache(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){toast("Storage full — export a backup");}}
+// Back-compat: migrate()/import/reset call save() — it persists the offline cache.
+function save(){saveCache();}
+// On any edit: refresh the cache + push the changed row(s) to Supabase, debounced.
+function commit(){
+  setSyncState("syncing");clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{saveCache();syncToRemote();},700);
 }
-function commit(){markDirty();clearTimeout(saveTimer);saveTimer=setTimeout(save,500);}
 
 /* ---------- helpers ---------- */
 const aggById=id=>S.aggregators.find(a=>a.id===id);
@@ -1193,7 +1371,7 @@ function bind(){
   $("#agpExport").onclick=doExport;
   $("#agpImport").onclick=openImportJSON;
   $("#agpPrint").onclick=()=>window.print();
-  $("#agpReset").onclick=()=>confirmModal("Reset everything?","This clears all aggregators, locations and opt-ins back to the seed data from the spreadsheet. Export a backup first if unsure.","Reset all",()=>{S=seed();save();render();closeModal();toast("Reset to seed data");});
+  $("#agpReset").onclick=()=>confirmModal("Reset everything?","This clears all aggregators, locations and opt-ins back to the seed data from the spreadsheet — in the cloud too. Export a backup first if unsure.","Reset all",()=>{S=seed();render();commit();closeModal();toast("Reset to seed data");});
   $("#agpAddAgg").onclick=openAddAgg;
   $("#agpAddLoc").onclick=openAddLoc;
   $("#agpImportLoc").onclick=openImportLoc;
@@ -1352,7 +1530,7 @@ function openImportJSON(){
     <div class="agp-help">This replaces all current data. Export a backup first if you want to keep it.</div>`,
    `<button class="agp-btn ghost" id="agpJc">Cancel</button><button class="agp-btn primary" id="agpJs">Replace data</button>`);
   $("#agpJc").onclick=closeModal;
-  $("#agpJs").onclick=()=>{try{const d=JSON.parse($("#agpJsonArea").value);if(!d.aggregators)throw 0;S=d;migrate();save();render();closeModal();toast("Backup imported");}catch(e){toast("Invalid JSON");}};
+  $("#agpJs").onclick=()=>{try{const d=JSON.parse($("#agpJsonArea").value);if(!d.aggregators)throw 0;S=d;migrate();render();commit();closeModal();toast("Backup imported");}catch(e){toast("Invalid JSON");}};
 }
 
 /* =====================================================================
@@ -1365,12 +1543,17 @@ function applyTheme(){
   const btn=$("#agpTheme");if(btn)btn.textContent=light?"☀️":"🌙";
 }
 function init(){
-  load();bind();render();applyTheme();
+  loadLocal();bind();render();applyTheme();
   // restore tab
   if(S.ui.tab&&S.ui.tab!=="pipeline")gotoTab(S.ui.tab);
   window.scrollTo(0,0);
+  syncInit();   // async: pull from Supabase (or first-run seed), then re-render
 }
-window.AGP={get state(){return S;},save,render,reset(){S=seed();save();render();}};
+window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
+  // headless-test hooks (no effect in normal use)
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,
+    setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},
+    getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
 })();
 </script>
