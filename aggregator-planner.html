@@ -195,10 +195,17 @@
 .agp-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;letter-spacing:.01em}
 .agp-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .b-active{color:var(--agp-green);background:var(--agp-green-soft)}
-.b-in_process{color:var(--agp-blue);background:var(--agp-blue-soft)}
-.b-on_hold{color:var(--agp-yellow);background:var(--agp-yellow-soft)}
+.b-in_process{color:var(--agp-yellow);background:var(--agp-yellow-soft)}
+.b-on_hold{color:var(--agp-red);background:var(--agp-red-soft)}
 .b-no_contract{color:var(--agp-grey);background:var(--agp-grey-soft)}
 .b-not_started{color:var(--agp-faint);background:var(--agp-grey-soft)}
+/* pipeline status circle (traffic-light) */
+.agp-stcirc{width:14px;height:14px;border-radius:50%;flex:0 0 auto;background:var(--agp-faint)}
+.agp-stcirc.s-active{background:var(--agp-green);box-shadow:0 0 0 3px var(--agp-green-soft)}
+.agp-stcirc.s-in_process{background:var(--agp-yellow);box-shadow:0 0 0 3px var(--agp-yellow-soft)}
+.agp-stcirc.s-on_hold{background:var(--agp-red);box-shadow:0 0 0 3px var(--agp-red-soft)}
+.agp-stcirc.s-no_contract{background:var(--agp-grey);box-shadow:0 0 0 3px var(--agp-grey-soft)}
+.agp-stcirc.s-not_started{background:var(--agp-faint);box-shadow:0 0 0 3px var(--agp-grey-soft)}
 
 /* ---------- forms ---------- */
 .agp-field{display:flex;flex-direction:column;gap:5px}
@@ -833,6 +840,7 @@ function renderPipeline(){
     </div>`;
     return `<div class="agp-agg-card" data-open-agg="${a.id}">
       <div class="row1">
+        <span class="agp-stcirc s-${a.status}" title="${esc(statusLabel)}"></span>
         <div><div class="name">${esc(a.name)}</div><div class="rail">${esc(a.rail||"Payment rail TBD")}</div></div>
         <div class="when"><div class="lab">${a.launchTarget?"Target":a.deadline?"Deadline":"Launch"}</div><div class="d">${launch?fmtDate(launch):"—"}</div></div>
       </div>
