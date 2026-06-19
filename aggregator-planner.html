@@ -566,11 +566,11 @@ const STAGES=[
   ]},
 ];
 const ALL_STEPS=STAGES.flatMap(s=>s.steps.map(st=>({...st,stage:s.id,stageName:s.name,stageOwner:s.owner})));
-const STEP_OWNER_DEFAULT={nda_loi:"Scott",agreement:"Scott",merchant_ids:"Kaden",
-  tech_integration:"Aaron",api_file:"Aaron",reporting_data:"Aaron",interstate_build:"Aaron",xero_build:"Jack",
-  location_optins:"GS",discounts_entered:"Jason",aggregator_testing:"Aaron",dev_testing:"Aaron",uat:"Jason",
-  accounting_review:"Laura",gallon_reports:"Jason",merchant_console:"Angel",fuel_training:"Jason",rm_training:"Angel/Gene",
-  press_release:"Deanna",pre_launch:"Gene",email_blast:"Deanna",go_live:"Gene",kpi_tracking:"Gene",annual_meeting:"John F."};
+const STEP_OWNER_DEFAULT={nda_loi:"Scott Rhinehart",agreement:"Scott Rhinehart",merchant_ids:"Gene Betts",
+  tech_integration:"Aaron Todd",api_file:"Aaron Todd",reporting_data:"Aaron Todd",interstate_build:"Aaron Todd",xero_build:"Aaron Todd",
+  location_optins:"Kaden Leslie",discounts_entered:"Kaden Leslie",aggregator_testing:"",dev_testing:"Aaron Todd",uat:"",
+  accounting_review:"",gallon_reports:"",merchant_console:"",fuel_training:"Kaden Leslie",rm_training:"Kaden Leslie",
+  press_release:"Jason Vega / Deanna Rhinehart",pre_launch:"Gene Betts",email_blast:"Gene Betts",go_live:"Gene Betts",kpi_tracking:"Gene Betts",annual_meeting:"John F."};
 
 const STATUS_OPTS=[
   {v:"not_started",l:"Not started"},{v:"in_progress",l:"In progress"},
@@ -647,7 +647,7 @@ function seed(){
   const descriptions={};aggregators.forEach(a=>{descriptions[a.id]=descSeed(a);});
   return {version:1,ui:{tab:"pipeline",currentAgg:"motive",locSort:{key:"code",dir:1},locFilter:OPTIN_OPTS.slice(),stepSort:{key:"",dir:1}},aggregators,
     locations:rosterLocations(),optins:rosterOptins(),descriptions,
-    processDescription:PROCESS_SEED,rosterSeeded:true,doneMotiveAtoB:true};
+    processDescription:PROCESS_SEED,rosterSeeded:true,doneMotiveAtoB:true,ownersV2:true};
 }
 const DONE_AGGS=["motive","atob"];
 function markAggDone(a){if(a&&a.steps)ALL_STEPS.forEach(s=>{if(a.steps[s.id])a.steps[s.id].status="done";});}
@@ -727,6 +727,12 @@ function migrate(){
   if(!S.ui.stepSort)S.ui.stepSort={key:"",dir:1};
   // one-time: mark Motive + A-to-B fully Done in existing saved data
   if(!S.doneMotiveAtoB){DONE_AGGS.forEach(id=>markAggDone(aggById(id)));S.doneMotiveAtoB=true;save();}
+  // one-time: bulk-apply the step Owner scheme to every aggregator's checklist
+  if(!S.ownersV2){
+    S.aggregators.forEach(a=>{if(!a.steps)return;
+      Object.keys(STEP_OWNER_DEFAULT).forEach(id=>{if(a.steps[id])a.steps[id].owner=STEP_OWNER_DEFAULT[id];});});
+    S.ownersV2=true;save();
+  }
 }
 let saveTimer=null;
 function markDirty(){const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.add("dirty");t.textContent="Saving…";}}
