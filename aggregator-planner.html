@@ -642,11 +642,15 @@ function seed(){
        markup:2,discountType:"BO",discountValue:"",discountTarget:"R- / C+",
        notes:"NDA 04/07/26. 2.40% transaction fee + interchange (~240 bps on Visa). Needs unique acquirer IDs per station (send as spreadsheet)."}),
   ];
+  // Motive and A-to-B are fully onboarded — mark every step Done.
+  DONE_AGGS.forEach(id=>{const a=aggregators.find(x=>x.id===id);if(a)markAggDone(a);});
   const descriptions={};aggregators.forEach(a=>{descriptions[a.id]=descSeed(a);});
   return {version:1,ui:{tab:"pipeline",currentAgg:"motive",locSort:{key:"code",dir:1},locFilter:OPTIN_OPTS.slice(),stepSort:{key:"",dir:1}},aggregators,
     locations:rosterLocations(),optins:rosterOptins(),descriptions,
-    processDescription:PROCESS_SEED,rosterSeeded:true};
+    processDescription:PROCESS_SEED,rosterSeeded:true,doneMotiveAtoB:true};
 }
+const DONE_AGGS=["motive","atob"];
+function markAggDone(a){if(a&&a.steps)ALL_STEPS.forEach(s=>{if(a.steps[s.id])a.steps[s.id].status="done";});}
 /* roster from the spreadsheet (AGP_SEED_LOCATIONS / AGP_SEED_OPTINS, injected above) */
 function rosterLocations(){
   return (typeof AGP_SEED_LOCATIONS!=="undefined"?AGP_SEED_LOCATIONS:[]).map(l=>Object.assign({},l));
@@ -721,6 +725,8 @@ function migrate(){
   if(!S.ui.locSort)S.ui.locSort={key:"code",dir:1};
   if(!Array.isArray(S.ui.locFilter))S.ui.locFilter=OPTIN_OPTS.slice();
   if(!S.ui.stepSort)S.ui.stepSort={key:"",dir:1};
+  // one-time: mark Motive + A-to-B fully Done in existing saved data
+  if(!S.doneMotiveAtoB){DONE_AGGS.forEach(id=>markAggDone(aggById(id)));S.doneMotiveAtoB=true;save();}
 }
 let saveTimer=null;
 function markDirty(){const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.add("dirty");t.textContent="Saving…";}}
@@ -1162,7 +1168,7 @@ function bind(){
     if(k==="none")S.ui.stepSort={key:"",dir:1};
     else if(s.key===k)S.ui.stepSort={key:k,dir:-s.dir};
     else S.ui.stepSort={key:k,dir:1};
-    commit();renderAggWorkspace();
+    commit();renderWorkspaceKeepScroll();
   });
 
   // process desc
@@ -1189,6 +1195,16 @@ function gotoTab(tab){$$(".agp-tab").forEach(t=>t.classList.toggle("active",t.da
   $$(".agp-view").forEach(v=>v.classList.toggle("agp-hidden",v.dataset.view!==tab));S.ui.tab=tab;commit();
   if(tab==="aggregator"){renderAggSelectors();renderAggWorkspace();}window.scrollTo({top:0,behavior:"smooth"});}
 
+// Re-render the workspace without losing the user's place (the checklist scroll
+// container is rebuilt, which otherwise jumps back to the top on a status change).
+function renderWorkspaceKeepScroll(){
+  const sc=$(".agp-checklist-scroll");const sy=sc?sc.scrollTop:0;
+  const wy=window.scrollY||window.pageYOffset||0;
+  renderAggWorkspace();
+  const sc2=$(".agp-checklist-scroll");if(sc2&&sy)sc2.scrollTop=sy;
+  if(wy)window.scrollTo(0,wy);
+}
+
 function onFieldInput(e){
   const t=e.target;
   if(t.dataset.aggf!==undefined){const a=aggById(S.ui.currentAgg);if(a){a[t.dataset.aggf]=t.value;commit();
@@ -1203,9 +1219,9 @@ function onFieldChange(e){
   const t=e.target;
   // aggregator status select
   if(t.dataset.aggfField){const a=aggById(S.ui.currentAgg);if(a){a[t.dataset.aggfField]=t.value;commit();renderPipeline();
-    if(t.dataset.aggfField==="discountType"||t.dataset.aggfField==="status")renderAggWorkspace();}}
+    if(t.dataset.aggfField==="discountType"||t.dataset.aggfField==="status")renderWorkspaceKeepScroll();}}
   // step status
-  if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderAggWorkspace();renderPipeline();}}
+  if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderWorkspaceKeepScroll();renderPipeline();}}
   // optin selects
   if(t.dataset.optinField==="status"){setOptin(t.dataset.agg,t.dataset.loc,"status",t.value);commit();renderLocations();renderPipeline();}
   if(t.dataset.optinField==="discountType"){setOptin(t.dataset.agg,t.dataset.loc,"discountType",t.value);commit();}
