@@ -1,0 +1,1041 @@
+<!--
+  Roady's Command Center — Aggregator Launch Planner
+  -------------------------------------------------------------
+  Single-file, self-contained tab. No external dependencies.
+  Persists to localStorage under key: roadysAggregatorPlanner
+  Drop-in for the static GitHub Pages command center.
+
+  INTEGRATION (Claude Code):
+    - Standalone: open this file directly.
+    - As a tab in gs-command-center.html: copy the style block, the
+      div.agp markup, and the script block. Everything is namespaced
+      under .agp and window.AGP to avoid clashes with existing code.
+    - To move off localStorage to Supabase (yyhnnalsqzyghjqtfisy):
+      replace AGP load/save with table reads/writes. The state shape
+      is documented at the top of the planner script.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aggregator Launch Planner — Roady's Command Center</title>
+<style>
+:root{
+  --agp-bg:#0e1117;
+  --agp-surface:#161c26;
+  --agp-surface-2:#1c2431;
+  --agp-surface-3:#232d3d;
+  --agp-line:#2a3547;
+  --agp-line-soft:#212a39;
+  --agp-text:#e8edf4;
+  --agp-muted:#8a98ac;
+  --agp-faint:#5c6a7e;
+  --agp-amber:#f5a524;
+  --agp-amber-soft:#3a2c12;
+  --agp-green:#34d399;
+  --agp-green-soft:#10311f;
+  --agp-yellow:#fbbf24;
+  --agp-yellow-soft:#352a10;
+  --agp-red:#f87171;
+  --agp-red-soft:#3a1a1c;
+  --agp-blue:#60a5fa;
+  --agp-blue-soft:#16263f;
+  --agp-grey:#64748b;
+  --agp-grey-soft:#222a36;
+  --agp-radius:12px;
+  --agp-radius-sm:8px;
+  --agp-mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,"SF Mono",monospace;
+  --agp-sans:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --agp-shadow:0 8px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+.agp{
+  font-family:var(--agp-sans);
+  color:var(--agp-text);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, #16202e 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 0%, #161b28 0%, transparent 55%),
+    var(--agp-bg);
+  min-height:100vh;
+  padding:0 0 80px;
+  line-height:1.45;
+  font-size:14px;
+  -webkit-font-smoothing:antialiased;
+}
+.agp button,.agp input,.agp select,.agp textarea{font-family:inherit}
+.agp ::selection{background:var(--agp-amber);color:#15110a}
+
+/* ---------- layout shells ---------- */
+.agp-wrap{max-width:1280px;margin:0 auto;padding:0 22px}
+.agp-topbar{
+  position:sticky;top:0;z-index:40;
+  background:linear-gradient(180deg,rgba(14,17,23,.96),rgba(14,17,23,.86));
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--agp-line-soft);
+}
+.agp-topbar-inner{display:flex;align-items:center;gap:18px;padding:14px 22px;max-width:1280px;margin:0 auto;flex-wrap:wrap}
+.agp-brand{display:flex;align-items:center;gap:13px;min-width:0}
+.agp-mark{
+  width:40px;height:40px;border-radius:10px;flex:0 0 auto;
+  background:linear-gradient(145deg,var(--agp-amber),#c97f12);
+  display:grid;place-items:center;font-weight:800;color:#161003;font-size:18px;
+  box-shadow:0 4px 14px rgba(245,165,36,.28);letter-spacing:-.5px;
+}
+.agp-brand-txt .eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--agp-faint);font-weight:700}
+.agp-brand-txt h1{font-size:17px;margin:1px 0 0;font-weight:700;letter-spacing:-.2px}
+.agp-top-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.agp-save{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--agp-muted);margin-right:4px}
+.agp-dot{width:8px;height:8px;border-radius:50%;background:var(--agp-green);box-shadow:0 0 0 3px var(--agp-green-soft)}
+.agp-dot.dirty{background:var(--agp-yellow);box-shadow:0 0 0 3px var(--agp-yellow-soft)}
+
+/* ---------- buttons ---------- */
+.agp-btn{
+  border:1px solid var(--agp-line);background:var(--agp-surface-2);color:var(--agp-text);
+  padding:8px 13px;border-radius:var(--agp-radius-sm);font-size:12.5px;font-weight:600;
+  cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+}
+.agp-btn:hover{background:var(--agp-surface-3);border-color:#36475d}
+.agp-btn:focus-visible{outline:2px solid var(--agp-amber);outline-offset:2px}
+.agp-btn.primary{background:var(--agp-amber);border-color:var(--agp-amber);color:#161003}
+.agp-btn.primary:hover{background:#ffb733}
+.agp-btn.ghost{background:transparent}
+.agp-btn.danger:hover{border-color:var(--agp-red);color:var(--agp-red)}
+.agp-btn.sm{padding:5px 10px;font-size:11.5px}
+.agp-btn.icon{padding:7px 9px}
+
+/* ---------- tabs ---------- */
+.agp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--agp-line-soft);margin:22px 0 24px;overflow-x:auto}
+.agp-tab{
+  appearance:none;border:0;background:transparent;color:var(--agp-muted);
+  padding:11px 16px;font-size:13.5px;font-weight:600;cursor:pointer;position:relative;
+  border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:8px;
+}
+.agp-tab:hover{color:var(--agp-text)}
+.agp-tab.active{color:var(--agp-text);border-bottom-color:var(--agp-amber)}
+.agp-tab .pill{font-size:10.5px;background:var(--agp-surface-3);color:var(--agp-muted);padding:1px 7px;border-radius:20px;font-weight:700}
+.agp-tab.active .pill{background:var(--agp-amber-soft);color:var(--agp-amber)}
+
+/* ---------- cards / panels ---------- */
+.agp-panel{background:var(--agp-surface);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:20px}
+.agp-panel + .agp-panel{margin-top:18px}
+.agp-section-h{display:flex;align-items:center;gap:12px;margin:0 0 16px}
+.agp-section-h h2{font-size:15px;font-weight:700;margin:0;letter-spacing:-.2px}
+.agp-section-h .sub{font-size:12px;color:var(--agp-muted);margin:2px 0 0}
+.agp-section-h .spacer{margin-left:auto}
+
+/* ---------- KPI ---------- */
+.agp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+.agp-kpi{background:var(--agp-surface);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:15px 16px;position:relative;overflow:hidden}
+.agp-kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--agp-muted);font-weight:700}
+.agp-kpi .val{font-size:27px;font-weight:800;margin-top:6px;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+.agp-kpi .meta{font-size:11.5px;color:var(--agp-faint);margin-top:3px}
+.agp-kpi .accent{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--agp-amber)}
+.agp-kpi.green .accent{background:var(--agp-green)} .agp-kpi.green .val{color:var(--agp-green)}
+.agp-kpi.blue .accent{background:var(--agp-blue)}
+.agp-kpi.amber .accent{background:var(--agp-amber)}
+.agp-kpi.red .accent{background:var(--agp-red)} .agp-kpi.red .val{color:var(--agp-red)}
+
+/* ---------- pipeline cards ---------- */
+.agp-agg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.agp-agg-card{background:var(--agp-surface);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:16px;cursor:pointer;transition:.15s;position:relative}
+.agp-agg-card:hover{border-color:#36475d;transform:translateY(-2px);box-shadow:var(--agp-shadow)}
+.agp-agg-card .row1{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.agp-agg-card .name{font-size:15px;font-weight:700}
+.agp-agg-card .rail{font-size:11.5px;color:var(--agp-muted);margin-top:1px}
+.agp-agg-card .when{margin-left:auto;text-align:right}
+.agp-agg-card .when .lab{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--agp-faint);font-weight:700}
+.agp-agg-card .when .d{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.agp-progress{height:7px;background:var(--agp-surface-3);border-radius:20px;overflow:hidden;margin:4px 0}
+.agp-progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--agp-amber),#ffcf6b);border-radius:20px;transition:width .4s}
+.agp-progress.green > i{background:linear-gradient(90deg,var(--agp-green),#7ff0c4)}
+.agp-mini-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--agp-muted);margin-top:7px}
+.agp-stagebar{display:flex;gap:3px;margin-top:12px}
+.agp-stagebar > span{flex:1;height:5px;border-radius:3px;background:var(--agp-surface-3)}
+.agp-stagebar > span.done{background:var(--agp-green)}
+.agp-stagebar > span.partial{background:var(--agp-amber)}
+
+/* ---------- badges ---------- */
+.agp-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;letter-spacing:.01em}
+.agp-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-active{color:var(--agp-green);background:var(--agp-green-soft)}
+.b-in_process{color:var(--agp-blue);background:var(--agp-blue-soft)}
+.b-on_hold{color:var(--agp-yellow);background:var(--agp-yellow-soft)}
+.b-no_contract{color:var(--agp-grey);background:var(--agp-grey-soft)}
+.b-not_started{color:var(--agp-faint);background:var(--agp-grey-soft)}
+
+/* ---------- forms ---------- */
+.agp-field{display:flex;flex-direction:column;gap:5px}
+.agp-field label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--agp-muted);font-weight:700}
+.agp-input,.agp-select,.agp-textarea{
+  background:var(--agp-surface-2);border:1px solid var(--agp-line);color:var(--agp-text);
+  padding:8px 11px;border-radius:var(--agp-radius-sm);font-size:13px;width:100%;transition:.12s;
+}
+.agp-textarea{resize:vertical;min-height:64px;line-height:1.5}
+.agp-input:focus,.agp-select:focus,.agp-textarea:focus{outline:none;border-color:var(--agp-amber);background:var(--agp-surface-3)}
+.agp-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a98ac' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;cursor:pointer}
+.agp-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.agp-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.agp-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+
+/* selector bar */
+.agp-selbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;background:var(--agp-surface);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:12px 14px}
+.agp-selbar .agp-select{max-width:280px}
+.agp-selbar .lab{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--agp-muted);font-weight:700}
+
+/* ---------- process checklist ---------- */
+.agp-stage{margin-top:16px;border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);overflow:hidden}
+.agp-stage-h{display:flex;align-items:center;gap:12px;padding:11px 15px;background:var(--agp-surface-2);cursor:pointer}
+.agp-stage-h .num{width:26px;height:26px;border-radius:7px;background:var(--agp-surface-3);display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--agp-muted);font-variant-numeric:tabular-nums}
+.agp-stage-h.complete .num{background:var(--agp-green-soft);color:var(--agp-green)}
+.agp-stage-h .stitle{font-size:13.5px;font-weight:700}
+.agp-stage-h .sowner{font-size:11px;color:var(--agp-faint)}
+.agp-stage-h .scount{margin-left:auto;font-size:11.5px;color:var(--agp-muted);font-variant-numeric:tabular-nums}
+.agp-stage-h .chev{transition:.2s;color:var(--agp-faint);font-size:11px}
+.agp-stage.collapsed .agp-stage-body{display:none}
+.agp-stage.collapsed .chev{transform:rotate(-90deg)}
+.agp-stage-body{padding:4px 0}
+.agp-step{display:grid;grid-template-columns:1.6fr 130px 110px 130px;gap:10px;align-items:start;padding:11px 15px;border-top:1px solid var(--agp-line-soft)}
+.agp-step:first-child{border-top:0}
+.agp-step .sname{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.agp-step .shint{font-size:11px;color:var(--agp-faint);margin-top:2px;font-weight:400}
+.agp-step textarea{min-height:0;height:34px;padding:7px 10px;font-size:12px}
+.agp-step .note-wrap{grid-column:1/-1;margin-top:2px}
+.agp-statusdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.sd-done{background:var(--agp-green)} .sd-in_progress{background:var(--agp-blue)}
+.sd-at_risk{background:var(--agp-yellow)} .sd-blocked{background:var(--agp-red)}
+.sd-not_started{background:var(--agp-grey)} .sd-na{background:var(--agp-faint)}
+
+/* ---------- locations table ---------- */
+.agp-loc-controls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;background:var(--agp-surface-2);border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius);padding:14px;margin-bottom:14px}
+.agp-loc-controls .agp-field{min-width:120px}
+.agp-table-scroll{overflow-x:auto;border:1px solid var(--agp-line-soft);border-radius:var(--agp-radius)}
+table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px}
+.agp-table thead th{background:var(--agp-surface-2);text-align:left;padding:10px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--agp-muted);font-weight:700;position:sticky;top:0;border-bottom:1px solid var(--agp-line)}
+.agp-table tbody td{padding:8px 12px;border-bottom:1px solid var(--agp-line-soft);vertical-align:middle}
+.agp-table tbody tr:hover{background:var(--agp-surface-2)}
+.agp-table .loc-name{font-weight:600}
+.agp-table .loc-sub{font-size:11px;color:var(--agp-faint)}
+.agp-table select,.agp-table input{font-size:12px;padding:5px 8px}
+.agp-table .w-num{width:74px}
+.opt-yes{color:var(--agp-green)} .opt-no{color:var(--agp-red)} .opt-pending{color:var(--agp-yellow)} .opt-na{color:var(--agp-faint)}
+.agp-empty{padding:44px 24px;text-align:center;color:var(--agp-muted)}
+.agp-empty h3{color:var(--agp-text);font-size:15px;margin:0 0 6px}
+.agp-empty p{font-size:13px;max-width:420px;margin:0 auto 16px}
+
+/* ---------- process diagram ---------- */
+.agp-flow{display:flex;gap:0;overflow-x:auto;padding:8px 2px 16px}
+.agp-flow-stage{flex:0 0 200px;display:flex;align-items:stretch}
+.agp-flow-card{flex:1;background:var(--agp-surface-2);border:1px solid var(--agp-line);border-radius:var(--agp-radius);padding:13px 14px;display:flex;flex-direction:column;min-height:158px}
+.agp-flow-card .fnum{font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--agp-amber)}
+.agp-flow-card .fname{font-size:13.5px;font-weight:700;margin:3px 0 8px;letter-spacing:-.2px}
+.agp-flow-card ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.agp-flow-card li{font-size:11px;color:var(--agp-muted);padding-left:13px;position:relative}
+.agp-flow-card li::before{content:"";position:absolute;left:0;top:6px;width:5px;height:5px;border-radius:50%;background:var(--agp-faint)}
+.agp-flow-card .fowner{margin-top:auto;padding-top:9px;font-size:10px;font-weight:700;color:var(--agp-faint);text-transform:uppercase;letter-spacing:.05em}
+.agp-flow-gate{flex:0 0 34px;display:grid;place-items:center;position:relative}
+.agp-flow-gate svg{color:var(--agp-line)}
+.agp-flow-gate .glab{position:absolute;top:-2px;font-size:8.5px;color:var(--agp-faint);font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+
+/* chips */
+.agp-chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--agp-surface-3);color:var(--agp-muted)}
+.agp-chip.amber{background:var(--agp-amber-soft);color:var(--agp-amber)}
+.agp-chip.green{background:var(--agp-green-soft);color:var(--agp-green)}
+
+/* descriptions */
+.agp-desc-grid{display:grid;grid-template-columns:240px 1fr;gap:16px}
+.agp-desc-list{display:flex;flex-direction:column;gap:4px}
+.agp-desc-item{text-align:left;border:1px solid var(--agp-line-soft);background:var(--agp-surface);padding:11px 13px;border-radius:var(--agp-radius-sm);cursor:pointer;transition:.12s}
+.agp-desc-item:hover{border-color:#36475d}
+.agp-desc-item.active{border-color:var(--agp-amber);background:var(--agp-surface-2)}
+.agp-desc-item .n{font-size:13px;font-weight:700}
+.agp-desc-item .r{font-size:11px;color:var(--agp-faint);margin-top:1px}
+.agp-desc-edit{display:flex;flex-direction:column;gap:12px}
+.agp-desc-edit .agp-textarea{min-height:300px;font-size:13px;line-height:1.6}
+
+/* modal */
+.agp-modal-bg{position:fixed;inset:0;background:rgba(6,9,14,.72);backdrop-filter:blur(3px);z-index:60;display:none;align-items:center;justify-content:center;padding:20px}
+.agp-modal-bg.open{display:flex}
+.agp-modal{background:var(--agp-surface);border:1px solid var(--agp-line);border-radius:var(--agp-radius);max-width:560px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--agp-shadow)}
+.agp-modal-h{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--agp-line-soft)}
+.agp-modal-h h3{margin:0;font-size:15px;font-weight:700}
+.agp-modal-h .x{margin-left:auto;background:transparent;border:0;color:var(--agp-muted);font-size:22px;cursor:pointer;line-height:1}
+.agp-modal-b{padding:20px;display:flex;flex-direction:column;gap:14px}
+.agp-modal-f{padding:14px 20px;border-top:1px solid var(--agp-line-soft);display:flex;gap:8px;justify-content:flex-end}
+.agp-help{font-size:11.5px;color:var(--agp-faint);line-height:1.5}
+
+.agp-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--agp-surface-3);border:1px solid var(--agp-line);color:var(--agp-text);padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:var(--agp-shadow);opacity:0;transition:.25s;z-index:80;pointer-events:none}
+.agp-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.agp-hidden{display:none!important}
+.agp-row-actions{display:flex;gap:6px}
+
+@media(max-width:880px){
+  .agp-grid-2,.agp-grid-3,.agp-grid-4{grid-template-columns:1fr}
+  .agp-step{grid-template-columns:1fr 1fr;gap:8px}
+  .agp-desc-grid{grid-template-columns:1fr}
+  .agp-flow-stage{flex-basis:170px}
+}
+@media print{
+  .agp-topbar,.agp-tabs,.agp-top-actions,.agp-btn,.agp-selbar .agp-btn{display:none!important}
+  .agp{background:#fff;color:#000}
+}
+</style>
+</head>
+<body>
+<div class="agp">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="agp-topbar">
+    <div class="agp-topbar-inner">
+      <div class="agp-brand">
+        <div class="agp-mark">RA</div>
+        <div class="agp-brand-txt">
+          <div class="eyebrow">Roady's Command Center</div>
+          <h1>Aggregator Launch Planner</h1>
+        </div>
+      </div>
+      <div class="agp-top-actions">
+        <a class="agp-btn ghost sm" href="index.html" style="text-decoration:none">&larr; Command Center</a>
+        <div class="agp-save"><span class="agp-dot" id="agpSaveDot"></span><span id="agpSaveTxt">Saved</span></div>
+        <button class="agp-btn ghost sm" id="agpExport">Export</button>
+        <button class="agp-btn ghost sm" id="agpImport">Import</button>
+        <button class="agp-btn ghost sm" id="agpPrint">Print</button>
+        <button class="agp-btn ghost sm danger" id="agpReset">Reset</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="agp-wrap">
+    <!-- ===== TABS ===== -->
+    <nav class="agp-tabs" id="agpTabs">
+      <button class="agp-tab active" data-tab="pipeline">Pipeline</button>
+      <button class="agp-tab" data-tab="aggregator">Aggregator Workspace</button>
+      <button class="agp-tab" data-tab="locations">Location Opt-In <span class="pill" id="agpLocPill">0</span></button>
+      <button class="agp-tab" data-tab="process">Process &amp; Diagram</button>
+      <button class="agp-tab" data-tab="descriptions">Descriptions</button>
+    </nav>
+
+    <!-- ===== PIPELINE ===== -->
+    <section class="agp-view" data-view="pipeline">
+      <div class="agp-kpis" id="agpKpis"></div>
+      <div class="agp-panel">
+        <div class="agp-section-h">
+          <h2>Aggregator Pipeline</h2>
+          <span class="spacer"></span>
+          <span class="agp-help">Tap a card to open its workspace</span>
+        </div>
+        <div class="agp-agg-grid" id="agpAggGrid"></div>
+      </div>
+    </section>
+
+    <!-- ===== AGGREGATOR WORKSPACE ===== -->
+    <section class="agp-view agp-hidden" data-view="aggregator">
+      <div class="agp-selbar">
+        <span class="lab">Working on</span>
+        <select class="agp-select" id="agpAggSelect"></select>
+        <span class="spacer" style="margin-left:auto"></span>
+        <button class="agp-btn sm" id="agpAddAgg">+ Add aggregator</button>
+      </div>
+      <div id="agpAggWorkspace"></div>
+    </section>
+
+    <!-- ===== LOCATIONS ===== -->
+    <section class="agp-view agp-hidden" data-view="locations">
+      <div class="agp-selbar">
+        <span class="lab">Opt-in for</span>
+        <select class="agp-select" id="agpLocAggSelect"></select>
+        <span class="spacer" style="margin-left:auto"></span>
+        <button class="agp-btn sm" id="agpAddLoc">+ Add location</button>
+        <button class="agp-btn sm" id="agpImportLoc">Import list</button>
+      </div>
+      <div id="agpLocPanel"></div>
+    </section>
+
+    <!-- ===== PROCESS ===== -->
+    <section class="agp-view agp-hidden" data-view="process">
+      <div class="agp-panel">
+        <div class="agp-section-h">
+          <h2>Onboarding Process</h2>
+          <div class="sub" style="margin:0 0 0 0">Contract → Integration → Discounts → Beta → Training → Launch → Post-launch. Seven gated stages, clear owners.</div>
+        </div>
+        <div class="agp-flow" id="agpFlow"></div>
+      </div>
+      <div class="agp-panel">
+        <div class="agp-section-h"><h2>Process Playbook</h2><span class="spacer"></span><span class="agp-chip amber">Editable</span></div>
+        <p class="agp-help" style="margin:-6px 0 12px">Shared reference for everyone running a launch. Edits save automatically.</p>
+        <textarea class="agp-textarea" id="agpProcessDesc" style="min-height:340px;line-height:1.65"></textarea>
+      </div>
+    </section>
+
+    <!-- ===== DESCRIPTIONS ===== -->
+    <section class="agp-view agp-hidden" data-view="descriptions">
+      <div class="agp-panel">
+        <div class="agp-section-h">
+          <h2>Description of Each Aggregator</h2>
+          <span class="spacer"></span><span class="agp-chip amber">Editable</span>
+        </div>
+        <div class="agp-desc-grid">
+          <div class="agp-desc-list" id="agpDescList"></div>
+          <div class="agp-desc-edit" id="agpDescEdit"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===== MODAL ===== -->
+  <div class="agp-modal-bg" id="agpModalBg">
+    <div class="agp-modal">
+      <div class="agp-modal-h"><h3 id="agpModalTitle">Title</h3><button class="x" id="agpModalX">&times;</button></div>
+      <div class="agp-modal-b" id="agpModalBody"></div>
+      <div class="agp-modal-f" id="agpModalFoot"></div>
+    </div>
+  </div>
+
+  <div class="agp-toast" id="agpToast"></div>
+</div>
+
+<script>
+/* =====================================================================
+   AGGREGATOR LAUNCH PLANNER  —  window.AGP
+   ---------------------------------------------------------------------
+   STATE SHAPE (localStorage key: roadysAggregatorPlanner)
+   {
+     version, ui:{tab, currentAgg},
+     aggregators:[{ id,name,rail,status,launchTarget,deadline,launchActual,
+                    contactName,contactRole,phone,email,location,carriers,
+                    markup, discountType('R-'|'C+'|'BO'|'none'), discountValue,
+                    discountTarget, notes,
+                    steps:{ stepId:{status,owner,target,done,notes} } }],
+     locations:[{id,name,city,state,code}],
+     optins:{ aggId:{ locId:{status,discountType,discountValue,notes} } },
+     descriptions:{ aggId:"text" },
+     processDescription:"text"
+   }
+   To move to Supabase: swap AGP.load()/AGP.save() for table I/O.
+   ===================================================================== */
+(function(){
+"use strict";
+
+const KEY="roadysAggregatorPlanner";
+const $=(s,r)=>(r||document).querySelector(s);
+const $$=(s,r)=>Array.from((r||document).querySelectorAll(s));
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=p=>(p||"id")+"_"+Math.random().toString(36).slice(2,8);
+const ssGet=k=>{try{return sessionStorage.getItem(k);}catch(e){return null;}};
+const ssSet=(k,v)=>{try{sessionStorage.setItem(k,v);}catch(e){}};
+
+/* ---------- canonical process (7 stages) ---------- */
+const STAGES=[
+  {id:1,name:"Agreement",owner:"Scott / Gene",steps:[
+    {id:"nda_loi",   name:"NDA / LOI signed",        hint:"If required by aggregator"},
+    {id:"agreement", name:"Agreement reviewed & signed", hint:"Discount terms locked in"},
+    {id:"merchant_ids",name:"Merchant / Quik IDs provided", hint:"Per-location acquirer IDs"},
+  ]},
+  {id:2,name:"Integration",owner:"Aaron (Tech)",steps:[
+    {id:"tech_integration",name:"Tech integration",     hint:"~28-day window with counterpart"},
+    {id:"api_file",   name:"API / data file shared",    hint:"Transaction feed format agreed"},
+    {id:"reporting_data",name:"Reporting data validated",hint:"Daily ingest, fields correct"},
+    {id:"interstate_build",name:"Interstate build-out",  hint:"Program configured in Interstate"},
+    {id:"xero_build", name:"Xero / accounting build-out",hint:"Settlement + reconciliation wired"},
+  ]},
+  {id:3,name:"Discounts",owner:"Jason / Kaden + GS",steps:[
+    {id:"location_optins",name:"Location opt-ins collected",hint:"GS confirms participating sites"},
+    {id:"discounts_entered",name:"Discounts entered in Interstate",hint:"Per-location discount loaded"},
+  ]},
+  {id:4,name:"Beta / Testing",owner:"Jason / Aaron / Accounting",steps:[
+    {id:"aggregator_testing",name:"Aggregator test transactions",hint:"Cards swiped at live sites"},
+    {id:"dev_testing", name:"Roady's developer testing", hint:"End-to-end data check"},
+    {id:"uat",        name:"User acceptance testing (UAT)",hint:"Fuel team signs off"},
+    {id:"accounting_review",name:"Accounting / settlement review",hint:"Discount math reconciles"},
+    {id:"gallon_reports",name:"Gallon reports validated", hint:"Interstate report data correct"},
+    {id:"merchant_console",name:"Merchant Console validated",hint:"Data shows in console"},
+  ]},
+  {id:5,name:"Training",owner:"Jason / Angel / Gene",steps:[
+    {id:"fuel_training",name:"Fuel group training & setup",hint:"Discounts, reports, quirks"},
+    {id:"rm_training", name:"RM training",                hint:"Program live + where to find reports"},
+  ]},
+  {id:6,name:"Launch",owner:"Deanna / Gene",steps:[
+    {id:"press_release",name:"Press release approved",   hint:"Marketing sign-off"},
+    {id:"pre_launch",  name:"Pre-launch checklist",       hint:"Final go/no-go review"},
+    {id:"email_blast", name:"Member email blast",         hint:"Notify members"},
+    {id:"go_live",     name:"Full launch / go-live",      hint:"Program goes active"},
+  ]},
+  {id:7,name:"Post-Launch",owner:"Gene / GS",steps:[
+    {id:"kpi_tracking",name:"KPI tracking live",          hint:"Gallons, adoption, margin"},
+    {id:"annual_meeting",name:"Annual meeting attendance", hint:"Conference / member event"},
+  ]},
+];
+const ALL_STEPS=STAGES.flatMap(s=>s.steps.map(st=>({...st,stage:s.id,stageName:s.name,stageOwner:s.owner})));
+const STEP_OWNER_DEFAULT={nda_loi:"Scott",agreement:"Scott",merchant_ids:"Kaden",
+  tech_integration:"Aaron",api_file:"Aaron",reporting_data:"Aaron",interstate_build:"Aaron",xero_build:"Jack",
+  location_optins:"GS",discounts_entered:"Jason",aggregator_testing:"Aaron",dev_testing:"Aaron",uat:"Jason",
+  accounting_review:"Laura",gallon_reports:"Jason",merchant_console:"Angel",fuel_training:"Jason",rm_training:"Angel/Gene",
+  press_release:"Deanna",pre_launch:"Gene",email_blast:"Deanna",go_live:"Gene",kpi_tracking:"Gene",annual_meeting:"John F."};
+
+const STATUS_OPTS=[
+  {v:"not_started",l:"Not started"},{v:"in_progress",l:"In progress"},
+  {v:"at_risk",l:"At risk"},{v:"blocked",l:"Blocked"},{v:"done",l:"Done"},{v:"na",l:"N/A"}];
+const AGG_STATUS=[
+  {v:"not_started",l:"Not started"},{v:"no_contract",l:"No contract"},
+  {v:"in_process",l:"In process"},{v:"on_hold",l:"On hold"},{v:"active",l:"Active"}];
+const OPTIN_OPTS=["Select","Yes","No","No Response","N/A","Other"];
+const DISCOUNT_TYPES=[{v:"R-",l:"Retail −"},{v:"C+",l:"Cost +"},{v:"BO",l:"Better Of"},{v:"none",l:"None"}];
+
+/* ---------- seed data (from Aggregator_Program_Management_2025.xlsx) ---------- */
+function seed(){
+  const A=(o)=>{const steps={};ALL_STEPS.forEach(s=>steps[s.id]={status:"not_started",owner:STEP_OWNER_DEFAULT[s.id]||"",target:"",done:"",notes:""});
+    return Object.assign({id:o.id,name:o.name,rail:"",status:"not_started",launchTarget:"",deadline:"",launchActual:"",
+      contactName:"",contactRole:"",phone:"",email:"",location:"",carriers:"",markup:2,discountType:"C+",discountValue:"",
+      discountTarget:"",notes:"",steps},o,{steps:Object.assign(steps,o.steps||{})});};
+  const aggregators=[
+    A({id:"motive",name:"Motive",rail:"Mastercard",status:"in_process",contactName:"Jarrod Carson",contactRole:"Sr. Manager, Strategic Partnerships",
+       phone:"479-353-7325",email:"jarrod.carson@gomotive.com",location:"Fort Smith, AR",carriers:"~20K card customers",
+       markup:2,discountType:"R-",discountValue:"12",discountTarget:"C+X, R-12",launchTarget:"",
+       notes:"Signed Addendum 03/09/26. Kaden entering Merchant IDs in Interstate. Daily data ingest for ACH reporting & reconciliation."}),
+    A({id:"atob",name:"A to B",rail:"Visa + MC Fleet (migrating to MC Fleet)",status:"in_process",contactName:"Jacob Thomas",contactRole:"VP of Merchant Partnerships",
+       phone:"909-587-3227",email:"Jacob.Thomas@AtoB.com",location:"San Francisco / Austin",carriers:"30K–40K fleets · 150K–200K cards (65% OTR)",
+       markup:0,discountType:"BO",discountValue:"10",discountTarget:"C+10 / R-10 Better Of · passenger R-5 to R-15",
+       notes:"Transactions settle at POS; AtoB invoices Roady's for discount amounts. Looking for R-5 to R-15 on passenger fuel."}),
+    A({id:"cloudtrucks",name:"CloudTrucks",rail:"Visa (Cloud Truck Fuel card)",status:"no_contract",contactName:"Neil Mamak",contactRole:"Partnerships",
+       phone:"415-524-7639",email:"neil.mamak@cloudtrucks.com",location:"San Francisco, CA",carriers:"~700 trucks (owner-operators)",
+       markup:0,discountType:"none",discountValue:"",discountTarget:"None — full retail model",
+       notes:"Drivers pay FULL retail; Roady's keeps full retail (minus Visa fees). CloudTrucks gives drivers 2% cash-back to drive store sales."}),
+    A({id:"haulpay",name:"Haul Pay",rail:"Visa Fleet via Stripe",status:"on_hold",contactName:"Steve Kochan",contactRole:"President",
+       phone:"562-261-2901",email:"steve@haulpay.io",location:"Long Beach, CA",carriers:"45,000+ (+~5K/month)",
+       markup:2,discountType:"R-",discountValue:"12",discountTarget:"C+X, R-12",
+       notes:"Agreement signed 09/25/2025. On hold — evaluating Fuelman/FuelMan network. POS discounts at point of sale; post-transaction reimbursement billed monthly, paid within 5 days."}),
+    A({id:"greenlane",name:"GreenLane",rail:"QuikQ (Mastercard) — moving to Visa",status:"in_process",contactName:"Evan Pohaski",contactRole:"Partnerships",
+       phone:"323-513-6083",email:"evan@greenlane.ai",location:"Irvine, CA",carriers:"~400 fleets · ~6K weekly users",
+       markup:2,discountType:"C+",discountValue:"8",discountTarget:"C+8, R-8 · daily settlement, flat fee",
+       notes:"Agreement signed Oct 2, 2025. Switching from QuikQ to Visa card. Jason to enter discounts. 2nd contact: Josh Ness, josh@greenlane.ai."}),
+    A({id:"loadconnect",name:"Load Connect",rail:"EFS",status:"no_contract",contactName:"Edwin Sahakian",contactRole:"",
+       phone:"888-451-6888",email:"edwin.sahakian@loadconnex.com",location:"Burbank, CA",carriers:"",
+       markup:2,discountType:"C+",discountValue:"12",discountTarget:"C+12, R-8",
+       notes:"Held while new aggregator onboarding form is finalized. (Listed as 'Load Connex' in source.)"}),
+    A({id:"toa",name:"TOA Service",rail:"TBD",status:"no_contract",contactName:"Roland Rauduve / Lukas Kliarskis",contactRole:"",
+       phone:"312-489-8269",email:"info@toaservice.com",location:"",carriers:"",
+       markup:2,discountType:"C+",discountValue:"12",discountTarget:"C+12, R-8",notes:"Early stage — check with Scott."}),
+    A({id:"onramp",name:"OnRamp",rail:"OnRamp (cardless payments)",status:"no_contract",contactName:"Jeremie Myhren",contactRole:"Co-founder",
+       phone:"815-904-9988",email:"jeremie@onrampfleet.com",location:"Rockford / Chicago, IL",carriers:"100K+ trucks (multiple fleets)",
+       markup:2,discountType:"C+",discountValue:"12",discountTarget:"C+12, R-8",
+       notes:"Pump-initiated, no RFID — driver gets a phone code. Daily settlement. Fees: $2.00/txn flat or 1.25%. WILL NOT WORK WITH FISCAL SYSTEM — flag for tech."}),
+    A({id:"coastpay",name:"CoastPay",rail:"Coast Visa",status:"in_process",contactName:"Roy Lederman",contactRole:"",
+       phone:"415-961-8494",email:"roy@coastpay.com",location:"",carriers:"~8K and growing",
+       markup:2,discountType:"BO",discountValue:"",discountTarget:"R- / C+",
+       notes:"NDA 04/07/26. 2.40% transaction fee + interchange (~240 bps on Visa). Needs unique acquirer IDs per station (send as spreadsheet)."}),
+  ];
+  const descriptions={};aggregators.forEach(a=>{descriptions[a.id]=descSeed(a);});
+  return {version:1,ui:{tab:"pipeline",currentAgg:"motive"},aggregators,locations:[],optins:{},descriptions,
+    processDescription:PROCESS_SEED};
+}
+function descSeed(a){
+  return `${a.name}\nPayment rail: ${a.rail||"—"}\nContact: ${a.contactName||"—"}${a.contactRole?", "+a.contactRole:""}${a.phone?" · "+a.phone:""}${a.email?" · "+a.email:""}${a.location?" · "+a.location:""}\nNetwork size: ${a.carriers||"—"}\nDiscount target: ${a.discountTarget||"—"}\nRoady's markup: ${a.markup}¢\n\nNotes:\n${a.notes||"—"}`;
+}
+const PROCESS_SEED=
+`PURPOSE
+Bring a new fuel aggregator onto the Roady's network: sign the agreement, configure it in Interstate, load per-location discounts, beta test, then launch on a committed date — with a clear owner at every step.
+
+HOW IT WORKS (7 STAGES)
+1. AGREEMENT (Scott / Gene)
+   Sign NDA/LOI if required, get the agreement signed with discount terms locked, and collect merchant / acquirer IDs per location.
+
+2. INTEGRATION (Aaron / Tech)
+   Stand up the technical connection (~28-day window), agree the transaction data format, validate daily reporting data, and build the program out in Interstate and Xero. Flag any platform quirks early (e.g. "will not work with fiscal system").
+
+3. DISCOUNTS (Jason / Kaden + Growth Strategists)
+   Growth Strategists confirm which of their locations opt in. Discounts are then entered per location in Interstate. Use the default discount on the Location Opt-In tab to set a baseline, then override per site.
+
+4. BETA / TESTING (Jason / Aaron / Accounting)
+   Run real aggregator test transactions, Roady's developer testing, UAT with the fuel team, and an accounting/settlement review. Confirm gallon reports in Interstate and the Merchant Console reconcile to the discount math BEFORE launch.
+
+5. TRAINING (Jason / Angel / Gene)
+   Train the fuel group on discounts, reports and anything unique to this aggregator. Tell RMs the program is going live and where reports live.
+
+6. LAUNCH (Deanna / Gene)
+   Approve the press release, run the pre-launch go/no-go, send the member email blast, and flip the program live on the target date.
+
+7. POST-LAUNCH (Gene / GS)
+   Track KPIs (gallons, adoption, margin) and line up annual meeting / conference attendance.
+
+GATES (don't skip)
+- Do not enter discounts until the agreement is signed.
+- Do not launch until accounting confirms the discount math reconciles — a reconciliation gap is a credibility risk in front of members.
+- Do not announce until the press release is approved and the program is validated in the Merchant Console.
+
+DATES
+Each aggregator carries a Launch Target (the date we're aiming for) and a Deadline (the hard date we commit to members). Set both in the Aggregator Workspace; the Pipeline tab surfaces the nearest one.`;
+
+/* ---------- state ---------- */
+let S=null;
+function load(){try{const r=localStorage.getItem(KEY);if(r){S=JSON.parse(r);migrate();return;}}catch(e){}S=seed();save();}
+function migrate(){
+  if(!S.ui)S.ui={tab:"pipeline",currentAgg:S.aggregators[0]&&S.aggregators[0].id};
+  if(!S.optins)S.optins={};if(!S.descriptions)S.descriptions={};if(!S.locations)S.locations=[];
+  S.aggregators.forEach(a=>{if(!a.steps)a.steps={};ALL_STEPS.forEach(s=>{if(!a.steps[s.id])a.steps[s.id]={status:"not_started",owner:STEP_OWNER_DEFAULT[s.id]||"",target:"",done:"",notes:""};});});
+}
+let saveTimer=null;
+function markDirty(){const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.add("dirty");t.textContent="Saving…";}}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){toast("Storage full — export a backup");}
+  const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(d){d.classList.remove("dirty");t.textContent="Saved";}
+}
+function commit(){markDirty();clearTimeout(saveTimer);saveTimer=setTimeout(save,500);}
+
+/* ---------- helpers ---------- */
+const aggById=id=>S.aggregators.find(a=>a.id===id);
+function aggProgress(a){
+  let done=0,tot=0;ALL_STEPS.forEach(s=>{const st=a.steps[s.id];if(!st||st.status==="na")return;tot++;if(st.status==="done")done++;});
+  return tot?Math.round(done/tot*100):0;
+}
+function stageState(a,stageId){
+  const steps=STAGES.find(s=>s.id===stageId).steps;let done=0,tot=0;
+  steps.forEach(s=>{const st=a.steps[s.id];if(!st||st.status==="na")return;tot++;if(st.status==="done")done++;});
+  if(tot===0)return"empty";if(done===tot)return"done";if(done>0)return"partial";return"empty";
+}
+function aggRisk(a){let n=0;ALL_STEPS.forEach(s=>{const st=a.steps[s.id];if(st&&(st.status==="blocked"||st.status==="at_risk"))n++;});return n;}
+function discLabel(type,val){
+  if(type==="none"||!type)return"—";if(type==="BO")return"Better Of"+(val?" ("+val+"¢)":"");
+  const t=type==="R-"?"Retail −":"Cost +";return t+" "+(val||"?")+"¢";
+}
+function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?`${p[1]}/${p[2]}/${p[0].slice(2)}`:d;}
+function optinClass(v){return v==="Yes"?"opt-yes":v==="No"?"opt-no":v==="N/A"?"opt-na":(v==="No Response"||v==="Other"||v==="Select")?"opt-pending":"";}
+function nearestLaunch(){
+  const ds=S.aggregators.map(a=>a.launchTarget||a.deadline).filter(Boolean).sort();
+  return ds[0]?fmtDate(ds[0]):"—";
+}
+
+/* ---------- toast ---------- */
+let toastTimer=null;
+function toast(msg){const t=$("#agpToast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200);}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function render(){
+  renderPipeline();renderAggSelectors();renderAggWorkspace();renderLocations();
+  renderFlow();renderProcess();renderDescriptions();
+  $("#agpLocPill").textContent=S.locations.length;
+}
+
+/* ----- pipeline ----- */
+function renderPipeline(){
+  const aggs=S.aggregators;
+  const active=aggs.filter(a=>a.status==="active").length;
+  const inproc=aggs.filter(a=>a.status==="in_process"||a.status==="on_hold").length;
+  const nocon=aggs.filter(a=>a.status==="no_contract"||a.status==="not_started").length;
+  const optedIn=Object.values(S.optins).reduce((n,m)=>n+Object.values(m||{}).filter(o=>o.status==="Yes").length,0);
+  const risks=aggs.reduce((n,a)=>n+aggRisk(a),0);
+  const kpis=[
+    {cls:"green",label:"Active programs",val:active,meta:"live on the network"},
+    {cls:"blue",label:"In flight",val:inproc,meta:"in process / on hold"},
+    {cls:"",label:"In pipeline",val:nocon,meta:"no contract yet"},
+    {cls:"amber",label:"Locations opted in",val:optedIn,meta:S.locations.length+" total tracked"},
+    {cls:risks?"red":"",label:"At-risk steps",val:risks,meta:"blocked or behind"},
+    {cls:"",label:"Nearest launch",val:nearestLaunch(),meta:"target / deadline"},
+  ];
+  $("#agpKpis").innerHTML=kpis.map(k=>`<div class="agp-kpi ${k.cls}"><span class="accent"></span>
+    <div class="label">${k.label}</div><div class="val">${esc(k.val)}</div><div class="meta">${esc(k.meta)}</div></div>`).join("");
+
+  $("#agpAggGrid").innerHTML=aggs.map(a=>{
+    const pct=aggProgress(a),risk=aggRisk(a);
+    const stageHtml=STAGES.map(s=>{const st=stageState(a,s.id);return `<span class="${st==="done"?"done":st==="partial"?"partial":""}" title="${s.name}"></span>`;}).join("");
+    const launch=a.launchTarget||a.deadline;
+    return `<div class="agp-agg-card" data-open-agg="${a.id}">
+      <div class="row1">
+        <div><div class="name">${esc(a.name)}</div><div class="rail">${esc(a.rail||"Payment rail TBD")}</div></div>
+        <div class="when"><div class="lab">${a.launchTarget?"Target":a.deadline?"Deadline":"Launch"}</div><div class="d">${launch?fmtDate(launch):"—"}</div></div>
+      </div>
+      <div class="agp-progress ${pct===100?"green":""}"><i style="width:${pct}%"></i></div>
+      <div class="agp-mini-meta"><span>${pct}% complete</span><span>${esc(discLabel(a.discountType,a.discountValue))}</span></div>
+      <div class="agp-stagebar">${stageHtml}</div>
+      <div class="agp-mini-meta" style="margin-top:10px">
+        <span class="agp-badge b-${a.status}">${esc((AGG_STATUS.find(s=>s.v===a.status)||{}).l||a.status)}</span>
+        ${risk?`<span class="agp-chip" style="background:var(--agp-red-soft);color:var(--agp-red)">${risk} at risk</span>`:`<span class="agp-chip">${esc(a.contactName||"No contact")}</span>`}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+/* ----- selectors ----- */
+function renderAggSelectors(){
+  const opts=S.aggregators.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  const sel=$("#agpAggSelect"),lsel=$("#agpLocAggSelect");
+  sel.innerHTML=opts;sel.value=S.ui.currentAgg;
+  lsel.innerHTML=opts;lsel.value=S.ui.currentAgg;
+}
+
+/* ----- aggregator workspace ----- */
+function renderAggWorkspace(){
+  const a=aggById(S.ui.currentAgg);if(!a){$("#agpAggWorkspace").innerHTML="";return;}
+  const pct=aggProgress(a);
+  const head=`
+  <div class="agp-panel">
+    <div class="agp-section-h">
+      <h2>${esc(a.name)} — program details</h2>
+      <span class="spacer"></span>
+      <div style="text-align:right;min-width:120px"><div class="agp-help" style="margin-bottom:4px">${pct}% complete</div>
+      <div class="agp-progress ${pct===100?"green":""}"><i style="width:${pct}%"></i></div></div>
+    </div>
+    <div class="agp-grid-3">
+      <div class="agp-field"><label>Status</label>${selectHtml("aggf","status",AGG_STATUS,a.status)}</div>
+      <div class="agp-field"><label>Payment rail</label><input class="agp-input" data-aggf="rail" value="${esc(a.rail)}"></div>
+      <div class="agp-field"><label># Carriers / drivers</label><input class="agp-input" data-aggf="carriers" value="${esc(a.carriers)}"></div>
+    </div>
+    <div class="agp-grid-3" style="margin-top:14px">
+      <div class="agp-field"><label>Launch target</label><input class="agp-input" type="date" data-aggf="launchTarget" value="${esc(a.launchTarget)}"></div>
+      <div class="agp-field"><label>Deadline (committed)</label><input class="agp-input" type="date" data-aggf="deadline" value="${esc(a.deadline)}"></div>
+      <div class="agp-field"><label>Actual launch</label><input class="agp-input" type="date" data-aggf="launchActual" value="${esc(a.launchActual)}"></div>
+    </div>
+    <div class="agp-grid-4" style="margin-top:14px">
+      <div class="agp-field"><label>Default discount</label>${selectHtml("aggf","discountType",DISCOUNT_TYPES,a.discountType)}</div>
+      <div class="agp-field"><label>Discount value (¢)</label><input class="agp-input" data-aggf="discountValue" value="${esc(a.discountValue)}" placeholder="e.g. 8"></div>
+      <div class="agp-field"><label>Roady's markup (¢)</label><input class="agp-input" data-aggf="markup" value="${esc(a.markup)}"></div>
+      <div class="agp-field"><label>Discount target (text)</label><input class="agp-input" data-aggf="discountTarget" value="${esc(a.discountTarget)}"></div>
+    </div>
+    <div class="agp-grid-2" style="margin-top:14px">
+      <div class="agp-field"><label>Contact name</label><input class="agp-input" data-aggf="contactName" value="${esc(a.contactName)}"></div>
+      <div class="agp-field"><label>Contact role</label><input class="agp-input" data-aggf="contactRole" value="${esc(a.contactRole)}"></div>
+    </div>
+    <div class="agp-grid-3" style="margin-top:14px">
+      <div class="agp-field"><label>Phone</label><input class="agp-input" data-aggf="phone" value="${esc(a.phone)}"></div>
+      <div class="agp-field"><label>Email</label><input class="agp-input" data-aggf="email" value="${esc(a.email)}"></div>
+      <div class="agp-field"><label>Location</label><input class="agp-input" data-aggf="location" value="${esc(a.location)}"></div>
+    </div>
+    <div class="agp-field" style="margin-top:14px"><label>Notes</label><textarea class="agp-textarea" data-aggf="notes">${esc(a.notes)}</textarea></div>
+  </div>`;
+
+  const stages=STAGES.map(stage=>{
+    const collapsedKey="agp_stage_"+stage.id+"_"+a.id;
+    const collapsed=ssGet(collapsedKey)==="1";
+    let done=0,tot=0;stage.steps.forEach(s=>{const st=a.steps[s.id];if(!st||st.status==="na")return;tot++;if(st.status==="done")done++;});
+    const complete=tot>0&&done===tot;
+    const rows=stage.steps.map(s=>{
+      const st=a.steps[s.id]||{status:"not_started",owner:"",target:"",done:"",notes:""};
+      return `<div class="agp-step">
+        <div>
+          <div class="sname"><span class="agp-statusdot sd-${st.status}"></span>${esc(s.name)}</div>
+          <div class="shint">${esc(s.hint||"")}</div>
+        </div>
+        ${selectHtml("step","status",STATUS_OPTS,st.status,{agg:a.id,step:s.id})}
+        <input class="agp-input" data-step-field="owner" data-agg="${a.id}" data-step="${s.id}" value="${esc(st.owner)}" placeholder="Owner">
+        <input class="agp-input" type="date" data-step-field="target" data-agg="${a.id}" data-step="${s.id}" value="${esc(st.target)}">
+        <div class="note-wrap"><input class="agp-input" data-step-field="notes" data-agg="${a.id}" data-step="${s.id}" value="${esc(st.notes)}" placeholder="Notes…"></div>
+      </div>`;
+    }).join("");
+    return `<div class="agp-stage ${collapsed?"collapsed":""}" data-stage-key="${collapsedKey}">
+      <div class="agp-stage-h ${complete?"complete":""}" data-stage-toggle="${collapsedKey}">
+        <div class="num">${complete?"✓":stage.id}</div>
+        <div><div class="stitle">${esc(stage.name)}</div><div class="sowner">${esc(stage.owner)}</div></div>
+        <div class="scount">${done}/${tot||stage.steps.length}</div>
+        <div class="chev">▾</div>
+      </div>
+      <div class="agp-stage-body">${rows}</div>
+    </div>`;
+  }).join("");
+
+  $("#agpAggWorkspace").innerHTML=head+`
+  <div class="agp-panel">
+    <div class="agp-section-h"><h2>Onboarding checklist</h2><div class="sub" style="margin:0 0 0">Set a status, owner, target date and note per step. Stages roll up to the % above.</div></div>
+    ${stages}
+  </div>`;
+}
+
+function selectHtml(kind,field,opts,val,data){
+  const attrs=data?Object.entries(data).map(([k,v])=>`data-${k}="${esc(v)}"`).join(" "):"";
+  return `<select class="agp-select" data-${kind}-field="${field}" ${attrs}>`+
+    opts.map(o=>`<option value="${esc(o.v)}" ${o.v===val?"selected":""}>${esc(o.l)}</option>`).join("")+`</select>`;
+}
+
+/* ----- locations ----- */
+function renderLocations(){
+  const a=aggById(S.ui.currentAgg);if(!a){$("#agpLocPanel").innerHTML="";return;}
+  if(!S.optins[a.id])S.optins[a.id]={};
+  const map=S.optins[a.id];
+  if(!S.locations.length){
+    $("#agpLocPanel").innerHTML=`<div class="agp-panel"><div class="agp-empty">
+      <h3>No truck stops yet</h3>
+      <p>Add Roady's locations to start collecting opt-ins for <strong>${esc(a.name)}</strong>. Growth Strategists confirm participation and per-site discounts here.</p>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button class="agp-btn primary" id="agpLoadSample">Load sample locations</button>
+        <button class="agp-btn" id="agpImportLoc2">Import full list</button>
+      </div></div></div>`;
+    $("#agpLoadSample").onclick=loadSampleLocations;
+    $("#agpImportLoc2").onclick=openImportLoc;
+    return;
+  }
+  const counts={Yes:0,No:0,pending:0,"N/A":0};
+  S.locations.forEach(l=>{const o=map[l.id]||{};const s=o.status||"Select";if(s==="Yes")counts.Yes++;else if(s==="No")counts.No++;else if(s==="N/A")counts["N/A"]++;else counts.pending++;});
+
+  const controls=`<div class="agp-loc-controls">
+    <div class="agp-field"><label>Default discount type</label>${selectHtml("locdef","type",DISCOUNT_TYPES,a.discountType)}</div>
+    <div class="agp-field" style="max-width:110px"><label>Default value (¢)</label><input class="agp-input" id="agpLocDefVal" value="${esc(a.discountValue)}"></div>
+    <button class="agp-btn" id="agpApplyAll">Apply default to all</button>
+    <button class="agp-btn" id="agpApplyOpted">Apply to opted-in only</button>
+    <span style="flex:1"></span>
+    <div class="agp-field" style="max-width:150px"><label>Set all opt-in to</label>${selectHtml("setall","optin",OPTIN_OPTS.map(o=>({v:o,l:o})),"")}</div>
+  </div>
+  <div class="agp-mini-meta" style="gap:16px;margin:0 2px 12px;font-size:12px">
+    <span><strong style="color:var(--agp-green)">${counts.Yes}</strong> Yes</span>
+    <span><strong style="color:var(--agp-red)">${counts.No}</strong> No</span>
+    <span><strong style="color:var(--agp-yellow)">${counts.pending}</strong> pending</span>
+    <span><strong style="color:var(--agp-faint)">${counts["N/A"]}</strong> N/A</span>
+    <span style="margin-left:auto">${S.locations.length} locations</span>
+  </div>`;
+
+  const rows=S.locations.map(l=>{
+    const o=map[l.id]||{status:"Select",discountType:"",discountValue:"",notes:""};
+    const dtype=o.discountType||a.discountType;
+    return `<tr>
+      <td><div class="loc-name">${esc(l.name)}</div><div class="loc-sub">${esc([l.city,l.state].filter(Boolean).join(", "))}${l.code?" · "+esc(l.code):""}</div></td>
+      <td>${selectHtml("optin","status",OPTIN_OPTS.map(x=>({v:x,l:x})),o.status||"Select",{agg:a.id,loc:l.id})}</td>
+      <td>${selectHtml("optin","discountType",DISCOUNT_TYPES,dtype,{agg:a.id,loc:l.id})}</td>
+      <td class="w-num"><input class="agp-input" data-optin-field="discountValue" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.discountValue||"")}" placeholder="¢"></td>
+      <td><input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…"></td>
+      <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
+    </tr>`;
+  }).join("");
+
+  $("#agpLocPanel").innerHTML=`<div class="agp-panel">
+    <div class="agp-section-h"><h2>${esc(a.name)} — location opt-in</h2>
+      <div class="sub" style="margin:0">Growth Strategists set participation &amp; per-site discount. Default discount: <strong>${esc(discLabel(a.discountType,a.discountValue))}</strong> · markup ${esc(a.markup)}¢</div>
+    </div>
+    ${controls}
+    <div class="agp-table-scroll"><table class="agp-table">
+      <thead><tr><th>Truck stop</th><th>Opt-in</th><th>Discount type</th><th>Value</th><th>GS notes</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ----- process flow diagram ----- */
+function renderFlow(){
+  const html=STAGES.map((s,i)=>{
+    const steps=s.steps.slice(0,4).map(st=>`<li>${esc(st.name)}</li>`).join("");
+    const gate=i<STAGES.length-1?`<div class="agp-flow-gate"><span class="glab">gate</span>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 3l8 7-8 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`:"";
+    return `<div class="agp-flow-stage"><div class="agp-flow-card">
+      <div class="fnum">STAGE ${s.id}</div><div class="fname">${esc(s.name)}</div>
+      <ul>${steps}</ul><div class="fowner">${esc(s.owner)}</div>
+    </div></div>${gate}`;
+  }).join("");
+  $("#agpFlow").innerHTML=html;
+}
+
+function renderProcess(){const t=$("#agpProcessDesc");if(document.activeElement!==t)t.value=S.processDescription||"";}
+
+/* ----- descriptions ----- */
+function renderDescriptions(){
+  const cur=S.ui.descCurrent||S.aggregators[0].id;S.ui.descCurrent=cur;
+  $("#agpDescList").innerHTML=S.aggregators.map(a=>
+    `<button class="agp-desc-item ${a.id===cur?"active":""}" data-desc="${a.id}">
+      <div class="n">${esc(a.name)}</div><div class="r">${esc(a.rail||"—")}</div></button>`).join("");
+  const a=aggById(cur);
+  $("#agpDescEdit").innerHTML=`
+    <div class="agp-section-h" style="margin:0"><h2 style="font-size:14px">${esc(a.name)}</h2>
+      <span class="spacer"></span><button class="agp-btn sm" id="agpDescReset">Reset from details</button></div>
+    <textarea class="agp-textarea" id="agpDescArea" placeholder="Description…">${esc(S.descriptions[cur]||"")}</textarea>
+    <div class="agp-help">This is the editable reference for ${esc(a.name)}. Auto-saves. "Reset from details" rebuilds it from the program fields.</div>`;
+  $("#agpDescArea").addEventListener("input",e=>{S.descriptions[cur]=e.target.value;commit();});
+  $("#agpDescReset").onclick=()=>{S.descriptions[cur]=descSeed(aggById(cur));commit();$("#agpDescArea").value=S.descriptions[cur];toast("Rebuilt from program details");};
+}
+
+/* =====================================================================
+   EVENTS
+   ===================================================================== */
+function bind(){
+  // tabs
+  $("#agpTabs").addEventListener("click",e=>{const b=e.target.closest(".agp-tab");if(!b)return;
+    $$(".agp-tab").forEach(t=>t.classList.toggle("active",t===b));
+    $$(".agp-view").forEach(v=>v.classList.toggle("agp-hidden",v.dataset.view!==b.dataset.tab));
+    S.ui.tab=b.dataset.tab;commit();});
+
+  // open aggregator from pipeline card
+  document.addEventListener("click",e=>{
+    const card=e.target.closest("[data-open-agg]");
+    if(card){S.ui.currentAgg=card.dataset.openAgg;commit();gotoTab("aggregator");return;}
+  });
+
+  // aggregator selectors
+  $("#agpAggSelect").addEventListener("change",e=>{S.ui.currentAgg=e.target.value;commit();renderAggSelectors();renderAggWorkspace();});
+  $("#agpLocAggSelect").addEventListener("change",e=>{S.ui.currentAgg=e.target.value;commit();renderAggSelectors();renderLocations();});
+
+  // generic input/change delegation
+  document.addEventListener("input",onFieldInput,true);
+  document.addEventListener("change",onFieldChange,true);
+
+  // stage collapse
+  document.addEventListener("click",e=>{
+    const h=e.target.closest("[data-stage-toggle]");if(h){const key=h.dataset.stageToggle;
+      const wrap=h.closest(".agp-stage");const c=wrap.classList.toggle("collapsed");
+      ssSet(key,c?"1":"0");}
+  });
+
+  // delete location
+  document.addEventListener("click",e=>{
+    const d=e.target.closest("[data-del-loc]");if(d){const id=d.dataset.delLoc;
+      S.locations=S.locations.filter(l=>l.id!==id);Object.values(S.optins).forEach(m=>delete m[id]);commit();renderLocations();renderPipeline();$("#agpLocPill").textContent=S.locations.length;}
+  });
+
+  // descriptions list
+  document.addEventListener("click",e=>{const b=e.target.closest("[data-desc]");if(b){S.ui.descCurrent=b.dataset.desc;commit();renderDescriptions();}});
+
+  // process desc
+  $("#agpProcessDesc").addEventListener("input",e=>{S.processDescription=e.target.value;commit();});
+
+  // toolbar
+  $("#agpExport").onclick=doExport;
+  $("#agpImport").onclick=openImportJSON;
+  $("#agpPrint").onclick=()=>window.print();
+  $("#agpReset").onclick=()=>confirmModal("Reset everything?","This clears all aggregators, locations and opt-ins back to the seed data from the spreadsheet. Export a backup first if unsure.","Reset all",()=>{S=seed();save();render();closeModal();toast("Reset to seed data");});
+  $("#agpAddAgg").onclick=openAddAgg;
+  $("#agpAddLoc").onclick=openAddLoc;
+  $("#agpImportLoc").onclick=openImportLoc;
+
+  // modal close
+  $("#agpModalX").onclick=closeModal;
+  $("#agpModalBg").addEventListener("click",e=>{if(e.target.id==="agpModalBg")closeModal();});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+}
+
+function gotoTab(tab){$$(".agp-tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
+  $$(".agp-view").forEach(v=>v.classList.toggle("agp-hidden",v.dataset.view!==tab));S.ui.tab=tab;commit();
+  if(tab==="aggregator"){renderAggSelectors();renderAggWorkspace();}window.scrollTo({top:0,behavior:"smooth"});}
+
+function onFieldInput(e){
+  const t=e.target;
+  if(t.dataset.aggf!==undefined){const a=aggById(S.ui.currentAgg);if(a){a[t.dataset.aggf]=t.value;commit();
+    if(["status","rail","discountType","discountValue","launchTarget","deadline","contactName","name"].includes(t.dataset.aggf))scheduleLite();}}
+  if(t.dataset.stepField){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step][t.dataset.stepField]=t.value;commit();}}
+  if(t.dataset.optinField){setOptin(t.dataset.agg,t.dataset.loc,t.dataset.optinField,t.value);commit();}
+}
+let liteTimer=null;
+function scheduleLite(){clearTimeout(liteTimer);liteTimer=setTimeout(()=>{renderPipeline();renderAggSelectors();$("#agpAggSelect").value=S.ui.currentAgg;},400);}
+
+function onFieldChange(e){
+  const t=e.target;
+  // aggregator status select
+  if(t.dataset.aggfField){const a=aggById(S.ui.currentAgg);if(a){a[t.dataset.aggfField]=t.value;commit();renderPipeline();
+    if(t.dataset.aggfField==="discountType")renderAggWorkspace();}}
+  // step status
+  if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderAggWorkspace();renderPipeline();}}
+  // optin selects
+  if(t.dataset.optinField==="status"){setOptin(t.dataset.agg,t.dataset.loc,"status",t.value);commit();renderLocations();renderPipeline();}
+  if(t.dataset.optinField==="discountType"){setOptin(t.dataset.agg,t.dataset.loc,"discountType",t.value);commit();}
+  // default discount type for locations
+  if(t.dataset.locdefField==="type"){const a=aggById(S.ui.currentAgg);if(a){a.discountType=t.value;commit();}}
+  // set all optin
+  if(t.dataset.setallField==="optin"&&t.value){const a=aggById(S.ui.currentAgg);
+    if(t.value){S.locations.forEach(l=>setOptin(a.id,l.id,"status",t.value));commit();renderLocations();renderPipeline();toast("Set all to "+t.value);}}
+}
+function setOptin(aggId,locId,field,val){if(!S.optins[aggId])S.optins[aggId]={};if(!S.optins[aggId][locId])S.optins[aggId][locId]={status:"Select",discountType:"",discountValue:"",notes:""};S.optins[aggId][locId][field]=val;}
+
+/* ----- locations apply-all (bound after render via delegation on body) ----- */
+document.addEventListener("click",function(e){
+  if(e.target.id==="agpApplyAll"||e.target.id==="agpApplyOpted"){
+    const a=aggById(S.ui.currentAgg);const onlyOpted=e.target.id==="agpApplyOpted";
+    const val=$("#agpLocDefVal")?$("#agpLocDefVal").value:a.discountValue;
+    S.locations.forEach(l=>{const o=(S.optins[a.id]||{})[l.id];if(onlyOpted&&(!o||o.status!=="Yes"))return;
+      setOptin(a.id,l.id,"discountType",a.discountType);setOptin(a.id,l.id,"discountValue",val);});
+    commit();renderLocations();toast(onlyOpted?"Applied to opted-in sites":"Applied default to all");
+  }
+});
+
+/* =====================================================================
+   MODALS
+   ===================================================================== */
+function openModal(title,bodyHtml,footHtml){$("#agpModalTitle").textContent=title;$("#agpModalBody").innerHTML=bodyHtml;$("#agpModalFoot").innerHTML=footHtml||"";$("#agpModalBg").classList.add("open");}
+function closeModal(){$("#agpModalBg").classList.remove("open");}
+function confirmModal(title,msg,okLabel,onOk){
+  openModal(title,`<p class="agp-help" style="font-size:13px">${esc(msg)}</p>`,
+    `<button class="agp-btn ghost" id="agpMc">Cancel</button><button class="agp-btn primary danger" id="agpMok">${esc(okLabel)}</button>`);
+  $("#agpMc").onclick=closeModal;$("#agpMok").onclick=onOk;
+}
+
+function openAddAgg(){
+  openModal("Add aggregator",
+   `<div class="agp-field"><label>Name</label><input class="agp-input" id="agpNaName" placeholder="e.g. Octane"></div>
+    <div class="agp-field"><label>Payment rail</label><input class="agp-input" id="agpNaRail" placeholder="e.g. EFS"></div>
+    <div class="agp-grid-2">
+      <div class="agp-field"><label>Default discount</label><select class="agp-select" id="agpNaType">${DISCOUNT_TYPES.map(d=>`<option value="${d.v}">${d.l}</option>`).join("")}</select></div>
+      <div class="agp-field"><label>Value (¢)</label><input class="agp-input" id="agpNaVal"></div>
+    </div>`,
+   `<button class="agp-btn ghost" onclick="document.getElementById('agpModalBg').classList.remove('open')">Cancel</button><button class="agp-btn primary" id="agpNaSave">Add</button>`);
+  $("#agpNaSave").onclick=()=>{const name=$("#agpNaName").value.trim();if(!name){toast("Name required");return;}
+    const steps={};ALL_STEPS.forEach(s=>steps[s.id]={status:"not_started",owner:STEP_OWNER_DEFAULT[s.id]||"",target:"",done:"",notes:""});
+    const id=uid("agg");const a={id,name,rail:$("#agpNaRail").value.trim(),status:"not_started",launchTarget:"",deadline:"",launchActual:"",
+      contactName:"",contactRole:"",phone:"",email:"",location:"",carriers:"",markup:2,discountType:$("#agpNaType").value,discountValue:$("#agpNaVal").value,discountTarget:"",notes:"",steps};
+    S.aggregators.push(a);S.descriptions[id]=descSeed(a);S.ui.currentAgg=id;commit();render();closeModal();gotoTab("aggregator");toast("Added "+name);};
+}
+
+function openAddLoc(){
+  openModal("Add location",
+   `<div class="agp-field"><label>Truck stop name</label><input class="agp-input" id="agpNlName" placeholder="e.g. Roady's — Springfield"></div>
+    <div class="agp-grid-3">
+      <div class="agp-field"><label>City</label><input class="agp-input" id="agpNlCity"></div>
+      <div class="agp-field"><label>State</label><input class="agp-input" id="agpNlState" maxlength="2" placeholder="ST"></div>
+      <div class="agp-field"><label>Store code</label><input class="agp-input" id="agpNlCode"></div>
+    </div>`,
+   `<button class="agp-btn ghost" onclick="document.getElementById('agpModalBg').classList.remove('open')">Cancel</button><button class="agp-btn primary" id="agpNlSave">Add</button>`);
+  $("#agpNlSave").onclick=()=>{const name=$("#agpNlName").value.trim();if(!name){toast("Name required");return;}
+    S.locations.push({id:uid("loc"),name,city:$("#agpNlCity").value.trim(),state:$("#agpNlState").value.trim().toUpperCase(),code:$("#agpNlCode").value.trim()});
+    commit();renderLocations();renderPipeline();$("#agpLocPill").textContent=S.locations.length;closeModal();toast("Location added");};
+}
+
+function openImportLoc(){
+  openModal("Import locations",
+   `<div class="agp-field"><label>Paste one location per line</label>
+      <textarea class="agp-textarea" id="agpImpArea" style="min-height:180px" placeholder="Name, City, ST, Code
+Roady's — Sayre, Sayre, OK, 102
+Roady's — Effingham, Effingham, IL, 211"></textarea></div>
+    <div class="agp-help">Accepts comma- or tab-separated: <strong>Name, City, ST, Code</strong>. City / ST / Code optional. Existing locations are kept; this adds to the list.</div>`,
+   `<button class="agp-btn ghost" id="agpImpCancel">Cancel</button><button class="agp-btn primary" id="agpImpSave">Import</button>`);
+  $("#agpImpCancel").onclick=closeModal;
+  $("#agpImpSave").onclick=()=>{const lines=$("#agpImpArea").value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);let n=0;
+    lines.forEach(line=>{const p=line.split(/\t|,/).map(x=>x.trim());if(!p[0])return;
+      S.locations.push({id:uid("loc"),name:p[0],city:p[1]||"",state:(p[2]||"").toUpperCase(),code:p[3]||""});n++;});
+    commit();renderLocations();renderPipeline();$("#agpLocPill").textContent=S.locations.length;closeModal();toast(n+" locations imported");};
+}
+
+function loadSampleLocations(){
+  const samples=[
+    ["Roady's — Sayre","Sayre","OK","SAY"],["Roady's — Effingham","Effingham","IL","EFF"],
+    ["Roady's — Big Spring","Big Spring","TX","BSP"],["Roady's — Wytheville","Wytheville","VA","WYT"],
+    ["Roady's — Ogallala","Ogallala","NE","OGA"],["Roady's — Cordele","Cordele","GA","COR"],
+    ["Roady's — Beaver","Beaver","UT","BVR"],["Roady's — Lordsburg","Lordsburg","NM","LRD"],
+    ["Roady's — Sweetwater","Sweetwater","TN","SWT"],["Roady's — Mauston","Mauston","WI","MAU"]];
+  samples.forEach(s=>S.locations.push({id:uid("loc"),name:s[0],city:s[1],state:s[2],code:s[3]}));
+  commit();renderLocations();renderPipeline();$("#agpLocPill").textContent=S.locations.length;
+  toast("10 sample locations added — replace with your roster");
+}
+
+function doExport(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);const a=document.createElement("a");
+  a.href=url;a.download="aggregator-planner-"+new Date().toISOString().slice(0,10)+".json";a.click();
+  URL.revokeObjectURL(url);toast("Backup exported");
+}
+function openImportJSON(){
+  openModal("Import backup",
+   `<div class="agp-field"><label>Paste an exported JSON backup</label><textarea class="agp-textarea" id="agpJsonArea" style="min-height:200px" placeholder='{ "version":1, ... }'></textarea></div>
+    <div class="agp-help">This replaces all current data. Export a backup first if you want to keep it.</div>`,
+   `<button class="agp-btn ghost" id="agpJc">Cancel</button><button class="agp-btn primary" id="agpJs">Replace data</button>`);
+  $("#agpJc").onclick=closeModal;
+  $("#agpJs").onclick=()=>{try{const d=JSON.parse($("#agpJsonArea").value);if(!d.aggregators)throw 0;S=d;migrate();save();render();closeModal();toast("Backup imported");}catch(e){toast("Invalid JSON");}};
+}
+
+/* =====================================================================
+   INIT
+   ===================================================================== */
+function init(){
+  load();bind();render();
+  // restore tab
+  if(S.ui.tab&&S.ui.tab!=="pipeline")gotoTab(S.ui.tab);
+  window.scrollTo(0,0);
+}
+window.AGP={get state(){return S;},save,render,reset(){S=seed();save();render();}};
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
+})();
+</script>
+</body>
+</html>
