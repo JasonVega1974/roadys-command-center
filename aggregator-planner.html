@@ -1008,7 +1008,6 @@ function renderPipeline(){
     {cls:"",label:"In pipeline",val:nocon,meta:"no contract yet"},
     {cls:"amber",label:"Locations opted in",val:optedIn,meta:S.locations.length+" total tracked"},
     {cls:risks?"red":"",label:"At-risk steps",val:risks,meta:"blocked or behind"},
-    {cls:"",label:"Nearest launch",val:nearestLaunch(),meta:"target / deadline"},
   ];
   $("#agpKpis").innerHTML=kpis.map(k=>`<div class="agp-kpi ${k.cls}"><span class="accent"></span>
     <div class="label">${k.label}</div><div class="val">${esc(k.val)}</div><div class="meta">${esc(k.meta)}</div></div>`).join("");
