@@ -450,6 +450,7 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
       <div class="agp-selbar">
         <span class="lab">Opt-in for</span>
         <select class="agp-select" id="agpLocAggSelect"></select>
+        <input class="agp-input" id="agpLocSearch" type="search" autocomplete="off" placeholder="🔍 Search name, city, state, code, GS…" style="max-width:320px;flex:1 1 200px">
         <span class="spacer" style="margin-left:auto"></span>
         <button class="agp-btn sm" id="agpAddLoc">+ Add truck stop</button>
         <button class="agp-btn sm" id="agpImportLoc">Import list</button>
@@ -1186,7 +1187,7 @@ function renderLocations(){
   // sortable header
   const sort=S.ui.locSort||{key:"code",dir:1};
   const COLS=[
-    {k:"code",label:"Store #",sortable:true},
+    {k:"code",label:"LID",sortable:true},
     {k:"name",label:"Truck stop",sortable:true},
     {k:"gs",label:"Growth Strategist",sortable:true},
     {k:"status",label:"Opt-in",sortable:true},
@@ -1218,7 +1219,7 @@ function renderLocations(){
       <td><input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…"></td>
       <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
     </tr>`;
-  }).join("");
+  }).join("")||`<tr><td colspan="9" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
 
   $("#agpLocPanel").innerHTML=`<div class="agp-panel">
     <div class="agp-section-h"><h2>${esc(a.name)} — location opt-in</h2>
@@ -1245,13 +1246,16 @@ function locView(a){
   const stOf=l=>(map[l.id]&&map[l.id].status)||"Select";
   const filt=Array.isArray(S.ui.locFilter)?S.ui.locFilter:OPTIN_OPTS;
   const sort=S.ui.locSort||{key:"code",dir:1};
+  const q=(S.ui.locSearch||"").trim().toLowerCase();
   const valFor=(l,key)=>{const o=map[l.id]||{};switch(key){
     case"code":return(l.code||"").toLowerCase();
     case"name":return(l.name||"").toLowerCase();
     case"gs":return(l.gs||"~~~").toLowerCase();
     case"status":return OPTIN_OPTS.indexOf(o.status||"Select");
     case"type":return o.discountType||"";default:return"";}};
-  return S.locations.filter(l=>filt.indexOf(stOf(l))>=0).slice().sort((x,y)=>{
+  let list=S.locations.filter(l=>filt.indexOf(stOf(l))>=0);
+  if(q)list=list.filter(l=>[l.name,l.city,l.state,l.code,l.gs].some(x=>String(x||"").toLowerCase().includes(q)));
+  return list.slice().sort((x,y)=>{
     const vx=valFor(x,sort.key),vy=valFor(y,sort.key);
     if(vx<vy)return -sort.dir;if(vx>vy)return sort.dir;
     const nx=(x.name||"").toLowerCase(),ny=(y.name||"").toLowerCase();return nx<ny?-1:nx>ny?1:0;});
@@ -1260,7 +1264,7 @@ function csvCell(v){v=String(v==null?"":v);return /[",\n\r]/.test(v)?'"'+v.repla
 function exportLocCSV(){
   const a=aggById(S.ui.currentAgg);if(!a){toast("Pick an aggregator first");return;}
   const map=S.optins[a.id]||{};
-  const head=["Store #","Truck Stop","City","State","Growth Strategist","Opt-In","Discount Type","Retail Minus (¢)","Cost Plus (¢)","GS Notes"];
+  const head=["LID","Truck Stop","City","State","Growth Strategist","Opt-In","Discount Type","Retail Minus (¢)","Cost Plus (¢)","GS Notes"];
   const rows=locView(a).map(l=>{const o=map[l.id]||{};
     const dt=(DISCOUNT_TYPES.find(d=>d.v===(o.discountType||a.discountType))||{}).l||"";
     return [l.code,l.name,l.city,l.state,l.gs,o.status||"Select",dt,o.retailMinus||"",o.costPlus||"",o.notes||""].map(csvCell).join(",");});
@@ -1321,6 +1325,8 @@ function bind(){
   // aggregator selectors
   $("#agpAggSelect").addEventListener("change",e=>{S.ui.currentAgg=e.target.value;commit();renderAggSelectors();renderAggWorkspace();});
   $("#agpLocAggSelect").addEventListener("change",e=>{S.ui.currentAgg=e.target.value;commit();renderAggSelectors();renderLocations();});
+  // location search (UI-only — lives in selbar so it keeps focus across re-renders; never synced)
+  $("#agpLocSearch").addEventListener("input",e=>{S.ui.locSearch=e.target.value;renderLocations();});
 
   // generic input/change delegation
   document.addEventListener("input",onFieldInput,true);
@@ -1473,7 +1479,7 @@ function openAddAgg(){
 function openAddLoc(){
   openModal("Add truck stop",
    `<div class="agp-grid-2">
-      <div class="agp-field"><label>Store # (R/L/P code)</label><input class="agp-input" id="agpNlCode" placeholder="e.g. R01835"></div>
+      <div class="agp-field"><label>LID (R/L/P code)</label><input class="agp-input" id="agpNlCode" placeholder="e.g. R01835"></div>
       <div class="agp-field"><label>Truck stop name</label><input class="agp-input" id="agpNlName" placeholder="e.g. Roady's — Springfield"></div>
     </div>
     <div class="agp-grid-3">
