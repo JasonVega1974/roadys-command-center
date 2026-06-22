@@ -66,6 +66,7 @@ create table if not exists public.agp_locations (
   state      text default '',
   code       text default '',
   gs         text default '',
+  ach        text default '',   -- "Customer is setup for ACH"
   updated_at timestamptz default now()
 );
 
@@ -78,6 +79,7 @@ create table if not exists public.agp_optins (
   retail_minus   text default '',
   cost_plus      text default '',
   notes          text default '',
+  entered        boolean default false,   -- "Discount entered in Interstate"
   updated_at     timestamptz default now(),
   primary key (aggregator_id, location_id)
 );
