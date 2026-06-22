@@ -684,7 +684,7 @@ async function syncInit(){
     const r=await doSync(sb);
     if(r==="assembled"&&S.ui.tab&&S.ui.tab!=="pipeline")gotoTab(S.ui.tab);
     setSyncState("synced");
-  }catch(e){ console.warn("syncInit: "+(e&&e.message||e)); setSyncState("offline"); }
+  }catch(e){ syncFailed("syncInit",e); }
 }
 // Upsert ONLY the rows that changed vs the last synced baseline (debounced via commit()).
 async function syncToRemote(){
@@ -700,7 +700,15 @@ async function syncToRemote(){
       await sb.from("agp_optins").delete().match({aggregator_id:p[0],location_id:p[1]}); }
     _lastSyncedEntities=cur;
     setSyncState("synced");
-  }catch(e){ console.warn("syncToRemote: "+(e&&e.message||e)); setSyncState("offline"); }
+  }catch(e){ syncFailed("syncToRemote",e); }
+}
+// Surface a write/sync failure once (so a silent "Offline" doesn't hide a real DB error).
+function syncFailed(where,e){
+  const msg=(e&&e.message)||String(e);
+  const wasOffline=_syncState==="offline";
+  console.warn(where+": "+msg);
+  setSyncState("offline");
+  if(!wasOffline)toast("Cloud sync failed — "+msg.slice(0,90));
 }
 function setSyncState(st){
   _syncState=st;const d=$("#agpSaveDot"),t=$("#agpSaveTxt");if(!d)return;
@@ -1435,6 +1443,10 @@ function bind(){
   $("#agpImportLoc").onclick=openImportLoc;
   $("#agpExportLoc").onclick=exportLocCSV;
 
+  // click the sync indicator to retry (e.g. after fixing DB permissions)
+  const sv=$(".agp-save");if(sv){sv.style.cursor="pointer";sv.title="Click to retry cloud sync";
+    sv.onclick=()=>{toast("Retrying cloud sync…");syncInit();};}
+
   // modal close
   $("#agpModalX").onclick=closeModal;
   $("#agpModalBg").addEventListener("click",e=>{if(e.target.id==="agpModalBg")closeModal();});
@@ -1460,7 +1472,11 @@ function onFieldInput(e){
   if(t.dataset.aggf!==undefined){const a=aggById(S.ui.currentAgg);if(a){a[t.dataset.aggf]=t.value;commit();
     if(["status","rail","discountType","discountValue","launchTarget","deadline","contactName","name"].includes(t.dataset.aggf))scheduleLite();}}
   if(t.dataset.stepField){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step][t.dataset.stepField]=t.value;commit();}}
-  if(t.dataset.optinField){setOptin(t.dataset.agg,t.dataset.loc,t.dataset.optinField,t.value);commit();}
+  if(t.dataset.optinField){
+    if(t.dataset.optinField==="status")setOptinAll(t.dataset.loc,"status",t.value);   // shared across aggregators
+    else setOptin(t.dataset.agg,t.dataset.loc,t.dataset.optinField,t.value);           // discount fields stay per-aggregator
+    commit();
+  }
 }
 let liteTimer=null;
 function scheduleLite(){clearTimeout(liteTimer);liteTimer=setTimeout(()=>{renderPipeline();renderAggSelectors();$("#agpAggSelect").value=S.ui.currentAgg;},400);}
@@ -1473,7 +1489,7 @@ function onFieldChange(e){
   // step status
   if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderWorkspaceKeepScroll();renderPipeline();}}
   // optin selects
-  if(t.dataset.optinField==="status"){setOptin(t.dataset.agg,t.dataset.loc,"status",t.value);commit();renderLocations();renderPipeline();}
+  if(t.dataset.optinField==="status"){setOptinAll(t.dataset.loc,"status",t.value);commit();renderLocations();renderPipeline();}
   if(t.dataset.optinField==="discountType"){setOptin(t.dataset.agg,t.dataset.loc,"discountType",t.value);commit();}
   // Growth Strategist (location-level, shared across aggregators)
   if(t.dataset.locgs){const l=S.locations.find(x=>x.id===t.dataset.loc);if(l){l.gs=t.value;commit();
@@ -1481,10 +1497,13 @@ function onFieldChange(e){
   // default discount type for locations
   if(t.dataset.locdefField==="type"){const a=aggById(S.ui.currentAgg);if(a){a.discountType=t.value;commit();}}
   // set all optin
-  if(t.dataset.setallField==="optin"&&t.value){const a=aggById(S.ui.currentAgg);
-    if(t.value){S.locations.forEach(l=>setOptin(a.id,l.id,"status",t.value));commit();renderLocations();renderPipeline();toast("Set all to "+t.value);}}
+  if(t.dataset.setallField==="optin"&&t.value){
+    S.locations.forEach(l=>setOptinAll(l.id,"status",t.value));commit();renderLocations();renderPipeline();toast("Set all to "+t.value+" — every aggregator");}
 }
 function setOptin(aggId,locId,field,val){if(!S.optins[aggId])S.optins[aggId]={};if(!S.optins[aggId][locId])S.optins[aggId][locId]={status:"Select",discountType:"",retailMinus:"",costPlus:"",notes:""};S.optins[aggId][locId][field]=val;}
+// Opt-in participation is a per-location decision shared across every aggregator,
+// so a status change on Motive also applies to A-to-B, Haul Pay, etc.
+function setOptinAll(locId,field,val){S.aggregators.forEach(a=>setOptin(a.id,locId,field,val));}
 
 /* ----- locations apply-all (bound after render via delegation on body) ----- */
 document.addEventListener("click",function(e){
