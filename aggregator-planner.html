@@ -296,6 +296,9 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
 .agp-table select,.agp-table input{font-size:12px;padding:5px 8px}
 .agp-table .w-num{width:74px}
 .agp-table .w-gs select{min-width:150px}
+.agp-table .w-chk{width:34px;text-align:center}
+.agp-table .w-chk input{cursor:pointer;width:15px;height:15px;accent-color:var(--agp-amber)}
+.agp-bulkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 2px 12px;padding:8px 12px;background:var(--agp-red-soft);border:1px solid var(--agp-red);border-radius:var(--agp-radius);font-size:12.5px;color:var(--agp-text)}
 .opt-yes{color:var(--agp-green)} .opt-no{color:var(--agp-red)} .opt-pending{color:var(--agp-yellow)} .opt-na{color:var(--agp-faint)}
 /* opt-in row coloring + glow */
 .agp-table tbody tr.optrow-yes>td{background:rgba(52,211,153,.09)}
@@ -1140,6 +1143,7 @@ function selectHtml(kind,field,opts,val,data,extraClass){
 }
 
 /* ----- locations ----- */
+let _locSel=new Set();   // location ids checked for bulk delete (ephemeral, never synced)
 function renderLocations(){
   const a=aggById(S.ui.currentAgg);if(!a){$("#agpLocPanel").innerHTML="";return;}
   if(!S.optins[a.id])S.optins[a.id]={};
@@ -1184,6 +1188,14 @@ function renderLocations(){
     <span class="agp-chip" style="margin-left:6px">${view.length} of ${S.locations.length} shown</span>
   </div>`;
 
+  // bulk-select / delete bar (shown when rows are checked)
+  const bulkBar=`<div class="agp-bulkbar" id="agpLocBulk" style="${_locSel.size?"":"display:none"}">
+    <strong id="agpLocSelN">${_locSel.size}</strong>&nbsp;selected
+    <button class="agp-btn sm danger" id="agpLocDelSel">🗑 Delete selected</button>
+    <button class="agp-btn sm" id="agpLocClearSel">Clear</button>
+  </div>`;
+  const allChecked=view.length>0&&view.every(l=>_locSel.has(l.id));
+
   // sortable header
   const sort=S.ui.locSort||{key:"code",dir:1};
   const COLS=[
@@ -1201,6 +1213,7 @@ function renderLocations(){
     const ind=sort.key===c.k?(sort.dir>0?"▲":"▼"):"↕";
     return `<th class="sortable ${sort.key===c.k?"sorted":""}" data-sort="${c.k}">${esc(c.label)}<span class="sort-ind">${ind}</span></th>`;
   }).join("");
+  const chkTh=`<th class="w-chk"><input type="checkbox" id="agpLocSelAll" ${allChecked?"checked":""} title="Select all shown"></th>`;
 
   const rows=view.map(l=>{
     const o=map[l.id]||{status:"Select",discountType:"",retailMinus:"",costPlus:"",notes:""};
@@ -1209,6 +1222,7 @@ function renderLocations(){
     const optSel=`<select class="agp-select ${optSelClass(st)}" data-optin-field="status" data-agg="${a.id}" data-loc="${l.id}">`+
       OPTIN_OPTS.map(x=>`<option value="${esc(x)}" ${x===st?"selected":""}>${esc(x)}</option>`).join("")+`</select>`;
     return `<tr class="${optRowClass(st)}">
+      <td class="w-chk"><input type="checkbox" data-locsel="${l.id}" ${_locSel.has(l.id)?"checked":""}></td>
       <td class="loc-code">${esc(l.code||"—")}</td>
       <td><div class="loc-name">${esc(l.name)}</div><div class="loc-sub">${esc([l.city,l.state].filter(Boolean).join(", "))}</div></td>
       <td class="w-gs">${gsSelectHtml(l)}</td>
@@ -1219,7 +1233,7 @@ function renderLocations(){
       <td><input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…"></td>
       <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
     </tr>`;
-  }).join("")||`<tr><td colspan="9" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
+  }).join("")||`<tr><td colspan="10" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
 
   $("#agpLocPanel").innerHTML=`<div class="agp-panel">
     <div class="agp-section-h"><h2>${esc(a.name)} — location opt-in</h2>
@@ -1227,11 +1241,16 @@ function renderLocations(){
     </div>
     ${controls}
     ${filterBar}
+    ${bulkBar}
     <div class="agp-table-scroll"><table class="agp-table">
-      <thead><tr>${ths}</tr></thead>
+      <thead><tr>${chkTh}${ths}</tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
+}
+function updateBulkBar(){
+  const bar=$("#agpLocBulk");if(bar)bar.style.display=_locSel.size?"":"none";
+  const n=$("#agpLocSelN");if(n)n.textContent=_locSel.size;
 }
 
 /* ----- location-table helpers (sort / filter / GS / CSV) ----- */
@@ -1327,6 +1346,38 @@ function bind(){
   $("#agpLocAggSelect").addEventListener("change",e=>{S.ui.currentAgg=e.target.value;commit();renderAggSelectors();renderLocations();});
   // location search (UI-only — lives in selbar so it keeps focus across re-renders; never synced)
   $("#agpLocSearch").addEventListener("input",e=>{S.ui.locSearch=e.target.value;renderLocations();});
+
+  // location multi-select + bulk delete
+  document.addEventListener("change",e=>{
+    const cb=e.target;if(!cb||cb.type!=="checkbox")return;
+    if(cb.dataset.locsel!==undefined){
+      if(cb.checked)_locSel.add(cb.dataset.locsel);else _locSel.delete(cb.dataset.locsel);
+      updateBulkBar();
+      const all=$("#agpLocSelAll");if(all){const v=locView(aggById(S.ui.currentAgg));all.checked=v.length>0&&v.every(l=>_locSel.has(l.id));}
+      return;
+    }
+    if(cb.id==="agpLocSelAll"){
+      const v=locView(aggById(S.ui.currentAgg));
+      v.forEach(l=>cb.checked?_locSel.add(l.id):_locSel.delete(l.id));
+      renderLocations();
+    }
+  });
+  document.addEventListener("click",e=>{
+    if(e.target.closest("#agpLocClearSel")){_locSel.clear();renderLocations();return;}
+    if(e.target.closest("#agpLocDelSel")){
+      const ids=Array.from(_locSel);if(!ids.length)return;
+      confirmModal("Delete "+ids.length+" location"+(ids.length>1?"s":"")+"?",
+        "This permanently removes the selected truck stops and their opt-ins for every aggregator — in the cloud too. This cannot be undone.",
+        "Delete "+ids.length,()=>{
+          const del=new Set(ids);
+          S.locations=S.locations.filter(l=>!del.has(l.id));
+          Object.values(S.optins).forEach(m=>ids.forEach(id=>delete m[id]));
+          _locSel.clear();commit();renderLocations();renderPipeline();
+          $("#agpLocPill").textContent=S.locations.length;closeModal();
+          toast(ids.length+" location"+(ids.length>1?"s":"")+" deleted");
+        });
+    }
+  });
 
   // generic input/change delegation
   document.addEventListener("input",onFieldInput,true);
