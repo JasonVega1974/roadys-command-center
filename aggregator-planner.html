@@ -1506,9 +1506,13 @@ function onFieldChange(e){
     if((S.ui.locSort||{}).key==="gs")renderLocations();}}
   // default discount type for locations
   if(t.dataset.locdefField==="type"){const a=aggById(S.ui.currentAgg);if(a){a.discountType=t.value;commit();}}
-  // set all optin
+  // set all optin (manager only)
   if(t.dataset.setallField==="optin"&&t.value){
-    S.locations.forEach(l=>setOptinAll(l.id,"status",t.value));commit();renderLocations();renderPipeline();toast("Set all to "+t.value+" — every aggregator");}
+    const val=t.value;
+    withManagerPin(()=>{
+      S.locations.forEach(l=>setOptinAll(l.id,"status",val));commit();renderLocations();renderPipeline();toast("Set all to "+val+" — every aggregator");
+    },()=>renderLocations());  // reset the select if cancelled
+  }
 }
 function setOptin(aggId,locId,field,val){if(!S.optins[aggId])S.optins[aggId]={};if(!S.optins[aggId][locId])S.optins[aggId][locId]={status:"Select",discountType:"",retailMinus:"",costPlus:"",notes:""};S.optins[aggId][locId][field]=val;}
 // Opt-in participation is a per-location decision shared across every aggregator,
@@ -1517,25 +1521,31 @@ function setOptinAll(locId,field,val){S.aggregators.forEach(a=>setOptin(a.id,loc
 
 /* ----- locations apply-all (bound after render via delegation on body) ----- */
 document.addEventListener("click",function(e){
+  // bulk discount apply (manager only)
   if(e.target.id==="agpApplyAll"||e.target.id==="agpApplyOpted"){
-    const a=aggById(S.ui.currentAgg);const onlyOpted=e.target.id==="agpApplyOpted";
-    const rVal=$("#agpLocDefRetail")?$("#agpLocDefRetail").value.trim():"";
-    const cVal=$("#agpLocDefCost")?$("#agpLocDefCost").value.trim():"";
-    const dt=(rVal&&cVal)?"BO":(rVal?"R-":(cVal?"C+":a.discountType));
-    S.locations.forEach(l=>{const o=(S.optins[a.id]||{})[l.id];if(onlyOpted&&(!o||o.status!=="Yes"))return;
-      setOptin(a.id,l.id,"discountType",dt);
-      setOptin(a.id,l.id,"retailMinus",rVal);setOptin(a.id,l.id,"costPlus",cVal);});
-    commit();renderLocations();toast(onlyOpted?"Applied to opted-in sites":"Applied default to all");
+    const onlyOpted=e.target.id==="agpApplyOpted";
+    withManagerPin(()=>{
+      const a=aggById(S.ui.currentAgg);
+      const rVal=$("#agpLocDefRetail")?$("#agpLocDefRetail").value.trim():"";
+      const cVal=$("#agpLocDefCost")?$("#agpLocDefCost").value.trim():"";
+      const dt=(rVal&&cVal)?"BO":(rVal?"R-":(cVal?"C+":a.discountType));
+      S.locations.forEach(l=>{const o=(S.optins[a.id]||{})[l.id];if(onlyOpted&&(!o||o.status!=="Yes"))return;
+        setOptin(a.id,l.id,"discountType",dt);
+        setOptin(a.id,l.id,"retailMinus",rVal);setOptin(a.id,l.id,"costPlus",cVal);});
+      commit();renderLocations();toast(onlyOpted?"Applied to opted-in sites":"Applied default to all");
+    });
   }
-  // copy THIS aggregator's per-location opt-in status to every aggregator (status only)
+  // copy THIS aggregator's per-location opt-in status to every aggregator (manager only; status only)
   if(e.target.id==="agpSyncOptinAll"){
-    const a=aggById(S.ui.currentAgg);const map=S.optins[a.id]||{};
-    confirmModal("Apply "+a.name+"'s opt-in status to all aggregators?",
-      "Each location's opt-in status as shown for "+a.name+" will be copied to every aggregator (A-to-B, Haul Pay, etc.). Discounts are NOT changed. This overwrites opt-in status on the other aggregators.",
-      "Apply to all",()=>{
-        S.locations.forEach(l=>setOptinAll(l.id,"status",(map[l.id]&&map[l.id].status)||"Select"));
-        commit();renderLocations();renderPipeline();closeModal();toast("Opt-in status applied to every aggregator");
-      });
+    withManagerPin(()=>{
+      const a=aggById(S.ui.currentAgg);const map=S.optins[a.id]||{};
+      confirmModal("Apply "+a.name+"'s opt-in status to all aggregators?",
+        "Each location's opt-in status as shown for "+a.name+" will be copied to every aggregator (A-to-B, Haul Pay, etc.). Discounts are NOT changed. This overwrites opt-in status on the other aggregators.",
+        "Apply to all",()=>{
+          S.locations.forEach(l=>setOptinAll(l.id,"status",(map[l.id]&&map[l.id].status)||"Select"));
+          commit();renderLocations();renderPipeline();closeModal();toast("Opt-in status applied to every aggregator");
+        });
+    });
   }
 });
 
@@ -1548,6 +1558,24 @@ function confirmModal(title,msg,okLabel,onOk){
   openModal(title,`<p class="agp-help" style="font-size:13px">${esc(msg)}</p>`,
     `<button class="agp-btn ghost" id="agpMc">Cancel</button><button class="agp-btn primary danger" id="agpMok">${esc(okLabel)}</button>`);
   $("#agpMc").onclick=closeModal;$("#agpMok").onclick=onOk;
+}
+
+/* Manager-only gate for bulk opt-in actions (PIN 9999, unlocked per session). */
+const MANAGER_PIN="9999";
+let _mgrUnlocked=false;
+function withManagerPin(onOk,onCancel){
+  if(_mgrUnlocked){onOk();return;}
+  openModal("Manager PIN required",
+    `<div class="agp-field"><label>Enter manager PIN</label>
+       <input class="agp-input" id="agpPinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" style="letter-spacing:.3em;max-width:160px"></div>
+     <div class="agp-help">Bulk opt-in actions (apply to all / opted-in, set all, opt-in → all aggregators) are limited to managers.</div>`,
+    `<button class="agp-btn ghost" id="agpPinCancel">Cancel</button><button class="agp-btn primary" id="agpPinOk">Unlock</button>`);
+  const tryPin=()=>{const v=(($("#agpPinInput")||{}).value||"").trim();
+    if(v===MANAGER_PIN){_mgrUnlocked=true;closeModal();toast("Manager actions unlocked");onOk();}
+    else toast("Incorrect PIN");};
+  $("#agpPinOk").onclick=tryPin;
+  $("#agpPinCancel").onclick=()=>{closeModal();if(onCancel)onCancel();};
+  const inp=$("#agpPinInput");if(inp){try{inp.focus();}catch(e){}inp.addEventListener("keydown",ev=>{if(ev.key==="Enter")tryPin();});}
 }
 
 function openAddAgg(){
@@ -1648,8 +1676,8 @@ function init(){
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
-  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,
-    setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,
+    setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},mgrUnlocked(){return _mgrUnlocked;},
     getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
 })();
