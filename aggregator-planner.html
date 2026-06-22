@@ -933,6 +933,7 @@ function migrate(){
   if(!S.ui.locSort)S.ui.locSort={key:"code",dir:1};
   if(!Array.isArray(S.ui.locFilter))S.ui.locFilter=OPTIN_OPTS.slice();
   if(!S.ui.stepSort)S.ui.stepSort={key:"",dir:1};
+  S.ui.locSearch="";   // search is transient — never restore it (avoids a hidden filter on reload)
   // one-time: mark Motive + A-to-B fully Done in existing saved data
   if(!S.doneMotiveAtoB){DONE_AGGS.forEach(id=>markAggDone(aggById(id)));S.doneMotiveAtoB=true;save();}
   // one-time: bulk-apply the step Owner scheme to every aggregator's checklist
@@ -1283,6 +1284,8 @@ function renderLocations(){
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
+  // keep the search box in sync with the active term (so a filter is never hidden)
+  const si=$("#agpLocSearch");if(si&&si.value!==(S.ui.locSearch||""))si.value=S.ui.locSearch||"";
 }
 function updateBulkBar(){
   const bar=$("#agpLocBulk");if(bar)bar.style.display=_locSel.size?"":"none";
