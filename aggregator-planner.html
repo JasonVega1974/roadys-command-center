@@ -430,8 +430,9 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
       <div class="agp-panel">
         <div class="agp-section-h">
           <h2>Aggregator Pipeline</h2>
+          <span class="agp-help" style="margin-left:8px">Tap a card to open its workspace</span>
           <span class="spacer"></span>
-          <span class="agp-help">Tap a card to open its workspace</span>
+          <button class="agp-btn sm primary" id="agpAddAggPipe">+ Add aggregator</button>
         </div>
         <div class="agp-agg-grid" id="agpAggGrid"></div>
       </div>
@@ -1441,6 +1442,7 @@ function bind(){
   $("#agpPrint").onclick=()=>window.print();
   $("#agpReset").onclick=()=>confirmModal("Reset everything?","This clears all aggregators, locations and opt-ins back to the seed data from the spreadsheet — in the cloud too. Export a backup first if unsure.","Reset all",()=>{S=seed();render();commit();closeModal();toast("Reset to seed data");});
   $("#agpAddAgg").onclick=openAddAgg;
+  const addAggPipe=$("#agpAddAggPipe");if(addAggPipe)addAggPipe.onclick=openAddAgg;
   $("#agpAddLoc").onclick=openAddLoc;
   $("#agpImportLoc").onclick=openImportLoc;
   $("#agpExportLoc").onclick=exportLocCSV;
