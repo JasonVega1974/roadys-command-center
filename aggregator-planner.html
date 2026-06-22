@@ -298,7 +298,9 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
 .agp-table .w-gs select{min-width:150px}
 .agp-table .w-chk{width:34px;text-align:center}
 .agp-table .w-chk input{cursor:pointer;width:15px;height:15px;accent-color:var(--agp-amber)}
-.agp-table .w-ent{text-align:center}
+.agp-table .w-opt select{min-width:120px}
+.agp-table .w-ent{text-align:center;width:84px}
+.agp-table thead th.w-ent{white-space:normal;line-height:1.15}
 .agp-table .ent-wrap{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:11.5px;color:var(--agp-muted);user-select:none}
 .agp-table .ent-wrap input{width:15px;height:15px;cursor:pointer;accent-color:var(--agp-green)}
 .agp-bulkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 2px 12px;padding:8px 12px;background:var(--agp-red-soft);border:1px solid var(--agp-red);border-radius:var(--agp-radius);font-size:12.5px;color:var(--agp-text)}
@@ -1226,13 +1228,13 @@ function renderLocations(){
     {k:"type",label:"Discount type",sortable:false},
     {k:"retail",label:"Retail − (¢)",sortable:false},
     {k:"cost",label:"Cost + (¢)",sortable:false},
-    {k:"entered",label:"Entered in Interstate",sortable:false},
     {k:"notes",label:"GS notes",sortable:false},
+    {k:"entered",label:"Entered in Interstate",sortable:false},
     {k:"_act",label:"",sortable:false}];
   const allEnt=view.length>0&&view.every(l=>!!((map[l.id]||{}).entered));
   const ths=COLS.map(c=>{
     if(c.k==="entered")
-      return `<th class="w-ent"><label class="ent-wrap" title="Check / uncheck all shown (this aggregator)"><input type="checkbox" id="agpEntAll" ${allEnt?"checked":""}><span>Entered in Interstate</span></label></th>`;
+      return `<th class="w-ent"><label class="ent-wrap" title="Check / uncheck all shown (this aggregator)"><input type="checkbox" id="agpEntAll" ${allEnt?"checked":""}><span>Entered in<br>Interstate</span></label></th>`;
     if(!c.sortable)return `<th>${esc(c.label)}</th>`;
     const ind=sort.key===c.k?(sort.dir>0?"▲":"▼"):"↕";
     return `<th class="sortable ${sort.key===c.k?"sorted":""}" data-sort="${c.k}">${esc(c.label)}<span class="sort-ind">${ind}</span></th>`;
@@ -1259,12 +1261,12 @@ function renderLocations(){
       <td><div class="loc-name">${esc(l.name)}</div><div class="loc-sub">${esc([l.city,l.state].filter(Boolean).join(", "))}</div></td>
       <td class="w-gs">${gsSelectHtml(l)}</td>
       <td>${achSelectHtml(l)}</td>
-      <td>${optSel}</td>
+      <td class="w-opt">${optSel}</td>
       <td>${selectHtml("optin","discountType",DISCOUNT_TYPES,dtype,{agg:a.id,loc:l.id},dselOn)}</td>
       <td class="w-num">${retailCell}</td>
       <td class="w-num">${costCell}</td>
-      <td class="w-ent"><label class="ent-wrap"><input type="checkbox" data-optin-entered="1" data-agg="${a.id}" data-loc="${l.id}" ${o.entered?"checked":""}><span>${o.entered?"Yes":"No"}</span></label></td>
       <td><input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…"></td>
+      <td class="w-ent"><label class="ent-wrap"><input type="checkbox" data-optin-entered="1" data-agg="${a.id}" data-loc="${l.id}" ${o.entered?"checked":""}><span>${o.entered?"Yes":"No"}</span></label></td>
       <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
     </tr>`;
   }).join("")||`<tr><td colspan="12" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
