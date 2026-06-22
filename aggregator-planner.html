@@ -1232,16 +1232,22 @@ function renderLocations(){
     {k:"notes",label:"GS notes",sortable:false},
     {k:"entered",label:"Entered in Interstate",sortable:false},
     {k:"_act",label:"",sortable:false}];
+  const ctView=a.id==="cloudtrucks";
   const allEnt=view.length>0&&view.every(l=>!!((map[l.id]||{}).entered));
   const ths=COLS.map(c=>{
     if(c.k==="entered")
-      return `<th class="w-ent"><label class="ent-wrap" title="Check / uncheck all shown (this aggregator)"><input type="checkbox" id="agpEntAll" ${allEnt?"checked":""}><span>Entered in<br>Interstate</span></label></th>`;
+      return ctView
+        ? `<th class="w-ent"><span style="font-size:10.5px;line-height:1.15">Entered in<br>Interstate</span></th>`
+        : `<th class="w-ent"><label class="ent-wrap" title="Check / uncheck all shown (this aggregator)"><input type="checkbox" id="agpEntAll" ${allEnt?"checked":""}><span>Entered in<br>Interstate</span></label></th>`;
     if(!c.sortable)return `<th>${esc(c.label)}</th>`;
     const ind=sort.key===c.k?(sort.dir>0?"▲":"▼"):"↕";
     return `<th class="sortable ${sort.key===c.k?"sorted":""}" data-sort="${c.k}">${esc(c.label)}<span class="sort-ind">${ind}</span></th>`;
   }).join("");
   const chkTh=`<th class="w-chk"><input type="checkbox" id="agpLocSelAll" ${allChecked?"checked":""} title="Select all shown"></th>`;
 
+  // CloudTrucks = full-retail / no-discount model: opt-in & discount fields don't apply.
+  const isCT=a.id==="cloudtrucks";
+  const NA=`<span class="dval-na">N/A</span>`;
   const rows=view.map(l=>{
     const o=map[l.id]||{status:"Select",discountType:"",retailMinus:"",costPlus:"",notes:"",entered:false};
     const st=o.status||"Select";
@@ -1256,18 +1262,18 @@ function renderLocations(){
       : `<span class="dval-na">N/A</span>`;
     const optSel=`<select class="agp-select ${optSelClass(st)}" data-optin-field="status" data-agg="${a.id}" data-loc="${l.id}">`+
       OPTIN_OPTS.map(x=>`<option value="${esc(x)}" ${x===st?"selected":""}>${esc(x)}</option>`).join("")+`</select>`;
-    return `<tr class="${optRowClass(st)}">
+    return `<tr class="${isCT?"":optRowClass(st)}">
       <td class="w-chk"><input type="checkbox" data-locsel="${l.id}" ${_locSel.has(l.id)?"checked":""}></td>
       <td class="loc-code">${esc(l.code||"—")}</td>
       <td><div class="loc-name">${esc(l.name)}</div><div class="loc-sub">${esc([l.city,l.state].filter(Boolean).join(", "))}</div></td>
       <td class="w-gs">${gsSelectHtml(l)}</td>
-      <td>${achSelectHtml(l)}</td>
-      <td class="w-opt">${optSel}</td>
-      <td>${selectHtml("optin","discountType",DISCOUNT_TYPES,dtype,{agg:a.id,loc:l.id},dselOn)}</td>
-      <td class="w-num">${retailCell}</td>
-      <td class="w-num">${costCell}</td>
-      <td><input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…"></td>
-      <td class="w-ent"><label class="ent-wrap"><input type="checkbox" data-optin-entered="1" data-agg="${a.id}" data-loc="${l.id}" ${o.entered?"checked":""}><span>${o.entered?"Yes":"No"}</span></label></td>
+      <td>${isCT?NA:achSelectHtml(l)}</td>
+      <td class="w-opt">${isCT?NA:optSel}</td>
+      <td>${isCT?NA:selectHtml("optin","discountType",DISCOUNT_TYPES,dtype,{agg:a.id,loc:l.id},dselOn)}</td>
+      <td class="w-num">${isCT?NA:retailCell}</td>
+      <td class="w-num">${isCT?NA:costCell}</td>
+      <td>${isCT?NA:`<input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…">`}</td>
+      <td class="w-ent">${isCT?NA:`<label class="ent-wrap"><input type="checkbox" data-optin-entered="1" data-agg="${a.id}" data-loc="${l.id}" ${o.entered?"checked":""}><span>${o.entered?"Yes":"No"}</span></label>`}</td>
       <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
     </tr>`;
   }).join("")||`<tr><td colspan="12" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
