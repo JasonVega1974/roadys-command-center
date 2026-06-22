@@ -310,6 +310,10 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
 .agp-table tbody tr.optrow-yes:hover>td{background:rgba(52,211,153,.16)}
 .agp-table tbody tr.optrow-nr:hover>td{background:rgba(251,191,36,.17)}
 .agp-table tbody tr.optrow-no:hover>td{background:rgba(248,113,113,.16)}
+/* discount type + value cues: same green outline as the opt-in Yes cue */
+.agp-table select.dsel-on{border-color:var(--agp-green);box-shadow:0 0 0 2px rgba(52,211,153,.18)}
+.agp-table input.dval-on{border-color:var(--agp-green);box-shadow:0 0 0 2px rgba(52,211,153,.18);color:var(--agp-text);font-weight:700}
+.agp-table .dval-na{color:var(--agp-faint);font-weight:400;font-size:12px;padding-left:4px}
 /* opt-in select cue */
 .agp-table select.optsel-yes{border-color:var(--agp-green);box-shadow:0 0 0 2px rgba(52,211,153,.18)}
 .agp-table select.optsel-nr{border-color:var(--agp-yellow);box-shadow:0 0 0 2px rgba(251,191,36,.18)}
@@ -1229,6 +1233,14 @@ function renderLocations(){
     const o=map[l.id]||{status:"Select",discountType:"",retailMinus:"",costPlus:"",notes:""};
     const st=o.status||"Select";
     const dtype=o.discountType||a.discountType;
+    const retailOn=(dtype==="R-"||dtype==="BO"), costOn=(dtype==="C+"||dtype==="BO");
+    const dselOn=(dtype==="R-"||dtype==="C+"||dtype==="BO")?"dsel-on":"";
+    const retailCell=retailOn
+      ? `<input class="agp-input dval-on" data-optin-field="retailMinus" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.retailMinus||"")}" placeholder="R−¢">`
+      : `<span class="dval-na">N/A</span>`;
+    const costCell=costOn
+      ? `<input class="agp-input dval-on" data-optin-field="costPlus" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.costPlus||"")}" placeholder="C+¢">`
+      : `<span class="dval-na">N/A</span>`;
     const optSel=`<select class="agp-select ${optSelClass(st)}" data-optin-field="status" data-agg="${a.id}" data-loc="${l.id}">`+
       OPTIN_OPTS.map(x=>`<option value="${esc(x)}" ${x===st?"selected":""}>${esc(x)}</option>`).join("")+`</select>`;
     return `<tr class="${optRowClass(st)}">
@@ -1237,9 +1249,9 @@ function renderLocations(){
       <td><div class="loc-name">${esc(l.name)}</div><div class="loc-sub">${esc([l.city,l.state].filter(Boolean).join(", "))}</div></td>
       <td class="w-gs">${gsSelectHtml(l)}</td>
       <td>${optSel}</td>
-      <td>${selectHtml("optin","discountType",DISCOUNT_TYPES,dtype,{agg:a.id,loc:l.id})}</td>
-      <td class="w-num"><input class="agp-input" data-optin-field="retailMinus" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.retailMinus||"")}" placeholder="R−¢"></td>
-      <td class="w-num"><input class="agp-input" data-optin-field="costPlus" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.costPlus||"")}" placeholder="C+¢"></td>
+      <td>${selectHtml("optin","discountType",DISCOUNT_TYPES,dtype,{agg:a.id,loc:l.id},dselOn)}</td>
+      <td class="w-num">${retailCell}</td>
+      <td class="w-num">${costCell}</td>
       <td><input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…"></td>
       <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
     </tr>`;
@@ -1261,6 +1273,12 @@ function renderLocations(){
 function updateBulkBar(){
   const bar=$("#agpLocBulk");if(bar)bar.style.display=_locSel.size?"":"none";
   const n=$("#agpLocSelN");if(n)n.textContent=_locSel.size;
+}
+// Re-render the locations table without losing the scroll position.
+function renderLocationsKeepScroll(){
+  const sc=$(".agp-table-scroll");const sy=sc?sc.scrollTop:0;
+  renderLocations();
+  const sc2=$(".agp-table-scroll");if(sc2&&sy)sc2.scrollTop=sy;
 }
 
 /* ----- location-table helpers (sort / filter / GS / CSV) ----- */
@@ -1501,7 +1519,7 @@ function onFieldChange(e){
   if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderWorkspaceKeepScroll();renderPipeline();}}
   // optin selects
   if(t.dataset.optinField==="status"){setOptinAll(t.dataset.loc,"status",t.value);commit();renderLocations();renderPipeline();}
-  if(t.dataset.optinField==="discountType"){setOptin(t.dataset.agg,t.dataset.loc,"discountType",t.value);commit();}
+  if(t.dataset.optinField==="discountType"){setOptin(t.dataset.agg,t.dataset.loc,"discountType",t.value);commit();renderLocationsKeepScroll();}
   // Growth Strategist (location-level, shared across aggregators)
   if(t.dataset.locgs){const l=S.locations.find(x=>x.id===t.dataset.loc);if(l){l.gs=t.value;commit();
     if((S.ui.locSort||{}).key==="gs")renderLocations();}}
