@@ -467,6 +467,7 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
         <button class="agp-btn sm" id="agpImportLoc">Import list</button>
         <button class="agp-btn sm" id="agpExportLoc">⬇ Export CSV</button>
         <button class="agp-btn sm" id="agpReloadSheet" title="Replace locations + opt-in data with the latest spreadsheet (CEFCO + offboarded excluded)">↻ Reload from sheet</button>
+        <button class="agp-btn sm" id="agpUndo" style="display:none" title="Undo the last bulk action">↶ Undo</button>
       </div>
       <div id="agpLocPanel"></div>
     </section>
@@ -1225,10 +1226,13 @@ function renderLocations(){
     {k:"type",label:"Discount type",sortable:false},
     {k:"retail",label:"Retail − (¢)",sortable:false},
     {k:"cost",label:"Cost + (¢)",sortable:false},
-    {k:"entered",label:"Entered in Interstate",sortable:true},
+    {k:"entered",label:"Entered in Interstate",sortable:false},
     {k:"notes",label:"GS notes",sortable:false},
     {k:"_act",label:"",sortable:false}];
+  const allEnt=view.length>0&&view.every(l=>!!((map[l.id]||{}).entered));
   const ths=COLS.map(c=>{
+    if(c.k==="entered")
+      return `<th class="w-ent"><label class="ent-wrap" title="Check / uncheck all shown (this aggregator)"><input type="checkbox" id="agpEntAll" ${allEnt?"checked":""}><span>Entered in Interstate</span></label></th>`;
     if(!c.sortable)return `<th>${esc(c.label)}</th>`;
     const ind=sort.key===c.k?(sort.dir>0?"▲":"▼"):"↕";
     return `<th class="sortable ${sort.key===c.k?"sorted":""}" data-sort="${c.k}">${esc(c.label)}<span class="sort-ind">${ind}</span></th>`;
@@ -1398,6 +1402,12 @@ function bind(){
       const span=cb.parentNode&&cb.parentNode.querySelector("span");if(span)span.textContent=cb.checked?"Yes":"No";
       return;
     }
+    // "Entered" select-all — only the rows currently visible, for this aggregator
+    if(cb.id==="agpEntAll"){
+      const a=aggById(S.ui.currentAgg);snapshotForUndo();
+      locView(a).forEach(l=>setOptin(a.id,l.id,"entered",cb.checked));
+      commit();renderLocationsKeepScroll();return;
+    }
     if(cb.dataset.locsel!==undefined){
       if(cb.checked)_locSel.add(cb.dataset.locsel);else _locSel.delete(cb.dataset.locsel);
       updateBulkBar();
@@ -1415,8 +1425,9 @@ function bind(){
     if(e.target.closest("#agpLocDelSel")){
       const ids=Array.from(_locSel);if(!ids.length)return;
       confirmModal("Delete "+ids.length+" location"+(ids.length>1?"s":"")+"?",
-        "This permanently removes the selected truck stops and their opt-ins for every aggregator — in the cloud too. This cannot be undone.",
+        "This removes the selected truck stops and their opt-ins for every aggregator — in the cloud too. Use Undo to revert.",
         "Delete "+ids.length,()=>{
+          snapshotForUndo();
           const del=new Set(ids);
           S.locations=S.locations.filter(l=>!del.has(l.id));
           Object.values(S.optins).forEach(m=>ids.forEach(id=>delete m[id]));
@@ -1483,10 +1494,12 @@ function bind(){
   $("#agpAddLoc").onclick=openAddLoc;
   $("#agpImportLoc").onclick=openImportLoc;
   $("#agpExportLoc").onclick=exportLocCSV;
+  const undoBtn=$("#agpUndo");if(undoBtn)undoBtn.onclick=undoBulk;
   $("#agpReloadSheet").onclick=()=>confirmModal(
     "Reload locations from the spreadsheet?",
     "Replaces the location list and per-aggregator opt-in / discount data with the latest spreadsheet ("+rosterLocations().length+" stops; CEFCO and offboarded stops excluded). Aggregator details, checklist steps, owners and descriptions are kept. This overwrites current opt-in data — in the cloud too.",
     "Reload",()=>{
+      snapshotForUndo();
       S.locations=rosterLocations();S.optins=rosterOptins();_locSel.clear();
       commit();render();$("#agpLocPill").textContent=S.locations.length;closeModal();
       toast("Reloaded "+S.locations.length+" locations from spreadsheet");
@@ -1522,7 +1535,7 @@ function onFieldInput(e){
     if(["status","rail","discountType","discountValue","launchTarget","deadline","contactName","name"].includes(t.dataset.aggf))scheduleLite();}}
   if(t.dataset.stepField){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step][t.dataset.stepField]=t.value;commit();}}
   if(t.dataset.optinField){
-    if(t.dataset.optinField==="status")setOptinAll(t.dataset.loc,"status",t.value);   // shared across aggregators
+    if(t.dataset.optinField==="status"){setOptinAll(t.dataset.loc,"status",t.value);applyAchRule(t.dataset.loc,t.value);}   // shared across aggregators
     else setOptin(t.dataset.agg,t.dataset.loc,t.dataset.optinField,t.value);           // discount fields stay per-aggregator
     commit();
   }
@@ -1538,7 +1551,7 @@ function onFieldChange(e){
   // step status
   if(t.dataset.stepField==="status"){const a=aggById(t.dataset.agg);if(a&&a.steps[t.dataset.step]){a.steps[t.dataset.step].status=t.value;commit();renderWorkspaceKeepScroll();renderPipeline();}}
   // optin selects
-  if(t.dataset.optinField==="status"){setOptinAll(t.dataset.loc,"status",t.value);commit();renderLocations();renderPipeline();}
+  if(t.dataset.optinField==="status"){setOptinAll(t.dataset.loc,"status",t.value);applyAchRule(t.dataset.loc,t.value);commit();renderLocations();renderPipeline();}
   if(t.dataset.optinField==="discountType"){setOptin(t.dataset.agg,t.dataset.loc,"discountType",t.value);commit();renderLocationsKeepScroll();}
   // Growth Strategist (location-level, shared across aggregators)
   if(t.dataset.locgs){const l=S.locations.find(x=>x.id===t.dataset.loc);if(l){l.gs=t.value;commit();
@@ -1552,7 +1565,9 @@ function onFieldChange(e){
   if(t.dataset.setallField==="optin"&&t.value){
     const val=t.value;
     withManagerPin(()=>{
-      S.locations.forEach(l=>setOptinAll(l.id,"status",val));commit();renderLocations();renderPipeline();toast("Set all to "+val+" — every aggregator");
+      snapshotForUndo();
+      S.locations.forEach(l=>{setOptinAll(l.id,"status",val);applyAchRule(l.id,val);});
+      commit();renderLocations();renderPipeline();toast("Set all to "+val+" — every aggregator");
     },()=>renderLocations());  // reset the select if cancelled
   }
 }
@@ -1560,6 +1575,22 @@ function setOptin(aggId,locId,field,val){if(!S.optins[aggId])S.optins[aggId]={};
 // Opt-in participation is a per-location decision shared across every aggregator,
 // so a status change on Motive also applies to A-to-B, Haul Pay, etc.
 function setOptinAll(locId,field,val){S.aggregators.forEach(a=>setOptin(a.id,locId,field,val));}
+// Auto ACH rule: opt-in Yes -> ACH "YES", opt-in No -> ACH "N/A" (other statuses leave ACH alone).
+function applyAchRule(locId,status){const l=S.locations.find(x=>x.id===locId);if(!l)return;
+  if(status==="Yes")l.ach="YES";else if(status==="No")l.ach="N/A";}
+
+/* ---- single-level Undo for bulk actions ---- */
+let _undoSnap=null;
+function snapshotForUndo(){
+  try{_undoSnap=JSON.parse(JSON.stringify({locations:S.locations,optins:S.optins}));}catch(e){_undoSnap=null;}
+  updateUndoBtn();
+}
+function updateUndoBtn(){const b=$("#agpUndo");if(b)b.style.display=_undoSnap?"":"none";}
+function undoBulk(){
+  if(!_undoSnap)return;
+  S.locations=_undoSnap.locations;S.optins=_undoSnap.optins;_undoSnap=null;_locSel.clear();
+  commit();render();updateUndoBtn();$("#agpLocPill").textContent=S.locations.length;toast("Undid last bulk action");
+}
 
 /* ----- locations apply-all (bound after render via delegation on body) ----- */
 document.addEventListener("click",function(e){
@@ -1567,6 +1598,7 @@ document.addEventListener("click",function(e){
   if(e.target.id==="agpApplyAll"||e.target.id==="agpApplyOpted"){
     const onlyOpted=e.target.id==="agpApplyOpted";
     withManagerPin(()=>{
+      snapshotForUndo();
       const a=aggById(S.ui.currentAgg);
       const rVal=$("#agpLocDefRetail")?$("#agpLocDefRetail").value.trim():"";
       const cVal=$("#agpLocDefCost")?$("#agpLocDefCost").value.trim():"";
@@ -1584,7 +1616,8 @@ document.addEventListener("click",function(e){
       confirmModal("Apply "+a.name+"'s opt-in status to all aggregators?",
         "Each location's opt-in status as shown for "+a.name+" will be copied to every aggregator (A-to-B, Haul Pay, etc.). Discounts are NOT changed. This overwrites opt-in status on the other aggregators.",
         "Apply to all",()=>{
-          S.locations.forEach(l=>setOptinAll(l.id,"status",(map[l.id]&&map[l.id].status)||"Select"));
+          snapshotForUndo();
+          S.locations.forEach(l=>{const stt=(map[l.id]&&map[l.id].status)||"Select";setOptinAll(l.id,"status",stt);applyAchRule(l.id,stt);});
           commit();renderLocations();renderPipeline();closeModal();toast("Opt-in status applied to every aggregator");
         });
     });
