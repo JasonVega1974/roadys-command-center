@@ -1182,6 +1182,7 @@ function renderLocations(){
     <button class="agp-btn" id="agpApplyAll">Apply default to all</button>
     <button class="agp-btn" id="agpApplyOpted">Apply to opted-in only</button>
     <span style="flex:1"></span>
+    <button class="agp-btn" id="agpSyncOptinAll" title="Copy ${esc(a.name)}'s opt-in status for every location to all aggregators (discounts unchanged)">⇄ Opt-in → all aggregators</button>
     <div class="agp-field" style="max-width:150px"><label>Set all opt-in to</label>${selectHtml("setall","optin",OPTIN_OPTS.map(o=>({v:o,l:o})),"")}</div>
   </div>`;
 
@@ -1516,6 +1517,16 @@ document.addEventListener("click",function(e){
       setOptin(a.id,l.id,"discountType",dt);
       setOptin(a.id,l.id,"retailMinus",rVal);setOptin(a.id,l.id,"costPlus",cVal);});
     commit();renderLocations();toast(onlyOpted?"Applied to opted-in sites":"Applied default to all");
+  }
+  // copy THIS aggregator's per-location opt-in status to every aggregator (status only)
+  if(e.target.id==="agpSyncOptinAll"){
+    const a=aggById(S.ui.currentAgg);const map=S.optins[a.id]||{};
+    confirmModal("Apply "+a.name+"'s opt-in status to all aggregators?",
+      "Each location's opt-in status as shown for "+a.name+" will be copied to every aggregator (A-to-B, Haul Pay, etc.). Discounts are NOT changed. This overwrites opt-in status on the other aggregators.",
+      "Apply to all",()=>{
+        S.locations.forEach(l=>setOptinAll(l.id,"status",(map[l.id]&&map[l.id].status)||"Select"));
+        commit();renderLocations();renderPipeline();closeModal();toast("Opt-in status applied to every aggregator");
+      });
   }
 });
 
