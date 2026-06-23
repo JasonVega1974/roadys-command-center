@@ -604,7 +604,7 @@ function stepToRow(aggId,stepId,st){return {aggregator_id:aggId,step_id:stepId,s
   owner:st.owner||"",target:st.target||null,done:st.done||null,notes:st.notes||""};}
 function rowToStep(r){return {status:r.status||"not_started",owner:r.owner||"",target:r.target||"",done:r.done||"",notes:r.notes||""};}
 function locToRow(l){return {id:l.id,name:l.name||"",city:l.city||"",state:l.state||"",code:l.code||"",gs:l.gs||"",ach:l.ach||""};}
-function rowToLoc(r){return {id:r.id,name:r.name||"",city:r.city||"",state:r.state||"",code:r.code||"",gs:r.gs||"",ach:r.ach||""};}
+function rowToLoc(r){return {id:r.id,name:r.name||"",city:r.city||"",state:r.state||"",code:r.code||"",gs:r.gs||"",ach:r.ach||"",responded_at:r.responded_at||null};}
 function optinToRow(aggId,locId,o){return {aggregator_id:aggId,location_id:locId,status:o.status||"Select",
   discount_type:o.discountType||"",discount_value:o.discountValue||"",retail_minus:o.retailMinus||"",cost_plus:o.costPlus||"",notes:o.notes||"",entered:!!o.entered};}
 function rowToOptin(r){return {status:r.status||"Select",discountType:r.discount_type||"",discountValue:r.discount_value||"",
@@ -635,10 +635,14 @@ function diffEntities(cur,prev){
 }
 
 /* ---- remote I/O ---- */
+/* agp_locations is read by EXPLICIT columns (never "*"), because optin_token is
+   column-locked from anon/authenticated SELECT in Phase A2. select("*") would 403. */
+const SB_SELECT={agp_locations:"id,name,city,state,code,gs,ach,responded_at,updated_at"};
 async function sbSelectAll(sb,t){
   const PAGE=1000;let from=0,out=[];
+  const cols=SB_SELECT[t]||"*";
   while(true){
-    const {data,error}=await sb.from(t).select("*").range(from,from+PAGE-1);
+    const {data,error}=await sb.from(t).select(cols).range(from,from+PAGE-1);
     if(error)throw new Error(t+" select: "+error.message);
     out=out.concat(data||[]);
     if(!data||data.length<PAGE)break;
@@ -1762,7 +1766,7 @@ function init(){
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
-  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,
     setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},mgrUnlocked(){return _mgrUnlocked;},
     getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
