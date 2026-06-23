@@ -27,14 +27,51 @@ body{margin:0;font-family:var(--o-sans);color:var(--o-text);
 .opt-wrap{max-width:880px;margin:0 auto;padding:24px 18px 80px}
 .opt-head h1{font-size:20px;margin:0 0 2px;letter-spacing:-.2px}
 .opt-head .eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--o-faint);font-weight:700}
-#optBody{margin-top:18px}
+.opt-sub{font-size:12.5px;color:var(--o-muted);margin-top:2px}
+.opt-calc{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;background:var(--o-surface);
+  border:1px solid var(--o-line);border-radius:var(--o-radius);padding:14px;margin-top:18px}
+.opt-calc label{font-size:11px;color:var(--o-muted);font-weight:600;display:flex;flex-direction:column;gap:5px}
+.opt-calc input{background:var(--o-bg);border:1px solid var(--o-line);border-radius:8px;color:var(--o-text);
+  padding:8px 10px;font-size:15px;width:150px;font-family:inherit}
+.opt-spread{font-size:12px;color:var(--o-muted);align-self:center}
+.opt-spread b{color:var(--o-text)}
+#optBody{margin-top:6px}
+.opt-firm{background:var(--o-surface-2);border:1px solid var(--o-amber);border-radius:var(--o-radius);
+  padding:12px 14px;font-size:13px;color:var(--o-text);margin:14px 0 4px;line-height:1.5}
+.opt-firm b{color:var(--o-amber)}
+.opt-card{background:var(--o-surface);border:1px solid var(--o-line);border-radius:var(--o-radius);padding:16px 16px 14px;margin-top:14px}
+.opt-name{font-size:16px;font-weight:700}
+.opt-fleets{font-size:12px;color:var(--o-amber);font-weight:600;margin-top:1px}
+.opt-desc{font-size:12.5px;color:var(--o-muted);margin:5px 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.opt-profit{font-size:34px;font-weight:800;color:var(--o-green);letter-spacing:-1px;line-height:1.05;margin:2px 0}
+.opt-profit.muted{font-size:18px;color:var(--o-faint);font-weight:600;letter-spacing:0}
+.opt-rec{font-size:12px;color:var(--o-muted);margin:3px 0 12px}
+.opt-rec b{color:var(--o-text);font-weight:700}
+.opt-disc{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.opt-type{background:var(--o-bg);border:1px solid var(--o-line);color:var(--o-muted);border-radius:8px;
+  padding:7px 11px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.opt-type.on{border-color:var(--o-green);color:var(--o-green);box-shadow:0 0 0 1px var(--o-green) inset}
+.opt-val{background:var(--o-bg);border:1px solid var(--o-line);color:var(--o-text);border-radius:8px;
+  padding:7px 9px;font-size:13px;width:58px;font-family:inherit}
+.opt-choose{display:flex;gap:8px;margin-top:12px}
+.opt-status{flex:1;background:var(--o-bg);border:1px solid var(--o-line);color:var(--o-muted);border-radius:8px;
+  padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.opt-status[data-opt-status="Yes"].on{border-color:var(--o-green);color:var(--o-green);background:var(--o-green-soft)}
+.opt-status[data-opt-status="No"].on{border-color:var(--o-red);color:var(--o-red);background:rgba(248,113,113,.10)}
+.opt-faint{color:var(--o-faint)}
 </style>
 </head>
 <body>
 <div class="opt-wrap">
   <div class="opt-head">
     <div class="eyebrow">Roady's Network</div>
-    <h1>Aggregator Opt-In</h1>
+    <h1 id="optTitle">Aggregator Opt-In</h1>
+    <div class="opt-sub" id="optSub"></div>
+  </div>
+  <div class="opt-calc" id="optCalc" hidden>
+    <label>Your fuel cost ($/gal)<input id="optCost" type="number" step="0.001" inputmode="decimal" placeholder="3.00"></label>
+    <label>Your retail / pump ($/gal)<input id="optRetail" type="number" step="0.001" inputmode="decimal" placeholder="3.40"></label>
+    <div class="opt-spread" id="optSpread"></div>
   </div>
   <div id="optBody"></div>
 </div>
@@ -132,8 +169,64 @@ function reanchor(recType, recValue, targetType, cost, retail){
   return {type:targetType, value: spread - v};
 }
 
+/* =====================================================================
+   RENDER — firm statement + one card per aggregator into #optBody.
+   Cost/retail are read live from the static #optCost/#optRetail inputs,
+   so the cards never wipe the calculator on re-render.
+   ===================================================================== */
+let _stop=null, _aggs=[], _choices={}, _lastHTML='';
+function byId(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function unitLabel(type){ return type==='C+'?'Cost +':type==='R-'?'Retail −':'—'; }
+function readVal(id){ const el=byId(id); return el?el.value:''; }
+function cardHTML(a, cost, retail){
+  const ch=_choices[a.id]||{};
+  const cType=ch.type||a.discount_type||'C+';
+  const cVal=(ch.value!=null&&ch.value!=='')?ch.value:(a.discount_value||'');
+  const profit=profitPerGal(cType, cVal, cost, retail);
+  const hero=(profit==null)
+    ? '<div class="opt-profit muted">— enter cost &amp; retail</div>'
+    : '<div class="opt-profit">'+profit+'¢ / gal</div>';
+  // recommendation re-anchored into the unit the stop currently has selected
+  const rec=reanchor(a.discount_type, a.discount_value, cType, cost, retail);
+  const recTxt=(rec.value==null)
+    ? unitLabel(a.discount_type)+' '+esc(a.discount_value||'?')+' <span class="opt-faint">(enter cost &amp; retail to compare)</span>'
+    : '<b>'+unitLabel(rec.type)+' '+rec.value+'</b>';
+  const st=ch.status||'';
+  const aid=esc(a.id);
+  return '<div class="opt-card" data-agg="'+aid+'">'
+    +'<div class="opt-name">'+esc(a.name)+'</div>'
+    +(a.carriers?'<div class="opt-fleets">'+esc(a.carriers)+' fleets</div>':'')
+    +(a.description?'<div class="opt-desc">'+esc(a.description)+'</div>':'')
+    +hero
+    +'<div class="opt-rec">Recommended: '+recTxt+'</div>'
+    +'<div class="opt-disc">'
+      +'<button type="button" class="opt-type'+(cType==='C+'?' on':'')+'" data-opt-type="C+" data-agg="'+aid+'">Cost +</button>'
+      +'<button type="button" class="opt-type'+(cType==='R-'?' on':'')+'" data-opt-type="R-" data-agg="'+aid+'">Retail −</button>'
+      +'<input class="opt-val" type="text" inputmode="numeric" maxlength="2" data-opt-value="1" data-agg="'+aid+'" value="'+esc(cVal)+'" placeholder="¢">'
+      +'<span class="opt-faint">¢</span>'
+    +'</div>'
+    +'<div class="opt-choose">'
+      +'<button type="button" class="opt-status'+(st==='Yes'?' on':'')+'" data-opt-status="Yes" data-agg="'+aid+'">Agree</button>'
+      +'<button type="button" class="opt-status'+(st==='No'?' on':'')+'" data-opt-status="No" data-agg="'+aid+'">Decline</button>'
+    +'</div>'
+  +'</div>';
+}
+function render(){
+  const root=byId('optBody'); if(!root) return _lastHTML;
+  if(!_stop){ root.innerHTML=''; _lastHTML=''; return _lastHTML; }
+  const cost=readVal('optCost'), retail=readVal('optRetail');
+  const firm='<div class="opt-firm">If you do not respond, you will be automatically enrolled at the '
+    +'<b>recommended discount</b> for each aggregator below.</div>';
+  _lastHTML=firm+(_aggs||[]).map(a=>cardHTML(a,cost,retail)).join('');
+  root.innerHTML=_lastHTML;
+  return _lastHTML;
+}
+
 window.OPTIN = { __test:{ profitPerGal, reanchor, resolveStop, resolveByCode,
-  setClient(c){_client=c;}, setQuery(q){_query=q;} } };
+  setClient(c){_client=c;}, setQuery(q){_query=q;},
+  render(stop,aggregators,choices){ _stop=stop; _aggs=aggregators||[]; _choices=choices||{}; return render(); },
+  lastHTML(){ return _lastHTML; } } };
 })();
 </script>
 </body>
