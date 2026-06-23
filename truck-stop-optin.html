@@ -59,6 +59,15 @@ body{margin:0;font-family:var(--o-sans);color:var(--o-text);
 .opt-status[data-opt-status="Yes"].on{border-color:var(--o-green);color:var(--o-green);background:var(--o-green-soft)}
 .opt-status[data-opt-status="No"].on{border-color:var(--o-red);color:var(--o-red);background:rgba(248,113,113,.10)}
 .opt-faint{color:var(--o-faint)}
+.opt-submit{display:block;width:100%;margin-top:18px;background:var(--o-green);color:#06281a;border:none;
+  border-radius:10px;padding:13px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
+.opt-submit:disabled{opacity:.55;cursor:default}
+.opt-msg{margin-top:10px;font-size:12.5px;color:var(--o-amber);min-height:16px}
+.opt-fallback{margin-top:18px}
+.opt-done h2{color:var(--o-green);font-size:22px;margin:8px 0 4px}
+.opt-summary{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+.opt-summary th,.opt-summary td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--o-line)}
+.opt-summary th{color:var(--o-muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 </style>
 </head>
 <body>
@@ -74,6 +83,17 @@ body{margin:0;font-family:var(--o-sans);color:var(--o-text);
     <div class="opt-spread" id="optSpread"></div>
   </div>
   <div id="optBody"></div>
+  <button type="button" id="optSubmit" class="opt-submit" hidden>Submit my opt-in choices</button>
+  <div id="optMsg" class="opt-msg"></div>
+  <form id="optFallback" class="opt-fallback" hidden>
+    <div class="opt-firm">We couldn't open your personalized link. Enter your <b>Store #</b> and <b>stop name</b> to continue.</div>
+    <div class="opt-calc">
+      <label>Store # (LID)<input id="optFallCode" type="text" autocomplete="off"></label>
+      <label>Stop name<input id="optFallName" type="text" autocomplete="off"></label>
+    </div>
+    <button type="submit" id="optFallFind" class="opt-submit">Find my stop</button>
+    <div id="optFallMsg" class="opt-msg"></div>
+  </form>
 </div>
 
 <script>
@@ -112,6 +132,7 @@ function getRoadysSB(){
    by the SECURITY DEFINER function — the client never receives or reads it. */
 let _client=null;   // test override; falls back to getRoadysSB()
 let _query=null;    // test override for the query string
+let _session=null;  // {mode:'token',token} | {mode:'code',code,name} — set on resolve, used by submit()
 function sbc(){ return _client || getRoadysSB(); }
 function currentToken(){
   if(_query) return _query.t||"";
@@ -128,6 +149,7 @@ async function resolveStop(){
   if(!tok) return {needFallback:true};
   const {data,error}=await sb.rpc('resolve_optin_token',{p_token:tok});
   if(error||!data||!data.length) return {needFallback:true};
+  _session={mode:'token', token:tok};            // submit() will use submit_optin
   return {stop:data[0], aggregators:await loadAggregators(sb)};
 }
 async function resolveByCode(code,name){
@@ -135,6 +157,7 @@ async function resolveByCode(code,name){
   if(!sb) return {error:true};                   // can't reach the service
   const {data,error}=await sb.rpc('resolve_optin_by_code',{p_code:code,p_name:name});
   if(error||!data||!data.length) return {notFound:true};
+  _session={mode:'code', code:code, name:name};  // submit() will use submit_optin_by_code
   return {stop:data[0], aggregators:await loadAggregators(sb)};
 }
 
@@ -223,10 +246,156 @@ function render(){
   return _lastHTML;
 }
 
+/* =====================================================================
+   SUBMIT — build the per-aggregator payload and write via the right RPC.
+   A card the stop touched (Agree/Decline or a discount change) uses its
+   chosen values; an untouched card defaults to the recommendation with
+   status 'No Response' (the firm-statement default). BO is never produced
+   (the form is single-type per card).
+   ===================================================================== */
+function buildChoices(stop, aggregators, choices){
+  choices=choices||{};
+  return (aggregators||[]).map(function(a){
+    const ch=choices[a.id]||{};
+    const responded = ch.status==='Yes' || ch.status==='No';
+    const touched = responded || ch.touched===true;
+    const status = responded ? ch.status : 'No Response';
+    const type = (touched && ch.type) ? ch.type : (a.discount_type||'');
+    const valStr = (touched && ch.value!=null && ch.value!=='')
+      ? String(ch.value) : String(a.discount_value==null?'':a.discount_value);
+    return { aggregator_id:a.id, status:status, discount_type:type,
+      retail_minus: type==='R-' ? valStr : '',
+      cost_plus:    type==='C+' ? valStr : '' };
+  });
+}
+function aggName(id){ const a=(_aggs||[]).find(function(x){return x.id===id;}); return a?a.name:id; }
+function confirmHTML(stop, payload){
+  const rows=payload.map(function(p){
+    const disc = p.discount_type==='C+' ? ('Cost + '+esc(p.cost_plus))
+               : p.discount_type==='R-' ? ('Retail − '+esc(p.retail_minus)) : '—';
+    return '<tr><td>'+esc(aggName(p.aggregator_id))+'</td><td>'+esc(p.status)+'</td><td>'+disc+'</td></tr>';
+  }).join('');
+  return '<div id="optDone" class="opt-done"><h2>Thank you!</h2>'
+    +'<p>Your opt-in choices for <b>'+esc(stop&&stop.name||'your stop')+'</b> have been recorded. '
+    +'You can reopen your link any time to update them.</p>'
+    +'<table class="opt-summary"><thead><tr><th>Aggregator</th><th>Response</th><th>Discount</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table></div>';
+}
+async function submit(){
+  const sb=sbc();
+  if(!sb) return {ok:false, error:'offline'};
+  const payload=buildChoices(_stop, _aggs, _choices);
+  let res;
+  if(_session && _session.mode==='code'){
+    res=await sb.rpc('submit_optin_by_code', {p_code:_session.code, p_name:_session.name, p_choices:payload});
+  } else {
+    const token=(_session&&_session.token)||currentToken();
+    res=await sb.rpc('submit_optin', {p_token:token, p_choices:payload});
+  }
+  if(res && res.error) return {ok:false, error:(res.error.message||'submit failed')};
+  _lastHTML=confirmHTML(_stop, payload);
+  const root=byId('optBody'); if(root) root.innerHTML=_lastHTML;
+  const sbtn=byId('optSubmit'); if(sbtn) sbtn.hidden=true;
+  const calc=byId('optCalc'); if(calc) calc.hidden=true;
+  return {ok:true};
+}
+
+/* ---------- live interaction (real page; verified in-browser) ---------- */
+function setChoice(aggId, patch){
+  if(!aggId) return;
+  _choices[aggId]=Object.assign({}, _choices[aggId], patch, {touched:true});
+}
+function recalc(){
+  const cost=readVal('optCost'), retail=readVal('optRetail');
+  (_aggs||[]).forEach(function(a){
+    const card=document.querySelector('.opt-card[data-agg="'+a.id+'"]'); if(!card) return;
+    const ch=_choices[a.id]||{}; const cType=ch.type||a.discount_type||'C+';
+    const valEl=card.querySelector('[data-opt-value]');
+    const cVal=valEl?valEl.value:(ch.value!=null?ch.value:a.discount_value);
+    const profit=profitPerGal(cType, cVal, cost, retail);
+    const pEl=card.querySelector('.opt-profit');
+    if(pEl){ if(profit==null){pEl.className='opt-profit muted';pEl.textContent='— enter cost & retail';}
+             else {pEl.className='opt-profit';pEl.textContent=profit+'¢ / gal';} }
+    const rEl=card.querySelector('.opt-rec');
+    if(rEl){ const rec=reanchor(a.discount_type, a.discount_value, cType, cost, retail);
+      rEl.innerHTML='Recommended: '+(rec.value==null
+        ? unitLabel(a.discount_type)+' '+esc(a.discount_value||'?')+' <span class="opt-faint">(enter cost &amp; retail to compare)</span>'
+        : '<b>'+unitLabel(rec.type)+' '+rec.value+'</b>'); }
+  });
+}
+function onBodyClick(e){
+  const tEl=e.target.closest && e.target.closest('[data-opt-type]');
+  if(tEl){ setChoice(tEl.getAttribute('data-agg'), {type:tEl.getAttribute('data-opt-type')}); render(); return; }
+  const sEl=e.target.closest && e.target.closest('[data-opt-status]');
+  if(sEl){ setChoice(sEl.getAttribute('data-agg'), {status:sEl.getAttribute('data-opt-status')}); render(); }
+}
+function onBodyInput(e){
+  const vEl=e.target.closest && e.target.closest('[data-opt-value]');
+  if(vEl){ // update value + recompute in place (no re-render, keeps caret in the input)
+    const clean=String(vEl.value||'').replace(/[^0-9]/g,'').slice(0,2);
+    if(clean!==vEl.value) vEl.value=clean;
+    setChoice(vEl.getAttribute('data-agg'), {value:clean}); recalc(); }
+}
+let _wired=false;
+function wire(){
+  if(_wired) return; _wired=true;   // mount() may run again on re-resolve; bind once
+  const body=byId('optBody');
+  if(body){ body.addEventListener('click', onBodyClick); body.addEventListener('input', onBodyInput); }
+  const cost=byId('optCost'), retail=byId('optRetail');
+  if(cost) cost.addEventListener('input', recalc);
+  if(retail) retail.addEventListener('input', recalc);
+  const sbtn=byId('optSubmit');
+  if(sbtn) sbtn.addEventListener('click', async function(){
+    sbtn.disabled=true; const msg=byId('optMsg'); if(msg) msg.textContent='';
+    const r=await submit();
+    if(!r.ok){ sbtn.disabled=false; if(msg) msg.textContent='Could not submit — please try again.'; }
+  });
+}
+function mount(stop, aggregators){
+  _stop=stop; _aggs=aggregators||[]; _choices={};
+  const t=byId('optTitle'); if(t) t.textContent=(stop.name||'Aggregator Opt-In');
+  const sub=byId('optSub');
+  if(sub) sub.textContent=[stop.city,stop.state].filter(Boolean).join(', ')+(stop.code?' · '+stop.code:'');
+  const calc=byId('optCalc'); if(calc) calc.hidden=false;
+  const sbtn=byId('optSubmit'); if(sbtn) sbtn.hidden=false;
+  const fb=byId('optFallback'); if(fb) fb.hidden=true;
+  render(); wire();
+}
+async function onFallbackFind(e){
+  if(e && e.preventDefault) e.preventDefault();
+  const code=((byId('optFallCode')||{}).value||'').trim();
+  const name=((byId('optFallName')||{}).value||'').trim();
+  const msg=byId('optFallMsg'); if(msg) msg.textContent='';
+  const r=await resolveByCode(code, name);
+  if(r.stop){ mount(r.stop, r.aggregators); }
+  else if(msg){ msg.textContent = r.error
+    ? 'Could not reach the service. Please try again.'
+    : 'No unique match for that store # and name. Check both and try again.'; }
+}
+function showFallback(){
+  const fb=byId('optFallback'); if(fb) fb.hidden=false;
+  // ONE handler only: the Find button is type="submit", so the form's submit
+  // event covers it. A second click listener would fire onFallbackFind twice
+  // (double RPC) per press.
+  const form=byId('optFallback');
+  if(form) form.addEventListener('submit', onFallbackFind);
+}
+async function init(){
+  const r=await resolveStop();
+  if(r.stop){ mount(r.stop, r.aggregators); } else { showFallback(); }
+}
+
 window.OPTIN = { __test:{ profitPerGal, reanchor, resolveStop, resolveByCode,
-  setClient(c){_client=c;}, setQuery(q){_query=q;},
+  setClient(c){_client=c;}, setQuery(q){_query=q;}, setSession(s){_session=s;},
   render(stop,aggregators,choices){ _stop=stop; _aggs=aggregators||[]; _choices=choices||{}; return render(); },
-  lastHTML(){ return _lastHTML; } } };
+  lastHTML(){ return _lastHTML; }, buildChoices:buildChoices, submit:submit } };
+
+// auto-init only in a real browser; the headless tests load with readyState 'loading'
+// (listener registered, never fired) so init() does not run during eval.
+if(typeof document!=='undefined'){
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+}
 })();
 </script>
 </body>
