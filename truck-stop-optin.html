@@ -44,6 +44,64 @@ body{margin:0;font-family:var(--o-sans);color:var(--o-text);
 "use strict";
 
 /* =====================================================================
+   SUPABASE — RPC ONLY. This page calls four SECURITY DEFINER functions
+   and holds NO direct table grants; it never reads optin_token.
+   Setup copied verbatim from gs-command-center.html (same project/anon key).
+   ===================================================================== */
+const ROADYS_SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
+const ROADYS_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
+let _sbClient = null;
+function ensureSupabaseLib(){
+  if(typeof window !== 'undefined' && window.supabase) return Promise.resolve(window.supabase);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+    s.onload = () => window.supabase ? resolve(window.supabase) : reject(new Error('supabase-js loaded but window.supabase undefined'));
+    s.onerror = () => reject(new Error('supabase-js CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+function getRoadysSB(){
+  if(_sbClient) return _sbClient;
+  if(typeof window !== 'undefined' && window.supabase){
+    try { _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON); return _sbClient; }
+    catch(e){ console.warn('getRoadysSB: ' + e.message); return null; }
+  }
+  return null;
+}
+
+/* ---------- stop resolution (token via ?t=, or store#+name fallback) ----------
+   Resolution returns only safe stop fields; optin_token is stripped SERVER-SIDE
+   by the SECURITY DEFINER function — the client never receives or reads it. */
+let _client=null;   // test override; falls back to getRoadysSB()
+let _query=null;    // test override for the query string
+function sbc(){ return _client || getRoadysSB(); }
+function currentToken(){
+  if(_query) return _query.t||"";
+  try{ return new URLSearchParams(window.location.search).get('t')||""; }catch(e){ return ""; }
+}
+async function loadAggregators(sb){
+  const {data,error}=await sb.rpc('list_optin_aggregators');
+  return error?[]:(data||[]);
+}
+async function resolveStop(){
+  const sb=sbc();
+  if(!sb) return {needFallback:true};            // lib not ready / client unavailable
+  const tok=currentToken();
+  if(!tok) return {needFallback:true};
+  const {data,error}=await sb.rpc('resolve_optin_token',{p_token:tok});
+  if(error||!data||!data.length) return {needFallback:true};
+  return {stop:data[0], aggregators:await loadAggregators(sb)};
+}
+async function resolveByCode(code,name){
+  const sb=sbc();
+  if(!sb) return {error:true};                   // can't reach the service
+  const {data,error}=await sb.rpc('resolve_optin_by_code',{p_code:code,p_name:name});
+  if(error||!data||!data.length) return {notFound:true};
+  return {stop:data[0], aggregators:await loadAggregators(sb)};
+}
+
+/* =====================================================================
    CALCULATOR (pure) — per-gallon profit + discount-unit re-anchoring
    ---------------------------------------------------------------------
    cost / retail are dollars per gallon (e.g. 3.00). Values are cents.
@@ -74,7 +132,8 @@ function reanchor(recType, recValue, targetType, cost, retail){
   return {type:targetType, value: spread - v};
 }
 
-window.OPTIN = { __test:{ profitPerGal, reanchor } };
+window.OPTIN = { __test:{ profitPerGal, reanchor, resolveStop, resolveByCode,
+  setClient(c){_client=c;}, setQuery(q){_query=q;} } };
 })();
 </script>
 </body>
