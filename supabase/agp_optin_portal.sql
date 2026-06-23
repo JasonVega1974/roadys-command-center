@@ -292,6 +292,14 @@ commit;
 --   end loop;
 -- end $$;
 --
+-- -- (2b) gen_optin_token: pull it off anon so the verification shows ONLY the five
+-- --      form RPCs as anon-executable — but authenticated MUST keep EXECUTE. The
+-- --      optin_token column DEFAULT calls gen_optin_token(), and a column default runs
+-- --      as the INSERTING role (not the table owner), so without this grant the
+-- --      planner's authenticated new-location inserts would fail with permission denied.
+-- revoke all on function public.gen_optin_token() from public;
+-- grant execute on function public.gen_optin_token() to authenticated;
+--
 -- -- (3) RLS: live policies are bound to the PUBLIC role (with duplicate _read
 -- --     policies on agp_locations/agp_optins). Revoking anon grants does NOT
 -- --     touch PUBLIC-role policies, so drop EVERY existing policy per table

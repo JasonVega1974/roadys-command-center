@@ -183,6 +183,9 @@ function profitPerGal(type, value, cost, retail){
 // R-Y and C+X are equal when X = spread - Y (and Y = spread - X), so the
 // re-anchored recommendation carries the SAME profit.
 function reanchor(recType, recValue, targetType, cost, retail){
+  // "Better Of" (BO) = the same cents value in EITHER unit, so it carries straight
+  // into whatever unit the stop selected — no spread conversion.
+  if(recType==='BO') return {type:targetType, value:parseInt(recValue,10)||0};
   if(recType===targetType) return {type:recType, value:parseInt(recValue,10)||0};
   const c=parseFloat(cost), r=parseFloat(retail);
   if(isNaN(c)||isNaN(r)) return {type:targetType, value:null};   // need the spread to convert
@@ -199,12 +202,13 @@ function reanchor(recType, recValue, targetType, cost, retail){
    ===================================================================== */
 let _stop=null, _aggs=[], _choices={}, _lastHTML='';
 function byId(id){ return document.getElementById(id); }
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function unitLabel(type){ return type==='C+'?'Cost +':type==='R-'?'Retail −':'—'; }
 function readVal(id){ const el=byId(id); return el?el.value:''; }
 function cardHTML(a, cost, retail){
   const ch=_choices[a.id]||{};
-  const cType=ch.type||a.discount_type||'C+';
+  // the card's working unit is C+ or R- only; a BO ("Better Of") aggregator defaults to C+
+  const cType=ch.type||(a.discount_type==='BO'?'C+':a.discount_type)||'C+';
   const cVal=(ch.value!=null&&ch.value!=='')?ch.value:(a.discount_value||'');
   const profit=profitPerGal(cType, cVal, cost, retail);
   const hero=(profit==null)
@@ -260,7 +264,8 @@ function buildChoices(stop, aggregators, choices){
     const responded = ch.status==='Yes' || ch.status==='No';
     const touched = responded || ch.touched===true;
     const status = responded ? ch.status : 'No Response';
-    const type = (touched && ch.type) ? ch.type : (a.discount_type||'');
+    // untouched BO default coerces to C+ (the form is single-unit; never emit a blank-value BO row)
+    const type = (touched && ch.type) ? ch.type : (a.discount_type==='BO'?'C+':(a.discount_type||''));
     const valStr = (touched && ch.value!=null && ch.value!=='')
       ? String(ch.value) : String(a.discount_value==null?'':a.discount_value);
     return { aggregator_id:a.id, status:status, discount_type:type,
