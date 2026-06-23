@@ -1000,6 +1000,18 @@ function nearestLaunch(){
 /* ---------- toast ---------- */
 let toastTimer=null;
 function toast(msg){const t=$("#agpToast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200);}
+/* Copy a stop's personalized opt-in link. get_optin_token is authenticated-only, so under the
+   pre-auth anon planner the RPC returns a permission-denied error object (it does NOT throw) —
+   we degrade to a "sign in" hint and copy nothing. Works once the planner authenticates (Task 9). */
+async function copyOptinLink(locId){
+  const sb=getRoadysSB();
+  if(!sb){ toast("Connection unavailable — try again"); return; }      // SDK/CDN not loaded (not the anon case)
+  const {data,error}=await sb.rpc("get_optin_token",{p_loc_id:locId});
+  if(error||!data){ toast("Sign in to copy opt-in links"); return; }   // anon: get_optin_token is authenticated-only
+  const url=new URL("truck-stop-optin.html?t="+encodeURIComponent(data), location.href).href;
+  try{ await navigator.clipboard.writeText(url); toast("Opt-in link copied"); }
+  catch(e){ toast("Copy this link: "+url); }
+}
 
 /* =====================================================================
    RENDER
@@ -1230,6 +1242,8 @@ function renderLocations(){
 
   // sortable header
   const sort=S.ui.locSort||{key:"code",dir:1};
+  // The empty-state row below uses colspan = COLS.length + 1 (the leading checkbox column).
+  // Keep that number in sync when adding/removing a COLS entry.
   const COLS=[
     {k:"code",label:"LID",sortable:true},
     {k:"name",label:"Truck stop",sortable:true},
@@ -1241,6 +1255,7 @@ function renderLocations(){
     {k:"cost",label:"Cost + (¢)",sortable:false},
     {k:"notes",label:"GS notes",sortable:false},
     {k:"entered",label:"Entered in Interstate",sortable:false},
+    {k:"responded",label:"Responded",sortable:true},
     {k:"_act",label:"",sortable:false}];
   const ctView=a.id==="cloudtrucks";
   const allEnt=view.length>0&&view.every(l=>!!((map[l.id]||{}).entered));
@@ -1261,6 +1276,9 @@ function renderLocations(){
   const rows=view.map(l=>{
     const o=map[l.id]||{status:"Select",discountType:"",retailMinus:"",costPlus:"",notes:"",entered:false};
     const st=o.status||"Select";
+    const respCell=l.responded_at
+      ? `<span style="color:#34d399;font-weight:600;white-space:nowrap">✓ ${esc(fmtDate(String(l.responded_at).slice(0,10)))}</span>`
+      : `<span style="color:var(--agp-muted)">No response</span>`;
     const dtype=o.discountType||a.discountType;
     const retailOn=(dtype==="R-"||dtype==="BO"), costOn=(dtype==="C+"||dtype==="BO");
     const dselOn=(dtype==="R-"||dtype==="C+"||dtype==="BO")?"dsel-on":"";
@@ -1284,9 +1302,10 @@ function renderLocations(){
       <td class="w-num">${isCT?NA:costCell}</td>
       <td>${isCT?NA:`<input class="agp-input" data-optin-field="notes" data-agg="${a.id}" data-loc="${l.id}" value="${esc(o.notes||"")}" placeholder="GS notes…">`}</td>
       <td class="w-ent">${isCT?NA:`<label class="ent-wrap"><input type="checkbox" data-optin-entered="1" data-agg="${a.id}" data-loc="${l.id}" ${o.entered?"checked":""}><span>${o.entered?"Yes":"No"}</span></label>`}</td>
-      <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
+      <td class="w-resp">${respCell}</td>
+      <td class="w-num"><div class="agp-row-actions"><button class="agp-btn sm icon" data-optin-link="${l.id}" title="Copy opt-in link">🔗</button><button class="agp-btn sm danger icon" data-del-loc="${l.id}" title="Remove location">✕</button></div></td>
     </tr>`;
-  }).join("")||`<tr><td colspan="12" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
+  }).join("")||`<tr><td colspan="13" style="text-align:center;color:var(--agp-muted);padding:26px 12px">No truck stops match your search/filter.</td></tr>`;
 
   $("#agpLocPanel").innerHTML=`<div class="agp-panel">
     <div class="agp-section-h"><h2>${esc(a.name)} — location opt-in</h2>
@@ -1338,6 +1357,7 @@ function locView(a){
     case"ach":return(l.ach||"~~~").toLowerCase();
     case"status":return OPTIN_OPTS.indexOf(o.status||"Select");
     case"entered":return o.entered?0:1;
+    case"responded":return l.responded_at||"";   // ISO sorts chronologically; "" (no response) sorts first
     case"type":return o.discountType||"";default:return"";}};
   let list=S.locations.filter(l=>filt.indexOf(stOf(l))>=0);
   if(q)list=list.filter(l=>[l.name,l.city,l.state,l.code,l.gs,l.ach].some(x=>String(x||"").toLowerCase().includes(q)));
@@ -1470,10 +1490,11 @@ function bind(){
       ssSet(key,c?"1":"0");}
   });
 
-  // delete location
+  // delete location + copy opt-in link (row actions)
   document.addEventListener("click",e=>{
     const d=e.target.closest("[data-del-loc]");if(d){const id=d.dataset.delLoc;
-      S.locations=S.locations.filter(l=>l.id!==id);Object.values(S.optins).forEach(m=>delete m[id]);commit();renderLocations();renderPipeline();$("#agpLocPill").textContent=S.locations.length;}
+      S.locations=S.locations.filter(l=>l.id!==id);Object.values(S.optins).forEach(m=>delete m[id]);commit();renderLocations();renderPipeline();$("#agpLocPill").textContent=S.locations.length;return;}
+    const lk=e.target.closest("[data-optin-link]");if(lk){copyOptinLink(lk.dataset.optinLink);return;}
   });
 
   // descriptions list
@@ -1774,7 +1795,7 @@ function init(){
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
-  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,
     setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},mgrUnlocked(){return _mgrUnlocked;},
     getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
