@@ -97,21 +97,27 @@ revoke all on function public.list_optin_aggregators() from public;
 grant execute on function public.list_optin_aggregators() to anon, authenticated;
 
 -- (d) THE ENTIRE WRITE BOUNDARY for the public form.
---     SECURITY DEFINER bypasses RLS, so this validation is the only guard:
---       * token must resolve to a real stop, else reject (no write)
---       * location_id is ALWAYS the token's stop — never caller-supplied,
---         so a caller can never write another stop's rows
+--     Two public entry points — submit_optin (token) and submit_optin_by_code
+--     (lost-link fallback) — both resolve a stop THEN delegate every write to
+--     ONE private helper, _apply_optin, so the boundary guarantees live in a
+--     single place and cannot drift between the two entry points:
+--       * the stop is resolved by the entry point (token, or unique code+name),
+--         else the entry point rejects with NO write
+--       * location_id passed to the helper is ALWAYS the resolved stop —
+--         never caller-supplied — so a caller can never write another stop's rows
 --       * only show_on_form aggregators are written (others skipped)
 --       * status / discount_type clamped to allowed sets
 --       * retail_minus / cost_plus clamped to 0-2 digit cents, else blank
 --       * re-submit upserts THIS stop's own rows (latest wins)
-create or replace function public.submit_optin(p_token text, p_choices jsonb)
+
+-- (d.0) PRIVATE helper — not granted to anon/authenticated. Only the two
+--       SECURITY DEFINER entry points (running as owner) can reach it.
+create or replace function public._apply_optin(p_loc_id text, p_choices jsonb)
 returns text
 language plpgsql volatile security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_loc    text;
   c        jsonb;
   v_agg    text;
   v_status text;
@@ -119,13 +125,9 @@ declare
   v_rmin   text;
   v_cplus  text;
 begin
-  -- 1. token must resolve to exactly one real stop
-  select id into v_loc from public.agp_locations where optin_token = p_token;
-  if v_loc is null then
-    raise exception 'invalid or unknown opt-in token' using errcode = '28000';
+  if p_loc_id is null then
+    raise exception 'no stop resolved' using errcode = '28000';
   end if;
-
-  -- 2. choices must be a JSON array
   if p_choices is null or jsonb_typeof(p_choices) <> 'array' then
     raise exception 'choices must be a JSON array' using errcode = '22023';
   end if;
@@ -135,30 +137,30 @@ begin
     v_agg := nullif(btrim(c->>'aggregator_id'), '');
     if v_agg is null then continue; end if;
 
-    -- 3. aggregator must exist AND be published on the form
+    -- aggregator must exist AND be published on the form
     if not exists (select 1 from public.agp_aggregators a
                    where a.id = v_agg and a.show_on_form is true) then
       continue;
     end if;
 
-    -- 4. clamp status
+    -- clamp status
     v_status := coalesce(c->>'status', 'No Response');
     if v_status not in ('Yes', 'No', 'No Response') then v_status := 'No Response'; end if;
 
-    -- 5. clamp discount type
+    -- clamp discount type
     v_type := coalesce(c->>'discount_type', '');
     if v_type not in ('R-', 'C+', 'BO', 'none', '') then v_type := ''; end if;
 
-    -- 6. clamp values to 0-2 digit cents
+    -- clamp values to 0-2 digit cents
     v_rmin  := coalesce(c->>'retail_minus', '');
     v_cplus := coalesce(c->>'cost_plus', '');
     if v_rmin  !~ '^[0-9]{0,2}$' then v_rmin  := ''; end if;
     if v_cplus !~ '^[0-9]{0,2}$' then v_cplus := ''; end if;
 
-    -- 7. write ONLY this stop's row (location_id bound to the token's stop)
+    -- write ONLY this resolved stop's row
     insert into public.agp_optins
       (aggregator_id, location_id, status, discount_type, retail_minus, cost_plus, updated_at)
-    values (v_agg, v_loc, v_status, v_type, v_rmin, v_cplus, now())
+    values (v_agg, p_loc_id, v_status, v_type, v_rmin, v_cplus, now())
     on conflict (aggregator_id, location_id) do update
       set status        = excluded.status,
           discount_type = excluded.discount_type,
@@ -167,13 +169,59 @@ begin
           updated_at    = now();
   end loop;
 
-  -- 8. stamp completion on this stop only
-  update public.agp_locations set responded_at = now() where id = v_loc;
-  return v_loc;
+  -- stamp completion on this stop only
+  update public.agp_locations set responded_at = now() where id = p_loc_id;
+  return p_loc_id;
+end
+$$;
+revoke all on function public._apply_optin(text, jsonb) from public;   -- internal: no anon/authenticated grant
+
+-- (d.1) TOKEN entry point — the emailed-link path.
+create or replace function public.submit_optin(p_token text, p_choices jsonb)
+returns text
+language plpgsql volatile security definer
+set search_path = public, pg_temp
+as $$
+declare v_loc text;
+begin
+  -- token must resolve to exactly one real stop, else reject (no write)
+  select id into v_loc from public.agp_locations where optin_token = p_token;
+  if v_loc is null then
+    raise exception 'invalid or unknown opt-in token' using errcode = '28000';
+  end if;
+  return public._apply_optin(v_loc, p_choices);
 end
 $$;
 revoke all on function public.submit_optin(text, jsonb) from public;
 grant execute on function public.submit_optin(text, jsonb) to anon, authenticated;
+
+-- (d.2) CODE+NAME entry point — the lost-link fallback. code+name is a weaker
+--       identifier than an opaque token, so matching is STRICT: exact
+--       (case-insensitive, trimmed) on BOTH columns and must resolve to
+--       EXACTLY ONE stop. 0 or >1 matches → reject (no write). No partials.
+create or replace function public.submit_optin_by_code(p_code text, p_name text, p_choices jsonb)
+returns text
+language plpgsql volatile security definer
+set search_path = public, pg_temp
+as $$
+declare v_loc text; v_n int;
+begin
+  select count(*) into v_n
+  from public.agp_locations
+  where lower(btrim(code)) = lower(btrim(p_code))
+    and lower(btrim(name)) = lower(btrim(p_name));
+  if v_n <> 1 then
+    raise exception 'stop not uniquely identified by store # + name' using errcode = '28000';
+  end if;
+  select id into v_loc
+  from public.agp_locations
+  where lower(btrim(code)) = lower(btrim(p_code))
+    and lower(btrim(name)) = lower(btrim(p_name));
+  return public._apply_optin(v_loc, p_choices);
+end
+$$;
+revoke all on function public.submit_optin_by_code(text, text, jsonb) from public;
+grant execute on function public.submit_optin_by_code(text, text, jsonb) to anon, authenticated;
 
 -- (e) planner copy-link: one id -> its token. authenticated ONLY (NOT anon).
 create or replace function public.get_optin_token(p_loc_id text)
@@ -290,7 +338,10 @@ commit;
 -- -- Column-level privileges anon holds (token should NOT appear after Phase A)
 -- select table_name, column_name, privilege_type from information_schema.column_privileges
 --   where grantee='anon' and table_name like 'agp_%' order by 1,3,2;
--- -- Every function anon may EXECUTE (after Phase B: only the 4 form RPCs)
+-- -- Every function anon may EXECUTE (after Phase B: ONLY the 5 form RPCs —
+-- --   resolve_optin_token, resolve_optin_by_code, list_optin_aggregators,
+-- --   submit_optin, submit_optin_by_code. NOT _apply_optin (internal, never
+-- --   granted to anon) and NOT get_optin_token (authenticated only).)
 -- select n.nspname, p.proname, p.prosecdef as sec_definer
 --   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
 --   where has_function_privilege('anon', p.oid,'EXECUTE') and n.nspname='public' order by 2;

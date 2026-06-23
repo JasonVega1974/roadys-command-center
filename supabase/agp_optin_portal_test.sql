@@ -7,10 +7,12 @@
 -- transaction and removed by the final ROLLBACK, so it can never leave test
 -- rows in agp_locations / agp_optins / agp_aggregators. Nothing persists.
 --
--- Expected result: "NOTICE: ALL submit_optin boundary cases PASSED".
--- Any "CASE… FAIL" raises an exception → fix submit_optin in
--- agp_optin_portal.sql, re-apply the function, re-run. Do not proceed to the
--- page code until this is green.
+-- Expected result: TWO notices —
+--   "ALL submit_optin boundary cases PASSED"  (token entry point)
+--   "ALL submit_optin_by_code boundary cases PASSED"  (code+name fallback)
+-- Any "CASE… FAIL" raises an exception → fix the relevant function in
+-- agp_optin_portal.sql, re-apply it, re-run. Do not wire the page's submit()
+-- until this is green.
 -- =====================================================================
 begin;
 
@@ -20,8 +22,11 @@ insert into public.agp_aggregators (id, name, show_on_form, discount_type, disco
          ('t_unpub', 'TestUnpub', false, 'C+', '10');
 
 insert into public.agp_locations (id, name, code, optin_token)
-  values ('t_locA', 'Stop A', 'TA', 'tok_AAA_' || public.gen_optin_token()),
-         ('t_locB', 'Stop B', 'TB', 'tok_BBB_' || public.gen_optin_token());
+  values ('t_locA',  'Stop A', 'TA', 'tok_AAA_' || public.gen_optin_token()),
+         ('t_locB',  'Stop B', 'TB', 'tok_BBB_' || public.gen_optin_token()),
+         ('t_locC',  'Stop C', 'TC', 'tok_CCC_' || public.gen_optin_token()),   -- by-code happy path
+         ('t_locD1', 'Stop D', 'TD', 'tok_DD1_' || public.gen_optin_token()),   -- duplicate code+name
+         ('t_locD2', 'Stop D', 'TD', 'tok_DD2_' || public.gen_optin_token());   --   -> ambiguous
 
 -- ---- boundary assertions -------------------------------------------
 do $$
@@ -78,6 +83,62 @@ begin
   if v_val    <> ''            then raise exception 'CASE4 FAIL: value not clamped (got %)', v_val;   end if;
 
   raise notice 'ALL submit_optin boundary cases PASSED';
+end $$;
+
+-- ---- submit_optin_by_code (lost-link fallback) boundary assertions --
+-- Same guarantees as submit_optin, reached through the code+name entry point,
+-- which must resolve to EXACTLY ONE stop or reject (no partial/ambiguous match).
+do $$
+declare n_before int; n_after int; v_status text; v_type text; v_val text;
+begin
+  -- CASE 5: code+name that doesn't resolve -> rejected, ZERO writes
+  select count(*) into n_before from public.agp_optins;
+  begin
+    perform public.submit_optin_by_code('NOPE', 'Nobody',
+      '[{"aggregator_id":"t_pub","status":"Yes","discount_type":"R-","retail_minus":"12"}]'::jsonb);
+    raise exception 'CASE5 FAIL: non-matching code+name did not raise';
+  exception when sqlstate '28000' then null; end;
+  select count(*) into n_after from public.agp_optins;
+  if n_after <> n_before then raise exception 'CASE5 FAIL: no-match wrote % rows', n_after - n_before; end if;
+
+  -- CASE 6: ambiguous (code TD + name "Stop D" matches 2) -> rejected, ZERO writes
+  select count(*) into n_before from public.agp_optins;
+  begin
+    perform public.submit_optin_by_code('TD', 'Stop D',
+      '[{"aggregator_id":"t_pub","status":"Yes","discount_type":"R-","retail_minus":"12"}]'::jsonb);
+    raise exception 'CASE6 FAIL: ambiguous match did not raise';
+  exception when sqlstate '28000' then null; end;
+  select count(*) into n_after from public.agp_optins;
+  if n_after <> n_before then raise exception 'CASE6 FAIL: ambiguous wrote % rows', n_after - n_before; end if;
+
+  -- CASE 7: partial/fuzzy must NOT match (exact only): right code, partial name -> reject
+  begin
+    perform public.submit_optin_by_code('TC', 'Stop',   -- real name is 'Stop C'
+      '[{"aggregator_id":"t_pub","status":"Yes","discount_type":"R-","retail_minus":"12"}]'::jsonb);
+    raise exception 'CASE7 FAIL: partial name matched';
+  exception when sqlstate '28000' then null; end;
+
+  -- CASE 8: happy path (case-insensitive exact) writes ONLY t_locC, with the
+  --   show_on_form filter + clamping enforced through the by-code entry point.
+  perform public.submit_optin_by_code('tc', 'stop c',
+    '[{"aggregator_id":"t_pub","status":"MAYBE","discount_type":"WAT","retail_minus":"999","cost_plus":"abc"},{"aggregator_id":"t_unpub","status":"Yes","discount_type":"C+","cost_plus":"10"}]'::jsonb);
+  -- 8a: unpublished aggregator skipped
+  if exists (select 1 from public.agp_optins where aggregator_id = 't_unpub' and location_id = 't_locC') then
+    raise exception 'CASE8 FAIL: by_code wrote a row for an unpublished aggregator';
+  end if;
+  -- 8b: clamping applied through this path
+  select status, discount_type, retail_minus into v_status, v_type, v_val
+    from public.agp_optins where aggregator_id = 't_pub' and location_id = 't_locC';
+  if v_status is null      then raise exception 'CASE8 FAIL: by_code did not write the published row'; end if;
+  if v_status <> 'No Response' then raise exception 'CASE8 FAIL: status not clamped (got %)', v_status; end if;
+  if v_type   <> ''        then raise exception 'CASE8 FAIL: type not clamped (got %)', v_type; end if;
+  if v_val    <> ''        then raise exception 'CASE8 FAIL: value not clamped (got %)', v_val; end if;
+  -- 8c: own-stop only — neither ambiguous stop nor the token-path stop B was touched
+  if exists (select 1 from public.agp_optins where location_id in ('t_locD1','t_locD2','t_locB')) then
+    raise exception 'CASE8 FAIL: by_code wrote another stop''s rows';
+  end if;
+
+  raise notice 'ALL submit_optin_by_code boundary cases PASSED';
 end $$;
 
 rollback;

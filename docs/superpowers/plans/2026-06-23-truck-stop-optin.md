@@ -18,7 +18,7 @@
   4. **Email opt-in links to stops** → only after (3) is applied.
   No links go out before Phase B; Phase B does not land before planner auth. A finished page does not justify skipping ahead.
 - **SAME-DEPLOY CONSTRAINT (hard):** **Phase A2's** column-level grant excludes `optin_token`, which breaks any `select('*')` on `agp_locations`. The planner's refactor to **explicit-column reads (Task 5) must ship in the SAME deployment as applying Phase A2** — it cannot lag by even one push. (Task 5 + the Phase A2 apply are a single atomic ship; see DEPLOY STEP A.) Phase A1 is additive and may be applied earlier without touching the planner.
-- **Form is RPC-only:** `truck-stop-optin.html` must never call `sb.from('agp_*')…` — only `sb.rpc(...)` on the four functions. No table grants for the form.
+- **Form is RPC-only:** `truck-stop-optin.html` must never call `sb.from('agp_*')…` — only `sb.rpc(...)` on the five form RPCs (`resolve_optin_token`, `resolve_optin_by_code`, `list_optin_aggregators`, `submit_optin`, `submit_optin_by_code`). No table grants for the form.
 - **Token never reaches the client:** the page only ever sends/receives a token via `?t=` and `resolve_optin_token`; it never reads `agp_locations.optin_token` directly. `get_optin_token` is `authenticated`-only (planner copy-link), never anon.
 - **Supabase setup copied verbatim** from `gs-command-center.html` (`ROADYS_SB_URL`, `ROADYS_SB_ANON`, `ensureSupabaseLib`, `getRoadysSB`) — do not hardcode new credentials.
 - **No git push without explicit approval.** The user controls every deploy. Commit locally; never `git push` unless told.
@@ -413,7 +413,7 @@ git commit -m "feat(optin): Supabase client + token/code stop resolution (RPC-on
 
 ## DEPLOY STEP B (operational gate — after Task 9 is LIVE)
 
-> Apply **Phase B** of `supabase/agp_optin_portal.sql` (anon strip + PUBLIC→authenticated policy re-scope + function revokes). Verify with the four verification queries: anon holds **no** `agp_*` table privilege, policies are `{authenticated}`, anon executes **only** the four form RPCs. Smoke-test: planner (signed in) reads/writes fine; opt-in page resolves + submits fine; an unauthenticated `agp_locations` REST call is denied. **Only after this passes:** email opt-in links to stops.
+> Apply **Phase B** of `supabase/agp_optin_portal.sql` (anon strip + PUBLIC→authenticated policy re-scope + function revokes). Verify with the four verification queries: anon holds **no** `agp_*` table privilege, policies are `{authenticated}`, and anon executes **only** the five form RPCs — `resolve_optin_token`, `resolve_optin_by_code`, `list_optin_aggregators`, `submit_optin`, `submit_optin_by_code` (NOT `_apply_optin`, which is internal/never granted, and NOT `get_optin_token`, which is authenticated-only). Smoke-test: planner (signed in) reads/writes fine; opt-in page resolves + submits fine; an unauthenticated `agp_locations` REST call is denied. **Only after this passes:** email opt-in links to stops.
 
 ---
 
