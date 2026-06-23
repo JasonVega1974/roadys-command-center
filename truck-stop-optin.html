@@ -1,0 +1,81 @@
+<!--
+  Roady's — Truck Stop Aggregator Opt-In
+  -------------------------------------------------------------
+  Public, token-gated opt-in form for truck stops. RPC-only against
+  Supabase (resolve_optin_token / resolve_optin_by_code /
+  list_optin_aggregators / submit_optin) — it holds NO direct table
+  grants and never reads optin_token. Built across plan tasks 1-4.
+  Task 1: page scaffold + calculator pure functions (profit/gal, re-anchor).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roady's — Aggregator Opt-In</title>
+<style>
+:root{
+  --o-bg:#0e1117; --o-surface:#161c26; --o-surface-2:#1c2431; --o-line:#2a3547;
+  --o-text:#e8edf4; --o-muted:#8a98ac; --o-faint:#5c6a7e;
+  --o-amber:#f5a524; --o-green:#34d399; --o-green-soft:#10311f; --o-red:#f87171;
+  --o-radius:12px; --o-sans:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--o-sans);color:var(--o-text);
+  background:radial-gradient(1100px 560px at 80% -10%,#16202e 0,transparent 60%),var(--o-bg);
+  min-height:100vh;line-height:1.45;font-size:14px;-webkit-font-smoothing:antialiased}
+.opt-wrap{max-width:880px;margin:0 auto;padding:24px 18px 80px}
+.opt-head h1{font-size:20px;margin:0 0 2px;letter-spacing:-.2px}
+.opt-head .eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--o-faint);font-weight:700}
+#optBody{margin-top:18px}
+</style>
+</head>
+<body>
+<div class="opt-wrap">
+  <div class="opt-head">
+    <div class="eyebrow">Roady's Network</div>
+    <h1>Aggregator Opt-In</h1>
+  </div>
+  <div id="optBody"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   CALCULATOR (pure) — per-gallon profit + discount-unit re-anchoring
+   ---------------------------------------------------------------------
+   cost / retail are dollars per gallon (e.g. 3.00). Values are cents.
+     Cost + X  -> the stop nets X cents/gal (margin above its cost).
+     Retail - Y-> the stop nets (retail - cost) - Y cents/gal.
+   ===================================================================== */
+function profitPerGal(type, value, cost, retail){
+  const v = parseFloat(value); if(isNaN(v)) return null;
+  if(type==='C+') return v;                          // cost-plus: the +X cents
+  if(type==='R-'){                                   // retail-minus: spread - Y (needs cost+retail)
+    const c=parseFloat(cost), r=parseFloat(retail);
+    if(isNaN(c)||isNaN(r)) return null;
+    return Math.round((r-c)*100) - v;
+  }
+  return null;
+}
+// Express a recommended discount in the unit the stop currently has selected,
+// using their spread, so the recommendation and their choice share one unit.
+// R-Y and C+X are equal when X = spread - Y (and Y = spread - X), so the
+// re-anchored recommendation carries the SAME profit.
+function reanchor(recType, recValue, targetType, cost, retail){
+  if(recType===targetType) return {type:recType, value:parseInt(recValue,10)||0};
+  const c=parseFloat(cost), r=parseFloat(retail);
+  if(isNaN(c)||isNaN(r)) return {type:targetType, value:null};   // need the spread to convert
+  const spread=Math.round((r-c)*100), v=parseInt(recValue,10)||0;
+  // symmetric by construction: X = spread - Y AND Y = spread - X, so this one
+  // formula converts in both directions (R-→C+ and C+→R-). Do not split it.
+  return {type:targetType, value: spread - v};
+}
+
+window.OPTIN = { __test:{ profitPerGal, reanchor } };
+})();
+</script>
+</body>
+</html>
