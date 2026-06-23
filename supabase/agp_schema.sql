@@ -44,6 +44,7 @@ create table if not exists public.agp_aggregators (
   discount_target text default '',
   notes           text default '',
   sort_index      integer default 0,
+  show_on_form    boolean default false,   -- opt-in portal: publish this aggregator to the truck-stop form
   updated_at      timestamptz default now()
 );
 
@@ -67,6 +68,10 @@ create table if not exists public.agp_locations (
   code       text default '',
   gs         text default '',
   ach        text default '',   -- "Customer is setup for ACH"
+  responded_at timestamptz,     -- opt-in portal: set when the stop submits the form (form-owned)
+  optin_token  text,            -- opt-in portal: per-stop link token. agp_optin_portal.sql makes it
+                                --   default gen_optin_token(), UNIQUE, NOT NULL, and column-locks it out
+                                --   of anon/authenticated SELECT (Phase A2). Never read it from the client.
   updated_at timestamptz default now()
 );
 
@@ -95,6 +100,27 @@ create table if not exists public.agp_settings (
   value      text default '',
   updated_at timestamptz default now()
 );
+
+-- ---------------------------------------------------------------------
+-- TRUCK-STOP OPT-IN PORTAL — see supabase/agp_optin_portal.sql (AUTHORITATIVE)
+-- ---------------------------------------------------------------------
+-- On top of the columns above, the portal migration adds these functions:
+--   * anon-EXECUTE (the five form RPCs): resolve_optin_token, resolve_optin_by_code,
+--     list_optin_aggregators, submit_optin, submit_optin_by_code.
+--   * get_optin_token: authenticated ONLY (planner copy-link).
+--   * internal, NO anon/authenticated grant: _apply_optin (shared write helper both
+--     submit_* entry points delegate to) and gen_optin_token (optin_token column default).
+--   * Phase A2: agp_locations SELECT/INSERT/UPDATE re-granted PER COLUMN to EXCLUDE
+--     optin_token, so anon/authenticated can neither read nor write the token.
+--   * Phase B (after the planner adopts Supabase Auth): anon stripped of ALL agp_*
+--     table grants and the permissive policies re-scoped to `authenticated`; only the
+--     five form RPCs stay anon-executable.
+--
+-- WARNING: the grant do-block BELOW is the PRE-PORTAL baseline (full anon CRUD +
+-- permissive `using(true)` policies). Re-running it AFTER the portal migration would
+-- re-open optin_token to anon and undo Phase A2/B. Do NOT re-run it post-portal —
+-- agp_optin_portal.sql is the source of truth for agp_* grants and policies.
+-- ---------------------------------------------------------------------
 
 -- RLS + grants (already applied in the project; shown for completeness).
 -- The browser uses the anon key for every read/write.

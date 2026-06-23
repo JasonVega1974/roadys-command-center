@@ -387,7 +387,7 @@ git commit -m "feat(optin): Supabase client + token/code stop resolution (RPC-on
 **Files:**
 - Modify: `supabase/agp_schema.sql`
 
-- [ ] **Step 1:** Add the three columns (`agp_aggregators.show_on_form`, `agp_locations.responded_at`, `agp_locations.optin_token`) and a comment block listing the four functions + the column-grant/token rule, pointing to `agp_optin_portal.sql` as the authoritative migration.
+- [ ] **Step 1:** Add the three columns (`agp_aggregators.show_on_form`, `agp_locations.responded_at`, `agp_locations.optin_token`) and a comment block listing the opt-in functions (5 anon form RPCs + `get_optin_token` authenticated-only + `_apply_optin`/`gen_optin_token` internal) + the column-grant/token rule, pointing to `agp_optin_portal.sql` as the authoritative migration.
 - [ ] **Step 2: Commit** `docs(supabase): document opt-in portal columns + functions in schema of record`.
 
 ---
