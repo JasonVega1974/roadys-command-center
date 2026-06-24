@@ -251,7 +251,10 @@ grant select (id, name, city, state, code, gs, ach, responded_at, updated_at)
   on public.agp_locations to anon, authenticated;
 grant insert (id, name, city, state, code, gs, ach, responded_at, updated_at)
   on public.agp_locations to anon, authenticated;
-grant update (name, city, state, code, gs, ach, responded_at, updated_at)
+-- `id` IS included here on purpose: PostgREST upserts as INSERT ... ON CONFLICT (id) DO UPDATE and
+-- puts EVERY payload column in the SET — including the conflict key id — so the UPDATE arm needs
+-- UPDATE on id, or the upsert 42501s. `optin_token` stays excluded (A2 lock).
+grant update (id, name, city, state, code, gs, ach, responded_at, updated_at)
   on public.agp_locations to anon, authenticated;
 grant delete on public.agp_locations to anon, authenticated;
 commit;
@@ -327,7 +330,7 @@ commit;
 --   public.agp_descriptions, public.agp_settings to authenticated;
 -- grant select (id,name,city,state,code,gs,ach,responded_at,updated_at) on public.agp_locations to authenticated;
 -- grant insert (id,name,city,state,code,gs,ach,responded_at,updated_at) on public.agp_locations to authenticated;
--- grant update (name,city,state,code,gs,ach,responded_at,updated_at)    on public.agp_locations to authenticated;
+-- grant update (id,name,city,state,code,gs,ach,responded_at,updated_at) on public.agp_locations to authenticated;  -- id: PostgREST upsert SETs the conflict key
 -- grant delete on public.agp_locations to authenticated;
 --
 -- commit;
