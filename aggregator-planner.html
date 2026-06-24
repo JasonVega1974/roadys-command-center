@@ -598,21 +598,39 @@ function ensureSupabaseLib(){
     document.head.appendChild(s);
   });
 }
+// Normalize fetch headers into a plain object (supabase-js often passes a Headers INSTANCE, whose
+// entries Object.assign silently drops), then apply overrides. Preserves Content-Type / Prefer / etc.
+function sbMergeHeaders(existing, extra){
+  const out = {};
+  // lowercase every key so an override (e.g. authorization) actually REPLACES whatever supabase set,
+  // rather than coexisting as a different-cased duplicate (HTTP header names are case-insensitive).
+  const put = (k,v)=>{ out[String(k).toLowerCase()] = v; };
+  if(existing){
+    if(typeof existing.forEach === 'function' && !Array.isArray(existing)) existing.forEach((v,k)=>put(k,v)); // Headers
+    else if(Array.isArray(existing)) existing.forEach(p=>put(p[0],p[1]));
+    else Object.keys(existing).forEach(k=>put(k,existing[k]));
+  }
+  Object.keys(extra).forEach(k=>put(k,extra[k]));
+  return out;
+}
 function getRoadysSB(){
   if(_sbClient) return _sbClient;
   if(typeof window !== 'undefined' && window.supabase){
     try {
       _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON, {
         auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:false },
-        // Force every PostgREST / RPC request to carry the signed-in user's JWT so it runs as
-        // `authenticated`. Without this, table calls went out with only the anon key -> 403 after
-        // Phase B stripped anon. Auth endpoints (/auth/) are left alone so sign-in + token refresh
-        // use their own headers.
+        // Every PostgREST / RPC request needs BOTH headers: apikey (project anon key, identifies the
+        // project) AND Authorization (the user JWT once signed in, authenticates the user). Without
+        // the JWT, calls ran as anon -> 403 after Phase B. Set both explicitly while PRESERVING the
+        // other headers supabase-js attached. Auth endpoints (/auth/) are left alone so sign-in +
+        // token refresh use their own headers.
         global:{ fetch:(input, init)=>{
           init = init || {};
           const url = (typeof input === 'string') ? input : (input && input.url) || '';
-          if(_authToken && url.indexOf('/auth/') === -1){
-            init.headers = Object.assign({}, init.headers, { Authorization:'Bearer '+_authToken });
+          if(url.indexOf('/auth/') === -1){
+            const extra = { apikey: ROADYS_SB_ANON };
+            if(_authToken) extra.Authorization = 'Bearer ' + _authToken;
+            init.headers = sbMergeHeaders(init.headers, extra);
           }
           return fetch(input, init);
         }}
