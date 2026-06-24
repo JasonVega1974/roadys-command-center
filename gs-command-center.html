@@ -5292,11 +5292,13 @@ const REWARDS_MONTH_LABELS = {"2026-01": "January 2026", "2026-02": "February 20
 function rewardsSeedMonthsFor(stopId){
   return Object.keys(REWARDS_SEED_BY_MONTH).filter(k=>REWARDS_SEED_BY_MONTH[k]&&REWARDS_SEED_BY_MONTH[k][stopId]).sort();
 }
-// Single source of truth for a stop's 2026 YTD rewards. Sums Add $ / Redeem $
-// across EVERY per-month seed the stop appears in (Jan–Jun). A manually
-// entered value (rec.rewardsYtdAdds/Redeems) overrides the seed sum. When a
-// stop has no rewards rows at all, adds/redeems resolve to 0 (not null) so
-// every truck stop shows a populated YTD figure rather than a blank.
+// Single source of truth for a stop's 2026 YTD rewards. When the stop has
+// any per-month seed rows (Jan–Jun), the seed SUM is authoritative and wins
+// — this deliberately ignores rec.rewardsYtdAdds/Redeems, because the old
+// auto-save-on-blur stored stale partial-month values (e.g. an Apr+May Adds
+// total) that would otherwise poison the YTD and produce impossible
+// redemption rates. A manual value is only honored for stops that have NO
+// seed data at all; stops with neither resolve to 0 so the card is never blank.
 function stopRewardsYtd(stopId){
   const rec = (typeof loadStopRecord === 'function') ? loadStopRecord(stopId) : (stopdata[stopId] || {});
   const manualAdds    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
@@ -5305,13 +5307,15 @@ function stopRewardsYtd(stopId){
   let seedAdds = 0, seedRedeems = 0;
   for(const k of months){ const s = REWARDS_SEED_BY_MONTH[k][stopId]; seedAdds += +s['a$'] || 0; seedRedeems += +s['r$'] || 0; }
   const hasSeed = months.length > 0;
-  const adds    = manualAdds    != null ? manualAdds    : Math.round(seedAdds    * 100) / 100;
-  const redeems = manualRedeems != null ? manualRedeems : Math.round(seedRedeems * 100) / 100;
+  // Seed authoritative when present; manual only fills in for no-seed stops.
+  const adds    = hasSeed ? Math.round(seedAdds    * 100) / 100 : (manualAdds    != null ? manualAdds    : 0);
+  const redeems = hasSeed ? Math.round(seedRedeems * 100) / 100 : (manualRedeems != null ? manualRedeems : 0);
   return {
     adds, redeems, hasSeed, months,
-    addsAuto:    manualAdds    == null && hasSeed,
-    redeemsAuto: manualRedeems == null && hasSeed,
-    noData:      manualAdds == null && manualRedeems == null && !hasSeed,
+    addsAuto:    hasSeed,
+    redeemsAuto: hasSeed,
+    manualOverride: !hasSeed && (manualAdds != null || manualRedeems != null),
+    noData:      !hasSeed && manualAdds == null && manualRedeems == null,
     rate: adds > 0 ? (redeems / adds) * 100 : null
   };
 }
@@ -6620,16 +6624,16 @@ function drawerRewardsHTML(stopId){
 
   return `
     <div class="drawer-card amber">
-      <div class="drawer-card-hd">🎁 Rewards — Year to Date <span style="font-size:.5em;font-weight:400;color:var(--muted);opacity:.65;letter-spacing:0;text-transform:none">build 2026-06-24 · 6-mo YTD</span></div>
+      <div class="drawer-card-hd">🎁 Rewards — Year to Date <span style="font-size:.5em;font-weight:400;color:var(--muted);opacity:.65;letter-spacing:0;text-transform:none">build 2026-06-24b · seed-authoritative YTD</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <label style="display:block">
           <span style="${lblS}">YTD Adds ($)</span>
-          <input id="sd-radds-${stopId}" type="number" step="0.01" style="${inS};margin-top:3px${addsAuto?';font-style:italic;color:var(--accent)':''}" value="${adds}" placeholder="0.00" onblur="onMembershipChange('${stopId}', 'rewardsYtdAdds', this.value)"/>
+          <input id="sd-radds-${stopId}" type="number" step="0.01" style="${inS};margin-top:3px${addsAuto?';font-style:italic;color:var(--accent)':''}" value="${adds}" placeholder="0.00"${addsAuto?' readonly title="Auto-summed from the monthly rewards seeds — not editable"':` onblur="onMembershipChange('${stopId}', 'rewardsYtdAdds', this.value)"`}/>
           ${addsAuto ? autoHint : noteHint}
         </label>
         <label style="display:block">
           <span style="${lblS}">YTD Redeems ($)</span>
-          <input id="sd-rred-${stopId}" type="number" step="0.01" style="${inS};margin-top:3px${redeemsAuto?';font-style:italic;color:var(--accent)':''}" value="${redeems}" placeholder="0.00" onblur="onMembershipChange('${stopId}', 'rewardsYtdRedeems', this.value)"/>
+          <input id="sd-rred-${stopId}" type="number" step="0.01" style="${inS};margin-top:3px${redeemsAuto?';font-style:italic;color:var(--accent)':''}" value="${redeems}" placeholder="0.00"${redeemsAuto?' readonly title="Auto-summed from the monthly rewards seeds — not editable"':` onblur="onMembershipChange('${stopId}', 'rewardsYtdRedeems', this.value)"`}/>
           ${redeemsAuto ? autoHint : noteHint}
         </label>
       </div>
@@ -7823,18 +7827,12 @@ function pageKpiHeroHTML(stopId){
   const mtdRate      = sMtd  ? (+sMtd.rr     || 0) : null;
   const priorAdds    = sPrev ? (+sPrev['a$'] || 0) : 0;
   const priorRedeems = sPrev ? (+sPrev['r$'] || 0) : 0;
-  // YTD: manual override wins, otherwise sum across every per-month seed.
-  // Add new REWARDS_2026_MM_SEED constants in the two probes below.
-  const manualAdds    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
-  const manualRedeems = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
-  let seedYtdAdds = 0, seedYtdRedeems = 0;
-  for(const k of rewardsSeedMonthsFor(stopId)){
-    const s = REWARDS_SEED_BY_MONTH[k][stopId];
-    seedYtdAdds    += +s['a$'] || 0;
-    seedYtdRedeems += +s['r$'] || 0;
-  }
-  const ytdAdds    = manualAdds    != null ? manualAdds    : seedYtdAdds;
-  const ytdRedeems = manualRedeems != null ? manualRedeems : seedYtdRedeems;
+  // YTD via the shared helper — the per-month seed sum is authoritative when
+  // the stop has any rewards rows (manual stored values are ignored to avoid
+  // stale partial-month totals).
+  const _ytd = stopRewardsYtd(stopId);
+  const ytdAdds    = _ytd.adds;
+  const ytdRedeems = _ytd.redeems;
   const rateColor  = mtdRate == null ? 'var(--muted)' : (mtdRate >= 60 ? 'var(--green)' : (mtdRate >= 30 ? 'var(--yellow)' : 'var(--red)'));
   const rateLabel  = mtdRate == null ? '—' : mtdRate.toFixed(1) + '%';
   const rewardsCard = `
@@ -8325,8 +8323,9 @@ function exportStopDetailCSV(stopId){
   lines.push(row(['Accepts Fuelman', rec.acceptsFuelman ? 'Yes' : 'No']));
   lines.push(row(['Accepts R-Check', rec.acceptsRcheck ? 'Yes' : 'No']));
   lines.push(row(['YTD Total Gallons (manual)', rec.ytdTotalGallons != null ? rec.ytdTotalGallons : '']));
-  lines.push(row(['Rewards YTD Adds', rec.rewardsYtdAdds != null ? rec.rewardsYtdAdds : '']));
-  lines.push(row(['Rewards YTD Redeems', rec.rewardsYtdRedeems != null ? rec.rewardsYtdRedeems : '']));
+  const _ytdX = stopRewardsYtd(stopId);
+  lines.push(row(['Rewards YTD Adds', _ytdX.adds]));
+  lines.push(row(['Rewards YTD Redeems', _ytdX.redeems]));
   lines.push(row(['ROI Net Current', roi.netCurrent != null ? roi.netCurrent.toFixed(2) : '']));
   lines.push(row(['ROI Net Potential', roi.netPotential != null ? roi.netPotential.toFixed(2) : '']));
   lines.push('');
@@ -8652,11 +8651,12 @@ function buildSiteReviewPrefill(stopId){
   fields['rack-env']     = rack.misc_tax    != null ? rack.misc_tax    : '';
   fields['rack-load']    = ''; // not in our schema
 
-  // Rewards YTD
-  if(rec.rewardsYtdAdds    != null) fields['rwd-adds-2025']    = rec.rewardsYtdAdds;
-  if(rec.rewardsYtdRedeems != null) fields['rwd-redeems-2025'] = rec.rewardsYtdRedeems;
-  if(rec.rewardsYtdAdds && rec.rewardsYtdRedeems){
-    fields['rwd-rate-2025'] = ((rec.rewardsYtdRedeems / rec.rewardsYtdAdds) * 100).toFixed(1) + '%';
+  // Rewards YTD — seed-authoritative via the shared helper.
+  const _ytdF = stopRewardsYtd(stopId);
+  if(_ytdF.adds || _ytdF.redeems){
+    fields['rwd-adds-2025']    = _ytdF.adds;
+    fields['rwd-redeems-2025'] = _ytdF.redeems;
+    if(_ytdF.adds > 0) fields['rwd-rate-2025'] = ((_ytdF.redeems / _ytdF.adds) * 100).toFixed(1) + '%';
   }
 
   // Aggregator discounts — current month
@@ -11162,10 +11162,12 @@ function brBuildAutoData(stopId, period){
 
   const manualAdds    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
   const manualRedeems = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
-  const adds    = manualAdds    != null ? manualAdds    : (hasRewardsSeed ? Math.round(seedAdds    * 100) / 100 : 0);
-  const redeems = manualRedeems != null ? manualRedeems : (hasRewardsSeed ? Math.round(seedRedeems * 100) / 100 : 0);
-  const rewardsAddsSource    = (manualAdds    != null) ? 'manual'    : (hasRewardsSeed ? 'seed' : 'none');
-  const rewardsRedeemsSource = (manualRedeems != null) ? 'manual'    : (hasRewardsSeed ? 'seed' : 'none');
+  // Seed sum is authoritative when present; a stored manual value only fills
+  // in for stops with no seed rows (prevents stale partial-month overrides).
+  const adds    = hasRewardsSeed ? Math.round(seedAdds    * 100) / 100 : (manualAdds    != null ? manualAdds    : 0);
+  const redeems = hasRewardsSeed ? Math.round(seedRedeems * 100) / 100 : (manualRedeems != null ? manualRedeems : 0);
+  const rewardsAddsSource    = hasRewardsSeed ? 'seed' : (manualAdds    != null ? 'manual' : 'none');
+  const rewardsRedeemsSource = hasRewardsSeed ? 'seed' : (manualRedeems != null ? 'manual' : 'none');
   const redemptionRateYtd    = (adds > 0) ? (redeems / adds) * 100 : null;
 
   // Membership $/mo from rec.membershipCost (e.g. "$1,500.00 /mo")
