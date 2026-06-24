@@ -585,6 +585,7 @@ const ssSet=(k,v)=>{try{sessionStorage.setItem(k,v);}catch(e){}};
 const ROADYS_SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
 const ROADYS_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
 let _sbClient = null;
+let _authToken = null;            // signed-in user's access token (null = anon); cached so the fetch wrapper is synchronous
 let _lastSyncedEntities = null;   // baseline for change diffing
 let _syncState = "syncing";
 function ensureSupabaseLib(){
@@ -600,10 +601,30 @@ function ensureSupabaseLib(){
 function getRoadysSB(){
   if(_sbClient) return _sbClient;
   if(typeof window !== 'undefined' && window.supabase){
-    try { _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON); return _sbClient; }
+    try {
+      _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON, {
+        auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:false },
+        // Force every PostgREST / RPC request to carry the signed-in user's JWT so it runs as
+        // `authenticated`. Without this, table calls went out with only the anon key -> 403 after
+        // Phase B stripped anon. Auth endpoints (/auth/) are left alone so sign-in + token refresh
+        // use their own headers.
+        global:{ fetch:(input, init)=>{
+          init = init || {};
+          const url = (typeof input === 'string') ? input : (input && input.url) || '';
+          if(_authToken && url.indexOf('/auth/') === -1){
+            init.headers = Object.assign({}, init.headers, { Authorization:'Bearer '+_authToken });
+          }
+          return fetch(input, init);
+        }}
+      });
+      // keep the cached token current across SIGNED_IN / TOKEN_REFRESHED / SIGNED_OUT and restore
+      _sbClient.auth.onAuthStateChange((_evt, session)=>{ _authToken = session ? session.access_token : null; });
+      _sbClient.auth.getSession().then(({data})=>{ if(data && data.session) _authToken = data.session.access_token; }).catch(()=>{});
+      return _sbClient;
+    }
     catch(e){ console.warn('getRoadysSB: ' + e.message); return null; }
   }
-  return null;
+  return _sbClient;
 }
 function nowISO(){try{return new Date().toISOString();}catch(e){return null;}}
 
@@ -1824,9 +1845,10 @@ async function onSignIn(e){
   if(!sb){ if(msg) msg.textContent="Connection unavailable — try again."; return; }
   const email=(($("#agpAuthEmail")||{}).value||"").trim(), pass=($("#agpAuthPass")||{}).value||"";
   const btn=$("#agpAuthBtn"); if(btn) btn.disabled=true; if(msg) msg.textContent="";
-  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
   if(btn) btn.disabled=false;
   if(error){ if(msg) msg.textContent=(error.message||"Sign-in failed."); return; }
+  if(data && data.session) _authToken = data.session.access_token;   // live before the first sync
   startPlanner();
 }
 async function signOut(){
@@ -1852,11 +1874,12 @@ async function init(){
   try{ const {data}=await sb.auth.getSession(); session=data&&data.session||null; }
   catch(e){ console.warn("getSession: "+(e&&e.message)); }
   if(!session){ showAuthGate(); return; }   // GATE: no render / no table reads until signed in
+  _authToken = session.access_token;        // live on reload-with-session before the first sync
   startPlanner();                            // authenticated
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
-  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,init,
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,init,getRoadysSB,
     setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},mgrUnlocked(){return _mgrUnlocked;},
     getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
