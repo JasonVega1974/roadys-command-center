@@ -386,6 +386,9 @@ function showFallback(){
   if(form) form.addEventListener('submit', onFallbackFind);
 }
 async function init(){
+  // Load supabase-js BEFORE resolving — otherwise getRoadysSB() returns null, resolveStop()
+  // bails to fallback via its null-sb guard, and no resolve_optin_token RPC ever fires.
+  try{ await ensureSupabaseLib(); }catch(e){ /* CDN unreachable: resolveStop falls back gracefully */ }
   const r=await resolveStop();
   if(r.stop){ mount(r.stop, r.aggregators); } else { showFallback(); }
 }
