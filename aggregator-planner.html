@@ -491,6 +491,7 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
         <button class="agp-btn sm" id="agpAddLoc">+ Add truck stop</button>
         <button class="agp-btn sm" id="agpImportLoc">Import list</button>
         <button class="agp-btn sm" id="agpExportLoc">⬇ Export CSV</button>
+        <button class="agp-btn sm" id="agpExportLinks" title="Download a CSV of every stop's personalized opt-in link (admin only)">📥 Opt-in links CSV</button>
         <button class="agp-btn sm" id="agpReloadSheet" title="Replace locations + opt-in data with the latest spreadsheet (CEFCO + offboarded excluded)">↻ Reload from sheet</button>
         <button class="agp-btn sm" id="agpUndo" style="display:none" title="Undo the last bulk action">↶ Undo</button>
       </div>
@@ -1441,6 +1442,26 @@ function exportLocCSV(){
   const el=document.createElement("a");el.href=url;el.download="aggregator-optin-"+a.id+"-"+new Date().toISOString().slice(0,10)+".csv";el.click();
   URL.revokeObjectURL(url);toast("CSV exported ("+rows.length+" rows)");
 }
+function downloadCSV(filename,csv){
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const url=URL.createObjectURL(blob);
+  const el=document.createElement("a");el.href=url;el.download=filename;el.click();URL.revokeObjectURL(url);
+}
+// CSV from export_optin_links() rows: Store #, Stop Name, full opt-in URL (token already embedded server-side).
+function optinLinksCSV(rows){
+  const head=["Store #","Stop Name","Opt-In URL"];
+  const body=(rows||[]).map(r=>[r.stop_code,r.stop_name,r.optin_url].map(csvCell).join(","));
+  return [head.map(csvCell).join(","),...body].join("\r\n");
+}
+// Admin-only: call the SECURITY DEFINER RPC (authenticated only) and download the links as CSV.
+async function exportOptinLinks(){
+  const sb=getRoadysSB();
+  if(!sb){ toast("Sign in to export opt-in links"); return; }
+  const {data,error}=await sb.rpc("export_optin_links");
+  if(error){ toast("Export failed — "+String(error.message||"").slice(0,80)); return; }
+  if(!data||!data.length){ toast("No opt-in links to export"); return; }
+  downloadCSV("optin-links-"+new Date().toISOString().slice(0,10)+".csv", optinLinksCSV(data));
+  toast(data.length+" opt-in links exported");
+}
 
 /* ----- process flow diagram ----- */
 function renderFlow(){
@@ -1598,6 +1619,7 @@ function bind(){
   $("#agpAddLoc").onclick=openAddLoc;
   $("#agpImportLoc").onclick=openImportLoc;
   $("#agpExportLoc").onclick=exportLocCSV;
+  { const elx=$("#agpExportLinks"); if(elx) elx.onclick=exportOptinLinks; }
   const undoBtn=$("#agpUndo");if(undoBtn)undoBtn.onclick=undoBulk;
   $("#agpReloadSheet").onclick=()=>confirmModal(
     "Reload locations from the spreadsheet?",
@@ -1897,7 +1919,7 @@ async function init(){
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
-  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,init,getRoadysSB,
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,init,getRoadysSB,optinLinksCSV,exportOptinLinks,
     setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},mgrUnlocked(){return _mgrUnlocked;},
     getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
