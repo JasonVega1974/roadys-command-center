@@ -45,6 +45,8 @@ create table if not exists public.agp_aggregators (
   notes           text default '',
   sort_index      integer default 0,
   show_on_form    boolean default false,   -- opt-in portal: publish this aggregator to the truck-stop form
+  bo_cost_plus    text default '',         -- Better-Of: per-unit Cost+ value (see agp_bo_dual_discount.sql)
+  bo_retail_minus text default '',         -- Better-Of: per-unit Retail- value
   updated_at      timestamptz default now()
 );
 

@@ -82,12 +82,14 @@ grant execute on function public.resolve_optin_by_code(text, text) to anon, auth
 -- (c) safe aggregator display data for the form (no agp_aggregators SELECT)
 create or replace function public.list_optin_aggregators()
 returns table(id text, name text, rail text, carriers text,
-              discount_type text, discount_value text, discount_target text, description text)
+              discount_type text, discount_value text, discount_target text,
+              bo_cost_plus text, bo_retail_minus text, description text)   -- bo_* added by agp_bo_dual_discount.sql
 language sql stable security definer
 set search_path = public, pg_temp
 as $$
   select a.id, a.name, a.rail, a.carriers,
-         a.discount_type, a.discount_value, a.discount_target, coalesce(d.body,'')
+         a.discount_type, a.discount_value, a.discount_target,
+         coalesce(a.bo_cost_plus,''), coalesce(a.bo_retail_minus,''), coalesce(d.body,'')
   from public.agp_aggregators a
   left join public.agp_descriptions d on d.aggregator_id = a.id
   where a.show_on_form is true
