@@ -946,12 +946,17 @@ const TPC_ENROLL_SEED={
 };
 const TPC_STATUS={};
 Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STATUS[s]=st));
-const ROSTER_STATUS={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS};
-const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS};
+// ── Heartland / Global Payments Program Status (active-only roster, 2026-06-26) ──
+// 2 active locations (Location Active AND Program Active). EXCLUSIVE roster.
+const HEARTLAND_STATUS={};
+['R03693','R00614'].forEach(s=>HEARTLAND_STATUS[s]='active');
+const ROSTER_STATUS={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
+const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
 // Vendors whose roster is the COMPLETE enrollment truth: enrolled IFF 'active' in
-// the map; any other enrollment for that vid is cleared. Sysco (V00010) and Truck
-// Parking Club (V00112) are exclusive so their new rosters supersede older seeds.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true};
+// the map; any other enrollment for that vid is cleared. Sysco (V00010), Truck
+// Parking Club (V00112) and Heartland (V00232) are exclusive so their rosters
+// supersede older seeds.
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true};
 // Shared status badge (used by the enrollment grid).
 function statusBadge(st,label){
   label=label||'';
@@ -2588,7 +2593,9 @@ const PROGRAM_DETAILS = [
    contractTerm:'Open-ended',
    reporting:'Monthly',
    notes:'⚠️ MANDATORY PROGRAM — Participation required if: (1) We substantiate savings of 2% or greater via cost comparison. (2) NOT required if Member is branded with a major fuel supplier and is required to process credit cards through their fuel supplier\'s processor. This is a newer program — Member Savings on cost comparisons completed have been very significant: up to $2,500/mo for high-volume Truck Stops and up to $500/mo for small-mid volume stops. Need last COMPLETE Monthly Credit Card Processing Statement for comparison. Contact Alan Levine for all questions, cost comparisons & sign ups. Please Cc John Fechik on all emails.',
-   howItWorks:'Members switch to Heartland/Global Payments contracted rates. Program is cost plus 4.5¢ per transaction. Savings come from eliminated fees and below-market per-transaction costs. Covers Discover, MC, Visa, AMEX (No Fuel Cards). Customer Service is all US based 24/7.'},
+   howItWorks:'Members switch to Heartland/Global Payments contracted rates. Program is cost plus 4.5¢ per transaction. Savings come from eliminated fees and below-market per-transaction costs. Covers Discover, MC, Visa, AMEX (No Fuel Cards). Customer Service is all US based 24/7.',
+   rebatesAllowances:'No rebates specified.',
+   roadysTeam:'Top 7 — Most beneficial vendor program for Members, significant savings.\nContracted rates for credit card processing (Discover, MC, Visa, AMEX).\nTransparent and aggressive pricing. Outstanding US-based customer service.\nClean and concise reporting. (No hidden charges).'},
   {vid:'V00022',name:'Lynco',category:'C-Store Merchandise',
    savings:'~4% below street pricing with rebates',
    avgSavings:'~$400/mo estimated — based on ~$6,000/mo avg purchases at 7% (National Contracted Pricing + Rebate)',

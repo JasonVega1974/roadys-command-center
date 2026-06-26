@@ -2061,7 +2061,9 @@ const PROG_DETAILS_INLINE = [
    contractTerm:'Open-ended',
    reporting:'Monthly',
    notes:'⚠️ MANDATORY PROGRAM — Participation required if: (1) We substantiate savings of 2% or greater via cost comparison. (2) NOT required if Member is branded with a major fuel supplier and is required to process credit cards through their fuel supplier\'s processor. This is a newer program — Member Savings on cost comparisons completed have been very significant: up to $2,500/mo for high-volume Truck Stops and up to $500/mo for small-mid volume stops. Need last COMPLETE Monthly Credit Card Processing Statement for comparison. Contact Alan Levine for all questions, cost comparisons & sign ups. Please Cc John Fechik on all emails.',
-   howItWorks:'Members switch to Heartland/Global Payments contracted rates. Program is cost plus 4.5¢ per transaction. Savings come from eliminated fees and below-market per-transaction costs. Covers Discover, MC, Visa, AMEX (No Fuel Cards). Customer Service is all US based 24/7.'},
+   howItWorks:'Members switch to Heartland/Global Payments contracted rates. Program is cost plus 4.5¢ per transaction. Savings come from eliminated fees and below-market per-transaction costs. Covers Discover, MC, Visa, AMEX (No Fuel Cards). Customer Service is all US based 24/7.',
+   rebatesAllowances:'No rebates specified.',
+   roadysTeam:'Top 7 — Most beneficial vendor program for Members, significant savings.\nContracted rates for credit card processing (Discover, MC, Visa, AMEX).\nTransparent and aggressive pricing. Outstanding US-based customer service.\nClean and concise reporting. (No hidden charges).'},
   {vid:'V00022',name:'Lynco',category:'C-Store Merchandise',
    savings:'~4% below street pricing with rebates',
    avgSavings:'3% min rebate (4% if corp >$50K)',
@@ -2637,14 +2639,19 @@ const TPC_ENROLL_SEED={
 const TPC_STATUS={};
 Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STATUS[s]=st));
 
+// Heartland / Global Payments Program Status (active-only roster, 2026-06-26).
+// 2 active locations (Location Active AND Program Active). EXCLUSIVE roster.
+const HEARTLAND_STATUS={};
+['R03693','R00614'].forEach(s=>HEARTLAND_STATUS[s]='active');
+
 // Registry of roster-tracked vendors. Each is AUTHORITATIVE for its V-id
 // enrollment (active => enrolled, everything else => not enrolled) and renders a
 // per-stop status badge in the stop drawer. Add future vendors here.
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS};
-const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice','V00112':'🅿️ Truck Parking Club'};
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
+const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice','V00112':'🅿️ Truck Parking Club','V00232':'💳 Heartland / Global Payments'};
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared on read.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true};
 const ROSTER_STATUS_META={
   active:{c:'var(--green)',t:'Active',bg:'rgba(16,185,129,.12)'},
   pending:{c:'var(--yellow)',t:'Pending',bg:'rgba(251,191,36,.12)'},

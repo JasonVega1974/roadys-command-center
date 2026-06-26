@@ -11814,11 +11814,13 @@ const TPC_ENROLL_SEED={
   refused:['R03495']
 };
 const TPC_STATUS={}; Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STATUS[s]=st));
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS};
+// Heartland / Global Payments: active-only roster of 2 (Location + Program Active).
+const HEARTLAND_STATUS={}; ['R03693','R00614'].forEach(s=>HEARTLAND_STATUS[s]='active');
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
 const STATUS_DISPLAY=ROSTER_STATUS;
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true};
 function statusBadge(st,label){
   label=label||'';
   if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';
