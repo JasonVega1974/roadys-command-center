@@ -11776,6 +11776,51 @@ function loadVPEnroll(){try{const s=localStorage.getItem('roadys_vp_enroll');if(
 function saveVPEnroll(){try{localStorage.setItem('roadys_vp_enroll',JSON.stringify(VP_ENROLL));}catch(e){}}
 loadVPEnroll();
 
+// ── Per-vendor Program-Status rosters (Coca-Cola 137-list + DAS 45-list, 2026-06-25) ──
+// LID → status. ROSTER_STATUS is AUTHORITATIVE for enrollment: 'active' => enrolled,
+// everything else => not enrolled (the status still renders in the matrix grid).
+// Applied on load AND re-applied after the Supabase merge so stale cloud rows can't
+// drag the Top-10 counts / territory revenue down (seed-authoritative pattern).
+const COKE_ENROLL_SEED={
+  active:['P01224','L03461','R03876','R01260','R03539','R03629','R03638','R03693','R02592','R01024','R00930','R01025','R01026','R01027','R01028','R00931','R01022','R01023','R00932','R00782','R01029','R01174','R04007','R03517','R00717','R00326','R01072','R01020','R01130','R00454','R00800','R00809','R00825','R00833','R00840','R00848','R00826','R00841','R00849','R00827','R00835','R00842','R00641','R00828','R00836','R00843','R00642','R00832','R00844','R00850','R00640','R00639','R00845','R00829','R00837','R00852','R00847','R00853','R00831','R00839','R03860','R00958','R03863','R00205','R01084','R03699','R01017','R01171','R01187','R01067','R00670','R00076','R03494','R00179','R01265','R00941','R01866','R01129','R03889','R00917','R00221','R01259','R00208','P03658','R00118','R01835','R00408','R00723','R01220','R01217','R00614','P01225','P03645','R03601','R03648','R01104','R00325','R00933','R01140','P03750','P03721','P03749','P03748','P03746','P03745','R01837','P03744','P03743','P03742','R01244','R01143','R03877','R01038','R00245','R00244','P03660','R01021','R03596','R03597','P03718','R00703','P03599'],
+  pending:['R01063','R01222','R03917','R03918'],
+  refused:['R01186','R01241','R01240','R01338','R00935','P03595','P03600','R01168'],
+  inactive:['R03932','R00087']
+};
+const DAS_ENROLL_SEED={
+  active:['R00255','R03932','R00112','R00205','R03494','R03495','R00179','R00296','R00449','R00298','R00291','R00448','R00297','R00294','R01036','R01965','R01104','R01222','R03665','R03664','R01205','P03600','R00245','P03660','R01021','R03598','R03596','R03597','R00703'],
+  pending:['R03627','R02592','R01171','P03658','R03933','R03871','R03934','R03918'],
+  inactive:['R03473','R03889','R00614','R01245','R00395','R03791'],
+  zero:['R03693','R01168']
+};
+const COKE_STATUS={}; Object.keys(COKE_ENROLL_SEED).forEach(st=>COKE_ENROLL_SEED[st].forEach(s=>COKE_STATUS[s]=st));
+const DAS_STATUS={};  Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[st].forEach(s=>DAS_STATUS[s]=st));
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS};
+const STATUS_DISPLAY=ROSTER_STATUS;
+function statusBadge(st,label){
+  label=label||'';
+  if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';
+  if(st==='pending')  return'<span style="background:rgba(255,214,10,.15);color:var(--yellow);font-size:.62em;font-weight:700;padding:1px 4px;border-radius:8px" title="'+label+' Pending">PEND</span>';
+  if(st==='refused')  return'<span style="color:var(--red);font-weight:700;font-size:.8em" title="'+label+' Refused">✗</span>';
+  if(st==='inactive') return'<span style="background:rgba(107,122,153,.18);color:var(--muted);font-size:.6em;font-weight:700;padding:1px 4px;border-radius:8px" title="'+label+' Inactive">INACT</span>';
+  if(st==='zero')     return'<span style="background:rgba(107,122,153,.12);color:var(--muted);font-size:.58em;font-weight:700;padding:1px 4px;border-radius:8px" title="'+label+' Zero Activity">ZERO</span>';
+  return'';
+}
+function applyRosterAuthority(){
+  let changed=false;
+  for(const vid in ROSTER_STATUS){
+    const map=ROSTER_STATUS[vid];
+    for(const sid in map){
+      if(!VP_ENROLL[sid])VP_ENROLL[sid]={};
+      const want=(map[sid]==='active');
+      if(VP_ENROLL[sid][vid]!==want){VP_ENROLL[sid][vid]=want;changed=true;}
+    }
+  }
+  if(changed)saveVPEnroll();
+  return changed;
+}
+applyRosterAuthority();
+
 // Top 10 vendor list matching user spec
 const VP_TOP10_LIST = [
   {id:'V00033', name:'Coca-Cola'},
@@ -12078,6 +12123,7 @@ function renderVPEnrollTable(){
   let rows=allStops.filter(mb=>{
     if(q&&![mb.name,mb.city,mb.state,mb.id].some(v=>(v||'').toLowerCase().includes(q))) return false;
     if(vf!=='all'){
+      if(STATUS_DISPLAY[vf]) return !!STATUS_DISPLAY[vf][mb.id];
       const le=VP_ENROLL[mb.id]||{};
       return !!le[vf];
     }
@@ -12104,8 +12150,11 @@ function renderVPEnrollTable(){
     const score=vendors.reduce((s,v)=>s+(le[v.id]?1:0),0);
     const scoreColor=score>=8?'var(--green)':score>=5?'var(--yellow)':score>=3?'var(--orange)':'var(--red)';
     const cells=vendors.map(v=>{
-      const on=!!le[v.id];
-      return `<td style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)">${on?'<span style="color:var(--green);font-size:1.1em">✓</span>':'<span style="color:var(--border2)">·</span>'}</td>`;
+      const sm=STATUS_DISPLAY[v.id];
+      let inner;
+      if(sm&&sm[mb.id]){ inner=statusBadge(sm[mb.id], v.name); }
+      else { inner = le[v.id]?'<span style="color:var(--green);font-size:1.1em">✓</span>':'<span style="color:var(--border2)">·</span>'; }
+      return `<td style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)">${inner}</td>`;
     }).join('');
     return `<tr>
       <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap">${mb.name}</td>
@@ -16313,6 +16362,8 @@ async function vpLoadFromSupabase(){
         if(!VP_ENROLL[r.stop_id]) VP_ENROLL[r.stop_id] = {};
         VP_ENROLL[r.stop_id][r.vendor_id] = r.enrolled !== false;
       });
+      // Re-assert the per-vendor roster statuses (Coca-Cola, DAS) over the cloud.
+      applyRosterAuthority();
       try { localStorage.setItem('roadys_vp_enroll', JSON.stringify(VP_ENROLL)); } catch(e){}
       sbHideSyncing(true);
       // Refresh the dashboard if it's been built once already. renderMaster

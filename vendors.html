@@ -895,6 +895,68 @@ const COKE_ROI_SEED=[{"stop_id": "R00244", "vendor_id": "V00033", "monthly_spend
   localStorage.setItem('roadys_coke_roi_seeded_v2','1');
 })();
 
+// ── Coca-Cola per-stop Program Status (137-location roster, 2026-06-25) ──
+// LID → 'active' | 'pending' | 'refused' | 'inactive'. Mirrors the SYSCO_STATUS
+// pattern so the enrollment grid can render the 4 states. (R00639 appears twice
+// in the source roster — deduped here → 136 unique stops: 122 active, 4 pending,
+// 8 refused, 2 inactive.)
+const COKE_ENROLL_SEED={
+  active:['P01224','L03461','R03876','R01260','R03539','R03629','R03638','R03693','R02592','R01024','R00930','R01025','R01026','R01027','R01028','R00931','R01022','R01023','R00932','R00782','R01029','R01174','R04007','R03517','R00717','R00326','R01072','R01020','R01130','R00454','R00800','R00809','R00825','R00833','R00840','R00848','R00826','R00841','R00849','R00827','R00835','R00842','R00641','R00828','R00836','R00843','R00642','R00832','R00844','R00850','R00640','R00639','R00845','R00829','R00837','R00852','R00847','R00853','R00831','R00839','R03860','R00958','R03863','R00205','R01084','R03699','R01017','R01171','R01187','R01067','R00670','R00076','R03494','R00179','R01265','R00941','R01866','R01129','R03889','R00917','R00221','R01259','R00208','P03658','R00118','R01835','R00408','R00723','R01220','R01217','R00614','P01225','P03645','R03601','R03648','R01104','R00325','R00933','R01140','P03750','P03721','P03749','P03748','P03746','P03745','R01837','P03744','P03743','P03742','R01244','R01143','R03877','R01038','R00245','R00244','P03660','R01021','R03596','R03597','P03718','R00703','P03599'],
+  pending:['R01063','R01222','R03917','R03918'],
+  refused:['R01186','R01241','R01240','R01338','R00935','P03595','P03600','R01168'],
+  inactive:['R03932','R00087']
+};
+const COKE_STATUS={};
+Object.keys(COKE_ENROLL_SEED).forEach(st=>COKE_ENROLL_SEED[st].forEach(s=>COKE_STATUS[s]=st));
+
+// ── DAS per-stop Program Status (45-location roster, 2026-06-25) ──
+// LID → 'active' | 'pending' | 'inactive' | 'zero'. "Active" here means Location
+// Status Active AND Program Status Active (no offboarding-but-active stops exist
+// in the roster). 29 active, 8 pending, 6 inactive, 2 zero-activity.
+const DAS_ENROLL_SEED={
+  active:['R00255','R03932','R00112','R00205','R03494','R03495','R00179','R00296','R00449','R00298','R00291','R00448','R00297','R00294','R01036','R01965','R01104','R01222','R03665','R03664','R01205','P03600','R00245','P03660','R01021','R03598','R03596','R03597','R00703'],
+  pending:['R03627','R02592','R01171','P03658','R03933','R03871','R03934','R03918'],
+  inactive:['R03473','R03889','R00614','R01245','R00395','R03791'],
+  zero:['R03693','R01168']
+};
+const DAS_STATUS={};
+Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[st].forEach(s=>DAS_STATUS[s]=st));
+
+// ── Per-vendor roster registry ──
+// ROSTER_STATUS: vendors whose per-stop status roster is AUTHORITATIVE for
+// enrollment (only 'active' counts as enrolled; pending/refused/inactive/zero =>
+// not enrolled, but the status still renders). STATUS_DISPLAY additionally
+// includes Sysco (display-only; Sysco keeps its own cloud-status flow).
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS};
+const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS};
+// Shared status badge (used by the enrollment grid).
+function statusBadge(st,label){
+  label=label||'';
+  if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';
+  if(st==='pending')  return'<span style="background:rgba(255,214,10,.15);color:var(--yellow);font-size:.62em;font-weight:700;padding:1px 4px;border-radius:8px" title="'+label+' Pending">PEND</span>';
+  if(st==='refused')  return'<span style="color:var(--red);font-weight:700;font-size:.8em" title="'+label+' Refused">✗</span>';
+  if(st==='inactive') return'<span style="background:rgba(107,122,153,.18);color:var(--muted);font-size:.6em;font-weight:700;padding:1px 4px;border-radius:8px" title="'+label+' Inactive">INACT</span>';
+  if(st==='zero')     return'<span style="background:rgba(107,122,153,.12);color:var(--dim);font-size:.58em;font-weight:700;padding:1px 4px;border-radius:8px" title="'+label+' Zero Activity">ZERO</span>';
+  return'';
+}
+// ROSTER_STATUS is AUTHORITATIVE for enrollment: active => enrolled, everything
+// else => not enrolled. Applied on every load AND re-applied after the Supabase
+// fetch so stale cloud/manual rows can't drag the count down (seed-authoritative).
+function applyRosterAuthority(){
+  let changed=false;
+  for(const vid in ROSTER_STATUS){
+    const map=ROSTER_STATUS[vid];
+    for(const sid in map){
+      if(!VP_ENROLL[sid])VP_ENROLL[sid]={};
+      const want=(map[sid]==='active');
+      if(VP_ENROLL[sid][vid]!==want){VP_ENROLL[sid][vid]=want;changed=true;}
+    }
+  }
+  if(changed)saveVPEnroll();
+  return changed;
+}
+applyRosterAuthority();
+
 // ── DAS ROI Seed (2024 Annual Rebate, converted to monthly ÷12) ──
 const DAS_ROI_SEED=[{"stop_id": "R00112", "vendor_id": "V00036", "monthly_spend": 845.51, "rebate_pct": 4.0, "rebate_amount": 33.82, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00174", "vendor_id": "V00036", "monthly_spend": 1597.81, "rebate_pct": 4.0, "rebate_amount": 63.91, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00176", "vendor_id": "V00036", "monthly_spend": 728.95, "rebate_pct": 4.0, "rebate_amount": 29.16, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00178", "vendor_id": "V00036", "monthly_spend": 1165.91, "rebate_pct": 4.0, "rebate_amount": 46.64, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00205", "vendor_id": "V00036", "monthly_spend": 193.35, "rebate_pct": 4.0, "rebate_amount": 7.73, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00206", "vendor_id": "V00036", "monthly_spend": 818.27, "rebate_pct": 4.0, "rebate_amount": 32.73, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00240", "vendor_id": "V00036", "monthly_spend": 232.58, "rebate_pct": 4.0, "rebate_amount": 9.3, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00245", "vendor_id": "V00036", "monthly_spend": 2002.27, "rebate_pct": 4.0, "rebate_amount": 80.09, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00255", "vendor_id": "V00036", "monthly_spend": 12450.03, "rebate_pct": 4.0, "rebate_amount": 498.0, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00294", "vendor_id": "V00036", "monthly_spend": 1278.16, "rebate_pct": 4.0, "rebate_amount": 51.13, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00395", "vendor_id": "V00036", "monthly_spend": 15294.94, "rebate_pct": 4.0, "rebate_amount": 611.8, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00431", "vendor_id": "V00036", "monthly_spend": 178.1, "rebate_pct": 4.0, "rebate_amount": 7.12, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R00664", "vendor_id": "V00036", "monthly_spend": 123.85, "rebate_pct": 4.0, "rebate_amount": 4.95, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R01021", "vendor_id": "V00036", "monthly_spend": 2150.95, "rebate_pct": 4.0, "rebate_amount": 86.04, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R01036", "vendor_id": "V00036", "monthly_spend": 2216.19, "rebate_pct": 4.0, "rebate_amount": 88.65, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R01142", "vendor_id": "V00036", "monthly_spend": 2483.55, "rebate_pct": 4.0, "rebate_amount": 99.34, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R01158", "vendor_id": "V00036", "monthly_spend": 12666.49, "rebate_pct": 4.0, "rebate_amount": 506.66, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R01222", "vendor_id": "V00036", "monthly_spend": 2178.02, "rebate_pct": 4.0, "rebate_amount": 87.12, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R01965", "vendor_id": "V00036", "monthly_spend": 304.13, "rebate_pct": 4.0, "rebate_amount": 12.16, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R02163", "vendor_id": "V00036", "monthly_spend": 9802.98, "rebate_pct": 4.0, "rebate_amount": 392.12, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R03525", "vendor_id": "V00036", "monthly_spend": 33.11, "rebate_pct": 3.99, "rebate_amount": 1.32, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R03596", "vendor_id": "V00036", "monthly_spend": 17668.74, "rebate_pct": 4.0, "rebate_amount": 706.75, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R03597", "vendor_id": "V00036", "monthly_spend": 8645.87, "rebate_pct": 4.0, "rebate_amount": 345.84, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "P03600", "vendor_id": "V00036", "monthly_spend": 5354.79, "rebate_pct": 4.0, "rebate_amount": 214.19, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R03651", "vendor_id": "V00036", "monthly_spend": 1084.5, "rebate_pct": 4.0, "rebate_amount": 43.38, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "P03660", "vendor_id": "V00036", "monthly_spend": 3145.25, "rebate_pct": 4.0, "rebate_amount": 125.81, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R03664", "vendor_id": "V00036", "monthly_spend": 8431.37, "rebate_pct": 4.0, "rebate_amount": 337.25, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}, {"stop_id": "R03665", "vendor_id": "V00036", "monthly_spend": 9036.33, "rebate_pct": 4.0, "rebate_amount": 361.45, "savings_pct": 0, "cost_savings": 0, "rebate_desc": ""}];
 (function seedDASROI(){
@@ -912,6 +974,9 @@ const DAS_ROI_SEED=[{"stop_id": "R00112", "vendor_id": "V00036", "monthly_spend"
   saveROI();saveVPEnroll();
   localStorage.setItem('roadys_das_roi_seeded','1');
 })();
+// The DAS ROI seed above enrolls stops from 2024 purchase data; re-assert the
+// authoritative 45-stop DAS program roster so only program-active stops count.
+applyRosterAuthority();
 
 // ═══════════════════════════════════════════════
 // TAB SWITCHING
@@ -1216,7 +1281,23 @@ function renderVPStopDetail(d){
   }).join('');
   const totBen=totReb+totEst;
   const footer=`<tr style="border-top:2px solid var(--border)"><td colspan="3" style="padding:5px 8px;font-weight:700;font-size:.82em;color:var(--muted)">TOTALS (${d.enrolled.length} stops)</td><td style="padding:5px 8px;text-align:right;font-weight:700">${fmt$(totSpend)}</td><td style="padding:5px 8px;text-align:center;font-size:.78em;color:var(--muted)">${pct?pct+'%':'—'}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:var(--green)">${fmt$(totReb)}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:var(--accent)">${fmt$(totEst)}</td><td style="padding:5px 8px;text-align:right;font-weight:800;color:var(--green)">${fmt$(totBen)}</td></tr>`;
-  return`<table style="width:100%;border-collapse:collapse"><thead><tr><th ${th}>Stop</th><th ${th}>Location</th><th ${th}>GS</th><th ${th} style="text-align:right">Mo Spend</th><th ${th} style="text-align:center">% Contract</th><th ${th} style="text-align:right">Rebate/Mo</th><th ${th} style="text-align:right">Est. Savings/Mo</th><th ${th} style="text-align:right">Total Benefit</th></tr></thead><tbody>${rows}${footer}</tbody></table>`;
+  return`<table style="width:100%;border-collapse:collapse"><thead><tr><th ${th}>Stop</th><th ${th}>Location</th><th ${th}>GS</th><th ${th} style="text-align:right">Mo Spend</th><th ${th} style="text-align:center">% Contract</th><th ${th} style="text-align:right">Rebate/Mo</th><th ${th} style="text-align:right">Est. Savings/Mo</th><th ${th} style="text-align:right">Total Benefit</th></tr></thead><tbody>${rows}${footer}</tbody></table>${rosterNonActive(d.vid)}`;
+}
+// For roster-tracked vendors (Coca-Cola, DAS), list the stops that are NOT
+// active-enrolled (refused / pending / inactive / zero) so the expansion
+// accounts for every stop on the program roster.
+function rosterNonActive(vid){
+  const map=ROSTER_STATUS[vid];
+  if(!map)return'';
+  const order={pending:1,refused:2,inactive:3,zero:4};
+  const meta={pending:{c:'var(--yellow)',t:'Pending'},refused:{c:'var(--red)',t:'Refused'},inactive:{c:'var(--muted)',t:'Inactive'},zero:{c:'var(--dim)',t:'Zero Activity'}};
+  const extra=Object.keys(map).filter(sid=>map[sid]!=='active').map(sid=>{
+    const mb=MEMBERS.find(m=>m.id===sid)||{};
+    return{sid,st:map[sid],name:mb.name||sid,state:mb.state||''};
+  }).sort((a,b)=>(order[a.st]-order[b.st])||a.name.localeCompare(b.name));
+  if(!extra.length)return'';
+  const chips=extra.map(e=>{const m=meta[e.st]||meta.inactive;return`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:2px 9px;font-size:.74em"><b>${e.name}</b>${e.state?`<span style="color:var(--dim)">${e.state}</span>`:''}<span style="color:${m.c};font-weight:800;text-transform:uppercase;font-size:.86em">${m.t}</span></span>`;}).join('');
+  return`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)"><div style="font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Roster — Not Active (${extra.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div></div>`;
 }
 function vpToggleExpand(vid){const r=document.getElementById('vp-expand-'+vid),b=document.getElementById('vp-expand-btn-'+vid);if(!r)return;const o=r.style.display==='table-row';r.style.display=o?'none':'table-row';b.textContent=o?'＋':'－';}
 
@@ -1251,7 +1332,11 @@ function renderVPEnrollTable(){
   rows=rows.filter(r=>{
     if(gsf!=='all'&&r.gs!==gsf)return false;
     if(q&&![r.mb.name,r.mb.id,r.mb.city,r.mb.state].some(v=>(v||'').toLowerCase().includes(q)))return false;
-    if(vf!=='all')return !!r.le[vf];return true;
+    if(vf!=='all'){
+      if(STATUS_DISPLAY[vf])return !!STATUS_DISPLAY[vf][r.mb.id];
+      return !!r.le[vf];
+    }
+    return true;
   });
 
   // Sort
@@ -1273,11 +1358,9 @@ function renderVPEnrollTable(){
   document.getElementById('vp-enroll-count').textContent=rows.length+' stops';
 
   function enrollCell(sid,vid,enrolled){
-    if(vid==='V00010'&&SYSCO_STATUS[sid]){
-      const st=SYSCO_STATUS[sid];
-      if(st==='active') return'<span style="color:var(--green);font-weight:700" title="Sysco Active">✓</span>';
-      if(st==='pending') return'<span style="background:rgba(255,214,10,.15);color:var(--yellow);font-size:.62em;font-weight:700;padding:1px 4px;border-radius:8px" title="Sysco Pending">PEND</span>';
-      if(st==='refused') return'<span style="color:var(--red);font-weight:700;font-size:.8em" title="Sysco Refused">✗</span>';
+    const stMap=STATUS_DISPLAY[vid];
+    if(stMap&&stMap[sid]){
+      return statusBadge(stMap[sid],(VP_TOP10_NAMES&&VP_TOP10_NAMES[vid])||vid);
     }
     return enrolled?'<span style="color:var(--green)">✓</span>':'<span style="color:var(--border2)">·</span>';
   }
@@ -1939,7 +2022,14 @@ function renderOppAnalysis(){
     const currentBenefit=Math.round((currentReb+currentEst)*100)/100;
 
     const onVendors=vendors.filter(v=>enrolledVids.has(v.id));
-    const missingVendors=vendors.filter(v=>!enrolledVids.has(v.id)&&vendorAvgs[v.id].count>0);
+    const missingVendors=vendors.filter(v=>{
+      if(enrolledVids.has(v.id)||vendorAvgs[v.id].count<=0)return false;
+      // A stop already on a vendor's roster as refused/pending/inactive/zero is a
+      // DECIDED outcome, not a fresh opportunity — don't count it as missed.
+      const rs=ROSTER_STATUS[v.id];
+      if(rs&&rs[mb.id]&&rs[mb.id]!=='active')return false;
+      return true;
+    });
 
     const potential=missingVendors.reduce((s,v)=>s+vendorAvgs[v.id].avgBenefit,0);
     const totalPotential=Math.round((currentBenefit+potential)*100)/100;
@@ -2389,7 +2479,9 @@ const PROGRAM_DETAILS = [
    contractTerm:'Jan 2022 – Dec 2024 (amended 2-20-23)',
    reporting:'Monthly (purchases), Annual (rebates)',
    notes:'Full-Service Distributor. Our Program will build our Members Sales! Contracted pricing with a Rebate of 4% paid annually. Contact Donald Shelley for all questions, issues & Member signups. Please Cc John Fechik on all emails.',
-   howItWorks:'Monthly purchase reports emailed from DAS to Scott. Annual rebate calculated at ~0.4% of total sales. With rebates (2% for $5K-$24,999 and 4% for $25K+), location will be about 10% below street pricing. $250 per new location bonus. DAS sends location rebate to Roady\'s, Roady\'s creates CM and pays location.'},
+   howItWorks:'Monthly purchase reports emailed from DAS to Scott. Annual rebate calculated at ~0.4% of total sales. With rebates (2% for $5K-$24,999 and 4% for $25K+), location will be about 10% below street pricing. $250 per new location bonus. DAS sends location rebate to Roady\'s, Roady\'s creates CM and pays location.',
+   rebatesAllowances:'Members:\nNational pricing structure.\n4% Rebate paid yearly by Roady\'s Corporate approximately 60 days after yearend.',
+   roadysTeam:'DAS is a Full-Service C-Store Merchandise Distributor.\nOur Program will build our Members Sales!\nContracted pricing with a Rebate of 4% paid annually.\nContact our DAS Corporate Account Manager for new Member signups & issues.\nPlease Cc John Fechik on all emails.'},
   {vid:'V00002',name:'Farmer Brothers Coffee & Beverage Program',category:'Coffee & Beverages',
    savings:'6% below street pricing + $0.20/lb coffee rebate',
    avgSavings:'~$215/mo estimated — based on ~$3,600/mo avg total purchases (Coffee, Tea, Cappuccino, Other Beverages) at 6.0% savings (National Contracted Pricing + Coffee Rebate)',
@@ -2409,7 +2501,44 @@ const PROGRAM_DETAILS = [
    contractTerm:'Jan 2019 – Dec 2027',
    reporting:'Quarterly',
    notes:'⚠️ MANDATORY PROGRAM — Participation required if: (1) Currently dispensing Coca-Cola Fountain Products or wants to dispense them. (2) Location owns their own fountain dispenser. (3) We substantiate savings of 2% or greater via cost comparison for same Coca-Cola Fountain Products (savings from National Contracted Price and Quarterly Rebate). Average Member Savings: ~$120/mo based on ~40 gallons/mo avg purchases at ~$3.00/gal savings (includes National Price + Rebate). Please contact Justin Kloppel for all questions, issues & Member signups. Please Cc John Fechik on all emails.',
-   howItWorks:'Roady\'s receives $1.83/gal for DOE & Loaned, $2.33 for DOE+$0.50. Keeps $0.43/gal. Pays out $1.40/gal for DOE & Loaned, $1.90 for DOE+$0.50. Freestyle: receives $0.0037/oz, keeps $0.0012, pays $0.0025. Enter gallons on Coke "Don\'t Edit Report" to determine CM.'},
+   howItWorks:'Roady\'s receives $1.83/gal for DOE & Loaned, $2.33 for DOE+$0.50. Keeps $0.43/gal. Pays out $1.40/gal for DOE & Loaned, $1.90 for DOE+$0.50. Freestyle: receives $0.0037/oz, keeps $0.0012, pays $0.0025. Enter gallons on Coke "Don\'t Edit Report" to determine CM.',
+   website:'https://www.coca-colacompany.com/',
+   address:'One Coca-Cola Plaza, Atlanta, GA 30313',
+   corpPhone:'(800) 241-2653',
+   rebatesAllowances:'Members:\n"Base Chain Price"\nAllowances / Rebates paid quarterly.\n• $1.50/gallon on Fountain BIB\'s, Sparkling or Still.\n• $1.35/gallon on Gold Peak Tea Products.\n• $2.35/gallon on Frozen Carbonated Beverages (FCB\'s).\n• $0.00198 per finished oz on Freestyle.',
+   roadysTeam:'Coca-Cola Fountain Program with Coca-Cola North America (Corporate).\n⚠️ A Roady\'s Member MUST own their own equipment!\nSee "Coca-Cola Program Information Sheet — Including Conversion Process.pdf" in Documents for full details.',
+   merchantConsole:`<div style="line-height:1.55">
+<div style="font-weight:800;color:var(--accent);margin-bottom:8px">THE COCA‑COLA® COMPANY IS THE PREFERRED BEVERAGE PARTNER FOR ROADY'S TRUCK STOPS</div>
+<div style="font-weight:700;margin:8px 0 3px">Program Overview</div>
+<ul style="margin:0 0 6px 18px;padding:0">
+<li>Coca‑Cola is the <b>preferred non‑alcoholic beverage partner</b> for Roady's Truck Stops</li>
+<li>Coca‑Cola delivers trusted brands and operational expertise</li>
+</ul>
+<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+<div style="font-weight:700;margin:8px 0 3px">Value to Roady's Members</div>
+<div style="font-weight:700;margin:6px 0 3px">Commercial Impact</div>
+<ul style="margin:0 0 6px 18px;padding:0"><li>Co‑op‑aligned pricing programs</li></ul>
+<div style="font-weight:700;margin:6px 0 3px">Traffic & Engagement</div>
+<ul style="margin:0 0 6px 18px;padding:0">
+<li>Turnkey national and regional promotions</li>
+<li>High‑equity brands that drive impulse and repeat visits</li>
+<li>Sports, seasonal, and travel‑focused activations</li>
+</ul>
+<div style="font-weight:700;margin:6px 0 3px">Operational Support</div>
+<ul style="margin:0 0 6px 18px;padding:0">
+<li>Assortment and merchandising recommendations</li>
+<li>Equipment support (coolers, fountain, frozen)</li>
+<li>Reliable supply and local service teams</li>
+</ul>
+<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+<div style="font-weight:700;margin:8px 0 3px">Why Coca‑Cola</div>
+<ul style="margin:0 0 6px 18px;padding:0">
+<li>Industry‑leading beverage portfolio</li>
+<li>Proven traffic and basket‑building performance</li>
+<li>Investment‑backed partnership model</li>
+</ul>
+<div style="font-style:italic;font-weight:700;margin-top:8px;color:var(--muted)">The Coca‑Cola® Company is a preferred beverage partner of Roady's Truck Stops, delivering value, consistency, and brands consumers love.</div>
+</div>`},
   {vid:'V00232',name:'Heartland / Global Payments',category:'Credit Card Processing',
    savings:'Up to $2,500/mo (high-volume) or $500/mo (small-mid volume)',
    avgSavings:'$500/mo avg for sm-mid, up to $2,500/mo for high-volume stops',
@@ -2478,6 +2607,21 @@ let pdEditMode={};
 function loadProgDetails(){
   try{const s=localStorage.getItem('roadys_program_details');if(s)progDetails=JSON.parse(s);}catch(e){}
   if(!progDetails.length) progDetails=JSON.parse(JSON.stringify(PROGRAM_DETAILS));
+  else _mergeProgSeed();
+}
+// Fill newly-added seed fields (eg. Coca-Cola merchantConsole, rebatesAllowances,
+// website, address, corpPhone, roadysTeam) into cached progDetails WITHOUT
+// clobbering user edits. Seed only fills empty/missing fields. Match vid, then name.
+function _mergeProgSeed(){
+  let changed=false;
+  PROGRAM_DETAILS.forEach(seed=>{
+    const t=progDetails.find(p=>(seed.vid&&p.vid===seed.vid)||(p.name===seed.name));
+    if(!t)return;
+    Object.keys(seed).forEach(k=>{
+      if(t[k]===undefined||t[k]===null||t[k]===''){t[k]=seed[k];changed=true;}
+    });
+  });
+  if(changed)saveProgDetails();
 }
 function saveProgDetails(){try{localStorage.setItem('roadys_program_details',JSON.stringify(progDetails));}catch(e){}}
 loadProgDetails();
@@ -2539,7 +2683,13 @@ function renderProgramDetails(){
           <div><span class="field-label">Email</span>${pdField(idx,'email',p.email)}</div>
           <div><span class="field-label">Phone</span>${pdField(idx,'phone',p.phone)}</div>
           <div><span class="field-label">Vendor ID</span>${pdField(idx,'vid',p.vid)}</div>
+          <div><span class="field-label">Website</span>${pdField(idx,'website',p.website)}</div>
+          <div><span class="field-label">Corporate Phone</span>${pdField(idx,'corpPhone',p.corpPhone)}</div>
+          <div style="grid-column:1/-1"><span class="field-label">Corporate Address</span>${pdField(idx,'address',p.address)}</div>
         </div>
+        <div style="margin-bottom:10px"><span class="field-label">Rebates &amp; Allowances — Members</span>${pdField(idx,'rebatesAllowances',p.rebatesAllowances,{area:true})}</div>
+        <div style="margin-bottom:10px"><span class="field-label">Merchant Console — Program Details (HTML)</span>${pdField(idx,'merchantConsole',p.merchantConsole,{area:true})}</div>
+        <div style="margin-bottom:10px"><span class="field-label">Roady's Team Details</span>${pdField(idx,'roadysTeam',p.roadysTeam,{area:true})}</div>
         <div style="margin-bottom:10px"><span class="field-label">How It Works</span>${pdField(idx,'howItWorks',p.howItWorks,{area:true})}</div>
         <div><span class="field-label">Notes</span>${pdField(idx,'notes',p.notes,{area:true})}</div>
       </div>`;
@@ -2556,7 +2706,11 @@ function renderProgramDetails(){
           <div><span class="field-label">Reporting</span>${pdViewVal(p.reporting)}</div>
           <div><span class="field-label">Contract Term</span>${pdViewVal(p.contractTerm)}</div>
           <div style="grid-column:1/-1"><span class="field-label">Contact</span>${pdViewVal(contactLine)}</div>
+          ${(p.website||p.address||p.corpPhone)?`<div style="grid-column:1/-1"><span class="field-label">Corporate</span>${pdViewVal([p.website?`<a href="${p.website}" target="_blank" rel="noopener" style="color:var(--accent)">${p.website}</a>`:'',p.address,p.corpPhone].filter(Boolean).join(' &middot; '))}</div>`:''}
         </div>
+        ${p.rebatesAllowances?`<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px"><span class="field-label">Rebates &amp; Allowances — Members</span><div style="font-size:.85em;margin-top:4px;white-space:pre-wrap;line-height:1.5">${p.rebatesAllowances}</div></div>`:''}
+        ${p.merchantConsole?`<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:8px"><span class="field-label">Merchant Console — Program Details</span><div style="font-size:.84em;margin-top:6px">${p.merchantConsole}</div></div>`:''}
+        ${p.roadysTeam?`<div style="background:rgba(0,200,255,.06);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px"><span class="field-label">Roady's Team Details</span><div style="font-size:.85em;margin-top:4px;white-space:pre-wrap;line-height:1.5">${p.roadysTeam}</div></div>`:''}
         ${p.howItWorks?`<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px"><span class="field-label">How It Works</span><div style="font-size:.85em;margin-top:4px">${p.howItWorks}</div></div>`:''}
         ${p.notes?`<div style="font-size:.82em;color:var(--muted);line-height:1.5">${p.notes}</div>`:''}
       </div>`;
@@ -2657,6 +2811,8 @@ async function loadFromSupabase(){
           SYSCO_STATUS[r.stop_id]=r.status;
         }
       });
+      // Re-assert the per-vendor roster statuses (Coca-Cola, DAS) over the cloud.
+      applyRosterAuthority();
       saveVPEnroll();
       loaded+=enrollData.length;
     }
