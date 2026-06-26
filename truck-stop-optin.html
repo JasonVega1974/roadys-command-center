@@ -194,6 +194,18 @@ function reanchor(recType, recValue, targetType, cost, retail){
   // formula converts in both directions (R-→C+ and C+→R-). Do not split it.
   return {type:targetType, value: spread - v};
 }
+// the ¢ value an aggregator recommends in a given unit: BO carries a value PER unit
+// (bo_cost_plus / bo_retail_minus); every other type uses the single discount_value.
+function unitValue(a, unit){
+  if(a.discount_type==='BO') return (unit==='R-' ? a.bo_retail_minus : a.bo_cost_plus) || '';
+  return a.discount_value || '';
+}
+// recommended {type,value} for the selected unit: BO is already per-unit (no spread
+// conversion needed); non-BO re-anchors its single native value into the unit.
+function recommendedFor(a, unit, cost, retail){
+  if(a.discount_type==='BO'){ const v=parseInt(unitValue(a,unit),10); return {type:unit, value:isNaN(v)?null:v}; }
+  return reanchor(a.discount_type, a.discount_value, unit, cost, retail);
+}
 
 /* =====================================================================
    RENDER — firm statement + one card per aggregator into #optBody.
@@ -209,13 +221,13 @@ function cardHTML(a, cost, retail){
   const ch=_choices[a.id]||{};
   // the card's working unit is C+ or R- only; a BO ("Better Of") aggregator defaults to C+
   const cType=ch.type||(a.discount_type==='BO'?'C+':a.discount_type)||'C+';
-  const cVal=(ch.value!=null&&ch.value!=='')?ch.value:(a.discount_value||'');
+  const cVal=(ch.value!=null&&ch.value!=='')?ch.value:unitValue(a,cType);
   const profit=profitPerGal(cType, cVal, cost, retail);
   const hero=(profit==null)
     ? '<div class="opt-profit muted">— enter cost &amp; retail</div>'
     : '<div class="opt-profit">'+profit+'¢ / gal</div>';
   // recommendation re-anchored into the unit the stop currently has selected
-  const rec=reanchor(a.discount_type, a.discount_value, cType, cost, retail);
+  const rec=recommendedFor(a, cType, cost, retail);
   const recTxt=(rec.value==null)
     ? unitLabel(a.discount_type)+' '+esc(a.discount_value||'?')+' <span class="opt-faint">(enter cost &amp; retail to compare)</span>'
     : '<b>'+unitLabel(rec.type)+' '+rec.value+'</b>';
@@ -267,7 +279,7 @@ function buildChoices(stop, aggregators, choices){
     // untouched BO default coerces to C+ (the form is single-unit; never emit a blank-value BO row)
     const type = (touched && ch.type) ? ch.type : (a.discount_type==='BO'?'C+':(a.discount_type||''));
     const valStr = (touched && ch.value!=null && ch.value!=='')
-      ? String(ch.value) : String(a.discount_value==null?'':a.discount_value);
+      ? String(ch.value) : String(unitValue(a, type)||'');
     return { aggregator_id:a.id, status:status, discount_type:type,
       retail_minus: type==='R-' ? valStr : '',
       cost_plus:    type==='C+' ? valStr : '' };
@@ -314,15 +326,15 @@ function recalc(){
   const cost=readVal('optCost'), retail=readVal('optRetail');
   (_aggs||[]).forEach(function(a){
     const card=document.querySelector('.opt-card[data-agg="'+a.id+'"]'); if(!card) return;
-    const ch=_choices[a.id]||{}; const cType=ch.type||a.discount_type||'C+';
+    const ch=_choices[a.id]||{}; const cType=ch.type||(a.discount_type==='BO'?'C+':a.discount_type)||'C+';
     const valEl=card.querySelector('[data-opt-value]');
-    const cVal=valEl?valEl.value:(ch.value!=null?ch.value:a.discount_value);
+    const cVal=valEl?valEl.value:(ch.value!=null?ch.value:unitValue(a,cType));
     const profit=profitPerGal(cType, cVal, cost, retail);
     const pEl=card.querySelector('.opt-profit');
     if(pEl){ if(profit==null){pEl.className='opt-profit muted';pEl.textContent='— enter cost & retail';}
              else {pEl.className='opt-profit';pEl.textContent=profit+'¢ / gal';} }
     const rEl=card.querySelector('.opt-rec');
-    if(rEl){ const rec=reanchor(a.discount_type, a.discount_value, cType, cost, retail);
+    if(rEl){ const rec=recommendedFor(a, cType, cost, retail);
       rEl.innerHTML='Recommended: '+(rec.value==null
         ? unitLabel(a.discount_type)+' '+esc(a.discount_value||'?')+' <span class="opt-faint">(enter cost &amp; retail to compare)</span>'
         : '<b>'+unitLabel(rec.type)+' '+rec.value+'</b>'); }
