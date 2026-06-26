@@ -2091,7 +2091,29 @@ const PROG_DETAILS_INLINE = [
    contractTerm:'Ongoing',
    reporting:'Ongoing via ACH',
    notes:'Members can earn revenue on their available parking. Member decides how much of their parking area is a Cost To Park and how much is Courtesy Parking. Members determine rate to charge for parking. Member gets 70% of cost & Truck Parking Club gets 30%. Member is paid by ACH into their bank. NO COST to Member, even signs are included. Please contact Colin Schlick for all questions, issues & Member signups. Please Cc John Fechik on all emails.',
-   howItWorks:'Members designate available parking spots. Truck Parking Club handles technology and payment processing. Member earns 70% of all parking revenue via ACH deposits.'},
+   howItWorks:'Members designate available parking spots. Truck Parking Club handles technology and payment processing. Member earns 70% of all parking revenue via ACH deposits.',
+   rebatesAllowances:'N/A',
+   roadysTeam:'Parking Fee Split 70% Member & 30% Truck Parking Club\nTruck Parking Club installs needed signs for parking spots.\nMember controls cost to park and how many spots they make available for parking.\nPlease contact Lyssi to setup a meeting with Truck Parking Club and our Members at lyssi@truckparkingclub.com — Lyssi\'s phone is # (423) 616-9228.',
+   merchantConsole:`<div style="line-height:1.55">
+<div style="font-weight:800;color:var(--accent);margin-bottom:8px">A New Revenue Stream That Works With Your Operation, Not Against It</div>
+<p style="margin:0 0 8px">Roady's franchisees are already running successful truck stops. Truck Parking Club gives you a way to turn parking into a revenue line of its own, without adding work for your team.</p>
+<p style="margin:0 0 8px">We're the largest reservable truck parking network in the country, with thousands of locations across the US. We handle the payments, customer service, and marketing. You keep doing what you already do.</p>
+<p style="margin:0 0 8px">For truck stops, we work differently than the rest of our network. No advance reservations. Drivers pull in, park, and pay on the spot using text-to-pay or by scanning a QR code on the signage we install on each space. Seconds to transact.</p>
+<div style="font-weight:700;margin:8px 0 3px">What working with us looks like for a Roady's location:</div>
+<ul style="margin:0 0 8px 18px;padding:0">
+<li><b>Visibility to tens of thousands of weekly site visitors</b> searching for parking on our app and website</li>
+<li><b>Turn on as many spaces as you want</b>, adjust anytime</li>
+<li><b>No contracts. No monthly fees.</b> We take a percentage of each transaction</li>
+<li><b>Free signage, installed for you.</b> Banners, billboards, and per-space QR signage. Materials and labor covered</li>
+<li><b>Set your own rates</b></li>
+<li><b>Purchase incentives that drive fuel and food sales.</b> Reward drivers with free or discounted parking when they fuel up, buy food, or hit a spend threshold</li>
+<li><b>24/7 driver support</b> staffed by former truckers</li>
+<li><b>Guaranteed payment</b> with daily, weekly, or monthly payouts</li>
+<li><b>Damage coverage up to $25,000</b></li>
+</ul>
+<p style="margin:0 0 8px">No upfront cost. No risk. A new tool to compete on more than just price at the pump.</p>
+<p style="margin:0;font-style:italic;color:var(--muted)">Interested in listing spaces at your Roady's location? Reach out to your Roady's Growth Strategist.</p>
+</div>`},
   {vid:'V00038',name:'Ecolab',category:'Chemicals & Cleaning',
    savings:'10%+ below street pricing',
    avgSavings:'10%+',
@@ -2604,14 +2626,25 @@ const SYSCO_ENROLL_SEED={
 const SYSCO_STATUS={};
 Object.keys(SYSCO_ENROLL_SEED).forEach(st=>SYSCO_ENROLL_SEED[st].forEach(s=>SYSCO_STATUS[s]=st));
 
+// Truck Parking Club Program Status (14-location roster, 2026-06-26).
+// 'active' = Location Active AND Program Active (R03791 Offboarding/Active omitted).
+// 9 active, 3 pending, 1 refused. EXCLUSIVE roster.
+const TPC_ENROLL_SEED={
+  active:['R00262','R01066','R01067','R03494','R01835','R00408','R03857','R03903','R03917'],
+  pending:['R00118','R03918','R00395'],
+  refused:['R03495']
+};
+const TPC_STATUS={};
+Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STATUS[s]=st));
+
 // Registry of roster-tracked vendors. Each is AUTHORITATIVE for its V-id
 // enrollment (active => enrolled, everything else => not enrolled) and renders a
 // per-stop status badge in the stop drawer. Add future vendors here.
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS};
-const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice'};
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS};
+const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice','V00112':'🅿️ Truck Parking Club'};
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared on read.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true};
 const ROSTER_STATUS_META={
   active:{c:'var(--green)',t:'Active',bg:'rgba(16,185,129,.12)'},
   pending:{c:'var(--yellow)',t:'Pending',bg:'rgba(251,191,36,.12)'},

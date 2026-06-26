@@ -11806,11 +11806,19 @@ const SYSCO_ENROLL_SEED={
   refused:['R01227','P03600','R00244']
 };
 const SYSCO_STATUS={}; Object.keys(SYSCO_ENROLL_SEED).forEach(st=>SYSCO_ENROLL_SEED[st].forEach(s=>SYSCO_STATUS[s]=st));
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS};
+// Truck Parking Club: 14-stop roster. 'active' = Location Active AND Program
+// Active (R03791 Offboarding/Active omitted). 9 active, 3 pending, 1 refused.
+const TPC_ENROLL_SEED={
+  active:['R00262','R01066','R01067','R03494','R01835','R00408','R03857','R03903','R03917'],
+  pending:['R00118','R03918','R00395'],
+  refused:['R03495']
+};
+const TPC_STATUS={}; Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STATUS[s]=st));
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS};
 const STATUS_DISPLAY=ROSTER_STATUS;
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true};
 function statusBadge(st,label){
   label=label||'';
   if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';
