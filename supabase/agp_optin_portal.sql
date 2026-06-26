@@ -80,6 +80,9 @@ revoke all on function public.resolve_optin_by_code(text, text) from public;
 grant execute on function public.resolve_optin_by_code(text, text) to anon, authenticated;
 
 -- (c) safe aggregator display data for the form (no agp_aggregators SELECT)
+-- DROP first: once the function exists, CREATE OR REPLACE cannot change its RETURNS table
+-- (ERROR 42P13). DROP also drops the EXECUTE grants, so the revoke/grant below re-apply them.
+drop function if exists public.list_optin_aggregators();
 create or replace function public.list_optin_aggregators()
 returns table(id text, name text, rail text, carriers text,
               discount_type text, discount_value text, discount_target text,

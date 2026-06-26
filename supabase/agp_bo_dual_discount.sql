@@ -16,7 +16,10 @@ update public.agp_aggregators
  where discount_type = 'BO'
    and coalesce(bo_cost_plus,'') = '' and coalesce(bo_retail_minus,'') = '';
 
--- list_optin_aggregators: add the two BO columns to the result.
+-- list_optin_aggregators: the RETURNS table gains two columns. Postgres can't change an
+-- existing function's return type via CREATE OR REPLACE (ERROR 42P13), so DROP first, then
+-- recreate AND re-grant — DROP also drops the EXECUTE grants.
+drop function if exists public.list_optin_aggregators();
 create or replace function public.list_optin_aggregators()
 returns table(id text, name text, rail text, carriers text,
               discount_type text, discount_value text, discount_target text,
@@ -32,6 +35,8 @@ as $$
   where a.show_on_form is true
   order by a.sort_index
 $$;
+revoke all on function public.list_optin_aggregators() from public;        -- re-apply the form-RPC grant
+grant execute on function public.list_optin_aggregators() to anon, authenticated;
 
 commit;
 
