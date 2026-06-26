@@ -1048,10 +1048,11 @@ function isBehind(a){
   if(a.status==="active"||a.launchActual)return false;
   if(!a.deadline)return false;const t=todayISO();return t&&a.deadline<t;
 }
-function discLabel(type,val){
+function discLabel(a){
+  const type=a&&a.discountType;
   if(type==="none"||!type)return"—";
-  if(type==="BO")return val?("C + "+val+", R - "+val+" / BO"):"Better Of";
-  return (type==="R-"?"R - ":"C + ")+(val||"?");
+  if(type==="BO")return (a.boCostPlus||a.boRetailMinus)?("C + "+(a.boCostPlus||"?")+", R - "+(a.boRetailMinus||"?")+" / BO"):"Better Of";
+  return (type==="R-"?"R - ":"C + ")+(a.discountValue||"?");
 }
 function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?`${p[1]}/${p[2]}/${p[0].slice(2)}`:d;}
 function optinClass(v){return v==="Yes"?"opt-yes":v==="No"?"opt-no":v==="N/A"?"opt-na":(v==="No Response"||v==="Other"||v==="Select")?"opt-pending":"";}
@@ -1128,7 +1129,7 @@ function renderPipeline(){
         <div class="when"><div class="lab">${a.launchTarget?"Target":a.deadline?"Deadline":"Launch"}</div><div class="d">${launch?fmtDate(launch):"—"}</div></div>
       </div>
       <div class="agp-progress ${pct===100?"green":""}"><i style="width:${pct}%"></i></div>
-      <div class="agp-mini-meta"><span>${pct}% complete</span><span>${esc(discLabel(a.discountType,a.discountValue))}</span></div>
+      <div class="agp-mini-meta"><span>${pct}% complete</span><span>${esc(discLabel(a))}</span></div>
       <div class="agp-stagebar">${stageHtml}</div>
       ${statusSection}
     </div>`;
@@ -1377,7 +1378,7 @@ function renderLocations(){
 
   $("#agpLocPanel").innerHTML=`<div class="agp-panel">
     <div class="agp-section-h"><h2>${esc(a.name)} — location opt-in</h2>
-      <div class="sub" style="margin:0">Growth Strategists set participation &amp; per-site discount. Default discount: <strong>${esc(discLabel(a.discountType,a.discountValue))}</strong> · markup ${esc(a.markup)}¢</div>
+      <div class="sub" style="margin:0">Growth Strategists set participation &amp; per-site discount. Default discount: <strong>${esc(discLabel(a))}</strong> · markup ${esc(a.markup)}¢</div>
     </div>
     ${controls}
     ${filterBar}
@@ -1924,7 +1925,7 @@ async function init(){
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
-  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,init,getRoadysSB,optinLinksCSV,exportOptinLinks,
+  __test:{buildEntities,diffEntities,assembleFromRemote,fetchAllRemote,pushFullState,doSync,syncToRemote,seed,withManagerPin,rowToLoc,locToRow,aggToRow,rowToAgg,renderAggWorkspace,renderLocations,copyOptinLink,init,getRoadysSB,optinLinksCSV,exportOptinLinks,discLabel,
     setClient(c){_sbClient=c;},setState(s){S=s;},getState(){return S;},mgrUnlocked(){return _mgrUnlocked;},
     getBaseline(){return _lastSyncedEntities;},setBaseline(e){_lastSyncedEntities=e;},syncState(){return _syncState;}}};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
