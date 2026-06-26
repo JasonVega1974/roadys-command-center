@@ -656,13 +656,13 @@ function aggToRow(a,idx){return {id:a.id,name:a.name||"",rail:a.rail||"",status:
   contact_name:a.contactName||"",contact_role:a.contactRole||"",phone:a.phone||"",email:a.email||"",
   location:a.location||"",carriers:a.carriers||"",markup:(a.markup===""||a.markup==null||isNaN(+a.markup))?null:+a.markup,
   discount_type:a.discountType||"",discount_value:a.discountValue||"",discount_target:a.discountTarget||"",
-  notes:a.notes||"",show_on_form:!!a.showOnForm,sort_index:idx};}
+  notes:a.notes||"",show_on_form:!!a.showOnForm,bo_cost_plus:a.boCostPlus||"",bo_retail_minus:a.boRetailMinus||"",sort_index:idx};}
 function rowToAgg(r){return {id:r.id,name:r.name||"",rail:r.rail||"",status:r.status||"not_started",
   launchTarget:r.launch_target||"",deadline:r.deadline||"",launchActual:r.launch_actual||"",
   contactName:r.contact_name||"",contactRole:r.contact_role||"",phone:r.phone||"",email:r.email||"",
   location:r.location||"",carriers:r.carriers||"",markup:r.markup==null?2:r.markup,
   discountType:r.discount_type||"",discountValue:r.discount_value||"",discountTarget:r.discount_target||"",
-  notes:r.notes||"",showOnForm:r.show_on_form===true,steps:{}};}
+  notes:r.notes||"",showOnForm:r.show_on_form===true,boCostPlus:r.bo_cost_plus||"",boRetailMinus:r.bo_retail_minus||"",steps:{}};}
 function stepToRow(aggId,stepId,st){return {aggregator_id:aggId,step_id:stepId,status:st.status||"not_started",
   owner:st.owner||"",target:st.target||null,done:st.done||null,notes:st.notes||""};}
 function rowToStep(r){return {status:r.status||"not_started",owner:r.owner||"",target:r.target||"",done:r.done||"",notes:r.notes||""};}
@@ -878,7 +878,7 @@ function seed(){
   const A=(o)=>{const steps={};ALL_STEPS.forEach(s=>steps[s.id]={status:"not_started",owner:STEP_OWNER_DEFAULT[s.id]||"",target:"",done:"",notes:""});
     return Object.assign({id:o.id,name:o.name,rail:"",status:"not_started",launchTarget:"",deadline:"",launchActual:"",
       contactName:"",contactRole:"",phone:"",email:"",location:"",carriers:"",markup:2,discountType:"C+",discountValue:"",
-      discountTarget:"",notes:"",showOnForm:false,steps},o,{steps:Object.assign(steps,o.steps||{})});};
+      discountTarget:"",notes:"",showOnForm:false,boCostPlus:"",boRetailMinus:"",steps},o,{steps:Object.assign(steps,o.steps||{})});};
   const aggregators=[
     A({id:"motive",name:"Motive",rail:"Mastercard",status:"in_process",contactName:"Jarrod Carson",contactRole:"Sr. Manager, Strategic Partnerships",
        phone:"479-353-7325",email:"jarrod.carson@gomotive.com",location:"Fort Smith, AR",carriers:"~20K card customers",
@@ -886,7 +886,7 @@ function seed(){
        notes:"Signed Addendum 03/09/26. Kaden entering Merchant IDs in Interstate. Daily data ingest for ACH reporting & reconciliation."}),
     A({id:"atob",name:"A to B",rail:"Visa + MC Fleet (migrating to MC Fleet)",status:"in_process",contactName:"Jacob Thomas",contactRole:"VP of Merchant Partnerships",
        phone:"909-587-3227",email:"Jacob.Thomas@AtoB.com",location:"San Francisco / Austin",carriers:"30K–40K fleets · 150K–200K cards (65% OTR)",
-       markup:0,discountType:"BO",discountValue:"10",discountTarget:"C+10 / R-10 Better Of · passenger R-5 to R-15",
+       markup:0,discountType:"BO",discountValue:"10",boCostPlus:"10",boRetailMinus:"10",discountTarget:"C+10 / R-10 Better Of · passenger R-5 to R-15",
        notes:"Transactions settle at POS; AtoB invoices Roady's for discount amounts. Looking for R-5 to R-15 on passenger fuel."}),
     A({id:"cloudtrucks",name:"CloudTrucks",rail:"Visa (Cloud Truck Fuel card)",status:"no_contract",contactName:"Neil Mamak",contactRole:"Partnerships",
        phone:"415-524-7639",email:"neil.mamak@cloudtrucks.com",location:"San Francisco, CA",carriers:"~700 trucks (owner-operators)",
