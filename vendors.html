@@ -1283,31 +1283,31 @@ function renderTop10VendorTable(){
     return`<th onclick="t10Sort('${col}')" style="font-size:.68em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;${active};padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;text-align:${align||'left'};${w?'width:'+w:''}">${label}${arrow}</th>`;
   }
 
-  const td0='style="padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle"';
+  const td0='padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle';
   tbl.innerHTML=`<thead><tr>
     <th style="width:36px;padding:8px 6px;border-bottom:1px solid var(--border)"></th>
     ${t10Th('name','Vendor','left')}
     ${t10Th('count','# Stops','center','90px')}
     ${t10Th('rank','Rank','center','80px')}
-    ${t10Th('monthRev','Month Rev','right','130px')}
+    ${t10Th('monthRev','Monthly Rev','right','130px')}
     ${t10Th('ytdRev','YTD Rev','right','130px')}
   </tr></thead><tbody>`+vendorData.map(d=>{
     const vid=d.vid;
     const rm=d.rank===1?'🥇':d.rank===2?'🥈':d.rank===3?'🥉':'#'+d.rank;
     return`<tr style="cursor:pointer" onclick="vpToggleExpand('${vid}')">
-      <td ${td0} style="text-align:center;width:36px"><button onclick="event.stopPropagation();vpToggleExpand('${vid}')" style="background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.3);color:var(--accent);border-radius:4px;width:22px;height:22px;font-size:.82em;cursor:pointer;font-weight:700;line-height:1" id="vp-expand-btn-${vid}">＋</button></td>
-      <td ${td0}><b>${d.v.name}</b></td>
-      <td ${td0} style="text-align:center;font-weight:700">${d.count}</td>
-      <td ${td0} style="text-align:center">${rm}</td>
-      <td ${td0} style="text-align:right;font-weight:700">${fmt$(d.monthRev)}</td>
-      <td ${td0} style="text-align:right;color:var(--accent);font-weight:700">${d.ytdRev?fmt$(d.ytdRev):'$0'}</td>
+      <td style="${td0};text-align:center;width:36px"><button onclick="event.stopPropagation();vpToggleExpand('${vid}')" style="background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.3);color:var(--accent);border-radius:4px;width:22px;height:22px;font-size:.82em;cursor:pointer;font-weight:700;line-height:1" id="vp-expand-btn-${vid}">＋</button></td>
+      <td style="${td0}"><b>${d.v.name}</b></td>
+      <td style="${td0};text-align:center;font-weight:700">${d.count}</td>
+      <td style="${td0};text-align:center">${rm}</td>
+      <td style="${td0};text-align:right;font-weight:700">${fmt$(d.monthRev)}</td>
+      <td style="${td0};text-align:right;color:var(--accent);font-weight:700">${d.ytdRev?fmt$(d.ytdRev):'$0'}</td>
     </tr><tr id="vp-expand-${vid}" style="display:none"><td colspan="6" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:var(--inset-bg);padding:10px 14px">${renderVPStopDetail(d)}</div></td></tr>`;
   }).join('')+'</tbody>';
 }
 function renderVPStopDetail(d){
   if(!d.enrolled.length) return`<div style="color:var(--muted);font-size:.82em">No stops enrolled in ${d.v.name}.</div>`;
   const pct=getVendorPct(d.vid);
-  const th='style="font-size:.66em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--border2)"';
+  const th='font-size:.66em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--border2)';
   let totSpend=0,totReb=0,totEst=0;
   const rows=d.enrolled.map(mb=>{
     const gs=getManager(mb.state),gc=getRegionColor(gs);
@@ -1321,7 +1321,7 @@ function renderVPStopDetail(d){
   }).join('');
   const totBen=totReb+totEst;
   const footer=`<tr style="border-top:2px solid var(--border)"><td colspan="3" style="padding:5px 8px;font-weight:700;font-size:.82em;color:var(--muted)">TOTALS (${d.enrolled.length} stops)</td><td style="padding:5px 8px;text-align:right;font-weight:700">${fmt$(totSpend)}</td><td style="padding:5px 8px;text-align:center;font-size:.78em;color:var(--muted)">${pct?pct+'%':'—'}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:var(--green)">${fmt$(totReb)}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:var(--accent)">${fmt$(totEst)}</td><td style="padding:5px 8px;text-align:right;font-weight:800;color:var(--green)">${fmt$(totBen)}</td></tr>`;
-  return`<table style="width:100%;border-collapse:collapse"><thead><tr><th ${th}>Stop</th><th ${th}>Location</th><th ${th}>GS</th><th ${th} style="text-align:right">Mo Spend</th><th ${th} style="text-align:center">% Contract</th><th ${th} style="text-align:right">Rebate/Mo</th><th ${th} style="text-align:right">Est. Savings/Mo</th><th ${th} style="text-align:right">Total Benefit</th></tr></thead><tbody>${rows}${footer}</tbody></table>${rosterNonActive(d.vid)}`;
+  return`<table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Stop</th><th style="${th}">Location</th><th style="${th}">GS</th><th style="${th};text-align:right">Mo Spend</th><th style="${th};text-align:center">% Contract</th><th style="${th};text-align:right">Rebate/Mo</th><th style="${th};text-align:right">Est. Savings/Mo</th><th style="${th};text-align:right">Total Benefit</th></tr></thead><tbody>${rows}${footer}</tbody></table>${rosterNonActive(d.vid)}`;
 }
 // For roster-tracked vendors (Coca-Cola, DAS), list the stops that are NOT
 // active-enrolled (refused / pending / inactive / zero) so the expansion
@@ -1505,17 +1505,17 @@ function renderVendorDirectory(){
   }
 
   const tbl=document.getElementById('vendor-dir-tbl');
-  const td='style="padding:6px 10px;border-bottom:1px solid var(--border)"';
+  const td='padding:6px 10px;border-bottom:1px solid var(--border)';
   tbl.innerHTML=`<thead><tr>${thSort('id','ID')}${thSort('name','Vendor Name')}${thSort('program','Program')}${thSort('priority','Priority')}${thSort('phone','Phone')}${thSort('contact','Contact')}<th style="padding:8px 10px;font-size:.68em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Email</th></tr></thead><tbody>`+filtered.map(v=>{
     const ci=contactMap[v.id]||{};
     return`<tr>
-      <td ${td} style="font-family:monospace;font-size:.75em;color:var(--muted)">${v.id}</td>
-      <td ${td} style="font-weight:600">${v.name}</td>
-      <td ${td}><span style="color:${pc[v.program]||'var(--muted)'};font-weight:600;font-size:.82em">${v.program}</span></td>
-      <td ${td}><span style="color:${prc[v.priority]||'var(--muted)'};font-weight:600">${v.priority}</span></td>
-      <td ${td} style="font-size:.82em;color:var(--muted)">${v.phone||'—'}</td>
-      <td ${td} style="font-size:.82em">${ci.contact||'<span style="color:var(--dim)">—</span>'}</td>
-      <td ${td} style="font-size:.82em">${ci.email?`<a href="mailto:${ci.email}" style="color:var(--accent)">${ci.email}</a>`:'<span style="color:var(--dim)">—</span>'}</td>
+      <td style="${td};font-family:monospace;font-size:.75em;color:var(--muted)">${v.id}</td>
+      <td style="${td};font-weight:600">${v.name}</td>
+      <td style="${td}"><span style="color:${pc[v.program]||'var(--muted)'};font-weight:600;font-size:.82em">${v.program}</span></td>
+      <td style="${td}"><span style="color:${prc[v.priority]||'var(--muted)'};font-weight:600">${v.priority}</span></td>
+      <td style="${td};font-size:.82em;color:var(--muted)">${v.phone||'—'}</td>
+      <td style="${td};font-size:.82em">${ci.contact||'<span style="color:var(--dim)">—</span>'}</td>
+      <td style="${td};font-size:.82em">${ci.email?`<a href="mailto:${ci.email}" style="color:var(--accent)">${ci.email}</a>`:'<span style="color:var(--dim)">—</span>'}</td>
     </tr>`;
   }).join('')+'</tbody>';
 }
@@ -1592,9 +1592,9 @@ function roiToggleAutoFill(){
 
 function renderVendorDefaultsTable(){
   const tbl=document.getElementById('roi-vendor-defaults-tbl');if(!tbl)return;
-  const th='style="font-size:.64em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--border)"';
+  const th='font-size:.64em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--border)';
   const inS='background:var(--bg);border:1px solid var(--border);padding:4px 6px;border-radius:4px;font-size:.82em;text-align:right;width:70px';
-  tbl.innerHTML=`<thead><tr><th ${th}>Vendor Program</th><th ${th}>Program Savings Info</th><th ${th} style="text-align:right">Default % Contract Savings</th><th ${th} style="text-align:right">Default Rebate $</th></tr></thead><tbody>`+
+  tbl.innerHTML=`<thead><tr><th style="${th}">Vendor Program</th><th style="${th}">Program Savings Info</th><th style="${th};text-align:right">Default % Contract Savings</th><th style="${th};text-align:right">Default Rebate $</th></tr></thead><tbody>`+
     VP_TOP10_LIST.map(v=>{
       const d=roiVendorDefaults[v.id]||{};
       const preset=ROI_DEFAULT_VENDOR_PRESETS[v.id]||{};
@@ -1712,17 +1712,17 @@ function renderROIDetailTable(){
     const vcBadge=s.vendorCount>0?`<span style="background:rgba(0,214,143,.15);color:var(--green);padding:1px 6px;border-radius:10px;font-size:.78em;font-weight:700">${s.vendorCount}</span>`:`<span style="color:var(--dim)">0</span>`;
 
     let row=`<tr style="cursor:pointer" onclick="roiToggleExpand('${sid}')">
-      <td ${td} style="text-align:center;width:28px"><button style="background:${isOpen?'rgba(0,200,255,.25)':'rgba(0,200,255,.1)'};border:1px solid rgba(0,200,255,.3);color:var(--accent);border-radius:4px;width:22px;height:22px;font-size:.82em;cursor:pointer;font-weight:700;line-height:1">${isOpen?'－':'＋'}</button></td>
-      <td ${td}><span style="font-weight:700;font-size:.85em">${s.mb.name}</span><br><span style="font-size:.64em;color:var(--muted)">${sid}</span></td>
-      <td ${td} style="font-size:.78em">${s.mb.city||'—'}, ${s.mb.state||'—'}</td>
-      <td ${td}><span style="color:${gc};font-weight:600;font-size:.78em">${gs}</span></td>
-      <td ${td} style="text-align:center">${vcBadge}</td>
-      <td ${td} style="text-align:right;font-weight:600">${s.spend?fmt$(s.spend):'—'}</td>
-      <td ${td} style="text-align:right;color:var(--green);font-weight:600">${s.reb?fmt$(s.reb):'—'}</td>
-      <td ${td} style="text-align:right;color:var(--accent)">${s.estSav?fmt$(s.estSav)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td>
-      <td ${td} style="text-align:right;color:${benColor};font-weight:700">${s.ben?fmt$(s.ben):'—'}</td>
-      <td ${td} style="text-align:right;font-size:.85em">${s.ytd?fmt$(s.ytd)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td>
-      <td ${td} style="text-align:right;font-size:.85em">${s.l12?fmt$(s.l12)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td>
+      <td style="${td};text-align:center;width:28px"><button style="background:${isOpen?'rgba(0,200,255,.25)':'rgba(0,200,255,.1)'};border:1px solid rgba(0,200,255,.3);color:var(--accent);border-radius:4px;width:22px;height:22px;font-size:.82em;cursor:pointer;font-weight:700;line-height:1">${isOpen?'－':'＋'}</button></td>
+      <td style="${td}"><span style="font-weight:700;font-size:.85em">${s.mb.name}</span><br><span style="font-size:.64em;color:var(--muted)">${sid}</span></td>
+      <td style="${td};font-size:.78em">${s.mb.city||'—'}, ${s.mb.state||'—'}</td>
+      <td style="${td}"><span style="color:${gc};font-weight:600;font-size:.78em">${gs}</span></td>
+      <td style="${td};text-align:center">${vcBadge}</td>
+      <td style="${td};text-align:right;font-weight:600">${s.spend?fmt$(s.spend):'—'}</td>
+      <td style="${td};text-align:right;color:var(--green);font-weight:600">${s.reb?fmt$(s.reb):'—'}</td>
+      <td style="${td};text-align:right;color:var(--accent)">${s.estSav?fmt$(s.estSav)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td>
+      <td style="${td};text-align:right;color:${benColor};font-weight:700">${s.ben?fmt$(s.ben):'—'}</td>
+      <td style="${td};text-align:right;font-size:.85em">${s.ytd?fmt$(s.ytd)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td>
+      <td style="${td};text-align:right;font-size:.85em">${s.l12?fmt$(s.l12)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td>
     </tr>`;
     if(isOpen) row+=roiRenderVendorSubRows(s);
     return row;
@@ -1745,24 +1745,24 @@ function roiRenderVendorSubRows(s){
   const sid=s.mb.id;
   const existingVids=new Set(s.recs.map(r=>r.vendor_id));
   const inS='background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 4px;border-radius:4px;font-size:.78em;text-align:right';
-  const subTh='style="font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:5px 6px;border-bottom:1px solid var(--border2)"';
+  const subTh='font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:5px 6px;border-bottom:1px solid var(--border2)';
 
   let h=`<tr><td colspan="11" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:var(--inset-bg);padding:8px 12px 10px">
     <table style="width:100%;border-collapse:collapse">
-    <thead><tr><th ${subTh}>Vendor Program</th><th ${subTh} style="text-align:right">$ Spend/Mo</th><th ${subTh} style="text-align:right">% Contract Savings</th><th ${subTh} style="text-align:right">Rebate $</th><th ${subTh} style="text-align:right">% Add'l Savings</th><th ${subTh} style="text-align:right">$ Savings/Mo</th><th ${subTh} style="text-align:center;width:40px">Act</th></tr></thead><tbody>`;
+    <thead><tr><th style="${subTh}">Vendor Program</th><th style="${subTh};text-align:right">$ Spend/Mo</th><th style="${subTh};text-align:right">% Contract Savings</th><th style="${subTh};text-align:right">Rebate $</th><th style="${subTh};text-align:right">% Add'l Savings</th><th style="${subTh};text-align:right">$ Savings/Mo</th><th style="${subTh};text-align:center;width:40px">Act</th></tr></thead><tbody>`;
 
   // Existing vendor records
   s.recs.forEach(r=>{
     const rp=(+r.rebate_pct||0);const sp=(+r.savings_pct||0);
-    const td='style="padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.04)"';
+    const td='padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.04)';
     h+=`<tr>
-      <td ${td}><span style="font-weight:600;font-size:.82em;color:var(--accent)">${roiVName(r.vendor_id)}</span></td>
-      <td ${td}><input type="number" value="${r.monthly_spend||0}" onchange="roiEditInvoice(${r.idx},this.value)" style="${inS};width:80px"></td>
-      <td ${td}><input type="number" step="0.1" value="${rp?rp.toFixed(1):''}" placeholder="%" onchange="roiEditRebPct(${r.idx},this.value)" style="${inS};width:55px;color:var(--green)"></td>
-      <td ${td}><input type="number" value="${r.rebate_amount||0}" onchange="roiEditRebAmt(${r.idx},this.value)" style="${inS};width:75px;color:var(--green);font-weight:600"></td>
-      <td ${td}><input type="number" step="0.1" value="${sp?sp.toFixed(1):''}" placeholder="%" onchange="roiEditSavPct(${r.idx},this.value)" style="${inS};width:55px;color:var(--accent)"></td>
-      <td ${td}><input type="number" value="${r.cost_savings||0}" onchange="roiEditSavAmt(${r.idx},this.value)" style="${inS};width:75px;color:var(--accent)"></td>
-      <td ${td} style="text-align:center"><button onclick="event.stopPropagation();roiDeleteRow(${r.idx})" style="background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);color:var(--red);border-radius:4px;padding:2px 6px;font-size:.68em;cursor:pointer;font-weight:700">✕</button></td>
+      <td style="${td}"><span style="font-weight:600;font-size:.82em;color:var(--accent)">${roiVName(r.vendor_id)}</span></td>
+      <td style="${td}"><input type="number" value="${r.monthly_spend||0}" onchange="roiEditInvoice(${r.idx},this.value)" style="${inS};width:80px"></td>
+      <td style="${td}"><input type="number" step="0.1" value="${rp?rp.toFixed(1):''}" placeholder="%" onchange="roiEditRebPct(${r.idx},this.value)" style="${inS};width:55px;color:var(--green)"></td>
+      <td style="${td}"><input type="number" value="${r.rebate_amount||0}" onchange="roiEditRebAmt(${r.idx},this.value)" style="${inS};width:75px;color:var(--green);font-weight:600"></td>
+      <td style="${td}"><input type="number" step="0.1" value="${sp?sp.toFixed(1):''}" placeholder="%" onchange="roiEditSavPct(${r.idx},this.value)" style="${inS};width:55px;color:var(--accent)"></td>
+      <td style="${td}"><input type="number" value="${r.cost_savings||0}" onchange="roiEditSavAmt(${r.idx},this.value)" style="${inS};width:75px;color:var(--accent)"></td>
+      <td style="${td};text-align:center"><button onclick="event.stopPropagation();roiDeleteRow(${r.idx})" style="background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);color:var(--red);border-radius:4px;padding:2px 6px;font-size:.68em;cursor:pointer;font-weight:700">✕</button></td>
     </tr>`;
   });
 
@@ -1773,15 +1773,15 @@ function roiRenderVendorSubRows(s){
     const vd=roiAutoFill?(roiVendorDefaults[v.id]||{}):{};
     const defPct=vd.pct||'';
     const defRebate=vd.rebate||'';
-    const td='style="padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.04)"';
+    const td='padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.04)';
     h+=`<tr style="opacity:.6">
-      <td ${td}><span style="font-size:.82em;color:var(--muted)">${v.name}</span></td>
-      <td ${td}><input type="number" id="roi-v-sp-${key}" value="" placeholder="0" oninput="roiSubCalcAll('${key}')" style="${inS};width:80px"></td>
-      <td ${td}><input type="number" step="0.1" id="roi-v-rp-${key}" value="${defPct}" placeholder="%" oninput="roiSubCalcAll('${key}')" style="${inS};width:55px;color:var(--green)"></td>
-      <td ${td}><input type="number" id="roi-v-ra-${key}" value="${defRebate}" placeholder="0" oninput="roiSubCalcFromAmt('${key}','r')" style="${inS};width:75px;color:var(--green)"></td>
-      <td ${td}><input type="number" step="0.1" id="roi-v-sp2-${key}" value="" placeholder="%" oninput="roiSubCalcAll('${key}')" style="${inS};width:55px;color:var(--accent)"></td>
-      <td ${td}><input type="number" id="roi-v-sa-${key}" value="" placeholder="0" oninput="roiSubCalcFromAmt('${key}','s')" style="${inS};width:75px;color:var(--accent)"></td>
-      <td ${td} style="text-align:center"><button onclick="event.stopPropagation();roiSaveSubRow('${sid}','${v.id}','${key}')" style="background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:4px;padding:2px 6px;font-size:.68em;cursor:pointer;font-weight:700">💾</button></td>
+      <td style="${td}"><span style="font-size:.82em;color:var(--muted)">${v.name}</span></td>
+      <td style="${td}"><input type="number" id="roi-v-sp-${key}" value="" placeholder="0" oninput="roiSubCalcAll('${key}')" style="${inS};width:80px"></td>
+      <td style="${td}"><input type="number" step="0.1" id="roi-v-rp-${key}" value="${defPct}" placeholder="%" oninput="roiSubCalcAll('${key}')" style="${inS};width:55px;color:var(--green)"></td>
+      <td style="${td}"><input type="number" id="roi-v-ra-${key}" value="${defRebate}" placeholder="0" oninput="roiSubCalcFromAmt('${key}','r')" style="${inS};width:75px;color:var(--green)"></td>
+      <td style="${td}"><input type="number" step="0.1" id="roi-v-sp2-${key}" value="" placeholder="%" oninput="roiSubCalcAll('${key}')" style="${inS};width:55px;color:var(--accent)"></td>
+      <td style="${td}"><input type="number" id="roi-v-sa-${key}" value="" placeholder="0" oninput="roiSubCalcFromAmt('${key}','s')" style="${inS};width:75px;color:var(--accent)"></td>
+      <td style="${td};text-align:center"><button onclick="event.stopPropagation();roiSaveSubRow('${sid}','${v.id}','${key}')" style="background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:4px;padding:2px 6px;font-size:.68em;cursor:pointer;font-weight:700">💾</button></td>
     </tr>`;
   });
 
@@ -1985,7 +1985,7 @@ function renderROIVendorTable(){
   const th=`style="font-size:.64em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);${P};white-space:nowrap"`;
   const tbody=vendors.map(v=>{
     const td=`style="${P}"`;const avgBen=v.avgReb+v.avgEst;const roi=v.avgSpend?((avgBen/v.avgSpend)*100).toFixed(1):'—';
-    return`<tr><td ${td}><b>${v.name}</b> <span style="font-size:.68em;color:var(--muted)">${v.vid}</span></td><td ${td} style="text-align:center;font-weight:600">${v.stops}</td><td ${td} style="text-align:right">${fmt$(v.avgSpend)}</td><td ${td} style="text-align:right;color:var(--green);font-weight:600">${fmt$(v.avgReb)}</td><td ${td} style="text-align:right;color:var(--accent)">${v.avgEst?fmt$(v.avgEst)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td><td ${td} style="text-align:right;color:var(--green);font-weight:700">${fmt$(avgBen)} <span style="font-size:.72em;color:var(--muted)">(${roi}%)</span></td><td ${td} style="text-align:right;font-weight:700">${fmt$(v.totBen)}</td><td ${td} style="text-align:right;font-size:.85em">${fmt$(v.totBen*12)} <span style="font-size:.6em;color:var(--dim)">Est.</span></td></tr>`;
+    return`<tr><td style="${td}"><b>${v.name}</b> <span style="font-size:.68em;color:var(--muted)">${v.vid}</span></td><td style="${td};text-align:center;font-weight:600">${v.stops}</td><td style="${td};text-align:right">${fmt$(v.avgSpend)}</td><td style="${td};text-align:right;color:var(--green);font-weight:600">${fmt$(v.avgReb)}</td><td style="${td};text-align:right;color:var(--accent)">${v.avgEst?fmt$(v.avgEst)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td><td style="${td};text-align:right;color:var(--green);font-weight:700">${fmt$(avgBen)} <span style="font-size:.72em;color:var(--muted)">(${roi}%)</span></td><td style="${td};text-align:right;font-weight:700">${fmt$(v.totBen)}</td><td style="${td};text-align:right;font-size:.85em">${fmt$(v.totBen*12)} <span style="font-size:.6em;color:var(--dim)">Est.</span></td></tr>`;
   }).join('')||`<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">No ROI data yet.</td></tr>`;
   let totRow='';
   if(vendors.length){
@@ -1995,7 +1995,7 @@ function renderROIVendorTable(){
     const n=ROI_DATA.length;const avgBen=(totReb+totEst)/n;const roi=totSpend/n?((avgBen/(totSpend/n))*100).toFixed(1):'—';
     totRow=`<tr style="background:rgba(0,214,143,.06)"><td style="${P};border-top:2px solid var(--green);font-weight:800">ALL PROGRAMS</td><td style="${P};border-top:2px solid var(--green);text-align:center;font-weight:700">${[...new Set(ROI_DATA.map(r=>r.stop_id))].length}</td><td style="${P};border-top:2px solid var(--green);text-align:right;font-weight:700">${fmt$(totSpend/n)}</td><td style="${P};border-top:2px solid var(--green);text-align:right;color:var(--green);font-weight:700">${fmt$(totReb/n)}</td><td style="${P};border-top:2px solid var(--green);text-align:right;color:var(--accent);font-weight:700">${fmt$(totEst/n)}</td><td style="${P};border-top:2px solid var(--green);text-align:right;color:var(--green);font-weight:800">${fmt$(avgBen)} <span style="font-size:.72em">(${roi}%)</span></td><td style="${P};border-top:2px solid var(--green);text-align:right;font-weight:800">${fmt$(totReb+totEst)}</td><td style="${P};border-top:2px solid var(--green);text-align:right;font-weight:800">${fmt$((totReb+totEst)*12)}</td></tr>`;
   }
-  tbl.innerHTML=`<thead><tr><th ${th}>Vendor</th><th ${th} style="text-align:center"># Stops</th><th ${th} style="text-align:right">Avg Spend/Mo</th><th ${th} style="text-align:right">Avg Rebate/Mo</th><th ${th} style="text-align:right">Avg Est. Savings/Mo</th><th ${th} style="text-align:right">Avg Benefit/Mo (ROI%)</th><th ${th} style="text-align:right">Network Total/Mo</th><th ${th} style="text-align:right">Est. Annual</th></tr></thead><tbody>${tbody}${totRow}</tbody>`;
+  tbl.innerHTML=`<thead><tr><th style="${th}">Vendor</th><th style="${th};text-align:center"># Stops</th><th style="${th};text-align:right">Avg Spend/Mo</th><th style="${th};text-align:right">Avg Rebate/Mo</th><th style="${th};text-align:right">Avg Est. Savings/Mo</th><th style="${th};text-align:right">Avg Benefit/Mo (ROI%)</th><th style="${th};text-align:right">Network Total/Mo</th><th style="${th};text-align:right">Est. Annual</th></tr></thead><tbody>${tbody}${totRow}</tbody>`;
 }
 
 function renderROIStopTable(){
@@ -2008,8 +2008,8 @@ function renderROIStopTable(){
   if(q)stops=stops.filter(s=>[s.name,s.sid,s.city,s.state].some(v=>v.toLowerCase().includes(q)));
   document.getElementById('roi-stop-count').textContent=stops.length+' stops';
   const th=`style="font-size:.64em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);${P};white-space:nowrap"`;
-  const tbody=stops.map(s=>{const td=`style="${P}"`;const roi=s.spend?((s.ben/s.spend)*100).toFixed(1):'—';return`<tr><td ${td}><span style="font-weight:600;font-size:.82em">${s.name}</span> <span style="font-size:.66em;color:var(--muted)">${s.sid}</span></td><td ${td} style="font-size:.8em">${s.city}, ${s.state}</td><td ${td}><span style="color:${s.gsC};font-weight:600;font-size:.78em">${s.gs}</span></td><td ${td} style="text-align:center;font-weight:600">${s.vn}</td><td ${td} style="text-align:right">${fmt$(s.spend)}</td><td ${td} style="text-align:right;color:var(--green);font-weight:600">${fmt$(s.reb)}</td><td ${td} style="text-align:right;color:var(--accent)">${s.estSav?fmt$(s.estSav)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td><td ${td} style="text-align:right;color:var(--green);font-weight:700">${fmt$(s.ben)} <span style="font-size:.7em;color:var(--muted)">(${roi}%)</span></td><td ${td} style="text-align:right;font-size:.85em">${fmt$(s.ben*12)} <span style="font-size:.6em;color:var(--dim)">Est.</span></td></tr>`;}).join('')||`<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No data.</td></tr>`;
-  tbl.innerHTML=`<thead><tr><th ${th}>Truck Stop</th><th ${th}>Location</th><th ${th}>GS</th><th ${th} style="text-align:center"># Vendors</th><th ${th} style="text-align:right">$ Spend/Mo</th><th ${th} style="text-align:right">Rebate $/Mo</th><th ${th} style="text-align:right">Est. Savings/Mo</th><th ${th} style="text-align:right">Total Benefit/Mo</th><th ${th} style="text-align:right">Est. Annual</th></tr></thead><tbody>${tbody}</tbody>`;
+  const tbody=stops.map(s=>{const td=`style="${P}"`;const roi=s.spend?((s.ben/s.spend)*100).toFixed(1):'—';return`<tr><td style="${td}"><span style="font-weight:600;font-size:.82em">${s.name}</span> <span style="font-size:.66em;color:var(--muted)">${s.sid}</span></td><td style="${td};font-size:.8em">${s.city}, ${s.state}</td><td style="${td}"><span style="color:${s.gsC};font-weight:600;font-size:.78em">${s.gs}</span></td><td style="${td};text-align:center;font-weight:600">${s.vn}</td><td style="${td};text-align:right">${fmt$(s.spend)}</td><td style="${td};text-align:right;color:var(--green);font-weight:600">${fmt$(s.reb)}</td><td style="${td};text-align:right;color:var(--accent)">${s.estSav?fmt$(s.estSav)+' <span style="font-size:.6em;color:var(--dim)">Est.</span>':'—'}</td><td style="${td};text-align:right;color:var(--green);font-weight:700">${fmt$(s.ben)} <span style="font-size:.7em;color:var(--muted)">(${roi}%)</span></td><td style="${td};text-align:right;font-size:.85em">${fmt$(s.ben*12)} <span style="font-size:.6em;color:var(--dim)">Est.</span></td></tr>`;}).join('')||`<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No data.</td></tr>`;
+  tbl.innerHTML=`<thead><tr><th style="${th}">Truck Stop</th><th style="${th}">Location</th><th style="${th}">GS</th><th style="${th};text-align:center"># Vendors</th><th style="${th};text-align:right">$ Spend/Mo</th><th style="${th};text-align:right">Rebate $/Mo</th><th style="${th};text-align:right">Est. Savings/Mo</th><th style="${th};text-align:right">Total Benefit/Mo</th><th style="${th};text-align:right">Est. Annual</th></tr></thead><tbody>${tbody}</tbody>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -2133,20 +2133,20 @@ function renderOppAnalysis(){
     const potColor=s.potential>500?'var(--orange)':s.potential>100?'var(--yellow)':'var(--muted)';
 
     let row=`<tr style="cursor:pointer" onclick="oppExpanded['${sid}']=!oppExpanded['${sid}'];renderOppAnalysis()">
-      <td ${td} style="text-align:center"><span style="color:var(--accent);font-weight:700">${isOpen?'－':'＋'}</span></td>
-      <td ${td}><span style="font-weight:700;font-size:.85em">${s.mb.name}</span><br><span style="font-size:.64em;color:var(--muted)">${sid} · ${s.mb.city||'—'}, ${s.mb.state||'—'} · <span style="color:${gc}">${gs}</span></span></td>
-      <td ${td} style="text-align:center"><span style="background:rgba(0,214,143,.15);color:var(--green);padding:1px 8px;border-radius:10px;font-size:.82em;font-weight:700">${s.onCount}/${vendors.length}</span></td>
-      <td ${td} style="text-align:right;color:var(--green);font-weight:600">${s.currentBenefit?fmt$(s.currentBenefit):'—'}</td>
-      <td ${td} style="text-align:center"><span style="${s.missCount>0?'background:rgba(255,107,53,.15);color:var(--orange)':'color:var(--dim)'};padding:1px 8px;border-radius:10px;font-size:.82em;font-weight:700">${s.missCount}</span></td>
-      <td ${td} style="text-align:right;color:${potColor};font-weight:700">${s.potential?'+'+fmt$(s.potential):'—'}</td>
-      <td ${td} style="text-align:right;font-weight:800;color:var(--green)">${s.totalPotential?fmt$(s.totalPotential):'—'}</td>
+      <td style="${td};text-align:center"><span style="color:var(--accent);font-weight:700">${isOpen?'－':'＋'}</span></td>
+      <td style="${td}"><span style="font-weight:700;font-size:.85em">${s.mb.name}</span><br><span style="font-size:.64em;color:var(--muted)">${sid} · ${s.mb.city||'—'}, ${s.mb.state||'—'} · <span style="color:${gc}">${gs}</span></span></td>
+      <td style="${td};text-align:center"><span style="background:rgba(0,214,143,.15);color:var(--green);padding:1px 8px;border-radius:10px;font-size:.82em;font-weight:700">${s.onCount}/${vendors.length}</span></td>
+      <td style="${td};text-align:right;color:var(--green);font-weight:600">${s.currentBenefit?fmt$(s.currentBenefit):'—'}</td>
+      <td style="${td};text-align:center"><span style="${s.missCount>0?'background:rgba(255,107,53,.15);color:var(--orange)':'color:var(--dim)'};padding:1px 8px;border-radius:10px;font-size:.82em;font-weight:700">${s.missCount}</span></td>
+      <td style="${td};text-align:right;color:${potColor};font-weight:700">${s.potential?'+'+fmt$(s.potential):'—'}</td>
+      <td style="${td};text-align:right;font-weight:800;color:var(--green)">${s.totalPotential?fmt$(s.totalPotential):'—'}</td>
     </tr>`;
 
     if(isOpen){
-      const subTh='style="font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:4px 8px;border-bottom:1px solid var(--border2)"';
+      const subTh='font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:4px 8px;border-bottom:1px solid var(--border2)';
       let detail=`<tr><td colspan="7" style="padding:0;border-bottom:1px solid var(--border)"><div style="background:var(--inset-bg);padding:10px 14px">
         <div style="font-size:.72em;font-weight:700;color:var(--green);margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase">✓ Current Vendors</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr><th ${subTh}>Vendor</th><th ${subTh} style="text-align:right">Spend/Mo</th><th ${subTh} style="text-align:right">Rebate/Mo</th><th ${subTh} style="text-align:right">Est. Contract Savings</th><th ${subTh} style="text-align:right">Total Benefit</th></tr></thead><tbody>`;
+        <table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr><th style="${subTh}">Vendor</th><th style="${subTh};text-align:right">Spend/Mo</th><th style="${subTh};text-align:right">Rebate/Mo</th><th style="${subTh};text-align:right">Est. Contract Savings</th><th style="${subTh};text-align:right">Total Benefit</th></tr></thead><tbody>`;
       if(s.onVendors.length){
         s.onVendors.forEach(v=>{
           const roi=s.stopROI.find(r=>r.vendor_id===v.id);
@@ -2163,7 +2163,7 @@ function renderOppAnalysis(){
 
       if(s.missingVendors.length){
         detail+=`<div style="font-size:.72em;font-weight:700;color:var(--orange);margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase">🚨 Missing Vendors — Estimated Potential</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr><th ${subTh}>Vendor</th><th ${subTh} style="text-align:right">Network Avg Spend</th><th ${subTh} style="text-align:right">Est. Rebate/Mo</th><th ${subTh} style="text-align:right">Est. Contract Savings</th><th ${subTh} style="text-align:right">Est. Benefit/Mo</th></tr></thead><tbody>`;
+        <table style="width:100%;border-collapse:collapse"><thead><tr><th style="${subTh}">Vendor</th><th style="${subTh};text-align:right">Network Avg Spend</th><th style="${subTh};text-align:right">Est. Rebate/Mo</th><th style="${subTh};text-align:right">Est. Contract Savings</th><th style="${subTh};text-align:right">Est. Benefit/Mo</th></tr></thead><tbody>`;
         let missTot=0;
         s.missingVendors.forEach(v=>{
           const avg=vendorAvgs[v.id];
