@@ -123,7 +123,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
     </div>
     <div class="nav-group">Vendor Programs</div>
     <div class="nav-item" onclick="switchTab('programs',this)">
-      <span class="nav-icon">⭐</span> Top 10 & Enrollment
+      <span class="nav-icon">⭐</span> Top 8 & Enrollment
     </div>
     <div class="nav-item" onclick="switchTab('directory',this)">
       <span class="nav-icon">📂</span> Vendor Directory
@@ -177,7 +177,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 
     <!-- ═══ TAB: PROGRAMS ═══ -->
     <div id="tab-programs" class="tab-panel">
-      <div class="sec-hdr"><div class="sec-title">Top 10 & Enrollment</div></div>
+      <div class="sec-hdr"><div class="sec-title">Top 8 & Enrollment</div></div>
       <!-- CSV Upload -->
       <div class="panel">
         <div class="panel-hdr">
@@ -205,7 +205,7 @@ R00112,yes,yes,no</code>
       </div>
       <!-- Top 10 -->
       <div class="panel">
-        <div class="panel-hdr"><div class="panel-title">⭐ Top 10 Vendor Programs</div><span style="font-size:.72em;color:var(--muted)">Click ＋ to expand</span></div>
+        <div class="panel-hdr"><div class="panel-title">⭐ Top 8 Vendor Programs</div><span style="font-size:.72em;color:var(--muted)">Click ＋ to expand</span></div>
         <div style="overflow-x:auto"><table class="dt" id="vp-top10-tbl"></table></div>
       </div>
       <!-- Enrollment Grid -->
@@ -739,7 +739,6 @@ const VP_TOP10_LIST = [
   {id:'V00036', name:'DAS'},
   {id:'V00022', name:'Lynco'},
   {id:'V00112', name:'Truck Parking Club'},
-  {id:'V00134', name:'Cintas'},
   {id:'V00040', name:'Entegra'}];
 
 // Estimated monthly revenue per enrolled stop per vendor
@@ -950,13 +949,19 @@ Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STAT
 // 2 active locations (Location Active AND Program Active). EXCLUSIVE roster.
 const HEARTLAND_STATUS={};
 ['R03693','R00614'].forEach(s=>HEARTLAND_STATUS[s]='active');
-const ROSTER_STATUS={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
+// ── Cintas (via Entegra) Program Status (active-only roster, 2026-06-26) ──
+// 8 active locations. Cintas runs through Entegra and was removed from the Top-8
+// enrollment grid, so it has no grid column — but its program card + per-stop
+// status (gs drawer badge) and authoritative enrollment are still tracked.
+const CINTAS_STATUS={};
+['P03654','P03658','R03598','R03596','R03597','P03930','P03718','P03931'].forEach(s=>CINTAS_STATUS[s]='active');
+const ROSTER_STATUS={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS,'V00134':CINTAS_STATUS};
 const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
 // Vendors whose roster is the COMPLETE enrollment truth: enrolled IFF 'active' in
 // the map; any other enrollment for that vid is cleared. Sysco (V00010), Truck
 // Parking Club (V00112) and Heartland (V00232) are exclusive so their rosters
 // supersede older seeds.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true,'V00134':true};
 // Shared status badge (used by the enrollment grid).
 function statusBadge(st,label){
   label=label||'';
@@ -2509,8 +2514,13 @@ const PROGRAM_DETAILS = [
    rebateStructure:'Through Entegra contracted pricing',
    roamoBenefit:'Varies',roaCommission:'Varies',
    contact:'Todd Hayes — Senior Manager (via Entegra)',email:'Todd.Hayes@EntegraPS.com',phone:'945-253-1976',
-   contractTerm:'Via Entegra',
+   contractTerm:'Oct 1, 2024 – Sep 30, 2029 (via Entegra)',
    reporting:'Quarterly',
+   website:'https://www.cintas.com/',
+   address:'6800 Cintas Blvd, Mason, OH 45040',
+   corpPhone:'(555) 555-5555',
+   rebatesAllowances:'Contract Pricing.',
+   roadysTeam:'Entegra Program\nCintas is our second-best program for reducing a Members cost on products.\nIn addition, our Members will get higher quality products than what the competition supplies and better service. If our Member is currently using Cintas but not on our program we can have a cost comparison done quickly and then move them over to our program. If they are using another company they will be under contract and will have to give notice. We would want a Cintas Account Executive to visit the location to make sure they match up exactly on the products they are using for the cost comparison. All locations converting to our program have to complete and sign a Participation/Declaration Form. (In documents)\nFor all Member signups, additional information or issues please contact our Entegra corporate Account Manager. Entegra will contact Cintas.\nPlease Cc John Fechik on all emails to Entegra. Request that you & John Fechik are Cc\'d on all emails to Cintas and Member.',
    notes:'Runs through Entegra — not a separate mandatory program. Not volume/purchase dependent so will not be lost. Cintas provides uniforms, mats, bath & shower supplies, and facility services at Entegra-negotiated pricing. If Member is currently using Cintas but not on our program, cost comparison can be done quickly. If using another company, they may be under contract and need to give notice. All locations must complete a Participation/Declaration Form. Contact Todd Hayes (Entegra) for all signups. Please Cc John Fechik on all emails.',
    howItWorks:'Entegra Corporate Account Manager (Todd Hayes) coordinates with Cintas. Members get Entegra-negotiated pricing on uniforms, mats, towels, and facility services.'},
   {vid:'V00036',name:'DAS',category:'C-Store Merchandise',

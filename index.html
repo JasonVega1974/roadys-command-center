@@ -11816,11 +11816,14 @@ const TPC_ENROLL_SEED={
 const TPC_STATUS={}; Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STATUS[s]=st));
 // Heartland / Global Payments: active-only roster of 2 (Location + Program Active).
 const HEARTLAND_STATUS={}; ['R03693','R00614'].forEach(s=>HEARTLAND_STATUS[s]='active');
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
+// Cintas (via Entegra): active-only roster of 8. Removed from the enrollment grid
+// (runs through Entegra) but tracked here for authoritative enrollment.
+const CINTAS_STATUS={}; ['P03654','P03658','R03598','R03596','R03597','P03930','P03718','P03931'].forEach(s=>CINTAS_STATUS[s]='active');
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS,'V00134':CINTAS_STATUS};
 const STATUS_DISPLAY=ROSTER_STATUS;
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true,'V00134':true};
 function statusBadge(st,label){
   label=label||'';
   if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';
@@ -11856,7 +11859,6 @@ applyRosterAuthority();
 const VP_TOP10_LIST = [
   {id:'V00033', name:'Coca-Cola'},
   {id:'V00040', name:'Entegra'},
-  {id:'V00134', name:'Cintas'},
   {id:'V00036', name:'DAS'},
   {id:'V00005', name:'All Over Media'},
   {id:'V00002', name:'Farmer Brothers'},

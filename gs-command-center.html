@@ -1977,8 +1977,13 @@ const PROG_DETAILS_INLINE = [
    rebateStructure:'Through Entegra contracted pricing',
    roamoBenefit:'Varies',roaCommission:'Varies',
    contact:'Todd Hayes — Senior Manager (via Entegra)',email:'Todd.Hayes@EntegraPS.com',phone:'945-253-1976',
-   contractTerm:'Via Entegra',
+   contractTerm:'Oct 1, 2024 – Sep 30, 2029 (via Entegra)',
    reporting:'Quarterly',
+   website:'https://www.cintas.com/',
+   address:'6800 Cintas Blvd, Mason, OH 45040',
+   corpPhone:'(555) 555-5555',
+   rebatesAllowances:'Contract Pricing.',
+   roadysTeam:'Entegra Program\nCintas is our second-best program for reducing a Members cost on products.\nIn addition, our Members will get higher quality products than what the competition supplies and better service. If our Member is currently using Cintas but not on our program we can have a cost comparison done quickly and then move them over to our program. If they are using another company they will be under contract and will have to give notice. We would want a Cintas Account Executive to visit the location to make sure they match up exactly on the products they are using for the cost comparison. All locations converting to our program have to complete and sign a Participation/Declaration Form. (In documents)\nFor all Member signups, additional information or issues please contact our Entegra corporate Account Manager. Entegra will contact Cintas.\nPlease Cc John Fechik on all emails to Entegra. Request that you & John Fechik are Cc\'d on all emails to Cintas and Member.',
    notes:'Runs through Entegra — not a separate mandatory program. Not volume/purchase dependent so will not be lost. Cintas provides uniforms, mats, bath & shower supplies, and facility services at Entegra-negotiated pricing. If Member is currently using Cintas but not on our program, cost comparison can be done quickly. If using another company, they may be under contract and need to give notice. All locations must complete a Participation/Declaration Form. Contact Todd Hayes (Entegra) for all signups. Please Cc John Fechik on all emails.',
    howItWorks:'Entegra Corporate Account Manager (Todd Hayes) coordinates with Cintas. Members get Entegra-negotiated pricing on uniforms, mats, towels, and facility services.'},
   {vid:'V00036',name:'DAS',category:'C-Store Merchandise',
@@ -2644,14 +2649,20 @@ Object.keys(TPC_ENROLL_SEED).forEach(st=>TPC_ENROLL_SEED[st].forEach(s=>TPC_STAT
 const HEARTLAND_STATUS={};
 ['R03693','R00614'].forEach(s=>HEARTLAND_STATUS[s]='active');
 
+// Cintas (via Entegra) Program Status (active-only roster, 2026-06-26). 8 active.
+// Removed from the enrollment grid (runs through Entegra) but still tracked here
+// so the stop drawer shows a per-stop Cintas badge + program details.
+const CINTAS_STATUS={};
+['P03654','P03658','R03598','R03596','R03597','P03930','P03718','P03931'].forEach(s=>CINTAS_STATUS[s]='active');
+
 // Registry of roster-tracked vendors. Each is AUTHORITATIVE for its V-id
 // enrollment (active => enrolled, everything else => not enrolled) and renders a
 // per-stop status badge in the stop drawer. Add future vendors here.
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS};
-const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice','V00112':'🅿️ Truck Parking Club','V00232':'💳 Heartland / Global Payments'};
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS,'V00134':CINTAS_STATUS};
+const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice','V00112':'🅿️ Truck Parking Club','V00232':'💳 Heartland / Global Payments','V00134':'🧺 Cintas (via Entegra)'};
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared on read.
-const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true};
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true,'V00134':true};
 const ROSTER_STATUS_META={
   active:{c:'var(--green)',t:'Active',bg:'rgba(16,185,129,.12)'},
   pending:{c:'var(--yellow)',t:'Pending',bg:'rgba(251,191,36,.12)'},
