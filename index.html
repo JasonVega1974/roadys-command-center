@@ -11798,11 +11798,19 @@ const DAS_STATUS={};  Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[s
 // Farmer Brothers: active-only roster of 12 (Location Active AND Program Active).
 const FARMER_STATUS={};
 ['P03659','R03932','R00205','R03699','R01017','R01107','R03494','R03495','R01866','P03658','R00774','P03738'].forEach(s=>FARMER_STATUS[s]='active');
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
+// Sysco: 37-stop roster. 'active' = Location Active AND Program Active (R00395
+// Offboarding/Active excluded). 27 active, 6 pending, 3 refused. EXCLUSIVE.
+const SYSCO_ENROLL_SEED={
+  active:['R01260','R03693','R00112','R00454','R00841','R00641','R00642','R03860','R03523','R03494','R03495','R00179','R00208','R01835','R00723','P03647','P03715','P03713','P03716','P03714','R01437','P03738','R00111','P03595','R00587','R00245','P03599'],
+  pending:['R03650','R02592','R03918','R03877','R01018','R03867'],
+  refused:['R01227','P03600','R00244']
+};
+const SYSCO_STATUS={}; Object.keys(SYSCO_ENROLL_SEED).forEach(st=>SYSCO_ENROLL_SEED[st].forEach(s=>SYSCO_STATUS[s]=st));
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS};
 const STATUS_DISPLAY=ROSTER_STATUS;
-// Active-only rosters whose list is the COMPLETE enrollment truth — enrolled IFF
-// 'active' in the map; any other enrollment for that vid is cleared.
-const ROSTER_EXCLUSIVE={'V00002':true};
+// Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
+// map; any other enrollment for that vid is cleared.
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true};
 function statusBadge(st,label){
   label=label||'';
   if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';

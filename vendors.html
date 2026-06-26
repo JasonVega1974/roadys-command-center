@@ -681,9 +681,12 @@ async function vpFullSyncToSupabase(){
 }
 loadVPEnroll();
 
-// ── Sysco Enrollment Seed Data (from Sysco participation list) ──
+// ── Sysco Program Status (37-location roster, 2026-06-26) ──
+// LID → 'active' | 'pending' | 'refused'. 'active' = Location Active AND Program
+// Active. R00395 (Sunshine Plaza) is Offboarding/Active → excluded from active
+// per the location-active rule. 27 active, 6 pending, 3 refused.
 const SYSCO_ENROLL_SEED={
-  active:['R03794','R01260','P03525','R01142','R03693','P01254','R03717','R00447','R00664','R00178','R00174','R00176','R00112','R00454','D01519','R00841','R00641','R00642','R03860','R03523','R03494','R03495','R00179','P02163','R00208','R01835','R00723','P03694','P03711','P03647','P03715','P03713','P03716','P03714','D01207','D01053','R01056','D01117','R01045','R03790','P03643','P03644','R01437','P03709','P03738','P03710','R00111','R03712','P03595','R00395','R00587','R00245','P03599'],
+  active:['R01260','R03693','R00112','R00454','R00841','R00641','R00642','R03860','R03523','R03494','R03495','R00179','R00208','R01835','R00723','P03647','P03715','P03713','P03716','P03714','R01437','P03738','R00111','P03595','R00587','R00245','P03599'],
   pending:['R03650','R02592','R03918','R03877','R01018','R03867'],
   refused:['R01227','P03600','R00244']
 };
@@ -933,11 +936,12 @@ Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[st].forEach(s=>DAS_STAT
 // aren't on the current list are cleared (the list now totals 12, not 21).
 const FARMER_STATUS={};
 ['P03659','R03932','R00205','R03699','R01017','R01107','R03494','R03495','R01866','P03658','R00774','P03738'].forEach(s=>FARMER_STATUS[s]='active');
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
+const ROSTER_STATUS={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
 const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
-// Vendors whose roster is the COMPLETE enrollment truth (active-only lists):
-// enrolled IFF 'active' in the map; any other enrollment for that vid is cleared.
-const ROSTER_EXCLUSIVE={'V00002':true};
+// Vendors whose roster is the COMPLETE enrollment truth: enrolled IFF 'active' in
+// the map; any other enrollment for that vid is cleared. Sysco (V00010) is
+// exclusive so its new 37-stop roster supersedes the old participation-list seed.
+const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true};
 // Shared status badge (used by the enrollment grid).
 function statusBadge(st,label){
   label=label||'';
@@ -2465,7 +2469,15 @@ const PROGRAM_DETAILS = [
    contractTerm:'Mar 2013 – auto-renews annually (180-day notice)',
    reporting:'Monthly',
    notes:'⚠️ MANDATORY PROGRAM — Products covered: Food, Beverages, Supplies, Paper Goods, Cleaning Chemicals and other Foodservice Products. Required if member purchases $750+/week. Average Member Savings: ~$1,120/mo based on ~$16,000/mo avg purchases at ~7% (ESTIMATED). #1 Cost Savings Program when combined with Entegra. IMPORTANT — Per John Fechik: (1) Sysco has NO rebate. (2) Use 7% as the default savings % unless a specific cost comparison was completed for that location — John will provide location-specific percentages where cost comparisons exist. (3) All savings figures must be labeled ESTIMATED. (4) Do not use AI to calculate — use actual data or the 7% default. Please follow the Sysco/Entegra Conversion Process Guide. Cc John Fechik on all emails.',
-   howItWorks:'DATA SOURCE — Spending: Monthly purchase reports from Sysco (Scott pulls deployment reports). Estimated Savings: Monthly spend × 7% (default) OR × location-specific cost comparison % if one was done (John Fechik provides these per location). Sysco has NO rebate. Entegra rebates (separate) are paid quarterly based on volume. All savings figures must be labeled "Estimated." Do not calculate with AI — use John Fechik for methodology questions.'},
+   howItWorks:'DATA SOURCE — Spending: Monthly purchase reports from Sysco (Scott pulls deployment reports). Estimated Savings: Monthly spend × 7% (default) OR × location-specific cost comparison % if one was done (John Fechik provides these per location). Sysco has NO rebate. Entegra rebates (separate) are paid quarterly based on volume. All savings figures must be labeled "Estimated." Do not calculate with AI — use John Fechik for methodology questions.',
+   rebatesAllowances:'Members:\nReceive contracted pricing.\nTrue Manufacture Cost plus a 9.75% Margin (Markup).\nHigher volume locations have lower margins, 9.0%.',
+   roadysTeam:'#1 Cost Savings Program when combined with our Entegra Foodservice Program. Sysco stocks almost every food product & supply item a Non-Franchised Foodservice Operation needs! Our program pricing is contracted and will lower their cost on average of 7%! (Low 3% to a high of 22.5%). Combined with our Entegra Program the savings will continue to get better.\nPLEASE FOLLOW THE SYSCO/ENTEGRA FOODSERVICE PROGRAM CONVERSION PROCESS FILE ATTACHED IN DOCUMENTS.\nFor any questions or issues contact John Fechik.',
+   merchantConsole:`<div style="line-height:1.55">
+<div style="font-weight:800;color:var(--accent);margin-bottom:8px">SYSCO FOODSERVICE PROGRAM</div>
+<p style="margin:0 0 8px">Our Sysco Foodservice Program is one of most significant cost-reduction programs available to our Members. On average, this program has reduced Members cost for food and supplies of the same quality or better, by <b>7%</b>! Individual cost savings typically range from 3% to as much as 22.5%.</p>
+<p style="margin:0 0 8px">This is a contracted program, based on the Manufactures cost for the various products purchased plus a Sysco margin (markup) of 9.75% or less.</p>
+<p style="margin:0">For further information please contact your Roady's Growth Strategist or call <b>(888) 540-2909</b>.</p>
+</div>`},
   {vid:'V00040',name:'Entegra Procurement Services',category:'Foodservice',
    savings:'5% – 10% on contracted foodservice products (layers on Sysco)',
    avgSavings:'Combined with Sysco: ~$1,120/mo estimated on $16,000/mo avg purchases',
@@ -2824,10 +2836,8 @@ async function loadFromSupabase(){
         if(!r.stop_id||!r.vendor_id)return;
         if(!VP_ENROLL[r.stop_id])VP_ENROLL[r.stop_id]={};
         VP_ENROLL[r.stop_id][r.vendor_id]=r.enrolled!==false;
-        // Update Sysco status if available
-        if(r.vendor_id==='V00010'&&r.status){
-          SYSCO_STATUS[r.stop_id]=r.status;
-        }
+        // Sysco status now comes from the hardcoded SYSCO_STATUS roster (it is a
+        // ROSTER_STATUS member), so the cloud status column no longer overrides it.
       });
       // Re-assert the per-vendor roster statuses (Coca-Cola, DAS) over the cloud.
       applyRosterAuthority();
