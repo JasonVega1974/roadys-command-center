@@ -1171,7 +1171,7 @@ R01180,no,yes,yes,no,yes,no</code>
 
       <!-- Top 10 Vendor Programs table -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="font-family:var(--ff);font-size:.9em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)">⭐ Top 10 Vendor Programs</div>
+        <div style="font-family:var(--ff);font-size:.9em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)">⭐ Top 9 Vendor Programs</div>
         <span style="font-size:.72em;color:var(--muted);font-weight:500">Click ＋ to expand truck stop detail</span>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:24px">
@@ -9169,7 +9169,7 @@ function renderIV2Spec(){
   document.getElementById('iv2-vendor-specs').innerHTML=
     iv2Spec('Vendor Programs Revenue','Total monthly revenue from vendor program participation fees.','% vs Prior Month · $ Δ · % vs Prior Year · $ Δ · YTD','KPI: "Monthly Vendor Program Revenue"')+
     iv2Spec('Total Vendor Programs','Count of participating vendor programs across the network.','Count change vs prior month','KPI: "Total number of Participating Programs"')+
-    iv2Spec('Number of Vendor Programs by Location','Per-location count of enrolled vendors (out of Top 10 possible). Shows enrollment depth per stop.','Per card: enrolled / possible · est. revenue','VP_ENROLL[stopId] enrollment data')+
+    iv2Spec('Number of Vendor Programs by Location','Per-location count of enrolled vendors (out of Top 9 possible). Shows enrollment depth per stop.','Per card: enrolled / possible · est. revenue','VP_ENROLL[stopId] enrollment data')+
     iv2Spec('Avg Vendor Programs / Location','Total enrollments ÷ Total locations. Network benchmark for vendor penetration.','Value','Calculated: totalEnrollments / totalLocations')+
     iv2Spec('VP Revenue / Location','Vendor Programs Revenue ÷ Total locations. Average vendor revenue per stop.','% vs Prior Month · $ Δ','Calculated: vpRev / locCount')+
     iv2Spec('VP Revenue Potential / Location','Theoretical max revenue if every location enrolled in all vendor programs. Highlights gap between actual and potential.','Static reference value','VP_TOP10.length × estimated per-vendor fee')+
@@ -11910,7 +11910,7 @@ function renderVendorKPIs(){
   if(!el) return;
   el.innerHTML=
     kpiKC('Vendor Programs Revenue',vpRev,'$',vpRevP,'Monthly vendor program fees',false,vpYTD,vpRevY)+
-    kpiKC('Top 10 Vendor Program Revenue',t10Rev,'$',t10RevP,'Est. from enrolled stops',false,t10YTD,t10RevY);
+    kpiKC('Top 9 Vendor Program Revenue',t10Rev,'$',t10RevP,'Est. from enrolled stops',false,t10YTD,t10RevY);
 }
 
 function renderTop10VendorTable(){
