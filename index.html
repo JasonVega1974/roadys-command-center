@@ -11795,8 +11795,14 @@ const DAS_ENROLL_SEED={
 };
 const COKE_STATUS={}; Object.keys(COKE_ENROLL_SEED).forEach(st=>COKE_ENROLL_SEED[st].forEach(s=>COKE_STATUS[s]=st));
 const DAS_STATUS={};  Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[st].forEach(s=>DAS_STATUS[s]=st));
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS};
+// Farmer Brothers: active-only roster of 12 (Location Active AND Program Active).
+const FARMER_STATUS={};
+['P03659','R03932','R00205','R03699','R01017','R01107','R03494','R03495','R01866','P03658','R00774','P03738'].forEach(s=>FARMER_STATUS[s]='active');
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
 const STATUS_DISPLAY=ROSTER_STATUS;
+// Active-only rosters whose list is the COMPLETE enrollment truth — enrolled IFF
+// 'active' in the map; any other enrollment for that vid is cleared.
+const ROSTER_EXCLUSIVE={'V00002':true};
 function statusBadge(st,label){
   label=label||'';
   if(st==='active')   return'<span style="color:var(--green);font-weight:700" title="'+label+' Active">✓</span>';
@@ -11810,6 +11816,13 @@ function applyRosterAuthority(){
   let changed=false;
   for(const vid in ROSTER_STATUS){
     const map=ROSTER_STATUS[vid];
+    // Exclusive roster: the active list is the COMPLETE enrollment truth — clear
+    // any existing enrollment for this vid that isn't active on the list.
+    if(ROSTER_EXCLUSIVE[vid]){
+      for(const sid in VP_ENROLL){
+        if(VP_ENROLL[sid][vid]&&map[sid]!=='active'){VP_ENROLL[sid][vid]=false;changed=true;}
+      }
+    }
     for(const sid in map){
       if(!VP_ENROLL[sid])VP_ENROLL[sid]={};
       const want=(map[sid]==='active');

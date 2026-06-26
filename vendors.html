@@ -927,8 +927,17 @@ Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[st].forEach(s=>DAS_STAT
 // enrollment (only 'active' counts as enrolled; pending/refused/inactive/zero =>
 // not enrolled, but the status still renders). STATUS_DISPLAY additionally
 // includes Sysco (display-only; Sysco keeps its own cloud-status flow).
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS};
-const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS};
+// ── Farmer Brothers per-stop Program Status (active-only roster, 2026-06-26) ──
+// 12 active locations (Location Status Active AND Program Status Active). EXCLUSIVE
+// roster: enrolled IFF on the active list, so older seedFBEnroll enrollments that
+// aren't on the current list are cleared (the list now totals 12, not 21).
+const FARMER_STATUS={};
+['P03659','R03932','R00205','R03699','R01017','R01107','R03494','R03495','R01866','P03658','R00774','P03738'].forEach(s=>FARMER_STATUS[s]='active');
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
+const STATUS_DISPLAY={'V00010':SYSCO_STATUS,'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
+// Vendors whose roster is the COMPLETE enrollment truth (active-only lists):
+// enrolled IFF 'active' in the map; any other enrollment for that vid is cleared.
+const ROSTER_EXCLUSIVE={'V00002':true};
 // Shared status badge (used by the enrollment grid).
 function statusBadge(st,label){
   label=label||'';
@@ -946,6 +955,13 @@ function applyRosterAuthority(){
   let changed=false;
   for(const vid in ROSTER_STATUS){
     const map=ROSTER_STATUS[vid];
+    // Exclusive roster: the active list is the COMPLETE enrollment truth — clear
+    // any existing enrollment for this vid that isn't active on the list.
+    if(ROSTER_EXCLUSIVE[vid]){
+      for(const sid in VP_ENROLL){
+        if(VP_ENROLL[sid][vid]&&map[sid]!=='active'){VP_ENROLL[sid][vid]=false;changed=true;}
+      }
+    }
     for(const sid in map){
       if(!VP_ENROLL[sid])VP_ENROLL[sid]={};
       const want=(map[sid]==='active');

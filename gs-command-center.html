@@ -2515,6 +2515,10 @@ function loadVendorEnrolls(){
   if(typeof ROSTER_STATUS !== 'undefined'){
     for(const vid in ROSTER_STATUS){
       const map = ROSTER_STATUS[vid];
+      // Exclusive roster: clear any enrollment for this vid that isn't active.
+      if(typeof ROSTER_EXCLUSIVE !== 'undefined' && ROSTER_EXCLUSIVE[vid]){
+        for(const sid in VPE){ if(VPE[sid][vid] && map[sid] !== 'active') VPE[sid][vid] = false; }
+      }
       for(const sid in map){
         if(!VPE[sid]) VPE[sid] = {};
         VPE[sid][vid] = (map[sid] === 'active');
@@ -2576,11 +2580,19 @@ const DAS_ENROLL_SEED={
 const DAS_STATUS={};
 Object.keys(DAS_ENROLL_SEED).forEach(st=>DAS_ENROLL_SEED[st].forEach(s=>DAS_STATUS[s]=st));
 
+// Farmer Brothers per-stop Program Status (active-only roster, 2026-06-26).
+// 12 active locations (Location Active AND Program Active). EXCLUSIVE roster.
+const FARMER_STATUS={};
+['P03659','R03932','R00205','R03699','R01017','R01107','R03494','R03495','R01866','P03658','R00774','P03738'].forEach(s=>FARMER_STATUS[s]='active');
+
 // Registry of roster-tracked vendors. Each is AUTHORITATIVE for its V-id
 // enrollment (active => enrolled, everything else => not enrolled) and renders a
 // per-stop status badge in the stop drawer. Add future vendors here.
-const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS};
-const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution'};
+const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS};
+const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage'};
+// Active-only rosters whose list is the COMPLETE enrollment truth — enrolled IFF
+// 'active' in the map; any other enrollment for that vid is cleared on read.
+const ROSTER_EXCLUSIVE={'V00002':true};
 const ROSTER_STATUS_META={
   active:{c:'var(--green)',t:'Active',bg:'rgba(16,185,129,.12)'},
   pending:{c:'var(--yellow)',t:'Pending',bg:'rgba(251,191,36,.12)'},
