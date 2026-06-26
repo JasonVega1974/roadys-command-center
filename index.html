@@ -5250,18 +5250,23 @@ function renderMaster(){
   // ── 3) VENDOR PROGRAMS — total deployments + top 9 vendors.
   // VP_ENROLL is the canonical store written by vendors.html. The override key
   // lets the user pin a manual headline value while keeping the breakdown live.
+  // Count active-member enrollments per Top-9 vendor program, matching the
+  // authoritative Top-9 enrollment grid (VP_ENROLL is roster-authoritative).
   let vendorCounts = {};
   try {
-    if(typeof VP_ENROLL !== 'undefined' && VP_ENROLL){
-      Object.values(VP_ENROLL).forEach(stop => {
-        if(stop && typeof stop === 'object'){
-          Object.entries(stop).forEach(([vid, on]) => { if(on) vendorCounts[vid] = (vendorCounts[vid]||0) + 1; });
-        }
-      });
-    }
+    const activeLocs = (typeof MEMBERS !== 'undefined' && Array.isArray(MEMBERS))
+      ? MEMBERS.filter(mb => mb.status === 'active' && mb.id) : [];
+    const list = (typeof VP_TOP10_LIST !== 'undefined' && Array.isArray(VP_TOP10_LIST)) ? VP_TOP10_LIST : [];
+    list.forEach(v => {
+      vendorCounts[v.id] = activeLocs.filter(mb => (VP_ENROLL[mb.id]||{})[v.id]).length;
+    });
   } catch(e){}
   const vendorName = vid => {
     try {
+      if(typeof VP_TOP10_LIST !== 'undefined' && Array.isArray(VP_TOP10_LIST)){
+        const t = VP_TOP10_LIST.find(x => x.id === vid);
+        if(t) return t.name;
+      }
       if(typeof VP_VENDORS !== 'undefined' && Array.isArray(VP_VENDORS)){
         const v = VP_VENDORS.find(x => x.id === vid);
         if(v) return v.name;
@@ -5278,7 +5283,7 @@ function renderMaster(){
     + customRowsHTML('vendor', m);
   const vendorCard = wrapCard('vendor', dashCard('Vendor Programs', totalDeployed, '',
     'Vendor Programs Total (Override)',
-    'Total Network VP Deployed', vendorSubsHTML));
+    'Top-9 program enrollments (active stops)', vendorSubsHTML));
 
   // ── 4) FUEL — YTD totals only. Headline + sub-lines all sum across
   // Jan→selected-month of the current year. Override keys are
