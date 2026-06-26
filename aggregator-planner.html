@@ -1173,7 +1173,12 @@ function renderAggWorkspace(){
     </div>
     <div class="agp-grid-4" style="margin-top:14px">
       <div class="agp-field"><label>Default discount</label>${selectHtml("aggf","discountType",DISCOUNT_TYPES,a.discountType)}</div>
-      <div class="agp-field"><label>Discount value (¢)</label><input class="agp-input" data-aggf="discountValue" value="${esc(a.discountValue)}" placeholder="e.g. 8"></div>
+      ${a.discountType==='BO'
+        ? `<div class="agp-field"><label>Cost + (¢)</label><input class="agp-input" data-aggf="boCostPlus" value="${esc(a.boCostPlus)}" placeholder="e.g. 10"></div>
+           <div class="agp-field"><label>Retail − (¢)</label><input class="agp-input" data-aggf="boRetailMinus" value="${esc(a.boRetailMinus)}" placeholder="e.g. 12"></div>`
+        : a.discountType==='none'
+          ? ``
+          : `<div class="agp-field"><label>Discount value (¢)</label><input class="agp-input" data-aggf="discountValue" value="${esc(a.discountValue)}" placeholder="e.g. 8"></div>`}
       <div class="agp-field"><label>Roady's markup (¢)</label><input class="agp-input" data-aggf="markup" value="${esc(a.markup)}"></div>
       <div class="agp-field"><label>Discount target (text)</label><input class="agp-input" data-aggf="discountTarget" value="${esc(a.discountTarget)}"></div>
     </div>
