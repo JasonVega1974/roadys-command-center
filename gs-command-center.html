@@ -19,6 +19,8 @@ body.light-mode{
   --border:#cbd5e1;--border2:#94a3b8;
   --text:#0f172a;--dim:#475569;--muted:#64748b;
   /* Accent palette stays saturated so KPI/chart colors still pop */
+  /* …but yellow/gold/orange are darkened for legible TEXT on light bg */
+  --yellow:#b45309;--orange:#c2410c;--b-gold:#a16207;
 }
 body.light-mode select option{background:#ffffff;color:#0f172a}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -597,13 +599,6 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 
 #br-overlay{position:fixed;inset:0;background:rgba(2,6,23,.94);z-index:9000;display:none;flex-direction:column;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 #br-overlay.show{display:flex}
-/* Margin Bridge report overlay — reuses .br-toolbar / .br-btn chrome; the
-   report itself renders inside an iframe so its generic class names
-   (.page,.card,.header,…) can't collide with the app's own styles. */
-#mb-overlay{position:fixed;inset:0;background:rgba(2,6,23,.94);z-index:9000;display:none;flex-direction:column;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-#mb-overlay.show{display:flex}
-#mb-overlay .mb-stage{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:18px}
-#mb-overlay iframe{border:0;width:1600px;height:1000px;background:#fff;box-shadow:0 18px 50px rgba(0,0,0,.5);transform-origin:top center}
 
 /* Toolbar */
 .br-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#0b1220,#0f172a);border-bottom:1px solid rgba(148,163,184,.15);padding:10px 16px;color:#e2e8f0;flex-wrap:wrap;font-feature-settings:'cv11','ss01'}
@@ -1044,6 +1039,46 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
   body.br-printing .br-img-slot { border-style: solid !important; border-color: var(--b-line) !important; background: var(--b-bg-2) !important; }
 }
 </style>
+<style id="gs-refactor-css">
+/* ── Bolder / larger titles (items 3 & 4) ── */
+.drawer-card-hd{font-size:1.06em;font-weight:800;letter-spacing:.01em}
+.sd-group{font-size:1.18em;font-weight:800}
+.sd-section-label{font-size:1.12em;font-weight:800}
+.sd-name{font-size:1.28em;font-weight:800}
+.fuel-tile-lbl,.kpi-lbl{font-weight:700}
+.kpi-val{font-weight:800}
+/* ── Stop-detail top tabs (item 7) ── */
+.sd-tabnav{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;border-bottom:2px solid var(--border)}
+.sd-tabnav .sd-tab{background:var(--bg3);border:1px solid var(--border);border-bottom:0;border-radius:9px 9px 0 0;padding:9px 20px;font-size:1.02em;font-weight:800;color:var(--dim);cursor:pointer;transition:all .12s}
+.sd-tabnav .sd-tab:hover{color:var(--text);border-color:var(--accent)}
+.sd-tabnav .sd-tab.active{background:var(--surface);color:var(--accent)}
+.sd-tabwrap{margin-top:14px}
+.sd-tabpane{display:none}
+.sd-tabpane.active{display:block}
+/* ── Sub-tabs (hover-friendly chips) ── */
+.sd-subnav{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px;padding-bottom:8px;border-bottom:1px dashed var(--border)}
+.sd-subnav .sd-sub{background:transparent;border:1px solid var(--border);border-radius:14px;padding:5px 13px;font-size:.84em;font-weight:700;color:var(--dim);cursor:pointer;transition:all .1s}
+.sd-subnav .sd-sub:hover{color:var(--text);border-color:var(--accent);background:var(--bg3)}
+.sd-subnav .sd-sub.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.sd-subcard.hidden{display:none}
+/* ── Actions row (item 7) ── */
+.sd-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+/* ── Bottom tabs (item 17) ── */
+.sd-bottom{margin-top:24px;border-top:2px solid var(--border);padding-top:16px}
+.sd-bottom-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.sd-bottom-nav .sd-btab{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:.96em;font-weight:800;color:var(--dim);cursor:pointer}
+.sd-bottom-nav .sd-btab:hover{color:var(--text);border-color:var(--accent)}
+.sd-bottom-nav .sd-btab.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.sd-bottom-pane{display:none}
+.sd-bottom-pane.active{display:block}
+/* ── Notes dropdown + search (items 10 & 16) ── */
+.notes-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.notes-controls select,.notes-controls input{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 9px;color:var(--text);font-size:.82em}
+.notes-controls input{flex:1;min-width:150px}
+.notes-entry-cat{display:inline-block;font-size:.62em;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);background:var(--bg3);border-radius:8px;padding:1px 7px;margin-left:6px}
+/* ── Top-menu Back button (item 15) ── */
+.nav-back-btn{margin-right:8px;font-weight:800}
+</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -1064,6 +1099,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 <div id="app" style="display:none">
   <div class="topbar">
     <div class="topbar-logo">⛽ GS Command Center</div>
+    <button class="btn nav-back-btn" id="nav-back-btn" style="display:none" onclick="navBackToDashboard()" title="Back to truck-stop dashboard">← Back</button>
     <div class="gs-selector-wrap" id="gs-selector-wrap">
       <label for="gs-selector">Viewing:</label>
       <select id="gs-selector" class="gs-selector" onchange="changeGSSelection(this.value)"></select>
@@ -2690,7 +2726,14 @@ let _viewMonthOverride = null;
 function currentMonthKey(){
   // Matches index.html's GD/KD period keys exactly. Returns the user's
   // picked month if set, otherwise the latest seeded data month.
-  return _viewMonthOverride || latestDataMonthKey();
+  // NO PARTIAL MONTHS: if the resolved month is the current (in-progress)
+  // calendar month, fall back to the previous completed month so the app
+  // only ever shows the previous month and before.
+  let k = _viewMonthOverride || latestDataMonthKey();
+  const now = new Date();
+  const curCal = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  if(k === curCal) k = priorMonthKey(k);
+  return k;
 }
 function setViewMonth(m){
   // Treat selecting the latest-data default as "no override" so the
@@ -3168,6 +3211,13 @@ function switchTab(id,el){
   const p=document.getElementById('p-'+id);if(p)p.classList.add('active');
   if(id==='calendar')renderCalendar();
   if(id==='gallery' && typeof galleryRender === 'function') galleryRender();
+  // Top-menu Back button: visible on every tab except the dashboard (item 15)
+  const bb=document.getElementById('nav-back-btn'); if(bb) bb.style.display=(id==='dashboard')?'none':'';
+}
+function navBackToDashboard(){
+  // Return to the truck-stop dashboard from CRM / Calendar / Rates & Fees / etc.
+  const el=document.querySelector('.tab[data-tab="dashboard"]');
+  switchTab('dashboard', el);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -6758,7 +6808,7 @@ function onStopSearchKey(ev){
   else if(ev.key === 'Escape'){ closeStopSearch(); }
 }
 
-function drawerRewardsHTML(stopId){
+function drawerRewardsHTML(stopId, part){
   const rec = loadStopRecord(stopId);
   const fmt = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const inS = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;color:var(--text);font-size:.82em;width:100%';
@@ -6831,18 +6881,22 @@ function drawerRewardsHTML(stopId){
     ? `<div style="font-size:.6em;color:var(--accent);margin-top:3px;opacity:.85" title="Sum of ${seedMonthLabels} from the per-month rewards seed. Type a value to override.">↺ auto from ${seedMonthLabels}</div>`
     : '';
 
-  return `
+  // $-prefixed YTD input boxes (item 5)
+  const $wrap = (inner) => `<span style="position:relative;display:block;margin-top:3px"><span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text);pointer-events:none">$</span>${inner}</span>`;
+  const addsInput = `<input id="sd-radds-${stopId}" type="number" step="0.01" style="${inS};padding-left:18px${addsAuto?';font-style:italic;color:var(--accent)':''}" value="${adds}" placeholder="0.00"${addsAuto?' readonly title="Auto-summed from the monthly rewards seeds — not editable"':` onblur="onMembershipChange('${stopId}', 'rewardsYtdAdds', this.value)"`}/>`;
+  const redeemsInput = `<input id="sd-rred-${stopId}" type="number" step="0.01" style="${inS};padding-left:18px${redeemsAuto?';font-style:italic;color:var(--accent)':''}" value="${redeems}" placeholder="0.00"${redeemsAuto?' readonly title="Auto-summed from the monthly rewards seeds — not editable"':` onblur="onMembershipChange('${stopId}', 'rewardsYtdRedeems', this.value)"`}/>`;
+  const ytdCardHTML = `
     <div class="drawer-card amber">
-      <div class="drawer-card-hd">🎁 Rewards — Year to Date <span style="font-size:.5em;font-weight:400;color:var(--muted);opacity:.65;letter-spacing:0;text-transform:none">build 2026-06-24b · seed-authoritative YTD</span></div>
+      <div class="drawer-card-hd">🎁 Rewards — Year to Date</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <label style="display:block">
           <span style="${lblS}">YTD Adds ($)</span>
-          <input id="sd-radds-${stopId}" type="number" step="0.01" style="${inS};margin-top:3px${addsAuto?';font-style:italic;color:var(--accent)':''}" value="${adds}" placeholder="0.00"${addsAuto?' readonly title="Auto-summed from the monthly rewards seeds — not editable"':` onblur="onMembershipChange('${stopId}', 'rewardsYtdAdds', this.value)"`}/>
+          ${$wrap(addsInput)}
           ${addsAuto ? autoHint : noteHint}
         </label>
         <label style="display:block">
           <span style="${lblS}">YTD Redeems ($)</span>
-          <input id="sd-rred-${stopId}" type="number" step="0.01" style="${inS};margin-top:3px${redeemsAuto?';font-style:italic;color:var(--accent)':''}" value="${redeems}" placeholder="0.00"${redeemsAuto?' readonly title="Auto-summed from the monthly rewards seeds — not editable"':` onblur="onMembershipChange('${stopId}', 'rewardsYtdRedeems', this.value)"`}/>
+          ${$wrap(redeemsInput)}
           ${redeemsAuto ? autoHint : noteHint}
         </label>
       </div>
@@ -6851,9 +6905,12 @@ function drawerRewardsHTML(stopId){
         ${rateLabel}
       </div>
       ${(adds != null && redeems != null && adds > 0) ? `<div style="font-size:.66em;color:var(--muted);margin-top:6px">YTD Adds ${fmt(adds)} · YTD Redeems ${fmt(redeems)}</div>` : ''}
-    </div>
-    ${monthlyActivityHTML}
-  `;
+    </div>`;
+  // part: 'ytd' | 'monthly' | 'all'  (drives the Rewards sub-tabs)
+  part = part || 'all';
+  if(part === 'monthly') return monthlyActivityHTML || `<div class="drawer-card amber"><div class="drawer-card-hd">📊 Rewards — Monthly Activity</div><div style="font-size:.8em;color:var(--muted)">No monthly rewards activity reported.</div></div>`;
+  if(part === 'ytd') return ytdCardHTML;
+  return ytdCardHTML + monthlyActivityHTML;
 }
 
 // ─── Phase 3 helpers: Value Prop sync ────────────────────────────────
@@ -6980,6 +7037,8 @@ function vendorOpportunityForStop(stopId){
 
 function drawerVendorOpportunityHTML(stopId){
   const opps = vendorOpportunityForStop(stopId);
+  // Alphabetical (item 8)
+  opps.sort((a,b) => (a.name||'').localeCompare(b.name||''));
   if(!opps.length){
     return `
     <div class="drawer-card amber">
@@ -6994,7 +7053,7 @@ function drawerVendorOpportunityHTML(stopId){
   };
   const totalPotential = opps.reduce((sum, o) => sum + o.savings, 0);
   const fmtMoney = n => '$'+Math.round(n).toLocaleString();
-  const TOP_N = 10;
+  const TOP_N = 8;
   const renderRow = (o, isExtra) => {
     const pc = programColor[o.program] || 'var(--muted)';
     const savingsLabel = o.savings > 0 ? 'avg '+fmtMoney(o.savings)+'/mo' : (o.contact ? 'savings vary' : 'avg unknown');
@@ -7004,7 +7063,7 @@ function drawerVendorOpportunityHTML(stopId){
     const detailsClass = isExtra ? ' opp-extra-row' : '';
     return `<div class="opp-row${wrapClass}" style="${wrapStyle}${hasDetails?'':'cursor:default'}" ${hasDetails?`onclick="toggleVendorDetails('opp-${o.vid}', this)"`:''}>
       <div style="flex:1">
-        <span><b>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
+        <span>${isExtra ? '' : '<span style="color:var(--green);font-weight:800;margin-right:5px" title="Top opportunity">✓</span>'}<b>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
       </div>
       <span class="opp-savings">${savingsLabel}</span>
       ${hasDetails ? '<span style="color:var(--muted);font-size:.86em;margin-left:6px">→</span>' : ''}
@@ -7630,13 +7689,13 @@ const SD_SECTIONS = [
   { id:'sd-sec-fuel',      icon:'⛽', label:'Fuel' },
   { id:'sd-sec-rewards',   icon:'🎁', label:'Rewards' },
   { id:'sd-sec-vendors',   icon:'🏢', label:'Vendor Programs' },
-  { id:'sd-sec-rack',      icon:'🛢️', label:'Rack & Pricing' },
+  { id:'sd-sec-rack',      icon:'🛢️', label:'Location Cost Components' },
   { id:'sd-sec-engage',    icon:'📋', label:'Engagement History' },
   { id:'sd-sec-notes',     icon:'📝', label:'Notes' },
   { id:'sd-sec-financial', icon:'💰', label:'Financial Performance' },
   { id:'sd-sec-discounts', icon:'💲', label:'Discounts & CRM' },
-  { id:'sd-sec-history',   icon:'📊', label:'History & Analysis' },
-  { id:'sd-sec-reports',   icon:'📑', label:'Reports' },
+  { id:'sd-sec-history',   icon:'📊', label:'Gallon Report' },
+  { id:'sd-sec-reports',   icon:'📑', label:'Business Review' },
 ];
 const _SD_SEC = id => SD_SECTIONS.find(s => s.id === id) || { id, icon:'', label:'' };
 
@@ -7659,55 +7718,83 @@ function renderStopDetailPage(stopId){
     const s = _SD_SEC(sectionId);
     return `<div class="sd-group" id="${s.id}"><span class="sd-group-icon">${s.icon}</span>${esc(s.label)}${count!=null?`<span class="sd-group-count">${count}</span>`:''}</div>`;
   };
-  // Left column — narrow (identity, programs, engagement)
-  const left = `
-    ${grp('sd-sec-identity')}
-    ${card('location',      false, pageLocationDetailsHTML(stopId))}
-    ${card('membership',    false, drawerMembershipHTML(stopId))}
-    ${grp('sd-sec-rewards')}
-    ${card('rewards',       false, drawerRewardsHTML(stopId))}
-    ${card('valueprop',     true,  drawerValuePropHTML(stopId))}
-    ${grp('sd-sec-rack')}
-    ${card('rack',          true,  pageRackHTML(stopId))}
-    ${grp('sd-sec-engage')}
-    ${card('activitylog',   true,  pageActivityLogHTML(stopId))}
-    ${card('visits',        true,  pageVisitsHTML(stopId))}
-    ${card('reviews',       true,  pagePastReviewsHTML(stopId))}
-    ${grp('sd-sec-notes')}
-    ${card('notes',         false, pageNotesHTML(stopId))}
+  // ── Single-column TABBED layout: Details / Fuel / Rewards / Vendor Programs ──
+  // DETAILS — site details, membership & contact (with At-a-Glance on top)
+  const detailsPane = `
+    ${pageKpiHeroHTML(stopId)}
+    ${pageLocationDetailsHTML(stopId)}
+    ${drawerMembershipHTML(stopId)}
   `;
-  // Right column — wide (performance, vendors, analysis)
-  const right = `
-    ${grp('sd-sec-fuel')}
-    ${card('fuel',          false, drawerFuelHTML(stopId))}
-    ${grp('sd-sec-financial')}
-    ${card('revprofit',     false, pageRevProfitHTML(stopId))}
-    ${card('roi',           false, drawerROIHTML(stopId))}
-    ${card('trends',        false, pageChartsHTML(stopId))}
-    ${grp('sd-sec-vendors')}
-    ${card('vendors',       false, drawerVendorStubHTML(stopId))}
-    ${card('vendorops',     false, drawerVendorOpportunityHTML(stopId))}
-    ${grp('sd-sec-discounts')}
-    ${card('discounts',     true,  pageDiscountsHTML(stopId))}
-    ${card('crmtasks',      true,  drawerCRMTasksHTML(stopId))}
-    ${grp('sd-sec-history')}
-    ${card('history',       true,  pageHistoryTableHTML(stopId))}
-    ${card('calculations',  true,  pageCalculationsHTML(stopId))}
-    ${grp('sd-sec-reports')}
-    ${card('businessreview',true,  pageBusinessReviewHTML(stopId))}
+  // FUEL — fuel business + ROI + trends always on top, then sub-tab cards
+  const fuelSubnav = `
+    <div class="sd-subnav" data-for="fuel">
+      <button class="sd-sub active" data-key="all"    onclick="sdSub('fuel','all',this)">All</button>
+      <button class="sd-sub"        data-key="disc"   onclick="sdSub('fuel','disc',this)">Discounts</button>
+      <button class="sd-sub"        data-key="lcc"    onclick="sdSub('fuel','lcc',this)">Location Cost Components</button>
+      <button class="sd-sub"        data-key="gallon" onclick="sdSub('fuel','gallon',this)">Gallon Report</button>
+      <button class="sd-sub"        data-key="calc"   onclick="sdSub('fuel','calc',this)">Calculations</button>
+      <button class="sd-sub"        data-key="vp"     onclick="sdSub('fuel','vp',this)">Value Prop</button>
+    </div>`;
+  const fuelPane = `
+    ${drawerFuelHTML(stopId)}
+    ${drawerROIHTML(stopId)}
+    ${pageChartsHTML(stopId)}
+    ${fuelSubnav}
+    <div class="sd-subcard" data-sub="fuel" data-key="disc">${pageDiscountsHTML(stopId)}</div>
+    <div class="sd-subcard" data-sub="fuel" data-key="lcc">${pageRackHTML(stopId)}</div>
+    <div class="sd-subcard" data-sub="fuel" data-key="gallon">${pageHistoryTableHTML(stopId)}</div>
+    <div class="sd-subcard" data-sub="fuel" data-key="calc">${pageCalculationsHTML(stopId)}</div>
+    <div class="sd-subcard" data-sub="fuel" data-key="vp">${drawerValuePropHTML(stopId)}</div>
   `;
+  // REWARDS — YTD + Monthly Activity sub-tab
+  const rewardsPane = `
+    <div class="sd-subnav" data-for="rewards">
+      <button class="sd-sub active" data-key="all"     onclick="sdSub('rewards','all',this)">All</button>
+      <button class="sd-sub"        data-key="ytd"     onclick="sdSub('rewards','ytd',this)">Year to Date</button>
+      <button class="sd-sub"        data-key="monthly" onclick="sdSub('rewards','monthly',this)">Monthly Activity</button>
+    </div>
+    <div class="sd-subcard" data-sub="rewards" data-key="ytd">${drawerRewardsHTML(stopId,'ytd')}</div>
+    <div class="sd-subcard" data-sub="rewards" data-key="monthly">${drawerRewardsHTML(stopId,'monthly')}</div>
+  `;
+  // VENDOR PROGRAMS
+  const vendorsPane = `
+    ${drawerVendorStubHTML(stopId)}
+    ${drawerVendorOpportunityHTML(stopId)}
+  `;
+  // BOTTOM TABS (item 17): Activity Log · Upcoming Visits · Past Site Reviews · Notes · Calculations
+  const calcLauncher = `
+    <div class="drawer-card">
+      <div class="drawer-card-hd">🧮 Calculations</div>
+      <div style="font-size:.85em;color:var(--muted);margin:6px 0 10px">The scenario calculator lives under <b>Fuel ▸ Calculations</b>.</div>
+      <button class="btn btn-cyan" onclick="sdTab('fuel');sdSub('fuel','calc')">Open Calculations →</button>
+    </div>`;
   document.getElementById('stop-detail-content').innerHTML = `
     ${pageHeaderHTML(stopId)}
-    ${pageKpiHeroHTML(stopId)}
-    ${pageDetailToolbarHTML(stopId)}
-    <div class="sd-detail-grid">
-      <div class="sd-col">${left}</div>
-      <div class="sd-col">${right}</div>
+    <div class="sd-tabwrap">
+      <div class="sd-tabpane active" data-pane="details">${detailsPane}</div>
+      <div class="sd-tabpane" data-pane="fuel">${fuelPane}</div>
+      <div class="sd-tabpane" data-pane="rewards">${rewardsPane}</div>
+      <div class="sd-tabpane" data-pane="vendors">${vendorsPane}</div>
+    </div>
+    <div class="sd-bottom">
+      <div class="sd-bottom-nav">
+        <button class="sd-btab active" data-btab="activitylog" onclick="sdBottomTab('activitylog',this)">📋 Activity Log</button>
+        <button class="sd-btab" data-btab="visits" onclick="sdBottomTab('visits',this)">📅 Upcoming Visits</button>
+        <button class="sd-btab" data-btab="reviews" onclick="sdBottomTab('reviews',this)">📝 Past Site Reviews</button>
+        <button class="sd-btab" data-btab="notes" onclick="sdBottomTab('notes',this)">🗒 Notes</button>
+        <button class="sd-btab" data-btab="calculations" onclick="sdBottomTab('calculations',this)">🧮 Calculations</button>
+      </div>
+      <div class="sd-bottom-pane active" data-bpane="activitylog">${pageActivityLogHTML(stopId)}</div>
+      <div class="sd-bottom-pane" data-bpane="visits">${pageVisitsHTML(stopId)}</div>
+      <div class="sd-bottom-pane" data-bpane="reviews">${pagePastReviewsHTML(stopId)}</div>
+      <div class="sd-bottom-pane" data-bpane="notes">${pageNotesHTML(stopId)}</div>
+      <div class="sd-bottom-pane" data-bpane="calculations">${calcLauncher}</div>
     </div>
   `;
-  // Transform every .sd-card-wrap into a collapsible drawer-card
-  _sdInitCollapsible(stopId);
-  // Charts render after innerHTML — only meaningful if the Trends card is open
+  // Restore the previously-active top tab + bottom tab across re-renders
+  if(_sdActivePane && _sdActivePane !== 'details') sdTab(_sdActivePane, null, true);
+  if(_sdActiveBottom && _sdActiveBottom !== 'activitylog') sdBottomTab(_sdActiveBottom, null);
+  // Charts render after innerHTML (only visible once the Fuel tab is shown)
   if(typeof renderStopDetailCharts === 'function') renderStopDetailCharts(stopId);
 }
 function pageDetailToolbarHTML(stopId){
@@ -7891,26 +7978,27 @@ function pageHeaderHTML(stopId){
   // Section jump nav -- one button per SD_SECTIONS entry. Buttons render in
   // their natural order (left column first, then right column) so the
   // visual order matches what the user sees scrolling down.
-  const navHTML = SD_SECTIONS.map(s =>
-    `<button class="btn" onclick="sdScrollToSection('${s.id}')" title="Jump to ${esc(s.label)}"><span class="ico">${s.icon}</span>${esc(s.label)}</button>`
+  // Top tabs: Details / Fuel / Rewards / Vendor Programs (item 7)
+  const _TABS = [['details','📍 Details'],['fuel','⛽ Fuel'],['rewards','🎁 Rewards'],['vendors','🏢 Vendor Programs']];
+  const navHTML = _TABS.map((t,i) =>
+    `<button class="sd-tab${(_sdActivePane||'details')===t[0]?' active':''}" data-pane="${t[0]}" onclick="sdTab('${t[0]}',this)">${t[1]}</button>`
   ).join('');
+  const rankDef = `Network Rank: this location's position out of all ${total} locations, ranked by total fuel gallons in the most recent COMPLETED month (1 = highest volume).`;
   return `
     <div class="sd-header">
       <div class="sd-header-top">
         <button class="btn" onclick="closeStopDetailPage()" style="font-size:.72em">← Back</button>
         <span class="sd-name">${esc(stop.name)}</span>
-        <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)} · Network rank #${rank} of ${total}</span>
+        <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)} · <span title="${esc(rankDef)}" style="cursor:help;border-bottom:1px dotted var(--muted)">Network Rank #${rank} of ${total}</span></span>
       </div>
-      <div class="sd-nav">${navHTML}</div>
+      <div class="sd-tabnav">${navHTML}</div>
       <div class="sd-actions">
-        <button class="btn" onclick="copyShareSummary('${esc(stopId)}')">📋 Copy</button>
-        <button class="btn" onclick="emailShareSummary('${esc(stopId)}')">📧 Email</button>
-        <button class="btn btn-cyan" onclick="startSiteReview('${esc(stopId)}')">📋 Site Review</button>
-        ${isAllGSMode() ? '' : `<button class="btn btn-cyan" onclick="scheduleVisit('${esc(stopId)}','page')">📅 Schedule Visit</button>`}
-        <button class="btn" onclick="printStopDetail()">🖨 Print Report</button>
-        <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
+        <button class="btn" onclick="sdBottomTab('notes');var b=document.querySelector('#stop-detail-content .sd-bottom');if(b)b.scrollIntoView({behavior:'smooth'})">🗒 Notes</button>
         <button class="btn btn-cyan" onclick="brOpenFromHeader('${esc(stopId)}')">📑 Business Review</button>
-        <button class="btn btn-cyan" onclick="mbOpen('${esc(stopId)}')">📉 Margin Bridge</button>
+        ${isAllGSMode() ? '' : `<button class="btn btn-cyan" onclick="scheduleVisit('${esc(stopId)}','page')">📅 Schedule Visit</button>`}
+        <button class="btn btn-cyan" onclick="startSiteReview('${esc(stopId)}')">📋 Site Review</button>
+        <button class="btn" onclick="emailShareSummary('${esc(stopId)}')">📧 Email</button>
+        <button class="btn btn-green" onclick="exportStopDetailCSV('${esc(stopId)}')">📊 Export CSV</button>
       </div>
     </div>
   `;
@@ -7921,6 +8009,35 @@ function pageHeaderHTML(stopId){
 // section lands flush below them instead of underneath them. Also expands
 // the section's first card if it was collapsed, so the user actually sees
 // content after the jump.
+// ── Stop-detail tab controllers (Details/Fuel/Rewards/Vendor Programs + bottom) ──
+var _sdActivePane = 'details';
+var _sdActiveBottom = 'activitylog';
+function sdTab(pane, el, restore){
+  _sdActivePane = pane;
+  const root = document.getElementById('stop-detail-content');
+  if(!root) return;
+  root.querySelectorAll('.sd-tabnav .sd-tab').forEach(t => t.classList.toggle('active', t.dataset.pane === pane));
+  root.querySelectorAll('.sd-tabpane').forEach(p => p.classList.toggle('active', p.dataset.pane === pane));
+  if(pane === 'fuel' && typeof renderStopDetailCharts === 'function'){
+    setTimeout(() => { try { renderStopDetailCharts(_stopDetailActiveStopId); } catch(e){} }, 30);
+  }
+}
+function sdSub(group, key, el){
+  const root = document.getElementById('stop-detail-content');
+  if(!root) return;
+  const nav = el ? el.parentElement : root.querySelector('.sd-subnav[data-for="' + group + '"]');
+  if(nav) nav.querySelectorAll('.sd-sub').forEach(b => b.classList.toggle('active', b.dataset.key === key));
+  root.querySelectorAll('.sd-subcard[data-sub="' + group + '"]').forEach(c => {
+    c.classList.toggle('hidden', !(key === 'all' || c.dataset.key === key));
+  });
+}
+function sdBottomTab(key, el){
+  _sdActiveBottom = key;
+  const root = document.getElementById('stop-detail-content');
+  if(!root) return;
+  root.querySelectorAll('.sd-bottom-nav .sd-btab').forEach(t => t.classList.toggle('active', t.dataset.btab === key));
+  root.querySelectorAll('.sd-bottom-pane').forEach(p => p.classList.toggle('active', p.dataset.bpane === key));
+}
 function sdScrollToSection(sectionId){
   const el = document.getElementById(sectionId);
   if(!el) return;
@@ -8015,7 +8132,7 @@ function pageKpiHeroHTML(stopId){
       <div class="drawer-card-hd">⛽ Fuel Gallons — ${esc(monthLbl)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start">
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total Gallons MTD</div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total Gallons</div>
           <div style="font-size:1.55em;font-weight:800;color:var(--cyan);line-height:1.05;margin-top:2px">${fmtN(totalMtd)}</div>
           <div style="font-size:.66em;margin-top:6px">${trendPill(totalMtd, totalPrior, 'vs prior month')}</div>
         </div>
@@ -8056,12 +8173,12 @@ function pageKpiHeroHTML(stopId){
       <div class="drawer-card-hd">🎁 Rewards — ${esc(monthLbl)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px">
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Adds $ MTD</div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Adds $</div>
           <div style="font-size:1.05em;font-weight:800;color:var(--yellow);line-height:1.1;margin-top:2px">${fmt$2(mtdAdds)}</div>
           <div style="font-size:.62em;margin-top:3px">${trendPill(mtdAdds, priorAdds, 'vs prior')}</div>
         </div>
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Redeems $ MTD</div>
+          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Redeems $</div>
           <div style="font-size:1.05em;font-weight:800;color:var(--yellow);line-height:1.1;margin-top:2px">${fmt$2(mtdRedeems)}</div>
           <div style="font-size:.62em;margin-top:3px">${trendPill(mtdRedeems, priorRedeems, 'vs prior')}</div>
         </div>
@@ -8416,8 +8533,8 @@ function pageHistoryTableHTML(stopId){
     // so May's change uses the May report's prior-month total, not the
     // standalone April seed. For earlier rows this equals the row above.
     const prior = i > 0 ? stopPriorMonthTotalGallons(stopId, mo.key) : null;
-    const aggCount = (d.aggregators||[]).length;
-    const fleetCount = (d.fleets||[]).length;
+    const aggGal = (typeof stopAggregatorGallons === 'function') ? stopAggregatorGallons(stopId, mo.key) : 0;
+    const fleetGal = (typeof stopFleetGallons === 'function') ? stopFleetGallons(stopId, mo.key) : 0;
     const aggNames = (d.aggregators||[]).map(a => (a.name||'').split(' ')[0]).filter(Boolean).slice(0,3).join(', ');
     let changeLbl = '—';
     let changeColor = 'var(--muted)';
@@ -8431,16 +8548,16 @@ function pageHistoryTableHTML(stopId){
       <td>${esc(mo.label)}</td>
       <td>${gal > 0 ? fmtN(gal) : '—'}</td>
       <td style="color:${changeColor}">${changeLbl}</td>
-      <td>${aggCount}</td>
-      <td>${fleetCount}</td>
+      <td>${aggGal > 0 ? fmtN(aggGal) : '—'}</td>
+      <td>${fleetGal > 0 ? fmtN(fleetGal) : '—'}</td>
       <td style="font-size:.86em;color:var(--muted)">${esc(aggNames || '—')}</td>
     </tr>`;
   }).join('');
   return `
     <div class="drawer-card">
-      <div class="drawer-card-hd">📊 6-Month History</div>
+      <div class="drawer-card-hd">📊 Gallon Report — 6-Month History</div>
       <table class="sd-history-tbl">
-        <thead><tr><th>Period</th><th>Gallons</th><th>Change</th><th>Agg #</th><th>Fleet #</th><th>Aggregators</th></tr></thead>
+        <thead><tr><th>Period</th><th>Gallons</th><th>Change</th><th>Aggregator Gallons</th><th>Fleet Gallons</th><th>Aggregators</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -8721,20 +8838,37 @@ function emailShareSummary(stopId){
 }
 
 // ─── Phase 6: Notes panel ─────────────────────────────────────────────
+const NOTE_CATEGORIES = ['General','Fuel','Rewards','Vendor Programs','Site Visits','Monthly Contact','Other'];
 function notesEntriesHTML(stopId, opts){
-  // opts.surface = 'drawer' | 'page'  — used to namespace the textarea id
+  // opts.surface = 'drawer' | 'page'  — used to namespace the field ids
   const surface = (opts && opts.surface) || 'page';
   const rec = loadStopRecord(stopId);
   const notes = Array.isArray(rec.notes) ? rec.notes : [];
   const allMode = isAllGSMode();
   const TOP_N = 10;
-  const inputId = `notes-input-${surface}-${stopId}`;
+  const escA = s => esc(s).replace(/"/g, '&quot;');
+  const inputId  = `notes-input-${surface}-${stopId}`;
+  const catId    = `notes-cat-${surface}-${stopId}`;
+  const searchId = `notes-search-${surface}-${stopId}`;
+  const filterId = `notes-filter-${surface}-${stopId}`;
+  const listId   = `notes-list-${surface}-${stopId}`;
+  const catOptions = NOTE_CATEGORIES.map(c => `<option value="${escA(c)}">${esc(c)}</option>`).join('');
+  // Compose row with a category dropdown (item 16)
   const composeRow = allMode ? '' : `
     <textarea class="notes-input" id="${inputId}" rows="3" placeholder="Add a note for this stop..."></textarea>
-    <div class="notes-save-row">
+    <div class="notes-save-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <select id="${catId}" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 9px;color:var(--text);font-size:.8em">${catOptions}</select>
       <button class="btn btn-cyan" onclick="addNoteFromInput('${esc(stopId)}','${surface}')" style="font-size:.74em">💾 Save Note</button>
     </div>
   `;
+  // Search + category filter (item 16)
+  const searchRow = notes.length ? `
+    <div class="notes-controls">
+      <select id="${filterId}" onchange="filterNotes('${listId}','${searchId}','${filterId}')">
+        <option value="">All categories</option>${catOptions}
+      </select>
+      <input id="${searchId}" type="text" placeholder="🔍 Search notes..." oninput="filterNotes('${listId}','${searchId}','${filterId}')">
+    </div>` : '';
   const fmtTs = iso => {
     if(!iso) return '—';
     const d = new Date(iso);
@@ -8742,10 +8876,14 @@ function notesEntriesHTML(stopId, opts){
     const pad = n => String(n).padStart(2, '0');
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   };
-  const renderEntry = (n, isExtra) => `<div class="notes-entry${isExtra ? ' notes-extra' : ''}">
-    <div class="notes-entry-meta">${fmtTs(n.date)} · ${esc(n.author||'—')}</div>
-    <div class="notes-entry-body">${esc(n.body||'')}</div>
-  </div>`;
+  const renderEntry = (n, isExtra) => {
+    const cat = n.category || 'General';
+    const hay = ((n.body||'') + ' ' + (n.author||'') + ' ' + cat).toLowerCase();
+    return `<div class="notes-entry${isExtra ? ' notes-extra' : ''}" data-cat="${escA(cat)}" data-search="${escA(hay)}">
+      <div class="notes-entry-meta">${fmtTs(n.date)} · ${esc(n.author||'—')}<span class="notes-entry-cat">${esc(cat)}</span></div>
+      <div class="notes-entry-body">${esc(n.body||'')}</div>
+    </div>`;
+  };
   let listHTML = '';
   if(!notes.length){
     listHTML = `<div class="notes-empty">No notes yet.${allMode ? '' : ' Use the box above to start.'}</div>`;
@@ -8756,9 +8894,23 @@ function notesEntriesHTML(stopId, opts){
     const toggle = extraCount > 0
       ? `<div class="notes-toggle" data-count="${extraCount}" onclick="toggleNotesExpand(this)">+ Show all ${extraCount} more</div>`
       : '';
-    listHTML = `<div class="notes-list">${visible}${extras}${toggle}</div>`;
+    listHTML = `<div class="notes-list" id="${listId}">${visible}${extras}${toggle}</div>`;
   }
-  return composeRow + listHTML;
+  return composeRow + searchRow + listHTML;
+}
+function filterNotes(listId, searchId, filterId){
+  const list = document.getElementById(listId); if(!list) return;
+  const q = (document.getElementById(searchId)?.value || '').trim().toLowerCase();
+  const cat = (document.getElementById(filterId)?.value || '');
+  const filtering = !!(q || cat);
+  list.classList.toggle('expanded', filtering); // reveal collapsed extras while filtering
+  list.querySelectorAll('.notes-entry').forEach(e => {
+    const okCat = !cat || e.dataset.cat === cat;
+    const okQ = !q || (e.dataset.search || '').indexOf(q) !== -1;
+    e.style.display = (okCat && okQ) ? '' : 'none';
+  });
+  const toggle = list.querySelector('.notes-toggle');
+  if(toggle) toggle.style.display = filtering ? 'none' : '';
 }
 
 function pageNotesHTML(stopId){
@@ -8779,13 +8931,16 @@ function addNoteFromInput(stopId, surface){
   if(!ta) return;
   const body = (ta.value || '').trim();
   if(!body){ toast('Empty note'); return; }
+  const catEl = document.getElementById(`notes-cat-${surface}-${stopId}`);
+  const category = (catEl && catEl.value) || 'General';
   const rec = loadStopRecord(stopId);
   if(!Array.isArray(rec.notes)) rec.notes = [];
   rec.notes.unshift({
     id: 'note_' + Date.now(),
     date: new Date().toISOString(),
     author: getActiveGS() || 'Manager',
-    body
+    body,
+    category
   });
   saveData();
   ta.value = '';
@@ -12952,294 +13107,6 @@ function brExportPDF(){
 }
 
 // ═══════════════════════════════════════════════════════
-// FUEL MARGIN BRIDGE REPORT  (📉 button next to Business Review)
-// ─────────────────────────────────────────────────────────
-// One-push, fully auto-filled single-page report. Reuses the same per-stop
-// economics the Site Value/ROI card and Business Review deck already compute:
-//   • retail / true-cost / final-margin → roadysContributedValue() +
-//     stopFuelCostBreakdown() (rack + taxes + freight build-up)
-//   • YTD gallons + per-program discounts → brBuildAutoData(stopId,'ytd')
-// Final Margin = Retail − True Cost (matches the dashboard's number).
-// Processing Fees + Transaction Impact have no per-stop data source, so they
-// render as editable $0 inputs; a live "net realized margin" line reflects
-// any value the GS types (discounts + fees), while the headline margin stays
-// the dashboard figure. The report draws inside an <iframe> for full CSS
-// isolation (its generic class names would otherwise collide with the app).
-// ═══════════════════════════════════════════════════════
-const MB_TEMPLATE = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Fuel Margin Bridge Report</title>
-<style>
-:root{--navy:#071f52;--blue:#0057c8;--green:#00753a;--red:#d70000;--orange:#f45b00;--purple:#4b238a;--gray:#e3e8f0;--text:#081b3f;}
-*{box-sizing:border-box;}
-body{margin:0;background:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:var(--text);}
-.page{width:1600px;height:1000px;margin:0 auto;background:white;padding:14px;position:relative;overflow:hidden;}
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
-.title{font-size:40px;line-height:1;font-weight:900;color:var(--navy);letter-spacing:-1px;text-transform:uppercase;}
-.subtitle{font-size:25px;color:#0040a0;font-weight:700;margin-top:7px;}
-.logo{font-size:32px;font-weight:900;color:var(--navy);letter-spacing:2px;}
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px;}
-.kpi{border:1px solid #cbd4e1;border-radius:8px;min-height:110px;padding:13px;display:flex;gap:12px;align-items:center;}
-.icon{width:58px;height:58px;border-radius:50%;background:var(--navy);color:white;display:flex;align-items:center;justify-content:center;font-size:30px;flex:0 0 auto;}
-.green{background:var(--green);}.orange{background:var(--orange);}.purple{background:var(--purple);}
-.kpi .label{font-size:12px;font-weight:900;text-transform:uppercase;color:var(--navy);}
-.kpi .value{font-size:29px;font-weight:900;color:var(--green);margin-top:4px;}
-.kpi .value.blue{color:var(--blue);}.kpi .value.orangeText{color:var(--orange);}
-.kpi .small{font-size:13px;font-weight:700;margin-top:4px;}
-.section-title{background:linear-gradient(90deg,var(--navy),#002b72);color:white;padding:9px 14px;border-radius:7px 7px 0 0;font-weight:900;text-transform:uppercase;font-size:23px;}
-.section-title span{font-size:16px;font-weight:600;font-style:italic;margin-left:12px;text-transform:none;}
-.bridge{border:1px solid #cbd4e1;border-top:0;border-radius:0 0 8px 8px;height:395px;display:grid;grid-template-columns:1.18fr 1fr 1fr 1fr 1fr 1.08fr 1fr .95fr;position:relative;margin-bottom:12px;}
-.step{border-right:1px solid #dbe2ec;padding:16px 12px;position:relative;}
-.step:last-child{border-right:0;}
-.step h3{margin:0;font-size:15px;color:var(--navy);text-align:center;text-transform:uppercase;}
-.step p{margin:7px 0 0;font-size:12px;line-height:1.35;text-align:center;font-weight:700;}
-.value-top{position:absolute;top:110px;left:0;right:0;text-align:center;font-size:22px;font-weight:900;}
-.value-top input{font-family:inherit;font-size:21px;font-weight:900;text-align:center;width:108px;border:1px dashed #c3cee0;border-radius:5px;background:#f8fafd;color:inherit;padding:2px 0;}
-.value-top input:focus{outline:none;border-color:var(--blue);background:#eef4ff;}
-.bar{position:absolute;bottom:72px;left:22%;width:56%;border-radius:1px;background:var(--navy);}
-.bar.blue{background:var(--blue);}
-.bar.red{background:var(--red);height:13px !important;bottom:194px;}
-.bar.orange{background:var(--orange);height:13px !important;bottom:185px;}
-.bar.purple{background:var(--purple);height:8px !important;bottom:180px;}
-.bar.green{background:var(--green);}
-.bar.final{height:28px !important;bottom:72px;}
-.bar.retail{height:155px;}.bar.sell{height:145px;}.bar.cost{height:130px;}
-.formula{position:absolute;bottom:16px;left:160px;right:510px;border:1px solid #ccd6e6;border-radius:7px;padding:10px;text-align:center;font-weight:900;font-size:14px;background:white;}
-.result-box{margin:26px auto 0;width:145px;border:1.5px solid var(--green);border-radius:8px;padding:18px 8px;text-align:center;color:var(--green);font-weight:900;}
-.check{margin:12px auto;width:50px;height:50px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;font-size:31px;}
-.result-margin{font-size:34px;}
-.lower{display:grid;grid-template-columns:1.25fr .9fr 1.15fr;gap:12px;}
-.card{border:1px solid #cbd4e1;border-radius:8px;overflow:hidden;background:white;min-height:225px;}
-.card-title{background:var(--navy);color:white;font-size:17px;font-weight:900;text-align:center;padding:8px;text-transform:uppercase;}
-.card-title.greenTitle{background:var(--green);}
-.card-body{padding:14px;}
-.program{display:grid;grid-template-columns:1fr 90px 70px 50px 50px;gap:6px;border-bottom:1px solid #e7ecf5;padding:6px 0;font-size:13px;align-items:center;}
-.program.head{font-weight:900;color:var(--navy);font-size:12px;}
-.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;}
-.cost-row{display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f1;padding:9px 0;font-size:15px;}
-.cost-total{display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid var(--navy);font-weight:900;color:var(--green);font-size:19px;}
-.takeaways li{margin-bottom:8px;font-size:14px;line-height:1.25;font-weight:700;}
-.footer{position:absolute;left:14px;right:14px;bottom:12px;display:grid;grid-template-columns:repeat(6,1fr) 1.25fr;gap:8px;align-items:stretch;}
-.foot{border:1px solid #cbd4e1;border-radius:6px;padding:10px;font-size:13px;font-weight:900;text-align:center;}
-.foot strong{display:block;font-size:18px;color:var(--navy);margin-top:4px;}
-.finalFoot strong{color:var(--green);font-size:26px;}
-@media print{body{background:white;}.page{margin:0;page-break-after:always;}}
-</style></head>
-<body>
-<div class="page">
-  <div class="header">
-    <div><div class="title">{{SITE_NAME}} MARGIN BRIDGE</div><div class="subtitle">{{SITE_SUBTITLE}}</div></div>
-    <div class="logo">{{LOGO_TEXT}}</div>
-  </div>
-  <div class="kpis">
-    <div class="kpi"><div class="icon">⛽</div><div><div class="label">Total Gallons</div><div class="value blue">{{TOTAL_GALLONS}}</div><div class="small">{{PERIOD_LABEL}}</div></div></div>
-    <div class="kpi"><div class="icon green">🏷</div><div><div class="label">Retail Price</div><div class="value">{{RETAIL_PRICE}}</div><div class="small">Per Gallon</div></div></div>
-    <div class="kpi"><div class="icon">📍</div><div><div class="label">OPIS Market</div><div class="value blue" style="font-size:23px">{{OPIS_MARKET}}</div><div class="small">{{RACK_TYPE}}</div></div></div>
-    <div class="kpi"><div class="icon purple">🚚</div><div><div class="label">Freight</div><div class="value" style="color:var(--purple)">{{FREIGHT}}</div><div class="small">Per Gallon</div></div></div>
-    <div class="kpi"><div class="icon orange">📊</div><div><div class="label">True Cost</div><div class="value orangeText">{{TRUE_COST}}</div><div class="small">Per Gallon</div></div></div>
-    <div class="kpi"><div class="icon green">✓</div><div><div class="label">Risk Level</div><div class="value">{{RISK_LEVEL}}</div><div class="small">Margin</div></div></div>
-  </div>
-  <div class="section-title">Margin Bridge <small>(Per Gallon)</small><span>How we get from Retail Price to Final Margin</span></div>
-  <div class="bridge">
-    <div class="step"><h3>Retail Price</h3><p>Published pump price at the start</p><div class="value-top">{{RETAIL_PRICE}}</div><div class="bar retail"></div></div>
-    <div class="step"><h3>Avg Discount</h3><p>Weighted average of customer discounts</p><div class="value-top" style="color:var(--red)">{{AVG_DISCOUNT}}</div><div class="bar red"></div></div>
-    <div class="step"><h3>Sell Price</h3><p>Actual price collected after discounts</p><div class="value-top">{{SELL_PRICE}}</div><div class="bar blue sell"></div></div>
-    <div class="step"><h3>Processing Fees</h3><p>Weighted avg % fee converted to \$/gal</p><div class="value-top" style="color:var(--red)">{{PROCESSING_FEES}}</div><div class="bar orange"></div></div>
-    <div class="step"><h3>Transaction Impact</h3><p>Flat transaction fees converted to \$/gal</p><div class="value-top" style="color:var(--purple)">{{TRANSACTION_IMPACT}}</div><div class="bar purple"></div></div>
-    <div class="step"><h3>True Cost</h3><p>OPIS Rack + Freight + Taxes per gallon</p><div class="value-top" style="color:var(--green)">{{TRUE_COST_NEG}}</div><div class="bar green cost"></div></div>
-    <div class="step"><h3>Final Margin</h3><p>What remains after all costs, fees, and discounts</p><div class="value-top" style="top:224px;color:var(--green)">{{FINAL_MARGIN}}</div><div class="bar green final"></div></div>
-    <div class="step"><h3>Margin Result</h3><div class="result-box"><div>{{RISK_LEVEL}} MARGIN</div><div class="check">✓</div><div class="result-margin">{{FINAL_MARGIN}}</div><div>PER GALLON</div><hr><div>{{MARGIN_PERCENT}} OF RETAIL</div></div></div>
-    <div class="formula">Final Margin = Retail Price − True Cost &nbsp;·&nbsp; discounts &amp; fees shown for context</div>
-  </div>
-  <div class="lower">
-    <div class="card"><div class="card-title">Gallon Breakdown by Program</div><div class="card-body">
-      <div class="program head"><div>Program</div><div>Gallons</div><div>% Total</div><div>C+</div><div>R-</div></div>
-      {{PROGRAM_ROWS}}
-      <p style="font-weight:800;font-size:13px;margin-top:12px;">{{PROGRAM_NOTE}}</p>
-    </div></div>
-    <div class="card"><div class="card-title">Cost Components (Per Gallon)</div><div class="card-body">
-      <div class="cost-row"><span>OPIS Rack Price</span><strong>{{RACK_PRICE}}</strong></div>
-      <div class="cost-row"><span>Federal Excise Tax</span><strong>{{FED_TAX}}</strong></div>
-      <div class="cost-row"><span>State Excise Tax</span><strong>{{STATE_TAX}}</strong></div>
-      <div class="cost-row"><span>Freight</span><strong>{{FREIGHT}}</strong></div>
-      <div class="cost-total"><span>TRUE COST</span><span>{{TRUE_COST}}</span></div>
-    </div></div>
-    <div class="card"><div class="card-title greenTitle">Margin Health</div><div class="card-body">
-      <h2 style="color:var(--green);margin:0 0 10px;">{{RISK_LEVEL}} MARGIN</h2>
-      <ul class="takeaways">{{TAKEAWAYS}}</ul>
-    </div></div>
-  </div>
-  <div class="footer">
-    <div class="foot">Analysis Period<strong>{{ANALYSIS_PERIOD}}</strong></div>
-    <div class="foot">Total Gallons<strong>{{TOTAL_GALLONS}}</strong></div>
-    <div class="foot">Retail Price<strong>{{RETAIL_PRICE}} / GAL</strong></div>
-    <div class="foot">OPIS Market<strong>{{OPIS_MARKET}}</strong></div>
-    <div class="foot">Freight<strong>{{FREIGHT}} / GAL</strong></div>
-    <div class="foot">Risk Level<strong>{{RISK_LEVEL}}</strong></div>
-    <div class="foot finalFoot">Final Margin<strong>{{FINAL_MARGIN}} / GAL</strong>{{MARGIN_PERCENT}} OF RETAIL</div>
-  </div>
-</div>
-</body></html>`;
-
-let _mbStopId = null;
-
-// Build the auto-fill value map for one stop. All economics reuse the
-// dashboard's own helpers so the numbers reconcile across surfaces.
-function mbBuildData(stopId){
-  const stop = MEMBERS.find(m => m.id === stopId);
-  if(!stop) return null;
-  const auto = (typeof brBuildAutoData === 'function' && brBuildAutoData(stopId, 'ytd')) || {};
-  const cg   = roadysContributedValue(stopId);
-  const cc   = cg.costCalc;                 // stopFuelCostBreakdown(): rack build-up
-  const rack = auto.rack || {};
-
-  const retail   = +cg.retailPrice || 0;
-  const trueCost = +cc.total || 0;          // canonical cost = component sum
-  const margin   = retail - trueCost;       // matches Site Value/ROI card
-  const marginPct = retail > 0 ? (margin / retail) * 100 : 0;
-
-  // Gallon-weighted average aggregator discount (informational only).
-  let discGal = 0, discWeighted = 0;
-  (auto.aggregators || []).forEach(a => {
-    const net = (+a.costPlus || 0) + (+a.retailMinus || 0);  // signed $/gal vs retail
-    const g = +a.gallons || 0;
-    discGal += g; discWeighted += net * g;
-  });
-  const avgNet = discGal > 0 ? discWeighted / discGal : 0;
-  const avgDiscount = Math.abs(Math.min(0, avgNet));         // positive discount magnitude
-  const sellPrice = retail - avgDiscount;
-
-  // Risk band from the headline margin.
-  let risk = 'TIGHT';
-  if(margin >= 0.15) risk = 'HEALTHY';
-  else if(margin >= 0.07) risk = 'MODERATE';
-
-  // Program rows (aggregators + fleets) over the YTD period.
-  const PAL = ['#0057c8','#00753a','#f45b00','#4b238a','#0891b2','#b45309','#be185d','#15803d'];
-  const totalGal = +auto.totalGal || 0;
-  const progs = []
-    .concat((auto.aggregators || []).map(a => ({ name:a.name||'—', gal:+a.gallons||0, cp:a.costPlus, rm:a.retailMinus, kind:'agg' })))
-    .concat((auto.fleets || []).map(f => ({ name:f.name||'—', gal:+f.gallons||0, cp:null, rm:null, kind:'fleet' })))
-    .filter(p => p.gal > 0).sort((a,b) => b.gal - a.gal).slice(0, 8);
-  const dol4 = v => (v == null || v === '' || isNaN(+v)) ? '—' : ((+v >= 0 ? '+$' : '-$') + Math.abs(+v).toFixed(4));
-  const progRows = progs.length ? progs.map((p,i) => {
-    const pct = totalGal > 0 ? (p.gal / totalGal) * 100 : 0;
-    return `<div class="program"><div><span class="dot" style="background:${PAL[i%PAL.length]}"></span>${esc(p.name)}</div>`
-      + `<div>${Math.round(p.gal).toLocaleString()}</div><div>${pct.toFixed(1)}%</div>`
-      + `<div>${p.kind==='agg'?dol4(p.cp):'—'}</div><div>${p.kind==='agg'?dol4(p.rm):'—'}</div></div>`;
-  }).join('') : `<div class="program"><div style="color:#64748b;grid-column:1/-1">No aggregator or fleet program records for this period.</div></div>`;
-
-  const topProg = progs[0];
-  const periodLabel = auto.periodLabel || ('YTD ' + (new Date().getFullYear()));
-  const gsName = (typeof MANAGER_MAP === 'object' && MANAGER_MAP[stop.state]) || 'Unassigned';
-
-  // Takeaways — auto-generated + a live "net realized" line tied to the fee inputs.
-  const takeaways = [
-    `<li>Final margin of $${margin.toFixed(4)}/gal is <b>${risk}</b> at ${marginPct.toFixed(1)}% of retail.</li>`,
-    `<li>True cost of $${trueCost.toFixed(3)}/gal = OPIS rack $${(+cc.rackPrice||0).toFixed(3)} + taxes &amp; freight $${(+cc.taxesAndFreight||0).toFixed(3)}.</li>`,
-    topProg ? `<li>Top program: <b>${esc(topProg.name)}</b> at ${Math.round(topProg.gal).toLocaleString()} gal (${totalGal>0?((topProg.gal/totalGal)*100).toFixed(0):'0'}% of volume).</li>` : '',
-    avgDiscount > 0 ? `<li>Weighted avg fleet discount: $${avgDiscount.toFixed(4)}/gal (informational — not subtracted from margin).</li>` : '',
-    `<li>Net realized after discounts &amp; fees: <span id="mb-realized" style="color:var(--navy)">$${(retail-avgDiscount-trueCost).toFixed(4)}</span>/gal.</li>`
-  ].filter(Boolean).join('');
-
-  const feeInput = id => `<input id="${id}" type="text" value="0.0000" inputmode="decimal" />`;
-  const p3 = v => '$' + (+v||0).toFixed(3);
-  const p4 = v => '$' + (+v||0).toFixed(4);
-
-  return {
-    SITE_NAME: esc((stop.name||'').toUpperCase()),
-    SITE_SUBTITLE: esc([stop.city, stop.state].filter(Boolean).join(', ') + ' · GS ' + gsName),
-    LOGO_TEXT: "ROADY'S",
-    TOTAL_GALLONS: Math.round(totalGal).toLocaleString(),
-    PERIOD_LABEL: esc(periodLabel),
-    ANALYSIS_PERIOD: esc(periodLabel),
-    RETAIL_PRICE: p3(retail),
-    OPIS_MARKET: esc([stop.city, stop.state].filter(Boolean).join(', ') || '—'),
-    RACK_TYPE: rack.opisRackId ? ('OPIS Rack #' + esc(rack.opisRackId)) : 'OPIS Rack Avg',
-    FREIGHT: p4(cc.freight),
-    TRUE_COST: p3(trueCost),
-    RISK_LEVEL: risk,
-    AVG_DISCOUNT: '-' + p4(avgDiscount),
-    SELL_PRICE: p3(sellPrice),
-    PROCESSING_FEES: feeInput('mb-proc'),
-    TRANSACTION_IMPACT: feeInput('mb-txn'),
-    TRUE_COST_NEG: '-' + p3(trueCost),
-    FINAL_MARGIN: p4(margin),
-    MARGIN_PERCENT: marginPct.toFixed(1) + '%',
-    PROGRAM_ROWS: progRows,
-    PROGRAM_NOTE: 'Aggregator + fleet program gallons for ' + esc(periodLabel) + '. Direct retail gallons are not itemized.',
-    RACK_PRICE: p3(cc.rackPrice),
-    FED_TAX: p4(cc.federalTax),
-    STATE_TAX: p4(cc.stateExcise),
-    TAKEAWAYS: takeaways,
-    // raw numbers for the iframe's live recompute
-    _retail: retail, _disc: avgDiscount, _cost: trueCost
-  };
-}
-
-function mbOpen(stopId){
-  if(!stopId){ toast && toast('No stop'); return; }
-  const data = (function(){ try { return mbBuildData(stopId); } catch(e){ console.error('Margin Bridge build failed', e); alert('Could not build the Margin Bridge:\n' + ((e && e.message) || e)); return null; } })();
-  if(!data){ return; }
-  _mbStopId = stopId;
-
-  let html = MB_TEMPLATE;
-  Object.keys(data).forEach(k => { if(k[0] !== '_') html = html.split('{{' + k + '}}').join(data[k]); });
-
-  // Live recompute of the "net realized margin" line as the fees are edited.
-  const live = '<' + 'script>(function(){'
-    + 'var R=' + data._retail + ',D=' + data._disc + ',C=' + data._cost + ';'
-    + 'function f(id){var el=document.getElementById(id);var v=parseFloat((el&&el.value)||"0");return isNaN(v)?0:v;}'
-    + 'function r(){var n=R-D-f("mb-proc")-f("mb-txn")-C;var o=document.getElementById("mb-realized");if(o)o.textContent="$"+n.toFixed(4);}'
-    + 'document.addEventListener("input",function(e){if(e.target&&(e.target.id==="mb-proc"||e.target.id==="mb-txn"))r();});'
-    + '})();<' + '/script>';
-  html = html.replace('</body>', live + '</body>');
-
-  const stop = MEMBERS.find(m => m.id === stopId) || {};
-  const ov = document.getElementById('mb-overlay');
-  ov.innerHTML = `
-    <div class="br-toolbar">
-      <span class="br-title">📉 Fuel Margin Bridge</span>
-      <span class="br-sub">${esc(stop.name||'')} — ${esc(stopId)} · ${esc(data.ANALYSIS_PERIOD)}</span>
-      <span class="br-spacer"></span>
-      <button class="br-btn primary" onclick="mbPrint()">🖨 Export PDF</button>
-      <button class="br-btn danger" onclick="mbClose()">✕ Close</button>
-    </div>
-    <div class="mb-stage"><div class="mb-scaler"><iframe id="mb-frame"></iframe></div></div>`;
-  ov.classList.add('show');
-  const frame = document.getElementById('mb-frame');
-  frame.srcdoc = html;
-  setTimeout(mbScale, 30);
-  window.addEventListener('resize', mbScale);
-}
-
-function mbScale(){
-  const frame = document.getElementById('mb-frame');
-  if(!frame) return;
-  const scale = Math.min(1, (window.innerWidth - 48) / 1600, (window.innerHeight - 110) / 1000);
-  frame.style.transformOrigin = 'top left';
-  frame.style.transform = 'scale(' + scale + ')';
-  const sc = frame.parentElement;
-  if(sc){ sc.style.width = (1600 * scale) + 'px'; sc.style.height = (1000 * scale) + 'px'; sc.style.position = 'relative'; }
-  frame.style.position = 'absolute';
-  frame.style.top = '0'; frame.style.left = '0';
-}
-
-function mbClose(){
-  const ov = document.getElementById('mb-overlay');
-  if(ov){ ov.classList.remove('show'); ov.innerHTML = ''; }
-  window.removeEventListener('resize', mbScale);
-  _mbStopId = null;
-}
-
-function mbPrint(){
-  const frame = document.getElementById('mb-frame');
-  if(!frame || !frame.contentWindow){ return; }
-  try { frame.contentWindow.focus(); frame.contentWindow.print(); }
-  catch(e){ console.error('Margin Bridge print failed', e); window.print(); }
-}
-
-// ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
 initLogin();
@@ -13263,8 +13130,8 @@ initLogin();
 
 <!-- PHASE 9: BUSINESS REVIEW DECK OVERLAY -->
 <div id="br-overlay"></div>
-<div id="mb-overlay"></div>
 
 <!-- PHASE 9.2: GALLERY EDITOR MODAL -->
 <div id="gallery-modal" onclick="if(event.target.id==='gallery-modal') galleryCloseEditor()"></div>
 </body>
+</html>
