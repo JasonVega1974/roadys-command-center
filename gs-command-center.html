@@ -6601,9 +6601,6 @@ function drawerFuelHTML(stopId){
   const aggY = stopAggregatorGallons(stopId, py);
   const aggYTD = ytdGallonsForStop(stopId, m, 'agg');
   const fmtN = n => Math.round(n).toLocaleString();
-  // Roady's Contributed Gallons — combined into this card (site-value model)
-  let _cg = null;
-  try { _cg = (typeof roadysContributedValue === 'function') ? roadysContributedValue(stopId) : null; } catch(e){}
   return `
     <div class="drawer-card cyan">
       <div class="drawer-card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
@@ -6630,15 +6627,6 @@ function drawerFuelHTML(stopId){
           <div class="fuel-tile-ytd">YTD: ${fmtN(aggYTD)} gal</div>
         </div>
       </div>
-      ${_cg ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:.92em;font-weight:800;letter-spacing:.02em;color:var(--green)">⛽ Roady's Contributed Gallons — ${monthLbl}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin-top:10px">
-          <div><div class="fuel-tile-lbl">Contributed Gallons</div><div style="font-size:1.35em;font-weight:800;color:var(--green);line-height:1.1">${fmtN(_cg.gMonth)}</div></div>
-          <div><div class="fuel-tile-lbl">Fuel Margin / gal</div><div style="font-size:1.35em;font-weight:800;line-height:1.1">$${(_cg.fuelMargin||0).toFixed(3)}</div></div>
-          <div><div class="fuel-tile-lbl">Fuel Profit</div><div style="font-size:1.35em;font-weight:800;color:var(--green);line-height:1.1">$${Math.round(_cg.vMonth.fuelProfit||0).toLocaleString()}</div></div>
-          <div><div class="fuel-tile-lbl">Total Site Value</div><div style="font-size:1.35em;font-weight:800;color:var(--cyan);line-height:1.1">$${Math.round(_cg.vMonth.total||0).toLocaleString()}</div></div>
-        </div>
-      </div>` : ''}
       ${(!total && !fleet && !agg) ? '<div style="font-size:.74em;color:var(--muted);margin-top:8px">No fuel data in <code>roadys_fuel</code> for this stop. Open <code>index.html</code> in another tab to populate.</div>' : ''}
     </div>
   `;
@@ -7054,8 +7042,10 @@ function vendorOpportunityForStop(stopId){
 
 function drawerVendorOpportunityHTML(stopId){
   const opps = vendorOpportunityForStop(stopId);
-  // Alphabetical (item 8)
-  opps.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  // Top 8 VP priority order; everything else falls below, alphabetical.
+  const TOP8_VP = ['cintas','sysco','lynco','das','truck parking','farmer','coca','heartland'];
+  const _vpPrio = o => { const n = (o.name||'').toLowerCase(); const i = TOP8_VP.findIndex(t => n.indexOf(t) !== -1); return i < 0 ? 999 : i; };
+  opps.sort((a,b) => { const pa = _vpPrio(a), pb = _vpPrio(b); if(pa !== pb) return pa - pb; return (a.name||'').localeCompare(b.name||''); });
   if(!opps.length){
     return `
     <div class="drawer-card amber">
