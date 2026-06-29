@@ -264,7 +264,7 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 }
 .fuel-tile-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .fuel-tile{background:var(--bg);padding:10px;border-radius:5px}
-.fuel-tile-lbl{font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.fuel-tile-lbl{font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .fuel-tile-val{font-size:1.05em;font-weight:800;color:var(--text);margin-top:3px}
 .fuel-tile-trend{font-size:.68em;margin-top:4px}
 .fuel-tile-ytd{font-size:.6em;color:var(--muted);margin-top:2px}
@@ -1078,6 +1078,8 @@ table.sortable thead th[data-no-sort='1'] .sort-chev{display:none}
 .notes-entry-cat{display:inline-block;font-size:.62em;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);background:var(--bg3);border-radius:8px;padding:1px 7px;margin-left:6px}
 /* ── Top-menu Back button (item 15) ── */
 .nav-back-btn{margin-right:8px;font-weight:800}
+/* Larger, more legible body text on the stop-detail page (titles already enlarged) */
+#stop-detail-content{font-size:16px;line-height:1.5}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -2734,6 +2736,11 @@ function currentMonthKey(){
   const curCal = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   if(k === curCal) k = priorMonthKey(k);
   return k;
+}
+// Current (in-progress) calendar month key — used to exclude partial months.
+function _calMonthKey(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
 }
 function setViewMonth(m){
   // Treat selecting the latest-data default as "no override" so the
@@ -5528,7 +5535,7 @@ function stopRewardsYtd(stopId){
   const rec = (typeof loadStopRecord === 'function') ? loadStopRecord(stopId) : (stopdata[stopId] || {});
   const manualAdds    = (typeof rec.rewardsYtdAdds    === 'number' && !isNaN(rec.rewardsYtdAdds))    ? rec.rewardsYtdAdds    : null;
   const manualRedeems = (typeof rec.rewardsYtdRedeems === 'number' && !isNaN(rec.rewardsYtdRedeems)) ? rec.rewardsYtdRedeems : null;
-  const months = rewardsSeedMonthsFor(stopId);
+  const months = rewardsSeedMonthsFor(stopId).filter(k => k !== _calMonthKey()); // full months only
   let seedAdds = 0, seedRedeems = 0;
   for(const k of months){ const s = REWARDS_SEED_BY_MONTH[k][stopId]; seedAdds += +s['a$'] || 0; seedRedeems += +s['r$'] || 0; }
   const hasSeed = months.length > 0;
@@ -6594,6 +6601,9 @@ function drawerFuelHTML(stopId){
   const aggY = stopAggregatorGallons(stopId, py);
   const aggYTD = ytdGallonsForStop(stopId, m, 'agg');
   const fmtN = n => Math.round(n).toLocaleString();
+  // Roady's Contributed Gallons — combined into this card (site-value model)
+  let _cg = null;
+  try { _cg = (typeof roadysContributedValue === 'function') ? roadysContributedValue(stopId) : null; } catch(e){}
   return `
     <div class="drawer-card cyan">
       <div class="drawer-card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
@@ -6620,7 +6630,16 @@ function drawerFuelHTML(stopId){
           <div class="fuel-tile-ytd">YTD: ${fmtN(aggYTD)} gal</div>
         </div>
       </div>
-      ${(!total && !fleet && !agg) ? '<div style="font-size:.7em;color:var(--muted);margin-top:8px">No fuel data in <code>roadys_fuel</code> for this stop. Open <code>index.html</code> in another tab to populate.</div>' : ''}
+      ${_cg ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:.92em;font-weight:800;letter-spacing:.02em;color:var(--green)">⛽ Roady's Contributed Gallons — ${monthLbl}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin-top:10px">
+          <div><div class="fuel-tile-lbl">Contributed Gallons</div><div style="font-size:1.35em;font-weight:800;color:var(--green);line-height:1.1">${fmtN(_cg.gMonth)}</div></div>
+          <div><div class="fuel-tile-lbl">Fuel Margin / gal</div><div style="font-size:1.35em;font-weight:800;line-height:1.1">$${(_cg.fuelMargin||0).toFixed(3)}</div></div>
+          <div><div class="fuel-tile-lbl">Fuel Profit</div><div style="font-size:1.35em;font-weight:800;color:var(--green);line-height:1.1">$${Math.round(_cg.vMonth.fuelProfit||0).toLocaleString()}</div></div>
+          <div><div class="fuel-tile-lbl">Total Site Value</div><div style="font-size:1.35em;font-weight:800;color:var(--cyan);line-height:1.1">$${Math.round(_cg.vMonth.total||0).toLocaleString()}</div></div>
+        </div>
+      </div>` : ''}
+      ${(!total && !fleet && !agg) ? '<div style="font-size:.74em;color:var(--muted);margin-top:8px">No fuel data in <code>roadys_fuel</code> for this stop. Open <code>index.html</code> in another tab to populate.</div>' : ''}
     </div>
   `;
 }
@@ -6863,7 +6882,7 @@ function drawerRewardsHTML(stopId, part){
   // May uses yellow (more recent month gets the warmer color). Section
   // is suppressed entirely when this stop has data in neither month.
   const _rewAccents = ['var(--yellow)','var(--cyan)','var(--green)','var(--accent)','var(--red)'];
-  const _rewPanels = rewardsSeedMonthsFor(stopId).sort().reverse()
+  const _rewPanels = rewardsSeedMonthsFor(stopId).filter(k => k !== _calMonthKey()).sort().reverse()
     .map((k,i) => monthPanel(REWARDS_SEED_BY_MONTH[k], REWARDS_MONTH_LABELS[k], _rewAccents[i % _rewAccents.length]))
     .filter(Boolean);
   const monthlyActivityHTML = _rewPanels.length ? `
@@ -6877,9 +6896,7 @@ function drawerRewardsHTML(stopId, part){
   // Hint label shown under each YTD input when the value is auto-derived
   // from the per-month seed sums (vs typed by the user).
   const seedMonthLabels = monthSeeds.map(s => s.label.replace(' 2026','')).join(' + ');
-  const autoHint = seedMonthLabels
-    ? `<div style="font-size:.6em;color:var(--accent);margin-top:3px;opacity:.85" title="Sum of ${seedMonthLabels} from the per-month rewards seed. Type a value to override.">↺ auto from ${seedMonthLabels}</div>`
-    : '';
+  const autoHint = ''; // 'auto from <months>' hint removed per request
 
   // $-prefixed YTD input boxes (item 5)
   const $wrap = (inner) => `<span style="position:relative;display:block;margin-top:3px"><span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text);pointer-events:none">$</span>${inner}</span>`;
@@ -7086,6 +7103,7 @@ function drawerVendorOpportunityHTML(stopId){
   return `
     <div class="drawer-card amber">
       <div class="drawer-card-hd">🎯 Opportunity — Vendors NOT Enrolled (${opps.length} missed)</div>
+      <div style="font-size:.82em;font-weight:800;color:var(--green);margin-bottom:6px">Top 8 VP</div>
       <div class="opp-list" style="display:flex;flex-direction:column;gap:4px">${visible}${extras}${toggleBtn}</div>
       ${totalPotential > 0 ? `<div class="roi-foot">Total potential savings if enrolled: <b style="color:var(--yellow)">${fmtMoney(totalPotential)}/mo</b><br>Excludes vendors without quantified savings.</div>` : ''}
     </div>
@@ -7726,23 +7744,23 @@ function renderStopDetailPage(stopId){
     ${drawerMembershipHTML(stopId)}
   `;
   // FUEL — fuel business + ROI + trends always on top, then sub-tab cards
+  // Fuel Business (combined w/ contributed gallons) → Gallon Report → Trends,
+  // then Discounts / Location Cost Components, with Calculations & Value Prop last.
   const fuelSubnav = `
     <div class="sd-subnav" data-for="fuel">
       <button class="sd-sub active" data-key="all"    onclick="sdSub('fuel','all',this)">All</button>
       <button class="sd-sub"        data-key="disc"   onclick="sdSub('fuel','disc',this)">Discounts</button>
       <button class="sd-sub"        data-key="lcc"    onclick="sdSub('fuel','lcc',this)">Location Cost Components</button>
-      <button class="sd-sub"        data-key="gallon" onclick="sdSub('fuel','gallon',this)">Gallon Report</button>
       <button class="sd-sub"        data-key="calc"   onclick="sdSub('fuel','calc',this)">Calculations</button>
       <button class="sd-sub"        data-key="vp"     onclick="sdSub('fuel','vp',this)">Value Prop</button>
     </div>`;
   const fuelPane = `
     ${drawerFuelHTML(stopId)}
-    ${drawerROIHTML(stopId)}
+    ${pageHistoryTableHTML(stopId)}
     ${pageChartsHTML(stopId)}
     ${fuelSubnav}
     <div class="sd-subcard" data-sub="fuel" data-key="disc">${pageDiscountsHTML(stopId)}</div>
     <div class="sd-subcard" data-sub="fuel" data-key="lcc">${pageRackHTML(stopId)}</div>
-    <div class="sd-subcard" data-sub="fuel" data-key="gallon">${pageHistoryTableHTML(stopId)}</div>
     <div class="sd-subcard" data-sub="fuel" data-key="calc">${pageCalculationsHTML(stopId)}</div>
     <div class="sd-subcard" data-sub="fuel" data-key="vp">${drawerValuePropHTML(stopId)}</div>
   `;
@@ -8132,12 +8150,12 @@ function pageKpiHeroHTML(stopId){
       <div class="drawer-card-hd">⛽ Fuel Gallons — ${esc(monthLbl)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start">
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total Gallons</div>
+          <div style="font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total Gallons</div>
           <div style="font-size:1.55em;font-weight:800;color:var(--cyan);line-height:1.05;margin-top:2px">${fmtN(totalMtd)}</div>
           <div style="font-size:.66em;margin-top:6px">${trendPill(totalMtd, totalPrior, 'vs prior month')}</div>
         </div>
         <div style="border-left:1px solid var(--border);padding-left:10px">
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Gallons</div>
+          <div style="font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Gallons</div>
           <div style="font-size:1.55em;font-weight:800;color:var(--cyan);line-height:1.05;margin-top:2px">${fmtN(totalYtd)}</div>
           <div style="font-size:.66em;margin-top:6px;color:var(--muted)">Jan – ${esc(monthLbl.split(' ')[0])} ${esc(monthLbl.split(' ')[1])}</div>
         </div>
@@ -8173,12 +8191,12 @@ function pageKpiHeroHTML(stopId){
       <div class="drawer-card-hd">🎁 Rewards — ${esc(monthLbl)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px">
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Adds $</div>
+          <div style="font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Adds $</div>
           <div style="font-size:1.05em;font-weight:800;color:var(--yellow);line-height:1.1;margin-top:2px">${fmt$2(mtdAdds)}</div>
           <div style="font-size:.62em;margin-top:3px">${trendPill(mtdAdds, priorAdds, 'vs prior')}</div>
         </div>
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Redeems $</div>
+          <div style="font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Redeems $</div>
           <div style="font-size:1.05em;font-weight:800;color:var(--yellow);line-height:1.1;margin-top:2px">${fmt$2(mtdRedeems)}</div>
           <div style="font-size:.62em;margin-top:3px">${trendPill(mtdRedeems, priorRedeems, 'vs prior')}</div>
         </div>
@@ -8187,11 +8205,11 @@ function pageKpiHeroHTML(stopId){
           <span style="font-size:1.05em;font-weight:800;color:${rateColor}">${rateLabel}</span>
         </div>
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Adds $</div>
+          <div style="font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Adds $</div>
           <div style="font-size:.95em;font-weight:700;margin-top:2px">${fmt$2(ytdAdds)}</div>
         </div>
         <div>
-          <div style="font-size:.58em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Redeems $</div>
+          <div style="font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">YTD Redeems $</div>
           <div style="font-size:.95em;font-weight:700;margin-top:2px">${fmt$2(ytdRedeems)}</div>
         </div>
       </div>
