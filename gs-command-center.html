@@ -2697,7 +2697,7 @@ const CINTAS_STATUS={};
 // enrollment (active => enrolled, everything else => not enrolled) and renders a
 // per-stop status badge in the stop drawer. Add future vendors here.
 const ROSTER_STATUS={'V00033':COKE_STATUS,'V00036':DAS_STATUS,'V00002':FARMER_STATUS,'V00010':SYSCO_STATUS,'V00112':TPC_STATUS,'V00232':HEARTLAND_STATUS,'V00134':CINTAS_STATUS};
-const ROSTER_LABEL={'V00033':'🥤 Coca-Cola Fountain Program','V00036':'🛒 DAS C-Store Distribution','V00002':'☕ Farmer Brothers Coffee & Beverage','V00010':'🍽️ Sysco Foodservice','V00112':'🅿️ Truck Parking Club','V00232':'💳 Heartland / Global Payments','V00134':'🧺 Cintas (via Entegra)'};
+const ROSTER_LABEL={'V00033':'Coca-Cola Fountain Program','V00036':'DAS C-Store Distribution','V00002':'Farmer Brothers Coffee & Beverage','V00010':'Sysco Foodservice','V00112':'Truck Parking Club','V00232':'Heartland / Global Payments','V00134':'Cintas (via Entegra)'};
 // Rosters that are the COMPLETE enrollment truth — enrolled IFF 'active' in the
 // map; any other enrollment for that vid is cleared on read.
 const ROSTER_EXCLUSIVE={'V00002':true,'V00010':true,'V00112':true,'V00232':true,'V00134':true,'V00033':true};
@@ -6688,17 +6688,21 @@ function drawerVendorStubHTML(stopId){
     const c = vendorContact(vid, master);
     return { vid, name: v?.name || vid, program: v?.program || '—', priority: v?.priority || '—', phone: v?.phone || '', contact: c };
   }).sort((a,b) => a.name.localeCompare(b.name));
-  const rows = enrolled.length
-    ? enrolled.map(e => {
+  const GREEN_FILL = 'rgba(16,185,129,.12)';   // Top-8 VP highlight fill (matches active-roster green)
+  // Build a single list of {key,html} so enrolled rows and roster status blocks
+  // can be merged and shown in one alphabetical order.
+  const items = [];
+  enrolled.forEach(e => {
         const pc = programColor[e.program] || 'var(--muted)';
         const prc = priorityColor[e.priority] || 'var(--muted)';
+        const t8 = isTop8VP(e.name);
         const contactLine = e.contact && e.contact.contact
           ? esc(e.contact.contact) + (e.contact.phone ? ' · ' + esc(e.contact.phone) : '')
           : (e.phone ? esc(e.phone) : '<span style="color:var(--dim)">no contact on file</span>');
         const hasDetails = !!e.contact;
-        return `<div style="background:var(--bg);border-radius:4px;padding:6px 8px;font-size:.78em;${hasDetails?'cursor:pointer':''}" ${hasDetails?`onclick="toggleVendorDetails('${e.vid}', this)"`:''}>
+        const html = `<div style="background:${t8 ? GREEN_FILL : 'var(--bg)'};border-radius:4px;padding:6px 8px;font-size:.78em;${hasDetails?'cursor:pointer':''}" ${hasDetails?`onclick="toggleVendorDetails('${e.vid}', this)"`:''}>
           <div style="display:flex;justify-content:space-between;gap:8px">
-            <span>${isTop8VP(e.name) ? TOP8_VP_CHECK : ''}<b${isTop8VP(e.name) ? ' style="color:var(--green)"' : ''}>${esc(e.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(e.program)}</span></span>
+            <span>${t8 ? TOP8_VP_CHECK : ''}<b${t8 ? ' style="color:var(--green)"' : ''}>${esc(e.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(e.program)}</span></span>
             <span style="color:${prc};font-size:.86em;white-space:nowrap">${esc(e.priority)}</span>
           </div>
           <div style="color:var(--muted);font-size:.86em;margin-top:2px">${contactLine}</div>
@@ -6710,8 +6714,8 @@ function drawerVendorStubHTML(stopId){
             ${e.contact.contractTerm ? `<div><b>Contract:</b> ${esc(e.contact.contractTerm)}</div>` : ''}
           </div>` : ''}
         </div>`;
-      }).join('')
-    : '<div style="font-size:.78em;color:var(--muted)">No enrolled vendor programs.</div>';
+        items.push({ key: (e.name||'').toLowerCase(), html });
+      });
   // Stale-cache hint (vendors.html data older than 30d, or never opened)
   const stale = (master._ts === 0) || (Date.now() - master._ts > 30*24*3600*1000);
   const days = master._ts ? Math.floor((Date.now() - master._ts) / (24*3600*1000)) : null;
@@ -6724,7 +6728,6 @@ function drawerVendorStubHTML(stopId){
   // Per-stop program status for roster-tracked vendors (Coca-Cola, DAS …) — shown
   // for every rostered stop regardless of the vp_enroll boolean, so Refused /
   // Inactive / Pending / Zero stops still surface. Expandable to program details.
-  let rosterBlocks = '';
   let rosterActiveCount = 0;
   if(typeof ROSTER_STATUS !== 'undefined'){
     for(const vid in ROSTER_STATUS){
@@ -6734,14 +6737,15 @@ function drawerVendorStubHTML(stopId){
       const m = ROSTER_STATUS_META[st] || ROSTER_STATUS_META.active;
       const cd = vendorContact(vid, master) || {};
       const label = ROSTER_LABEL[vid] || cd.name || vid;
+      const t8 = isTop8VP(label);
       const corp = [
         cd.website ? `<a href="${esc(cd.website)}" target="_blank" rel="noopener" style="color:var(--cyan)">${esc(cd.website)}</a>` : '',
         cd.address ? esc(cd.address) : '',
         cd.corpPhone ? esc(cd.corpPhone) : ''
       ].filter(Boolean).join(' · ');
-      rosterBlocks += `<div style="background:${m.bg};border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:.78em;cursor:pointer" onclick="toggleVendorDetails('rs-${vid}', this)">
+      const html = `<div style="background:${t8 ? GREEN_FILL : m.bg};border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:.78em;cursor:pointer" onclick="toggleVendorDetails('rs-${vid}', this)">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-          <span>${isTop8VP(label) ? TOP8_VP_CHECK : ''}<b${isTop8VP(label) ? ' style="color:var(--green)"' : ''}>${label}</b></span>
+          <span>${t8 ? TOP8_VP_CHECK : ''}<b${t8 ? ' style="color:var(--green)"' : ''}>${label}</b></span>
           <span style="color:${m.c};font-weight:800;white-space:nowrap;text-transform:uppercase;font-size:.82em">${m.t}</span>
         </div>
         <div class="vd-details" id="vd-rs-${vid}" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:.92em;line-height:1.45">
@@ -6751,13 +6755,18 @@ function drawerVendorStubHTML(stopId){
           ${corp?`<div style="color:var(--muted)"><b>Corporate:</b> ${corp}</div>`:''}
         </div>
       </div>`;
+      items.push({ key: (label||'').toLowerCase(), html });
     }
   }
+  items.sort((a, b) => a.key.localeCompare(b.key));
+  const body = items.length
+    ? items.map(i => i.html).join('')
+    : '<div style="font-size:.78em;color:var(--muted)">No enrolled vendor programs.</div>';
   return `
     <div class="drawer-card green">
-      <div class="drawer-card-hd">🏢 Vendor Programs (${enrolled.length + rosterActiveCount} enrolled)</div>
+      <div class="drawer-card-hd">Vendor Programs (${enrolled.length + rosterActiveCount} enrolled)</div>
       ${staleBanner}
-      <div style="display:flex;flex-direction:column;gap:4px">${rosterBlocks}${rows}</div>
+      <div style="display:flex;flex-direction:column;gap:4px">${body}</div>
     </div>
   `;
 }
