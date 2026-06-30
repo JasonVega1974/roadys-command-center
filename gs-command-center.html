@@ -6551,7 +6551,7 @@ function onMembershipChange(stopId, field, val){
     field === 'rewardsYtdAdds' || field === 'rewardsYtdRedeems' ||
     field === 'roiPotentialNewGallons' || field === 'roiNewDefGallons' || field === 'roiNewInsideStoreSales' ||
     field === 'roiFuelMarginPerGal' || field === 'roiFuelPricePerGal' || field === 'roiFuelCostPerGal' ||
-    field === 'roiRackPricePerGal'
+    field === 'roiRackPricePerGal' || field === 'roiDefPrice'
   ) {
     // Empty string clears the field (reverts to auto/default); non-empty parses as number.
     const s = String(val == null ? '' : val).replace(/[$,\s]/g, '');
@@ -7323,6 +7323,7 @@ function roadysContributedValue(stopId){
   const GAL_PER_STOP  = (C.inside  && +C.inside.avgGalPerTxn) || 110;
   const INSIDE_RING   = (C.inside  && +C.inside.avgRing)      || 18.32;
   const DEF_PCT       = (C.def     && +C.def.pct)             || 2;
+  const defPriceDefault = (C.def   && +C.def.price)           || 4.50;
   const retailDefault = (C.current && +C.current.price)       || 3.889;
   const marginDefault = (typeof REV_PER_GAL_GS === 'number' && typeof COST_PER_GAL_GS === 'number')
     ? REV_PER_GAL_GS - COST_PER_GAL_GS : 0.03;
@@ -7331,7 +7332,9 @@ function roadysContributedValue(stopId){
   // Editable per-stop inputs
   const haveRetail     = rec.roiFuelPricePerGal != null && !isNaN(+rec.roiFuelPricePerGal);
   const haveCostManual = rec.roiFuelCostPerGal  != null && !isNaN(+rec.roiFuelCostPerGal);
+  const haveDefPrice   = rec.roiDefPrice        != null && !isNaN(+rec.roiDefPrice);
   const retailPrice = haveRetail ? +rec.roiFuelPricePerGal : retailDefault;
+  const defPrice    = haveDefPrice ? +rec.roiDefPrice : defPriceDefault;
 
   // Cost/gal precedence: calculated (Rack Price + Location Cost Components)
   // > manual Cost/gal field > implied default. When the rack price is filled
@@ -7353,14 +7356,17 @@ function roadysContributedValue(stopId){
     const gal = +g || 0;
     const fuelProfit = gal * fuelMargin;
     const inside     = (gal / GAL_PER_STOP) * INSIDE_RING;
-    const def        = gal * retailPrice * (DEF_PCT / 100);
-    return { gal, fuelProfit, inside, def, total: fuelProfit + inside + def };
+    // DEF revenue = DEF gallons (DEF_PCT% of diesel gallons) × manual DEF price/gal.
+    const defGal     = gal * (DEF_PCT / 100);
+    const def        = defGal * defPrice;
+    return { gal, fuelProfit, inside, defGal, def, total: fuelProfit + inside + def };
   };
 
   return {
     m, pm, mo, monthLbl,
     gMonth, gPrior, gYTD, gProj, projIsRolling,
     GAL_PER_STOP, INSIDE_RING, DEF_PCT, retailDefault, marginDefault, costDefault,
+    defPrice, defPriceDefault, haveDefPrice,
     fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCostManual,
     costSource, costCalc,
     vMonth: value(gMonth), vPrior: value(gPrior), vYTD: value(gYTD), vProj: value(gProj)
@@ -7373,6 +7379,7 @@ function roadysContributedHTML(stopId){
   const cg = roadysContributedValue(stopId);
   const { monthLbl, gMonth, gYTD, gProj, gPrior, projIsRolling, GAL_PER_STOP,
           INSIDE_RING, DEF_PCT, retailDefault, marginDefault, costDefault,
+          defPrice, defPriceDefault, haveDefPrice,
           fuelMargin, retailPrice, costPerGal, marginDerived, haveRetail, haveCostManual,
           costSource, costCalc,
           vMonth, vPrior, vYTD, vProj } = cg;
@@ -7414,12 +7421,10 @@ function roadysContributedHTML(stopId){
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <div style="font-size:.78em;font-weight:800;letter-spacing:.04em;color:var(--green)">⛽ Roady's Contributed Gallons — ${monthLbl}</div>
         <div style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <label style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Retail price / gal
-            <input type="number" step="0.001" inputmode="decimal" style="${inS}"
-                   value="${haveRetail ? retailPrice.toFixed(3) : ''}" placeholder="${retailDefault.toFixed(3)}"
-                   title="Retail diesel price per gallon — feeds margin (retail − cost) and DEF"
-                   onblur="onMembershipChange('${stopId}', 'roiFuelPricePerGal', this.value)"/>
-          </label>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Retail price / gal
+            <span style="${inS};display:inline-block" title="Retail diesel price — edit it on the page header (title line)">$${retailPrice.toFixed(3)}</span></span>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">DEF price / gal
+            <span style="${inS};display:inline-block" title="DEF price per gallon — edit it on the page header (title line)">$${defPrice.toFixed(3)}</span></span>
           ${costSource === 'rack'
             ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:.7em;color:var(--muted)">Cost / gal
                  <span style="${inS};display:inline-block" title="Auto from Rack Price + Location Cost Components">$${costPerGal.toFixed(3)}</span></span>`
@@ -7449,7 +7454,7 @@ function roadysContributedHTML(stopId){
         <b style="color:var(--text)">This month:</b>
         Fuel profit ${fmt2(vMonth.fuelProfit)} <span style="opacity:.6">(${fmtGal(gMonth)} gal × $${fuelMargin.toFixed(3)})</span>
         · Inside ${fmt2(vMonth.inside)} <span style="opacity:.6">(${fmtGal(gMonth)} ÷ ${GAL_PER_STOP} × ${fmt2(INSIDE_RING)})</span>
-        · DEF ${fmt2(vMonth.def)} <span style="opacity:.6">(${DEF_PCT}% of ${fmt(gMonth*retailPrice)} retail)</span>
+        · DEF ${fmt2(vMonth.def)} <span style="opacity:.6">(${fmtGal(vMonth.defGal)} DEF gal = ${DEF_PCT}% of diesel gal × $${defPrice.toFixed(3)})</span>
         ${noData ? '<br><span style="color:var(--yellow)">No fuel data for this month — values stay $0 until <code>roadys_fuel</code> is populated.</span>' : ''}
       </div>
     </div>`;
@@ -7982,12 +7987,33 @@ function _sdApplyPreset(name){
 function pageHeaderHTML(stopId){
   const stop = MEMBERS.find(m => m.id === stopId);
   if(!stop) return '';
-  // Compute network rank by MTD gallons
-  const m = currentMonthKey();
-  const ranked = MEMBERS.slice().map(s => ({id: s.id, g: stopTotalGallons(s.id, m)})).sort((a,b) => b.g - a.g);
-  const rank = ranked.findIndex(r => r.id === stopId) + 1;
-  const total = ranked.length;
   const gsName = MANAGER_MAP[stop.state] || 'Unassigned';
+  // Manually-entered retail diesel + DEF prices live on the title line and are
+  // the single source of truth (the Contributed Gallons panel reflects them
+  // read-only). Retail feeds fuel margin + the sales-tax cost component; DEF
+  // price feeds DEF revenue. Empty input → falls back to the Calculator default.
+  const rec = loadStopRecord(stopId);
+  const CR = (CALC_DEFAULTS && CALC_DEFAULTS.retail) || {};
+  const retailDefault   = (CR.current && +CR.current.price) || 3.889;
+  const defPriceDefault = (CR.def     && +CR.def.price)     || 4.50;
+  const haveRetail   = rec.roiFuelPricePerGal != null && !isNaN(+rec.roiFuelPricePerGal);
+  const haveDefPrice = rec.roiDefPrice        != null && !isNaN(+rec.roiDefPrice);
+  const priceInStyle = "background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:1em;width:82px;text-align:right;font-family:var(--fm)";
+  const priceInputsHTML = `
+    <span style="display:inline-flex;align-items:center;gap:14px;margin-left:auto;flex-wrap:wrap">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:.74em;color:var(--muted);white-space:nowrap">⛽ Retail diesel $/gal
+        <input type="number" step="0.001" inputmode="decimal" style="${priceInStyle}"
+               value="${haveRetail ? (+rec.roiFuelPricePerGal).toFixed(3) : ''}" placeholder="${retailDefault.toFixed(3)}"
+               title="Retail diesel price per gallon — feeds fuel margin (retail − cost), the sales-tax cost component, and DEF revenue"
+               onblur="onMembershipChange('${esc(stopId)}','roiFuelPricePerGal',this.value)"/>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:.74em;color:var(--muted);white-space:nowrap">🧪 DEF $/gal
+        <input type="number" step="0.001" inputmode="decimal" style="${priceInStyle}"
+               value="${haveDefPrice ? (+rec.roiDefPrice).toFixed(3) : ''}" placeholder="${defPriceDefault.toFixed(3)}"
+               title="DEF price per gallon — DEF revenue = DEF gallons (2% of diesel gallons) × this price"
+               onblur="onMembershipChange('${esc(stopId)}','roiDefPrice',this.value)"/>
+      </label>
+    </span>`;
   // Section jump nav -- one button per SD_SECTIONS entry. Buttons render in
   // their natural order (left column first, then right column) so the
   // visual order matches what the user sees scrolling down.
@@ -7996,13 +8022,13 @@ function pageHeaderHTML(stopId){
   const navHTML = _TABS.map((t,i) =>
     `<button class="sd-tab${(_sdActivePane||'details')===t[0]?' active':''}" data-pane="${t[0]}" onclick="sdTab('${t[0]}',this)">${t[1]}</button>`
   ).join('');
-  const rankDef = `Network Rank: this location's position out of all ${total} locations, ranked by total fuel gallons in the most recent COMPLETED month (1 = highest volume).`;
   return `
     <div class="sd-header">
       <div class="sd-header-top">
         <button class="btn" onclick="closeStopDetailPage()" style="font-size:.72em">← Back</button>
         <span class="sd-name">${esc(stop.name)}</span>
-        <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)} · <span title="${esc(rankDef)}" style="cursor:help;border-bottom:1px dotted var(--muted)">Network Rank #${rank} of ${total}</span></span>
+        <span class="sd-meta">${esc(stop.id)} · ${esc(stop.type)} · ${esc(stop.group)} · 📍 ${esc(stop.city||'')}, ${esc(stop.state||'')} · 🗺 GS: ${esc(gsName)}</span>
+        ${priceInputsHTML}
       </div>
       <div class="sd-tabnav">${navHTML}</div>
       <div class="sd-actions">
@@ -8257,9 +8283,6 @@ function pageKpiHeroHTML(stopId){
 function pageLocationDetailsHTML(stopId){
   const stop = MEMBERS.find(m => m.id === stopId);
   if(!stop) return '';
-  const m = currentMonthKey();
-  const ranked = MEMBERS.slice().map(s => ({id: s.id, g: stopTotalGallons(s.id, m)})).sort((a,b) => b.g - a.g);
-  const rank = ranked.findIndex(r => r.id === stopId) + 1;
   const groupColor = stop.group === "Roady's" ? 'var(--cyan)' : (stop.group === 'PTP' ? 'var(--orange)' : 'var(--muted)');
   return `
     <div class="drawer-card purple">
@@ -8274,7 +8297,6 @@ function pageLocationDetailsHTML(stopId){
       <div class="sd-loc-row"><span class="lbl">Group</span><span style="color:${groupColor};font-weight:700">${esc(stop.group||'—')}</span></div>
       <div class="sd-loc-row"><span class="lbl">Type</span><span>${esc(stop.type||'—')}</span></div>
       <div class="sd-loc-row"><span class="lbl">Status</span><span style="color:${stop.status==='active'?'var(--green)':'var(--muted)'}">${esc(stop.status||'—')}</span></div>
-      <div class="sd-loc-row"><span class="lbl">Network Rank</span><span><b>#${rank}</b> of ${ranked.length}</span></div>
     </div>
   `;
 }
@@ -8443,17 +8465,13 @@ function renderStopDetailCharts(stopId){
   }
   // Fleets/Aggregators doughnut
   if(_sdMixChart){ try { _sdMixChart.destroy(); } catch(e){} _sdMixChart = null; }
-  let aggList = [], fleetList = [], directG = 0;
+  let aggList = [], fleetList = [];
   try {
     const GD = loadFuelGD();
     const rec = GD[stopId]?.[m];
     if(rec){
       aggList = (rec.aggregators||[]).map(a => ({label: (a.name||'').split(' ').slice(0,2).join(' ') || 'Agg', value: +a.gallons||0}));
       fleetList = (rec.fleets||[]).map(f => ({label: f.name||'Fleet', value: +f.gallons||0}));
-      const aggSum = aggList.reduce((s,x)=>s+x.value,0);
-      const fleetSum = fleetList.reduce((s,x)=>s+x.value,0);
-      const total = +rec.gallons || 0;
-      directG = Math.max(0, total - aggSum - fleetSum);
     }
   } catch(e){}
   const c2 = document.getElementById('sd-chart-mix');
@@ -8462,65 +8480,100 @@ function renderStopDetailCharts(stopId){
     const fleetGroup = fleetList.reduce((s,x)=>s+x.value,0);
     _sdMixChart = new Chart(c2, {
       type: 'doughnut',
-      data: { labels: ['Aggregators', 'Fleets', 'Direct'], datasets: [{ data: [aggGroup, fleetGroup, directG], backgroundColor: ['rgba(34,211,238,.7)', 'rgba(16,185,129,.7)', 'rgba(251,146,60,.7)'], borderColor: 'transparent' }] },
+      data: { labels: ['Aggregators', 'Fleets'], datasets: [{ data: [aggGroup, fleetGroup], backgroundColor: ['rgba(34,211,238,.7)', 'rgba(16,185,129,.7)'], borderColor: 'transparent' }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 } } } } }
     });
   }
 }
+// YTD (current calendar year through the current month) gallons per aggregator
+// and per fleet, keyed by program name. Discount values (cost_plus / retail_minus)
+// and metadata are taken from the most recent month in which the program appears.
+// Shared by the Discounts card and the CSV export so both reconcile.
+function stopYtdPrograms(stopId){
+  const m = currentMonthKey();
+  const [y, currentMo] = m.split('-').map(Number);
+  let GD = {};
+  try { GD = loadFuelGD(); } catch(e){}
+  const aggMap = new Map();    // name -> {name,id,processor,cost_plus,retail_minus,gallons}
+  const fleetMap = new Map();  // name -> {name,id,gallons}
+  for(let mi = 1; mi <= currentMo; mi++){
+    const recM = GD[stopId]?.[y + '-' + String(mi).padStart(2,'0')];
+    if(!recM) continue;
+    (recM.aggregators||[]).forEach(a => {
+      const name = a.name || '—';
+      const cur = aggMap.get(name) || {name, id:'', processor:'', cost_plus:0, retail_minus:0, gallons:0};
+      cur.gallons += +a.gallons || 0;
+      if(a.id) cur.id = a.id;
+      if(a.processor) cur.processor = a.processor;
+      cur.cost_plus = +a.cost_plus || 0;       // latest month wins
+      cur.retail_minus = +a.retail_minus || 0;
+      aggMap.set(name, cur);
+    });
+    (recM.fleets||[]).forEach(f => {
+      const name = f.name || '—';
+      const cur = fleetMap.get(name) || {name, id:'', gallons:0};
+      cur.gallons += +f.gallons || 0;
+      if(f.id) cur.id = f.id;
+      fleetMap.set(name, cur);
+    });
+  }
+  return {
+    aggregators: Array.from(aggMap.values()).sort((a,b) => b.gallons - a.gallons),
+    fleets:      Array.from(fleetMap.values()).sort((a,b) => b.gallons - a.gallons)
+  };
+}
+// Human-readable single-column discount label from the per-unit cost-plus /
+// retail-minus values: Cost Plus, Retail Minus, or Better Of when both are set.
+function discountLabel(cp, rm){
+  cp = +cp || 0; rm = +rm || 0;
+  const fCp = '+$' + Math.abs(cp).toFixed(4);
+  const fRm = (rm < 0 ? '−$' : '+$') + Math.abs(rm).toFixed(4);
+  if(cp !== 0 && rm !== 0) return `Better Of: ${fCp} C+ / ${fRm} R−`;
+  if(cp !== 0) return `Cost Plus ${fCp}`;
+  if(rm !== 0) return `Retail Minus ${fRm}`;
+  return '—';
+}
 function pageDiscountsHTML(stopId){
-  let aggList = [], fleetList = [];
-  try {
-    const GD = loadFuelGD();
-    const rec = GD[stopId]?.[currentMonthKey()];
-    if(rec){
-      aggList = rec.aggregators || [];
-      fleetList = rec.fleets || [];
-    }
-  } catch(e){}
-  if(!aggList.length && !fleetList.length){
+  const { aggregators, fleets } = stopYtdPrograms(stopId);
+  if(!aggregators.length && !fleets.length){
     return `
       <div class="drawer-card amber">
         <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet</div>
-        <div style="font-size:.78em;color:var(--muted)">No aggregator or fleet records on file for this period. Add discount programs in <code>index.html</code>'s Fuelman page.</div>
+        <div style="font-size:.78em;color:var(--muted)">No aggregator or fleet records on file for this year. Add discount programs in <code>index.html</code>'s Fuelman page.</div>
       </div>
     `;
   }
   const fmtN = n => Math.round(+n||0).toLocaleString();
-  const aggCards = aggList.map(a => {
-    const cp = +a.cost_plus || 0;
-    const rm = +a.retail_minus || 0;
-    const net = cp + rm;
-    const profitable = net >= 0;
-    return `
-      <div class="disc-card${profitable ? '' : ' alert'}">
-        <div class="disc-name">${esc(a.name||'—')}</div>
-        <div class="disc-meta">ID: ${esc(a.id||'—')} · ${esc(a.processor||'—')} · Aggregator</div>
-        <div class="disc-stats">
-          <div><div class="disc-stat-lbl">Gallons</div><div class="disc-stat-val">${fmtN(a.gallons)}</div></div>
-          <div><div class="disc-stat-lbl">Cost Plus</div><div class="disc-stat-val">${cp > 0 ? '+$'+cp.toFixed(4) : (cp === 0 ? 'None' : '$'+cp.toFixed(4))}</div></div>
-          <div><div class="disc-stat-lbl">Retail Minus</div><div class="disc-stat-val">${rm < 0 ? '$'+rm.toFixed(4) : (rm === 0 ? 'None' : '+$'+rm.toFixed(4))}</div></div>
-          <div><div class="disc-stat-lbl">Net / Gallon</div><div class="disc-stat-val" style="color:${profitable ? 'var(--green)' : 'var(--red)'}">${profitable ? '+' : ''}$${net.toFixed(4)}</div></div>
-        </div>
-      </div>
-    `;
+  const aggRows = aggregators.map(a => {
+    const hasDisc = (+a.cost_plus || 0) !== 0 || (+a.retail_minus || 0) !== 0;
+    return `<tr>
+      <td>${esc(a.name||'—')}</td>
+      <td style="color:${hasDisc ? 'var(--text)' : 'var(--muted)'}">${esc(discountLabel(a.cost_plus, a.retail_minus))}</td>
+      <td>${fmtN(a.gallons)}</td>
+    </tr>`;
   }).join('');
-  const fleetCards = fleetList.map(f => `
-    <div class="disc-card">
-      <div class="disc-name">${esc(f.name||'—')}</div>
-      <div class="disc-meta">ID: ${esc(f.id||'—')} · ${esc(f.processor||'—')} · Fleet</div>
-      <div class="disc-stats">
-        <div><div class="disc-stat-lbl">Gallons</div><div class="disc-stat-val">${fmtN(f.gallons)}</div></div>
-        <div><div class="disc-stat-lbl">Type</div><div class="disc-stat-val">Fleet Account</div></div>
-      </div>
-    </div>
-  `).join('');
+  const fleetRows = fleets.map(f => `<tr>
+      <td>${esc(f.name||'—')}</td>
+      <td>${fmtN(f.gallons)}</td>
+    </tr>`).join('');
+  const subLbl = 'font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px';
+  const aggTable = aggregators.length ? `
+      <div style="${subLbl};margin-top:4px">Aggregators</div>
+      <table class="sd-history-tbl">
+        <thead><tr><th>Aggregator</th><th>Discount</th><th>YTD Gallons</th></tr></thead>
+        <tbody>${aggRows}</tbody>
+      </table>` : '';
+  const fleetTable = fleets.length ? `
+      <div style="${subLbl};margin-top:12px">Fleets</div>
+      <table class="sd-history-tbl">
+        <thead><tr><th>Fleet</th><th>YTD Gallons</th></tr></thead>
+        <tbody>${fleetRows}</tbody>
+      </table>` : '';
   return `
     <div class="drawer-card amber">
-      <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet (${aggList.length} agg · ${fleetList.length} fleet)</div>
-      <div class="disc-grid">
-        ${aggCards}
-        ${fleetCards}
-      </div>
+      <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet</div>
+      ${aggTable}
+      ${fleetTable}
     </div>
   `;
 }
@@ -8548,7 +8601,6 @@ function pageHistoryTableHTML(stopId){
     const prior = i > 0 ? stopPriorMonthTotalGallons(stopId, mo.key) : null;
     const aggGal = (typeof stopAggregatorGallons === 'function') ? stopAggregatorGallons(stopId, mo.key) : 0;
     const fleetGal = (typeof stopFleetGallons === 'function') ? stopFleetGallons(stopId, mo.key) : 0;
-    const aggNames = (d.aggregators||[]).map(a => (a.name||'').split(' ')[0]).filter(Boolean).slice(0,3).join(', ');
     let changeLbl = '—';
     let changeColor = 'var(--muted)';
     if(prior != null && prior > 0){
@@ -8563,14 +8615,13 @@ function pageHistoryTableHTML(stopId){
       <td style="color:${changeColor}">${changeLbl}</td>
       <td>${aggGal > 0 ? fmtN(aggGal) : '—'}</td>
       <td>${fleetGal > 0 ? fmtN(fleetGal) : '—'}</td>
-      <td style="font-size:.86em;color:var(--muted)">${esc(aggNames || '—')}</td>
     </tr>`;
   }).join('');
   return `
     <div class="drawer-card">
       <div class="drawer-card-hd">📊 Gallon Report — 6-Month History</div>
       <table class="sd-history-tbl">
-        <thead><tr><th>Period</th><th>Gallons</th><th>Change</th><th>Aggregator Gallons</th><th>Fleet Gallons</th><th>Aggregators</th></tr></thead>
+        <thead><tr><th>Period</th><th>Gallons</th><th>Change</th><th>Aggregator Gallons</th><th>Fleet Gallons</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -8704,6 +8755,22 @@ function exportStopDetailCSV(stopId){
     lines.push(row(['Vendor Opportunity (Top 10)', 'Vendor ID', 'Name', 'Program', 'Avg Savings ($/mo)']));
     for(const o of opps){
       lines.push(row(['', o.vid, o.name, o.program, o.savings || 0]));
+    }
+  }
+  // Aggregator & Fleet discounts — YTD (matches the on-screen Discounts card)
+  const { aggregators: ytdAggs, fleets: ytdFleets } = stopYtdPrograms(stopId);
+  if(ytdAggs.length){
+    lines.push('');
+    lines.push(row(['Aggregator Discounts (YTD)', 'Aggregator', 'Discount', 'YTD Gallons']));
+    for(const a of ytdAggs){
+      lines.push(row(['', a.name, discountLabel(a.cost_plus, a.retail_minus), Math.round(a.gallons)]));
+    }
+  }
+  if(ytdFleets.length){
+    lines.push('');
+    lines.push(row(['Fleet Programs (YTD)', 'Fleet', 'YTD Gallons']));
+    for(const f of ytdFleets){
+      lines.push(row(['', f.name, Math.round(f.gallons)]));
     }
   }
   const csv = lines.join('\r\n');
