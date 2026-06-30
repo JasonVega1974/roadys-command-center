@@ -6698,7 +6698,7 @@ function drawerVendorStubHTML(stopId){
         const hasDetails = !!e.contact;
         return `<div style="background:var(--bg);border-radius:4px;padding:6px 8px;font-size:.78em;${hasDetails?'cursor:pointer':''}" ${hasDetails?`onclick="toggleVendorDetails('${e.vid}', this)"`:''}>
           <div style="display:flex;justify-content:space-between;gap:8px">
-            <span>${isTop8VP(e.name) ? TOP8_VP_CHECK : ''}<b>${esc(e.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(e.program)}</span></span>
+            <span>${isTop8VP(e.vid) ? TOP8_VP_CHECK : ''}<b>${esc(e.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(e.program)}</span></span>
             <span style="color:${prc};font-size:.86em;white-space:nowrap">${esc(e.priority)}</span>
           </div>
           <div style="color:var(--muted);font-size:.86em;margin-top:2px">${contactLine}</div>
@@ -6741,7 +6741,7 @@ function drawerVendorStubHTML(stopId){
       ].filter(Boolean).join(' · ');
       rosterBlocks += `<div style="background:${m.bg};border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:.78em;cursor:pointer" onclick="toggleVendorDetails('rs-${vid}', this)">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-          <span>${isTop8VP(label) ? TOP8_VP_CHECK : ''}<b>${label}</b></span>
+          <span>${isTop8VP(vid) ? TOP8_VP_CHECK : ''}<b>${label}</b></span>
           <span style="color:${m.c};font-weight:800;white-space:nowrap;text-transform:uppercase;font-size:.82em">${m.t}</span>
         </div>
         <div class="vd-details" id="vd-rs-${vid}" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:.92em;line-height:1.45">
@@ -7041,16 +7041,17 @@ function vendorOpportunityForStop(stopId){
 }
 
 // Canonical "Top 8 VP" priority programs — some are enrolled, some are
-// opportunities. The green ✓ appears ONLY on these, wherever a vendor renders:
-// Cintas (Entegra), Sysco, Lynco, DAS, Truck Parking Club, Farmer Brothers, Coca-Cola, Heartland.
-const TOP8_VP_TOKENS = ['cintas','sysco','lynco','das','truck parking','farmer','coca','heartland'];
-function top8VPRank(name){ const n = (name||'').toLowerCase(); return TOP8_VP_TOKENS.findIndex(t => n.indexOf(t) !== -1); }
-function isTop8VP(name){ return top8VPRank(name) !== -1; }
+// opportunities. The green ✓ appears ONLY on these, matched by vendor ID so a
+// same-named vendor (e.g. "Cintas First Aid") never picks up the mark:
+//   Cintas via Entegra (V00134), Sysco (V00010), Lynco (V00022), DAS (V00036),
+//   Truck Parking Club (V00112), Farmer Brothers (V00002), Coca-Cola (V00033),
+//   Heartland / Global Payments (V00232).
+const TOP8_VP_IDS = ['V00134','V00010','V00022','V00036','V00112','V00002','V00033','V00232'];
+function top8VPRank(vid){ return TOP8_VP_IDS.indexOf(vid); }
+function isTop8VP(vid){ return TOP8_VP_IDS.indexOf(vid) !== -1; }
 const TOP8_VP_CHECK = '<span style="color:var(--green);font-weight:800;margin-right:5px" title="Top 8 VP">✓</span>';
 function drawerVendorOpportunityHTML(stopId){
   const opps = vendorOpportunityForStop(stopId);
-  // Top 8 VP first (canonical order), everything else alphabetical.
-  opps.sort((a,b) => { const pa = top8VPRank(a.name), pb = top8VPRank(b.name); const ra = pa < 0 ? 999 : pa, rb = pb < 0 ? 999 : pb; if(ra !== rb) return ra - rb; return (a.name||'').localeCompare(b.name||''); });
   if(!opps.length){
     return `
     <div class="drawer-card amber">
@@ -7065,7 +7066,6 @@ function drawerVendorOpportunityHTML(stopId){
   };
   const totalPotential = opps.reduce((sum, o) => sum + o.savings, 0);
   const fmtMoney = n => '$'+Math.round(n).toLocaleString();
-  const TOP_N = 8;
   const renderRow = (o, isExtra) => {
     const pc = programColor[o.program] || 'var(--muted)';
     const savingsLabel = o.savings > 0 ? 'avg '+fmtMoney(o.savings)+'/mo' : (o.contact ? 'savings vary' : 'avg unknown');
@@ -7075,7 +7075,7 @@ function drawerVendorOpportunityHTML(stopId){
     const detailsClass = isExtra ? ' opp-extra-row' : '';
     return `<div class="opp-row${wrapClass}" style="${wrapStyle}${hasDetails?'':'cursor:default'}" ${hasDetails?`onclick="toggleVendorDetails('opp-${o.vid}', this)"`:''}>
       <div style="flex:1">
-        <span>${isTop8VP(o.name) ? TOP8_VP_CHECK : ''}<b>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
+        <span>${isTop8VP(o.vid) ? TOP8_VP_CHECK : ''}<b>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
       </div>
       <span class="opp-savings">${savingsLabel}</span>
       ${hasDetails ? '<span style="color:var(--muted);font-size:.86em;margin-left:6px">→</span>' : ''}
@@ -7089,16 +7089,22 @@ function drawerVendorOpportunityHTML(stopId){
       <div style="margin-top:6px"><a href="vendors.html" target="_blank" style="color:var(--cyan)">Enroll on vendors.html →</a></div>
     </div>` : ''}`;
   };
-  const visible = opps.slice(0, TOP_N).map(o => renderRow(o, false)).join('');
-  const extras = opps.slice(TOP_N).map(o => renderRow(o, true)).join('');
-  const extraCount = opps.length - TOP_N;
+  // Top-8 VP opportunities first (alphabetical), then up to 40 more (alphabetical).
+  const byName = (a,b) => (a.name||'').localeCompare(b.name||'');
+  const top8   = opps.filter(o => isTop8VP(o.vid)).sort(byName);
+  const others = opps.filter(o => !isTop8VP(o.vid)).sort(byName);
+  const head = top8.length ? top8 : others.slice(0, 8);
+  const tail = (top8.length ? others : others.slice(8)).slice(0, 40);
+  const visible = head.map(o => renderRow(o, false)).join('');
+  const extras = tail.map(o => renderRow(o, true)).join('');
+  const extraCount = tail.length;
   const toggleBtn = extraCount > 0
     ? `<div class="opp-toggle" data-count="${extraCount}" onclick="toggleOppExpand(this)" style="cursor:pointer;color:var(--cyan);font-size:.78em;font-weight:700;padding:4px 0;text-align:center;border-top:1px dashed var(--border);margin-top:4px">+ Show ${extraCount} more</div>`
     : '';
   return `
     <div class="drawer-card amber">
       <div class="drawer-card-hd">🎯 Opportunity — Vendors NOT Enrolled (${opps.length} missed)</div>
-      <div style="font-size:.82em;font-weight:800;color:var(--green);margin-bottom:6px">Top 8 VP</div>
+      ${top8.length ? '<div style="font-size:.82em;font-weight:800;color:var(--green);margin-bottom:6px">Top 8 VP</div>' : ''}
       <div class="opp-list" style="display:flex;flex-direction:column;gap:4px">${visible}${extras}${toggleBtn}</div>
       ${totalPotential > 0 ? `<div class="roi-foot">Total potential savings if enrolled: <b style="color:var(--yellow)">${fmtMoney(totalPotential)}/mo</b><br>Excludes vendors without quantified savings.</div>` : ''}
     </div>
