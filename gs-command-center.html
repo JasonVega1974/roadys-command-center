@@ -8166,6 +8166,17 @@ function pageKpiHeroHTML(stopId){
   const totalMtd   = stopTotalGallons(stopId, m);
   const totalPrior = stopPriorMonthTotalGallons(stopId, m);
   const totalYtd   = ytdGallonsForStop(stopId, m, 'total');
+  // Aggregator / Fleet breakdown — MTD with YTD sub-line.
+  const aggMtd     = stopAggregatorGallons(stopId, m);
+  const aggYtd     = ytdGallonsForStop(stopId, m, 'agg');
+  const fleetMtd   = stopFleetGallons(stopId, m);
+  const fleetYtd   = ytdGallonsForStop(stopId, m, 'fleet');
+  const subTile = (label, mtd, ytd) => `
+        <div>
+          <div style="font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">${label}</div>
+          <div style="font-size:1.1em;font-weight:800;color:var(--text);line-height:1.05;margin-top:2px">${fmtN(mtd)}</div>
+          <div style="font-size:.62em;margin-top:3px;color:var(--muted)">YTD ${fmtN(ytd)}</div>
+        </div>`;
   const fuelCard = `
     <div class="drawer-card cyan" style="margin-top:0">
       <div class="drawer-card-hd">⛽ Fuel Gallons — ${esc(monthLbl)}</div>
@@ -8180,6 +8191,10 @@ function pageKpiHeroHTML(stopId){
           <div style="font-size:1.55em;font-weight:800;color:var(--cyan);line-height:1.05;margin-top:2px">${fmtN(totalYtd)}</div>
           <div style="font-size:.66em;margin-top:6px;color:var(--muted)">Jan – ${esc(monthLbl.split(' ')[0])} ${esc(monthLbl.split(' ')[1])}</div>
         </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        ${subTile('Aggregator Gallons', aggMtd, aggYtd)}
+        ${subTile('Fleet Gallons', fleetMtd, fleetYtd)}
       </div>
     </div>`;
 
