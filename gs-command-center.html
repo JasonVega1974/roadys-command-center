@@ -8500,6 +8500,216 @@ function renderStopDetailCharts(stopId){
     });
   }
 }
+// ── AGG_DISCOUNTS_BY_STOP ──
+// Per-stop fuel-card aggregator discount programs. Generated from the aggregator
+// discount exports (one CSV per aggregator: RTS Carrier Services, AtoB, Greenlane,
+// Motive, OOIDA, QPN, ATS, TCS, Factorloads, Fleet Tech, Load Connex, TSD Logistics,
+// Prime Inc. Advantage +). Each entry is [aggregatorName, discountType, R-/gal, C+/gal]
+// where type is R-, C+, or BO (both columns present = Better Of). The source has no
+// gallons, so the Discounts table leaves the per-aggregator gallons cell blank; the
+// stop's total aggregator gallons (from the fuel reports) show as a footnote + on the
+// At-a-Glance fuel card. Regenerate via scratchpad/build-agg-seed2.js.
+const AGG_DISCOUNTS_BY_STOP = {
+  "L03461":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.05,0.08],["Prime Inc. Advantage +","BO",-0.08,0.05],["TSD Logistics","BO",-0.07,0.08]],
+  "L03465":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","R-",-0.2,0],["QPN","R-",-0.2,0],["RTS Carrier Services","R-",-0.2,0],["TSD Logistics","R-",-0.2,0]],
+  "L03911":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","R-",-0.2,0],["TSD Logistics","R-",-0.2,0]],
+  "L03913":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.25,0],["OOIDA","R-",-0.25,0]],
+  "L03935":[["AtoB","BO",-0.12,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "L03974":[["Greenlane","BO",-0.08,0.08]],
+  "P01225":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","R-",-0.2,0],["QPN","BO",-0.08,0.08]],
+  "P03600":[["Prime Inc. Advantage +","BO",-0.1,0.1],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.12,0.1]],
+  "P03604":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03605":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03606":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03607":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03608":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03609":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03610":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03611":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03612":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03613":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03614":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03615":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03616":[["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03617":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03618":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03619":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03620":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03621":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03622":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03623":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03624":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03639":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03641":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.07]],
+  "P03642":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03647":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.08],["Prime Inc. Advantage +","C+",0,0.02],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.18,0.625]],
+  "P03659":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.06,0],["QPN","R-",-0.03,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03660":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.06,0]],
+  "P03661":[["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03662":[["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03663":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "P03673":[["Motive","R-",-0.12,0]],
+  "P03674":[["Motive","R-",-0.12,0]],
+  "R00076":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["TCS","R-",-0.06,0]],
+  "R00096":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","R-",-0.04,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.01,0.07],["QPN","BO",-0.02,0.06],["RTS Carrier Services","BO",-0.05,0.09],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00099":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.1],["Prime Inc. Advantage +","C+",0,0.07],["QPN","BO",-0.05,0.09],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00111":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.05,0.08],["TCS","BO",-0.08,0.08]],
+  "R00118":[["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","R-",-0.05,0],["Prime Inc. Advantage +","BO",-0.02,0.07],["QPN","BO",-0.02,0.05],["RTS Carrier Services","R-",-0.06,0],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00179":[["AtoB","R-",-0.05,0],["ATS","R-",-0.05,0],["Factorloads","C+",0,0.1],["Fleet Tech","R-",-0.02,0],["Motive","R-",-0.05,0],["Prime Inc. Advantage +","R-",-0.05,0],["QPN","BO",-0.05,0.07],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00205":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["Prime Inc. Advantage +","C+",0,0.05],["RTS Carrier Services","BO",-0.05,0.07],["TCS","C+",0,0.02],["TSD Logistics","C+",0,0.08]],
+  "R00208":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","R-",-0.04,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["QPN","BO",-0.03,0.08],["RTS Carrier Services","BO",-0.05,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00221":[["Factorloads","BO",-0.1,-0.05],["Fleet Tech","R-",-0.05,0],["Prime Inc. Advantage +","BO",-0.08,-0.1],["QPN","C+",0,-0.05],["RTS Carrier Services","BO",-0.07,-0.05],["TCS","C+",0,-0.05]],
+  "R00244":[["AtoB","BO",-0.1,0.2],["ATS","C+",0,0.05],["Factorloads","C+",0,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.12],["Motive","BO",-0.12,0.12],["OOIDA","C+",0,0.12],["Prime Inc. Advantage +","C+",0,0.05],["QPN","BO",-0.05,0.05],["RTS Carrier Services","BO",-0.05,0.05],["TCS","C+",0,0.06],["TSD Logistics","C+",0,0.08]],
+  "R00245":[["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Prime Inc. Advantage +","C+",0,0.07],["QPN","R-",-0.03,0],["RTS Carrier Services","BO",-0.06,0.12],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00255":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","R-",-0.08,0],["RTS Carrier Services","R-",-0.2,0],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00262":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.05],["QPN","BO",-0.1,0.08],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.1,0.08],["TSD Logistics","C+",0,0.08]],
+  "R00286":[["Load Connex","C+",0,0.06],["Prime Inc. Advantage +","C+",0,0.05],["QPN","BO",-0.03,0.05]],
+  "R00294":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","R-",-0.02,0],["TCS","R-",-0.02,0]],
+  "R00297":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","R-",-0.02,0],["TCS","R-",-0.02,0]],
+  "R00315":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","BO",-0.03,0.07],["RTS Carrier Services","BO",-0.07,0.1],["TCS","C+",0,0.08]],
+  "R00320":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","BO",-0.03,0.07],["RTS Carrier Services","BO",-0.07,0.1],["TCS","C+",0,0.08]],
+  "R00321":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","BO",-0.03,0.05],["RTS Carrier Services","BO",-0.07,0.1],["TCS","C+",0,0.08]],
+  "R00325":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","BO",-0.03,0.07],["RTS Carrier Services","BO",-0.07,0.1],["TCS","C+",0,0.08]],
+  "R00326":[["AtoB","BO",-0.1,0.1],["Factorloads","BO",-0.1,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["QPN","BO",-0.04,0.03],["RTS Carrier Services","BO",-0.08,0.04],["TCS","BO",-0.05,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00395":[["AtoB","BO",-0.1,0.12],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.1],["RTS Carrier Services","BO",-0.1,0.12],["TCS","BO",-0.1,0.12]],
+  "R00408":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","BO",-0.08,0.12],["TCS","C+",0,0.08],["TSD Logistics","C+",0,0.08]],
+  "R00614":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Load Connex","BO",-0.17,0.1],["Motive","R-",-0.12,0],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00639":[["Fleet Tech","R-",-0.03,0],["TCS","R-",-0.03,0]],
+  "R00640":[["Fleet Tech","R-",-0.03,0],["QPN","R-",-0.03,0],["TCS","R-",-0.03,0]],
+  "R00641":[["Fleet Tech","R-",-0.03,0],["TCS","R-",-0.03,0]],
+  "R00642":[["Fleet Tech","R-",-0.03,0],["TCS","R-",-0.03,0]],
+  "R00670":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.05],["QPN","BO",-0.1,0.08],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.1,0.08],["TSD Logistics","C+",0,0.08]],
+  "R00703":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.04,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R00717":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["OOIDA","C+",0,0.1],["RTS Carrier Services","BO",-0.08,0.08],["TCS","R-",-0.02,0]],
+  "R00718":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["OOIDA","C+",0,0.1],["RTS Carrier Services","BO",-0.08,0.08],["TCS","R-",-0.02,0]],
+  "R00723":[["AtoB","BO",-0.1,0.1],["Fleet Tech","R-",-0.02,0],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["OOIDA","C+",0,0.1],["RTS Carrier Services","BO",-0.08,0.08],["TCS","R-",-0.02,0]],
+  "R00774":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00782":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00901":[["AtoB","BO",-0.1,0.1],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.07],["QPN","BO",-0.03,0.07],["RTS Carrier Services","BO",-0.1,0.08],["TCS","R-",-0.02,0]],
+  "R00917":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","BO",-0.1,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["Prime Inc. Advantage +","C+",0,0.05],["RTS Carrier Services","BO",-0.06,0.08],["TCS","C+",0,0.08],["TSD Logistics","C+",0,0.08]],
+  "R00930":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00931":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","BO",-0.08,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00932":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.05,0.11]],
+  "R00933":[["AtoB","R-",-0.2,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["TCS","R-",-0.05,0]],
+  "R00935":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.1],["Motive","R-",-0.12,0],["QPN","BO",-0.03,0.0475],["RTS Carrier Services","BO",-0.05,0.06],["TCS","BO",-0.08,0.08]],
+  "R00941":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R00958":[["QPN","R-",-0.03,0],["TCS","R-",-0.03,0]],
+  "R01017":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","R-",-0.1,0],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R01018":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","BO",-0.05,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R01032":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","BO",-0.1,0.07],["TCS","C+",0,0.11]],
+  "R01033":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["TCS","C+",0,0.11]],
+  "R01036":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.12,0.12]],
+  "R01038":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["TCS","C+",0,0.08],["TSD Logistics","C+",0,0.08]],
+  "R01059":[["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Fleet Tech","C+",0,0.08],["Prime Inc. Advantage +","C+",0,0.07],["RTS Carrier Services","C+",0,0.05],["TCS","BO",-0.05,0.11],["TSD Logistics","C+",0,0.08]],
+  "R01063":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R01066":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.1,0.05],["Prime Inc. Advantage +","C+",0,0.05],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.1,0.04],["TSD Logistics","C+",0,0.08]],
+  "R01067":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.1],["Fleet Tech","C+",0,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.1,0.05],["Prime Inc. Advantage +","C+",0,0.05],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.1,0.08],["TSD Logistics","C+",0,0.08]],
+  "R01072":[["AtoB","BO",-0.1,0.1],["ATS","C+",0,0.11],["Factorloads","C+",0,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.07],["QPN","BO",-0.02,0.05],["RTS Carrier Services","BO",-0.08,0.04],["TCS","C+",0,0.03],["TSD Logistics","C+",0,0.08]],
+  "R01080":[["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.1],["Fleet Tech","BO",-0.1,0.05]],
+  "R01083":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.1],["Fleet Tech","BO",-0.1,0.05],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.1,0.05],["Prime Inc. Advantage +","C+",0,0.05],["QPN","BO",-0.03,0.1],["RTS Carrier Services","BO",-0.05,0.08]],
+  "R01084":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.07],["Fleet Tech","R-",-0.15,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","C+",0,0.05],["RTS Carrier Services","BO",-0.05,0.08],["TCS","C+",0,0.04],["TSD Logistics","C+",0,0.08]],
+  "R01104":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Fleet Tech","BO",-0.1,0.05],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.08,0.07]],
+  "R01106":[["RTS Carrier Services","BO",-0.15,0.3],["TCS","BO",-0.15,0.15]],
+  "R01107":[["QPN","BO",-0.04,0.08],["RTS Carrier Services","BO",-0.05,0.15]],
+  "R01118":[["ATS","BO",-0.1,0.11],["Fleet Tech","BO",-0.1,0.05]],
+  "R01121":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R01127":[["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.1],["Fleet Tech","BO",-0.1,0.08],["Prime Inc. Advantage +","BO",-0.08,-0.1],["RTS Carrier Services","BO",-0.05,0.1],["TCS","C+",0,-0.05]],
+  "R01129":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08]],
+  "R01132":[["AtoB","R-",-0.05,0],["Greenlane","BO",-0.08,0.08],["Load Connex","R-",-0.1,0],["Motive","R-",-0.05,0],["OOIDA","R-",-0.12,0],["RTS Carrier Services","R-",-0.1,0],["TCS","BO",-0.05,0.08]],
+  "R01133":[["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.05],["OOIDA","BO",-0.1,0.05],["Prime Inc. Advantage +","BO",-0.08,0.05],["RTS Carrier Services","C+",0,0.08],["TCS","R-",-0.05,0],["TSD Logistics","C+",0,0.08]],
+  "R01143":[["AtoB","BO",-0.1,0.1],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.06],["RTS Carrier Services","C+",0,0.12]],
+  "R01151":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.08,0.08]],
+  "R01164":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","C+",0,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.1,0.08],["Prime Inc. Advantage +","BO",-0.08,0.05],["QPN","BO",-0.05,0.08],["RTS Carrier Services","C+",0,0.08],["TCS","C+",0,0.11],["TSD Logistics","C+",0,0.08]],
+  "R01165":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","R-",-0.15,0],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.05],["RTS Carrier Services","R-",-0.1,0]],
+  "R01167":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R01168":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.08],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.08],["Prime Inc. Advantage +","BO",-0.08,0.08],["QPN","BO",-0.05,0.06],["RTS Carrier Services","BO",-0.08,0.08],["TSD Logistics","C+",0,0.08]],
+  "R01171":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.06,0.1]],
+  "R01178":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.1],["RTS Carrier Services","BO",-0.1,0.1],["TCS","BO",-0.08,0.1],["TSD Logistics","C+",0,0.1]],
+  "R01179":[["AtoB","BO",-0.05,0.15],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.05,0],["QPN","BO",-0.05,0.15],["RTS Carrier Services","BO",-0.07,0.1]],
+  "R01186":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.08],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.08],["Prime Inc. Advantage +","BO",-0.08,0.07],["RTS Carrier Services","BO",-0.07,0.08]],
+  "R01187":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R01188":[["AtoB","R-",-0.1,0],["Motive","R-",-0.12,0],["OOIDA","BO",-0.05,0.08],["Prime Inc. Advantage +","BO",-0.08,0.05],["QPN","C+",0,0.06],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.08,0.08],["TSD Logistics","BO",-0.07,0.08]],
+  "R01201":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.25,0.1],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.25,0.1]],
+  "R01220":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.08,0.08],["Prime Inc. Advantage +","BO",-0.1,0.08],["RTS Carrier Services","BO",-0.1,0.08],["TCS","BO",-0.1,0.08]],
+  "R01222":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.08,0.1],["Prime Inc. Advantage +","BO",-0.07,0.08],["QPN","C+",0,0.09],["TCS","BO",-0.5,0.12]],
+  "R01227":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R01236":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.07],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.12,0.07]],
+  "R01240":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.07],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.08,0.1]],
+  "R01241":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.07],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.08,0.1]],
+  "R01243":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["OOIDA","C+",0,0.1],["Prime Inc. Advantage +","BO",-0.07,0.05],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R01244":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["OOIDA","C+",0,0.1],["Prime Inc. Advantage +","BO",-0.07,0.05],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R01245":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12],["OOIDA","C+",0,0.1],["Prime Inc. Advantage +","BO",-0.07,0.05],["RTS Carrier Services","BO",-0.08,0.06]],
+  "R01258":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R01259":[["Prime Inc. Advantage +","BO",-0.08,-0.1],["RTS Carrier Services","BO",-0.07,-0.05]],
+  "R01260":[["ATS","BO",-0.1,0.11],["OOIDA","BO",-0.05,0.08],["Prime Inc. Advantage +","BO",-0.08,0.05],["QPN","BO",-0.1,0.07],["RTS Carrier Services","BO",-0.08,0.1],["TCS","BO",-0.1,0.07]],
+  "R01261":[["ATS","BO",-0.1,0.11],["OOIDA","R-",-0.15,0],["Prime Inc. Advantage +","BO",-0.08,0.05],["QPN","BO",-0.1,0.07],["RTS Carrier Services","BO",-0.08,0.1],["TCS","BO",-0.1,0.07]],
+  "R01338":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.07],["RTS Carrier Services","BO",-0.08,0.06],["TCS","C+",0,0.08]],
+  "R01437":[["AtoB","R-",-0.2,0],["Motive","R-",-0.12,0],["RTS Carrier Services","C+",0,0.15]],
+  "R01635":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R01835":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R01837":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R01866":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","R-",-0.05,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","R-",-0.1,0]],
+  "R01965":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R02229":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R02230":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R02231":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","R-",-0.1,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R02592":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.15],["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03469":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.07,0.1],["Factorloads","BO",-0.1,0.1],["Fleet Tech","BO",-0.1,0.05],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.05],["TCS","C+",0,0.05]],
+  "R03494":[["AtoB","R-",-0.1,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.1,0.1],["Prime Inc. Advantage +","BO",-0.1,0.1],["TSD Logistics","BO",-0.1,0.1]],
+  "R03495":[["AtoB","R-",-0.1,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.1,0.1],["Prime Inc. Advantage +","BO",-0.1,0.1],["TSD Logistics","BO",-0.1,0.1]],
+  "R03500":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","C+",0,0.12],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03523":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03524":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.12,0.11],["Motive","R-",-0.12,0],["OOIDA","R-",-0.08,0],["Prime Inc. Advantage +","BO",-0.12,0.11],["RTS Carrier Services","R-",-0.08,0]],
+  "R03539":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03541":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03542":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03543":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03544":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03596":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.08,0],["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03597":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.08,0],["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03598":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.08,0],["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03601":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03602":[["Motive","BO",-0.08,0.12],["QPN","R-",-0.02,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03603":[["Motive","BO",-0.08,0.12],["QPN","R-",-0.02,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03625":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03626":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03627":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03628":[["AtoB","BO",-0.1,0.1],["Motive","R-",-0.12,0]],
+  "R03629":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.02],["RTS Carrier Services","BO",-0.12,0.1]],
+  "R03630":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.02],["QPN","C+",0,0.05],["RTS Carrier Services","BO",-0.12,0.1]],
+  "R03638":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Load Connex","C+",0,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","BO",-0.08,0.07],["RTS Carrier Services","BO",-0.08,0.06],["TCS","BO",-0.07,0.08]],
+  "R03648":[["AtoB","BO",-0.1,0.1],["Motive","BO",-0.12,0.12],["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03649":[["AtoB","R-",-0.1,0],["Motive","R-",-0.12,0],["OOIDA","R-",-0.05,0],["QPN","R-",-0.15,0],["RTS Carrier Services","C+",0,0.05],["TCS","R-",-0.15,0]],
+  "R03650":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.12,0.08]],
+  "R03664":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03665":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","C+",0,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03676":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["QPN","BO",-0.1,0.06],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03693":[["AtoB","BO",-0.1,0.1],["Motive","R-",-0.12,0],["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.12,0.06],["TCS","C+",0,0.06],["TSD Logistics","C+",0,0.08]],
+  "R03699":[["QPN","BO",-0.08,0.08],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03857":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03870":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03871":[["AtoB","BO",-0.1,0.1],["Factorloads","BO",-0.1,0.12],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.12,0.15],["TSD Logistics","BO",-0.07,0.15]],
+  "R03877":[["AtoB","BO",-0.1,0.1],["Motive","C+",0,0.05],["OOIDA","BO",-0.25,0.12],["Prime Inc. Advantage +","BO",-0.25,0.08],["RTS Carrier Services","BO",-0.08,0.08],["TSD Logistics","BO",-0.25,0.12]],
+  "R03903":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","C+",0,0.15],["QPN","C+",0,0.1],["RTS Carrier Services","BO",-0.08,0.1]],
+  "R03907":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03915":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03917":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03918":[["AtoB","R-",-0.1,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03920":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03921":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03922":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03923":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.08,0.12]],
+  "R03924":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03927":[["AtoB","BO",-0.1,0.1],["Motive","BO",-0.12,0.12],["RTS Carrier Services","BO",-0.1,0.1]],
+  "R03929":[["AtoB","BO",-0.1,0.1],["Motive","R-",-0.12,0],["OOIDA","BO",-0.07,0.1],["RTS Carrier Services","BO",-0.08,0.08],["TCS","BO",-0.07,0.1]],
+  "R03932":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","BO",-0.12,0.12],["OOIDA","BO",-0.1,0.12],["Prime Inc. Advantage +","C+",0,0.08]],
+  "R03934":[["RTS Carrier Services","BO",-0.08,0.08]],
+  "R03967":[["AtoB","BO",-0.1,0.1],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0]],
+  "R03970":[["OOIDA","C+",0,0.1],["RTS Carrier Services","BO",-0.08,0.08]],
+  "R04181":[["AtoB","R-",-0.2,0],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.2,0],["RTS Carrier Services","R-",-0.3,0],["TSD Logistics","R-",-0.2,0]],
+  "R04247":[["Greenlane","BO",-0.08,0.08]]
+};
+// ── /AGG_DISCOUNTS_BY_STOP ──
 // YTD (current calendar year through the current month) gallons per aggregator
 // and per fleet, keyed by program name. Discount values (cost_plus / retail_minus)
 // and metadata are taken from the most recent month in which the program appears.
@@ -8541,32 +8751,34 @@ function stopYtdPrograms(stopId){
 // retail-minus values: Cost Plus, Retail Minus, or Better Of when both are set.
 function discountLabel(cp, rm){
   cp = +cp || 0; rm = +rm || 0;
-  const fCp = '+$' + Math.abs(cp).toFixed(4);
-  const fRm = (rm < 0 ? '−$' : '+$') + Math.abs(rm).toFixed(4);
-  if(cp !== 0 && rm !== 0) return `Better Of: ${fCp} C+ / ${fRm} R−`;
-  if(cp !== 0) return `Cost Plus ${fCp}`;
-  if(rm !== 0) return `Retail Minus ${fRm}`;
+  const f = v => (v < 0 ? '−$' : '+$') + Math.abs(v).toFixed(4);
+  if(cp !== 0 && rm !== 0) return `Better Of: ${f(cp)} C+ / ${f(rm)} R−`;
+  if(cp !== 0) return `Cost Plus ${f(cp)}`;
+  if(rm !== 0) return `Retail Minus ${f(rm)}`;
   return '—';
 }
 function pageDiscountsHTML(stopId){
-  const { aggregators, fleets } = stopYtdPrograms(stopId);
-  if(!aggregators.length && !fleets.length){
+  // Aggregators: the real per-stop discount programs (aggregator name + C+/R-/BO)
+  // from the seed. Source has no gallons, so the per-aggregator YTD Gallons cell
+  // stays blank; the stop's total aggregator gallons show as a footnote below.
+  const aggPrograms = (typeof AGG_DISCOUNTS_BY_STOP === 'object' && AGG_DISCOUNTS_BY_STOP[stopId]) || [];
+  // Fleets keep the gallon-report YTD breakdown.
+  const { fleets } = stopYtdPrograms(stopId);
+  if(!aggPrograms.length && !fleets.length){
     return `
       <div class="drawer-card amber">
         <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet</div>
-        <div style="font-size:.78em;color:var(--muted)">No aggregator or fleet records on file for this year. Add discount programs in <code>index.html</code>'s Fuelman page.</div>
+        <div style="font-size:.78em;color:var(--muted)">No aggregator discount programs or fleet records on file for this stop.</div>
       </div>
     `;
   }
   const fmtN = n => Math.round(+n||0).toLocaleString();
-  const aggRows = aggregators.map(a => {
-    const hasDisc = (+a.cost_plus || 0) !== 0 || (+a.retail_minus || 0) !== 0;
-    return `<tr>
-      <td>${esc(a.name||'—')}</td>
-      <td style="color:${hasDisc ? 'var(--text)' : 'var(--muted)'}">${esc(discountLabel(a.cost_plus, a.retail_minus))}</td>
-      <td>${fmtN(a.gallons)}</td>
-    </tr>`;
-  }).join('');
+  // [aggregatorName, discountType, R-/gal, C+/gal]
+  const aggRows = aggPrograms.map(([name, t, rm, cp]) => `<tr>
+      <td>${esc(name||'—')}</td>
+      <td style="color:var(--text)">${esc(discountLabel(cp, rm))}</td>
+      <td style="color:var(--muted)">—</td>
+    </tr>`).join('');
   const fleetRows = fleets.map(f => {
     const hasDisc = (+f.cost_plus || 0) !== 0 || (+f.retail_minus || 0) !== 0;
     return `<tr>
@@ -8575,11 +8787,20 @@ function pageDiscountsHTML(stopId){
       <td>${fmtN(f.gallons)}</td>
     </tr>`;
   }).join('');
-  const aggTable = aggregators.length ? `
+  // Total aggregator gallons for the stop (from the fuel reports — not split by aggregator).
+  const m = currentMonthKey();
+  const aggMtd = (typeof stopAggregatorGallons === 'function') ? stopAggregatorGallons(stopId, m) : 0;
+  const aggYtd = (typeof ytdGallonsForStop === 'function') ? ytdGallonsForStop(stopId, m, 'agg') : 0;
+  const aggGalNote = (aggMtd || aggYtd) ? `
+      <div style="font-size:.66em;color:var(--muted);margin-top:6px;line-height:1.5">
+        Total aggregator gallons (all aggregators, from fuel reports): <b style="color:var(--text)">${fmtN(aggMtd)}</b> MTD · <b style="color:var(--text)">${fmtN(aggYtd)}</b> YTD.
+        Per-aggregator gallons aren't in the discount source, so those cells are blank.
+      </div>` : '';
+  const aggTable = aggPrograms.length ? `
       <table class="sd-history-tbl">
         <thead><tr><th>Aggregator</th><th>Discount</th><th>YTD Gallons</th></tr></thead>
         <tbody>${aggRows}</tbody>
-      </table>` : '';
+      </table>${aggGalNote}` : '';
   const fleetTable = fleets.length ? `
       <table class="sd-history-tbl" style="margin-top:12px">
         <thead><tr><th>Fleet</th><th>Discount</th><th>YTD Gallons</th></tr></thead>
@@ -8773,14 +8994,17 @@ function exportStopDetailCSV(stopId){
       lines.push(row(['', o.vid, o.name, o.program, o.savings || 0]));
     }
   }
-  // Aggregator & Fleet discounts — YTD (matches the on-screen Discounts card)
-  const { aggregators: ytdAggs, fleets: ytdFleets } = stopYtdPrograms(stopId);
-  if(ytdAggs.length){
+  // Aggregator & Fleet discounts (matches the on-screen Discounts card).
+  // Aggregators: real aggregator names + discounts from the seed (no gallons in source).
+  const aggPrograms = (typeof AGG_DISCOUNTS_BY_STOP === 'object' && AGG_DISCOUNTS_BY_STOP[stopId]) || [];
+  const { fleets: ytdFleets } = stopYtdPrograms(stopId);
+  if(aggPrograms.length){
     lines.push('');
-    lines.push(row(['Aggregator Discounts (YTD)', 'Aggregator', 'Discount', 'YTD Gallons']));
-    for(const a of ytdAggs){
-      lines.push(row(['', a.name, discountLabel(a.cost_plus, a.retail_minus), Math.round(a.gallons)]));
+    lines.push(row(['Aggregator Discounts', 'Aggregator', 'Discount', 'YTD Gallons']));
+    for(const [name, t, rm, cp] of aggPrograms){
+      lines.push(row(['', name, discountLabel(cp, rm), '']));
     }
+    lines.push(row(['', 'Total aggregator gallons (all aggregators)', '', Math.round(ytdGallonsForStop(stopId, currentMonthKey(), 'agg'))]));
   }
   if(ytdFleets.length){
     lines.push('');
