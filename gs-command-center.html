@@ -6698,7 +6698,7 @@ function drawerVendorStubHTML(stopId){
         const hasDetails = !!e.contact;
         return `<div style="background:var(--bg);border-radius:4px;padding:6px 8px;font-size:.78em;${hasDetails?'cursor:pointer':''}" ${hasDetails?`onclick="toggleVendorDetails('${e.vid}', this)"`:''}>
           <div style="display:flex;justify-content:space-between;gap:8px">
-            <span>${isTop8VP(e.vid) ? TOP8_VP_CHECK : ''}<b>${esc(e.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(e.program)}</span></span>
+            <span>${isTop8VP(e.vid) ? TOP8_VP_CHECK : ''}<b${isTop8VP(e.vid) ? ' style="color:var(--green)"' : ''}>${esc(e.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(e.program)}</span></span>
             <span style="color:${prc};font-size:.86em;white-space:nowrap">${esc(e.priority)}</span>
           </div>
           <div style="color:var(--muted);font-size:.86em;margin-top:2px">${contactLine}</div>
@@ -6741,7 +6741,7 @@ function drawerVendorStubHTML(stopId){
       ].filter(Boolean).join(' · ');
       rosterBlocks += `<div style="background:${m.bg};border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:.78em;cursor:pointer" onclick="toggleVendorDetails('rs-${vid}', this)">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-          <span>${isTop8VP(vid) ? TOP8_VP_CHECK : ''}<b>${label}</b></span>
+          <span>${isTop8VP(vid) ? TOP8_VP_CHECK : ''}<b${isTop8VP(vid) ? ' style="color:var(--green)"' : ''}>${label}</b></span>
           <span style="color:${m.c};font-weight:800;white-space:nowrap;text-transform:uppercase;font-size:.82em">${m.t}</span>
         </div>
         <div class="vd-details" id="vd-rs-${vid}" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:.92em;line-height:1.45">
@@ -7075,7 +7075,7 @@ function drawerVendorOpportunityHTML(stopId){
     const detailsClass = isExtra ? ' opp-extra-row' : '';
     return `<div class="opp-row${wrapClass}" style="${wrapStyle}${hasDetails?'':'cursor:default'}" ${hasDetails?`onclick="toggleVendorDetails('opp-${o.vid}', this)"`:''}>
       <div style="flex:1">
-        <span>${isTop8VP(o.vid) ? TOP8_VP_CHECK : ''}<b>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
+        <span>${isTop8VP(o.vid) ? TOP8_VP_CHECK : ''}<b${isTop8VP(o.vid) ? ' style="color:var(--green)"' : ''}>${esc(o.name)}</b> <span style="color:${pc};font-weight:700;font-size:.86em;margin-left:6px">${esc(o.program)}</span></span>
       </div>
       <span class="opp-savings">${savingsLabel}</span>
       ${hasDetails ? '<span style="color:var(--muted);font-size:.86em;margin-left:6px">→</span>' : ''}
