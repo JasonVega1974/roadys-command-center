@@ -1945,8 +1945,8 @@ function _fuelMergeMay2026Seed(GD){
     const mayPrev = existing['2026-05'] || {};
     existing['2026-05'] = Object.assign({}, mayPrev, {
       gallons: d.g,
-      aggregators: [{name:'Aggregator (May 2026 report)', processor:'', gallons: d.ag}],
-      fleets:      [{name:'Fleet Cards (May 2026 report)', processor:'', gallons: d.fl}],
+      aggregators: [{name:'All Aggregators', processor:'', gallons: d.ag}],
+      fleets:      [{name:'All Fleet Cards', processor:'', gallons: d.fl}],
       rack: mayPrev.rack || {}
     });
     // gA > 0 → reconcile (override) April's total; otherwise keep prior
@@ -2557,8 +2557,8 @@ function _fuelMergeApr2026Seed(GD){
     const aprPrev = existing['2026-04'] || {};
     existing['2026-04'] = Object.assign({}, aprPrev, {
       gallons: d.g,
-      aggregators: [{name:'Aggregator (Apr 2026 report)', processor:'', gallons: d.ag}],
-      fleets:      [{name:'Fleet Cards (Apr 2026 report)', processor:'', gallons: d.fl}],
+      aggregators: [{name:'All Aggregators', processor:'', gallons: d.ag}],
+      fleets:      [{name:'All Fleet Cards', processor:'', gallons: d.fl}],
       rack: aprPrev.rack || {}
     });
     if(!existing['2026-03'] || (+existing['2026-03'].gallons||0) === 0){
@@ -8552,21 +8552,22 @@ function pageDiscountsHTML(stopId){
       <td>${fmtN(a.gallons)}</td>
     </tr>`;
   }).join('');
-  const fleetRows = fleets.map(f => `<tr>
+  const fleetRows = fleets.map(f => {
+    const hasDisc = (+f.cost_plus || 0) !== 0 || (+f.retail_minus || 0) !== 0;
+    return `<tr>
       <td>${esc(f.name||'—')}</td>
+      <td style="color:${hasDisc ? 'var(--text)' : 'var(--muted)'}">${esc(discountLabel(f.cost_plus, f.retail_minus))}</td>
       <td>${fmtN(f.gallons)}</td>
-    </tr>`).join('');
-  const subLbl = 'font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px';
+    </tr>`;
+  }).join('');
   const aggTable = aggregators.length ? `
-      <div style="${subLbl};margin-top:4px">Aggregators</div>
       <table class="sd-history-tbl">
         <thead><tr><th>Aggregator</th><th>Discount</th><th>YTD Gallons</th></tr></thead>
         <tbody>${aggRows}</tbody>
       </table>` : '';
   const fleetTable = fleets.length ? `
-      <div style="${subLbl};margin-top:12px">Fleets</div>
-      <table class="sd-history-tbl">
-        <thead><tr><th>Fleet</th><th>YTD Gallons</th></tr></thead>
+      <table class="sd-history-tbl" style="margin-top:12px">
+        <thead><tr><th>Fleet</th><th>Discount</th><th>YTD Gallons</th></tr></thead>
         <tbody>${fleetRows}</tbody>
       </table>` : '';
   return `
