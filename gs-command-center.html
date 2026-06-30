@@ -8500,6 +8500,213 @@ function renderStopDetailCharts(stopId){
     });
   }
 }
+// ── AGG_DISCOUNTS_BY_STOP ──
+// Per-stop fuel-card aggregator discount programs, generated from the nine
+// processor discount exports (Mastercard / TCH / Comdata / EFS / QuikQ). Each
+// entry is [processor, discountType, R-/gal, C+/gal], deduped to the most
+// recent effective date per stop+processor. No gallons exist in that source —
+// the Discounts table shows these per-aggregator discounts with a blank gallons
+// column; total aggregator gallons live on the At-a-Glance fuel card.
+// Regenerate via scratchpad/build-agg-seed.js against the source CSVs.
+const AGG_DISCOUNTS_BY_STOP = {
+  "L03461":[["Comdata","Better Of",-0.1,0.08],["TCH","Better Of",-0.07,0.08],["QuikQ","Better Of",-0.07,0.08],["Mastercard","R-",-0.12,0]],
+  "L03465":[["Comdata","R-",-0.2,0],["EFS","R-",-0.2,0],["TCH","R-",-0.2,0],["Mastercard","R-",-0.12,0]],
+  "L03911":[["TCH","R-",-0.2,0],["Mastercard","R-",-0.12,0]],
+  "L03913":[["TCH","R-",-0.25,0],["Mastercard","R-",-0.25,0]],
+  "L03935":[["Mastercard","R-",-0.12,0]],
+  "P01225":[["TCH","R-",-0.2,0],["Mastercard","R-",-0.12,0]],
+  "P03600":[["Comdata","Better Of",-0.1,0.1],["TCH","Better Of",-0.12,0.1]],
+  "P03604":[["TCH","C+",0,0.07]],
+  "P03605":[["TCH","C+",0,0.07]],
+  "P03606":[["TCH","C+",0,0.07]],
+  "P03607":[["TCH","C+",0,0.07]],
+  "P03608":[["TCH","C+",0,0.07]],
+  "P03609":[["TCH","C+",0,0.07]],
+  "P03610":[["TCH","C+",0,0.07]],
+  "P03611":[["TCH","C+",0,0.07]],
+  "P03612":[["TCH","C+",0,0.07]],
+  "P03613":[["TCH","Better Of",-0.08,0.08]],
+  "P03614":[["TCH","C+",0,0.07]],
+  "P03615":[["TCH","C+",0,0.07]],
+  "P03616":[["TCH","C+",0,0.07]],
+  "P03617":[["TCH","Better Of",-0.08,0.08]],
+  "P03618":[["TCH","C+",0,0.07]],
+  "P03619":[["TCH","C+",0,0.07]],
+  "P03620":[["TCH","C+",0,0.07]],
+  "P03621":[["TCH","C+",0,0.07]],
+  "P03622":[["TCH","C+",0,0.07]],
+  "P03623":[["TCH","C+",0,0.07]],
+  "P03624":[["TCH","C+",0,0.07]],
+  "P03639":[["TCH","C+",0,0.07]],
+  "P03641":[["TCH","C+",0,0.07]],
+  "P03642":[["TCH","Better Of",-0.08,0.08]],
+  "P03647":[["Comdata","C+",0,0.02],["TCH","Better Of",-0.18,0.625],["Mastercard","R-",-0.12,0]],
+  "P03659":[["TCH","R-",-0.03,0],["Mastercard","R-",-0.06,0]],
+  "P03660":[["Mastercard","R-",-0.06,0]],
+  "P03661":[["TCH","Better Of",-0.08,0.08]],
+  "P03662":[["TCH","Better Of",-0.08,0.08]],
+  "P03663":[["TCH","Better Of",-0.08,0.08]],
+  "P03673":[["Mastercard","R-",-0.12,0]],
+  "P03674":[["Mastercard","R-",-0.12,0]],
+  "R00076":[["TCH","R-",-0.06,0],["Mastercard","R-",-0.12,0]],
+  "R00096":[["Comdata","Better Of",-0.01,0.07],["TCH","Better Of",-0.05,0.09],["Mastercard","R-",-0.12,0]],
+  "R00099":[["Comdata","C+",0,0.07],["EFS","C+",0,0.08],["TCH","C+",0,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00111":[["TCH","Better Of",-0.08,0.08]],
+  "R00118":[["Comdata","Better Of",-0.02,0.07],["TCH","Better Of",-0.02,0.05]],
+  "R00179":[["Comdata","R-",-0.05,0],["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.05,0]],
+  "R00205":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.05,0.07],["Mastercard","Better Of",-0.08,0.12]],
+  "R00208":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.05,0.08],["Mastercard","R-",-0.12,0]],
+  "R00221":[["Comdata","Better Of",-0.08,-0.1],["TCH","Better Of",-0.07,-0.05]],
+  "R00244":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.05,0.05],["Mastercard","Better Of",-0.12,0.12]],
+  "R00245":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.06,0.12]],
+  "R00255":[["TCH","R-",-0.2,0],["Mastercard","R-",-0.12,0]],
+  "R00262":[["Comdata","C+",0,0.05],["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00286":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.03,0.05]],
+  "R00294":[["TCH","R-",-0.02,0],["Mastercard","R-",-0.12,0]],
+  "R00297":[["TCH","R-",-0.02,0],["Mastercard","R-",-0.12,0]],
+  "R00315":[["TCH","Better Of",-0.07,0.1],["Mastercard","R-",-0.12,0]],
+  "R00320":[["TCH","Better Of",-0.07,0.1],["Mastercard","R-",-0.12,0]],
+  "R00321":[["TCH","Better Of",-0.07,0.1],["Mastercard","R-",-0.12,0]],
+  "R00325":[["TCH","Better Of",-0.07,0.1],["Mastercard","R-",-0.12,0]],
+  "R00326":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.08,0.04],["Mastercard","R-",-0.12,0]],
+  "R00395":[["Comdata","C+",0,0.1],["TCH","Better Of",-0.1,0.12],["Mastercard","R-",-0.12,0]],
+  "R00408":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.08,0.12],["Mastercard","R-",-0.12,0]],
+  "R00614":[["Comdata","C+",0,0.11],["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00639":[["TCH","R-",-0.03,0]],
+  "R00640":[["TCH","R-",-0.03,0]],
+  "R00641":[["TCH","R-",-0.03,0]],
+  "R00642":[["TCH","R-",-0.03,0]],
+  "R00670":[["Comdata","C+",0,0.05],["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00703":[["Mastercard","R-",-0.12,0]],
+  "R00717":[["TCH","Better Of",-0.08,0.08],["Mastercard","Better Of",-0.08,0.12]],
+  "R00718":[["TCH","Better Of",-0.08,0.08],["Mastercard","Better Of",-0.08,0.12]],
+  "R00723":[["TCH","Better Of",-0.08,0.08],["Mastercard","Better Of",-0.08,0.12]],
+  "R00774":[["Comdata","C+",0,0.07],["TCH","C+",0,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00782":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.12,0]],
+  "R00901":[["Comdata","Better Of",-0.08,0.07],["TCH","Better Of",-0.1,0.08],["Mastercard","R-",-0.12,0]],
+  "R00917":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.06,0.08],["Mastercard","Better Of",-0.08,0.12]],
+  "R00930":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.08,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00931":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.08,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00932":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.05,0.11],["Mastercard","R-",-0.12,0]],
+  "R00933":[["TCH","R-",-0.05,0],["Mastercard","R-",-0.12,0]],
+  "R00935":[["TCH","Better Of",-0.03,0.0475],["Mastercard","R-",-0.12,0]],
+  "R00941":[["Comdata","C+",0,0.11],["TCH","C+",0,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R00958":[["TCH","R-",-0.03,0]],
+  "R01017":[["Comdata","C+",0,0.07],["TCH","R-",-0.1,0],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01018":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.05,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01032":[["TCH","Better Of",-0.1,0.07],["Mastercard","R-",-0.12,0]],
+  "R01033":[["TCH","C+",0,0.11],["Mastercard","R-",-0.12,0]],
+  "R01036":[["Mastercard","Better Of",-0.12,0.12]],
+  "R01038":[["Comdata","C+",0,0.07],["TCH","C+",0,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01059":[["Comdata","C+",0,0.07],["TCH","C+",0,0.05],["QuikQ","C+",0,0.08]],
+  "R01063":[["Comdata","C+",0,0.07],["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01066":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.1,0.04],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01067":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.1,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01072":[["Comdata","C+",0,0.07],["TCH","Better Of",-0.08,0.04],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01080":[["Comdata","Better Of",-0.1,0.11],["TCH","Better Of",-0.1,0.1]],
+  "R01083":[["Comdata","C+",0,0.05],["TCH","Better Of",-0.03,0.1],["Mastercard","R-",-0.12,0]],
+  "R01084":[["Comdata","C+",0,0.05],["TCH","C+",0,0.04],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01104":[["Comdata","Better Of",-0.1,0.11],["TCH","Better Of",-0.08,0.07],["Mastercard","R-",-0.12,0]],
+  "R01106":[["TCH","Better Of",-0.15,0.15]],
+  "R01107":[["TCH","Better Of",-0.05,0.15]],
+  "R01118":[["Comdata","Better Of",-0.1,0.11]],
+  "R01121":[["Mastercard","R-",-0.12,0]],
+  "R01127":[["Comdata","Better Of",-0.08,-0.1],["TCH","Better Of",-0.05,0.1]],
+  "R01129":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01132":[["TCH","R-",-0.05,0],["Mastercard","R-",-0.05,0]],
+  "R01133":[["Comdata","Better Of",-0.08,0.05],["TCH","C+",0,0.08],["QuikQ","C+",0,0.08]],
+  "R01143":[["TCH","C+",0,0.06],["Mastercard","R-",-0.12,0]],
+  "R01151":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.12,0]],
+  "R01164":[["Comdata","Better Of",-0.08,0.05],["TCH","Better Of",-0.05,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01165":[["Comdata","Better Of",-0.08,0.05],["TCH","R-",-0.1,0],["Mastercard","R-",-0.12,0]],
+  "R01167":[["Mastercard","R-",-0.12,0]],
+  "R01168":[["Comdata","Better Of",-0.08,0.08],["TCH","C+",0,0.08],["QuikQ","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01171":[["TCH","Better Of",-0.06,0.1],["Mastercard","R-",-0.12,0]],
+  "R01178":[["Comdata","Better Of",-0.08,0.1],["TCH","Better Of",-0.1,0.1],["Mastercard","R-",-0.12,0]],
+  "R01179":[["TCH","Better Of",-0.05,0.15],["Mastercard","R-",-0.05,0]],
+  "R01186":[["Comdata","Better Of",-0.08,0.07],["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01187":[["Mastercard","R-",-0.12,0]],
+  "R01188":[["Comdata","Better Of",-0.08,0.05],["TCH","Better Of",-0.07,0.08],["Mastercard","R-",-0.12,0]],
+  "R01201":[["Comdata","Better Of",-0.25,0.1],["TCH","Better Of",-0.25,0.1],["Mastercard","R-",-0.12,0]],
+  "R01220":[["Comdata","Better Of",-0.1,0.08],["TCH","Better Of",-0.1,0.08],["Mastercard","R-",-0.12,0]],
+  "R01222":[["Comdata","Better Of",-0.07,0.08],["TCH","Better Of",-0.5,0.12],["Mastercard","R-",-0.12,0]],
+  "R01227":[["Mastercard","R-",-0.12,0]],
+  "R01236":[["Comdata","Better Of",-0.08,0.07],["TCH","Better Of",-0.12,0.07],["Mastercard","R-",-0.12,0]],
+  "R01240":[["Comdata","Better Of",-0.08,0.07],["TCH","Better Of",-0.08,0.1],["Mastercard","R-",-0.12,0]],
+  "R01241":[["Comdata","Better Of",-0.08,0.07],["TCH","Better Of",-0.08,0.1],["Mastercard","R-",-0.12,0]],
+  "R01243":[["Comdata","Better Of",-0.07,0.05],["TCH","Better Of",-0.08,0.08],["Mastercard","Better Of",-0.08,0.12]],
+  "R01244":[["Comdata","Better Of",-0.07,0.05],["TCH","Better Of",-0.08,0.08],["Mastercard","Better Of",-0.08,0.12]],
+  "R01245":[["Comdata","Better Of",-0.07,0.05],["TCH","Better Of",-0.08,0.06],["Mastercard","Better Of",-0.08,0.12]],
+  "R01258":[["Mastercard","R-",-0.12,0]],
+  "R01259":[["Comdata","Better Of",-0.08,-0.1],["TCH","Better Of",-0.07,-0.05]],
+  "R01260":[["Comdata","Better Of",-0.1,0.11],["TCH","Better Of",-0.05,0.08]],
+  "R01261":[["Comdata","Better Of",-0.1,0.11],["TCH","R-",-0.15,0]],
+  "R01338":[["Comdata","Better Of",-0.08,0.07],["TCH","Better Of",-0.08,0.06],["Mastercard","R-",-0.12,0]],
+  "R01437":[["TCH","C+",0,0.15],["Mastercard","R-",-0.12,0]],
+  "R01635":[["Mastercard","R-",-0.12,0]],
+  "R01835":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.12,0]],
+  "R01837":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R01866":[["TCH","R-",-0.1,0],["Mastercard","R-",-0.12,0]],
+  "R01965":[["Mastercard","R-",-0.12,0]],
+  "R02229":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R02230":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R02231":[["TCH","R-",-0.1,0],["Mastercard","R-",-0.12,0]],
+  "R02592":[["TCH","C+",0,0.15],["Mastercard","R-",-0.12,0]],
+  "R03469":[["Comdata","Better Of",-0.08,0.05],["TCH","Better Of",-0.1,0.1],["Mastercard","R-",-0.12,0]],
+  "R03494":[["Comdata","Better Of",-0.1,0.1],["EFS","Better Of",-0.1,0.1],["TCH","Better Of",-0.1,0.1],["QuikQ","Better Of",-0.1,0.1],["Mastercard","R-",-0.12,0]],
+  "R03495":[["Comdata","Better Of",-0.1,0.1],["EFS","Better Of",-0.1,0.1],["TCH","Better Of",-0.1,0.1],["QuikQ","Better Of",-0.1,0.1],["Mastercard","R-",-0.12,0]],
+  "R03500":[["TCH","C+",0,0.12],["Mastercard","R-",-0.12,0]],
+  "R03523":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.12,0]],
+  "R03524":[["Comdata","Better Of",-0.12,0.11],["TCH","R-",-0.08,0],["Mastercard","R-",-0.12,0]],
+  "R03539":[["Mastercard","R-",-0.12,0]],
+  "R03541":[["Mastercard","R-",-0.12,0]],
+  "R03542":[["Mastercard","R-",-0.12,0]],
+  "R03543":[["Mastercard","R-",-0.12,0]],
+  "R03544":[["Mastercard","R-",-0.12,0]],
+  "R03596":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.08,0]],
+  "R03597":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.08,0]],
+  "R03598":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.08,0]],
+  "R03601":[["Mastercard","R-",-0.12,0]],
+  "R03602":[["TCH","R-",-0.02,0],["Mastercard","Better Of",-0.08,0.12]],
+  "R03603":[["TCH","R-",-0.02,0],["Mastercard","Better Of",-0.08,0.12]],
+  "R03625":[["Mastercard","R-",-0.12,0]],
+  "R03626":[["Mastercard","R-",-0.12,0]],
+  "R03627":[["Mastercard","R-",-0.12,0]],
+  "R03628":[["Mastercard","R-",-0.12,0]],
+  "R03629":[["Comdata","Better Of",-0.08,0.02],["TCH","Better Of",-0.12,0.1],["Mastercard","R-",-0.12,0]],
+  "R03630":[["Comdata","Better Of",-0.08,0.02],["TCH","C+",0,0.05],["Mastercard","R-",-0.12,0]],
+  "R03638":[["Comdata","Better Of",-0.08,0.07],["TCH","Better Of",-0.08,0.06],["Mastercard","R-",-0.12,0]],
+  "R03648":[["TCH","Better Of",-0.12,0.12],["Mastercard","Better Of",-0.12,0.12]],
+  "R03649":[["TCH","C+",0,0.05],["Mastercard","R-",-0.12,0]],
+  "R03650":[["TCH","Better Of",-0.12,0.08],["Mastercard","R-",-0.12,0]],
+  "R03664":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R03665":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R03676":[["TCH","Better Of",-0.1,0.06],["Mastercard","R-",-0.12,0]],
+  "R03693":[["TCH","C+",0,0.08],["Mastercard","R-",-0.12,0]],
+  "R03699":[["TCH","Better Of",-0.08,0.08]],
+  "R03857":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.12,0]],
+  "R03870":[["TCH","Better Of",-0.08,0.08],["Mastercard","R-",-0.12,0]],
+  "R03871":[["Comdata","Better Of",-0.1,0.12],["TCH","Better Of",-0.07,0.15],["Mastercard","Better Of",-0.12,0.15]],
+  "R03877":[["Comdata","Better Of",-0.25,0.08],["EFS","Better Of",-0.25,0.12],["TCH","C+",0,0.05],["QuikQ","Better Of",-0.25,0.12],["Mastercard","C+",0,0.05]],
+  "R03903":[["TCH","C+",0,0.1],["Mastercard","C+",0,0.15]],
+  "R03907":[["Mastercard","R-",-0.12,0]],
+  "R03915":[["Mastercard","R-",-0.12,0]],
+  "R03917":[["Mastercard","R-",-0.12,0]],
+  "R03918":[["Mastercard","R-",-0.12,0]],
+  "R03920":[["Mastercard","R-",-0.12,0]],
+  "R03921":[["Mastercard","R-",-0.12,0]],
+  "R03922":[["Mastercard","R-",-0.12,0]],
+  "R03923":[["Mastercard","Better Of",-0.08,0.12]],
+  "R03924":[["Mastercard","R-",-0.12,0]],
+  "R03927":[["TCH","Better Of",-0.1,0.1],["Mastercard","Better Of",-0.12,0.12]],
+  "R03929":[["TCH","Better Of",-0.07,0.1],["Mastercard","R-",-0.12,0]],
+  "R03932":[["Comdata","C+",0,0.08],["TCH","Better Of",-0.1,0.12],["Mastercard","Better Of",-0.12,0.12]],
+  "R03934":[["TCH","Better Of",-0.08,0.08]],
+  "R03967":[["Mastercard","R-",-0.12,0]],
+  "R03970":[["TCH","Better Of",-0.08,0.08]],
+  "R04181":[["EFS","R-",-0.2,0],["TCH","R-",-0.3,0],["Mastercard","R-",-0.2,0]]
+};
+// ── /AGG_DISCOUNTS_BY_STOP ──
 // YTD (current calendar year through the current month) gallons per aggregator
 // and per fleet, keyed by program name. Discount values (cost_plus / retail_minus)
 // and metadata are taken from the most recent month in which the program appears.
@@ -8541,32 +8748,34 @@ function stopYtdPrograms(stopId){
 // retail-minus values: Cost Plus, Retail Minus, or Better Of when both are set.
 function discountLabel(cp, rm){
   cp = +cp || 0; rm = +rm || 0;
-  const fCp = '+$' + Math.abs(cp).toFixed(4);
-  const fRm = (rm < 0 ? '−$' : '+$') + Math.abs(rm).toFixed(4);
-  if(cp !== 0 && rm !== 0) return `Better Of: ${fCp} C+ / ${fRm} R−`;
-  if(cp !== 0) return `Cost Plus ${fCp}`;
-  if(rm !== 0) return `Retail Minus ${fRm}`;
+  const f = v => (v < 0 ? '−$' : '+$') + Math.abs(v).toFixed(4);
+  if(cp !== 0 && rm !== 0) return `Better Of: ${f(cp)} C+ / ${f(rm)} R−`;
+  if(cp !== 0) return `Cost Plus ${f(cp)}`;
+  if(rm !== 0) return `Retail Minus ${f(rm)}`;
   return '—';
 }
 function pageDiscountsHTML(stopId){
-  const { aggregators, fleets } = stopYtdPrograms(stopId);
-  if(!aggregators.length && !fleets.length){
+  // Aggregators come from the per-stop discount seed (real processors + their
+  // C+/R-/Better Of rates). The source has no gallons, so the YTD Gallons cell
+  // stays blank; the stop's total aggregator gallons live on the fuel card.
+  const aggPrograms = (typeof AGG_DISCOUNTS_BY_STOP === 'object' && AGG_DISCOUNTS_BY_STOP[stopId]) || [];
+  // Fleets keep the gallon-report breakdown (YTD gallons by fleet program).
+  const { fleets } = stopYtdPrograms(stopId);
+  if(!aggPrograms.length && !fleets.length){
     return `
       <div class="drawer-card amber">
         <div class="drawer-card-hd">💲 Discounts by Aggregator &amp; Fleet</div>
-        <div style="font-size:.78em;color:var(--muted)">No aggregator or fleet records on file for this year. Add discount programs in <code>index.html</code>'s Fuelman page.</div>
+        <div style="font-size:.78em;color:var(--muted)">No aggregator discount programs or fleet records on file for this stop.</div>
       </div>
     `;
   }
   const fmtN = n => Math.round(+n||0).toLocaleString();
-  const aggRows = aggregators.map(a => {
-    const hasDisc = (+a.cost_plus || 0) !== 0 || (+a.retail_minus || 0) !== 0;
-    return `<tr>
-      <td>${esc(a.name||'—')}</td>
-      <td style="color:${hasDisc ? 'var(--text)' : 'var(--muted)'}">${esc(discountLabel(a.cost_plus, a.retail_minus))}</td>
-      <td>${fmtN(a.gallons)}</td>
-    </tr>`;
-  }).join('');
+  // [processor, discountType, R-/gal, C+/gal]
+  const aggRows = aggPrograms.map(([p, t, rm, cp]) => `<tr>
+      <td>${esc(p||'—')}</td>
+      <td style="color:var(--text)">${esc(discountLabel(cp, rm))}</td>
+      <td style="color:var(--muted)">—</td>
+    </tr>`).join('');
   const fleetRows = fleets.map(f => {
     const hasDisc = (+f.cost_plus || 0) !== 0 || (+f.retail_minus || 0) !== 0;
     return `<tr>
@@ -8575,7 +8784,7 @@ function pageDiscountsHTML(stopId){
       <td>${fmtN(f.gallons)}</td>
     </tr>`;
   }).join('');
-  const aggTable = aggregators.length ? `
+  const aggTable = aggPrograms.length ? `
       <table class="sd-history-tbl">
         <thead><tr><th>Aggregator</th><th>Discount</th><th>YTD Gallons</th></tr></thead>
         <tbody>${aggRows}</tbody>
@@ -8773,13 +8982,15 @@ function exportStopDetailCSV(stopId){
       lines.push(row(['', o.vid, o.name, o.program, o.savings || 0]));
     }
   }
-  // Aggregator & Fleet discounts — YTD (matches the on-screen Discounts card)
-  const { aggregators: ytdAggs, fleets: ytdFleets } = stopYtdPrograms(stopId);
-  if(ytdAggs.length){
+  // Aggregator & Fleet discounts (matches the on-screen Discounts card).
+  // Aggregators: real processors + discounts from the seed (no gallons in source).
+  const aggPrograms = (typeof AGG_DISCOUNTS_BY_STOP === 'object' && AGG_DISCOUNTS_BY_STOP[stopId]) || [];
+  const { fleets: ytdFleets } = stopYtdPrograms(stopId);
+  if(aggPrograms.length){
     lines.push('');
-    lines.push(row(['Aggregator Discounts (YTD)', 'Aggregator', 'Discount', 'YTD Gallons']));
-    for(const a of ytdAggs){
-      lines.push(row(['', a.name, discountLabel(a.cost_plus, a.retail_minus), Math.round(a.gallons)]));
+    lines.push(row(['Aggregator Discounts', 'Aggregator', 'Discount', 'YTD Gallons']));
+    for(const [p, t, rm, cp] of aggPrograms){
+      lines.push(row(['', p, discountLabel(cp, rm), '']));
     }
   }
   if(ytdFleets.length){
