@@ -8751,10 +8751,18 @@ function stopYtdPrograms(stopId){
 // retail-minus values: Cost Plus, Retail Minus, or Better Of when both are set.
 function discountLabel(cp, rm){
   cp = +cp || 0; rm = +rm || 0;
-  const f = v => (v < 0 ? '−$' : '+$') + Math.abs(v).toFixed(4);
-  if(cp !== 0 && rm !== 0) return `Better Of: ${f(cp)} C+ / ${f(rm)} R−`;
-  if(cp !== 0) return `Cost Plus ${f(cp)}`;
-  if(rm !== 0) return `Retail Minus ${f(rm)}`;
+  // "$.10" — no leading zero, trailing zeros trimmed, min 2 decimals.
+  const money = v => {
+    let s = Math.abs(v).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+    let [i, d = ''] = s.split('.');
+    if(d.length < 2) d = (d + '00').slice(0, 2);
+    return '$' + (i + '.' + d).replace(/^0\./, '.');
+  };
+  const cpStr = (cp < 0 ? '-' : '') + money(cp);   // C+ keeps a minus only if negative
+  const rmStr = money(rm);                          // R- label already implies minus
+  if(cp !== 0 && rm !== 0) return `Better Of: C+ ${cpStr} / R- ${rmStr}`;
+  if(cp !== 0) return `C+ ${cpStr}`;
+  if(rm !== 0) return `R- ${rmStr}`;
   return '—';
 }
 function pageDiscountsHTML(stopId){
