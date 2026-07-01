@@ -5471,6 +5471,117 @@ const AGG_DISCOUNTS_BY_STOP = {
 };
 // ── GSR_SEEDS:BODY_END ──
 
+// ── GSR_ENGINE:BODY_START ── (Growth Strategist Ranking: metrics, sources, scoring, storage)
+const GSR_AGG_NAME = {RTS:'RTS Carrier Services',QPN:'QPN',TCS:'TCS',OOIDA:'OOIDA',TSD:'TSD Logistics',Prime:'Prime Inc. Advantage +',Motive:'Motive',GreenLane:'Greenlane',LoadConnex:'Load Connex',AtoB:'AtoB'};
+// key,label,section,sectionLabel,measurable,kind,arg
+const GSR_METRICS = [
+  {key:'agg:RTS',label:'RTS',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:true,kind:'agg',arg:'RTS'},
+  {key:'agg:QPN',label:'QPN',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:true,kind:'agg',arg:'QPN'},
+  {key:'agg:TCS',label:'TCS',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:true,kind:'agg',arg:'TCS'},
+  {key:'agg:Edge',label:'Edge',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:false},
+  {key:'agg:TATS',label:'TATS',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:false},
+  {key:'agg:OOIDA',label:'OOIDA',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:true,kind:'agg',arg:'OOIDA'},
+  {key:'agg:TSD',label:'TSD',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:true,kind:'agg',arg:'TSD'},
+  {key:'agg:RXO',label:'RXO',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:false},
+  {key:'agg:OTP',label:'OTP Capital',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:false},
+  {key:'agg:Prime',label:'Prime Inc. Advantage +',section:'legacy',sectionLabel:'Legacy Aggregators',measurable:true,kind:'agg',arg:'Prime'},
+  {key:'agg:Motive',label:'Motive',section:'new',sectionLabel:'New Aggregators',measurable:true,kind:'agg',arg:'Motive'},
+  {key:'agg:HaulPay',label:'Haul Pay',section:'new',sectionLabel:'New Aggregators',measurable:false},
+  {key:'agg:GreenLane',label:'Green Lane',section:'new',sectionLabel:'New Aggregators',measurable:true,kind:'agg',arg:'GreenLane'},
+  {key:'agg:LoadConnex',label:'Load Connex',section:'new',sectionLabel:'New Aggregators',measurable:true,kind:'agg',arg:'LoadConnex'},
+  {key:'agg:TOA',label:'TOA',section:'new',sectionLabel:'New Aggregators',measurable:false},
+  {key:'agg:CloudTrucks',label:'Cloud Trucks',section:'new',sectionLabel:'New Aggregators',measurable:false},
+  {key:'agg:AtoB',label:'AtoB',section:'new',sectionLabel:'New Aggregators',measurable:true,kind:'agg',arg:'AtoB'},
+  {key:'agg:Onramp',label:'Onramp',section:'new',sectionLabel:'New Aggregators',measurable:false},
+  {key:'agg:Octane',label:'Octane',section:'new',sectionLabel:'New Aggregators',measurable:false},
+  {key:'fleets',label:'Fleets',section:'fleets',sectionLabel:'Fleets',measurable:true,kind:'fleets'},
+  {key:'fuelman',label:'Fuelman',section:'fuelman',sectionLabel:'Fuelman',measurable:false},
+  {key:'rcheck',label:'R-Check',section:'rcheck',sectionLabel:'R-Check',measurable:false},
+  {key:'rewards',label:'Rewards',section:'rewards',sectionLabel:'Rewards',measurable:true,kind:'rewards'},
+  {key:'rwdmult',label:'Rewards Multipliers',section:'rwdmult',sectionLabel:'Rewards Multipliers',measurable:false},
+  {key:'mconsole',label:'Merchant Console (users registered)',section:'mconsole',sectionLabel:'Merchant Console',measurable:false},
+  {key:'vend:V00134',label:'Cintas (via Entegra)',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00134'},
+  {key:'vend:V00010',label:'Sysco',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00010'},
+  {key:'vend:V00022',label:'Lynco',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00022'},
+  {key:'vend:V00036',label:'DAS',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00036'},
+  {key:'vend:V00112',label:'Truck Parking Club',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00112'},
+  {key:'vend:V00002',label:'Farmer Brothers',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00002'},
+  {key:'vend:V00033',label:'Coca-Cola',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00033'},
+  {key:'vend:V00232',label:'Heartland',section:'vendor',sectionLabel:'Vendor Programs (Top 8)',measurable:true,kind:'vend',arg:'V00232'},
+  {key:'retention',label:'Retention Rate',section:'retention',sectionLabel:'Retention Rate',measurable:false}
+];
+
+function gsrFuelSeed(m){
+  try{ if(m==='2026-06'&&typeof FUEL_JUN_2026_DATA==='object') return FUEL_JUN_2026_DATA; }catch(e){}
+  try{ if(m==='2026-05'&&typeof FUEL_MAY_2026_DATA==='object') return FUEL_MAY_2026_DATA; }catch(e){}
+  try{ if(m==='2026-04'&&typeof FUEL_APR_2026_DATA==='object') return FUEL_APR_2026_DATA; }catch(e){}
+  return {};
+}
+function gsrRewardsSeed(m){
+  try{ if(m==='2026-06'&&typeof REWARDS_2026_06_SEED==='object') return REWARDS_2026_06_SEED; }catch(e){}
+  try{ if(m==='2026-05'&&typeof REWARDS_2026_05_SEED==='object') return REWARDS_2026_05_SEED; }catch(e){}
+  try{ if(m==='2026-04'&&typeof REWARDS_2026_04_SEED==='object') return REWARDS_2026_04_SEED; }catch(e){}
+  try{ if(m==='2026-03'&&typeof REWARDS_2026_03_SEED==='object') return REWARDS_2026_03_SEED; }catch(e){}
+  try{ if(m==='2026-02'&&typeof REWARDS_2026_02_SEED==='object') return REWARDS_2026_02_SEED; }catch(e){}
+  try{ if(m==='2026-01'&&typeof REWARDS_2026_01_SEED==='object') return REWARDS_2026_01_SEED; }catch(e){}
+  return {};
+}
+function gsrVendorEnrolled(sid, vid){ try{ return !!((typeof VP_ENROLL==='object'&&VP_ENROLL[sid])||{})[vid]; }catch(e){ return false; } }
+function gsrAgg(sid, canonical){ try{ return (typeof AGG_DISCOUNTS_BY_STOP==='object'&&AGG_DISCOUNTS_BY_STOP[sid]||[]).some(a=>a[0]===canonical)?1:0; }catch(e){ return 0; } }
+function gsrAuto(row, sid, m){
+  if(row.kind==='agg')    return gsrAgg(sid, GSR_AGG_NAME[row.arg]);
+  if(row.kind==='fleets') return (gsrFuelSeed(m)[sid]?.fl>0)?1:0;
+  if(row.kind==='rewards')return (gsrRewardsSeed(m)[sid]?.g>0)?1:0;
+  if(row.kind==='vend')   return gsrVendorEnrolled(sid,row.arg)?1:0;
+  return null; // grey rows have no auto source
+}
+
+// ── overrides + snapshots (localStorage; Supabase-shaped) ──
+const GSR_OV_KEY='roadys_gsr_overrides', GSR_SNAP_KEY='roadys_gsr_snapshots';
+function gsrLoadJSON(k){ try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; } }
+function gsrSaveJSON(k,o){ try{ localStorage.setItem(k, JSON.stringify(o)); }catch(e){} }
+function gsrOvId(gs,sid,key,m){ return [gs,sid,key,m].join('|'); }
+function gsrGetOverride(gs,sid,key,m){ const v=gsrLoadJSON(GSR_OV_KEY)[gsrOvId(gs,sid,key,m)]; return v==null?undefined:v; }
+function gsrSetOverride(gs,sid,key,m,val){ const o=gsrLoadJSON(GSR_OV_KEY); const id=gsrOvId(gs,sid,key,m); if(val==null) delete o[id]; else o[id]=val?1:0; gsrSaveJSON(GSR_OV_KEY,o); }
+function gsrSaveSnapshot(r){ const o=gsrLoadJSON(GSR_SNAP_KEY); o[r.gs+'|'+r.month]={gs:r.gs,month:r.month,pct:r.overall.pct,green:r.overall.green,meas:r.overall.meas,metricSetVersion:r.metricSetVersion,ts:Date.now()}; gsrSaveJSON(GSR_SNAP_KEY,o); }
+function gsrLoadSnapshots(){ return gsrLoadJSON(GSR_SNAP_KEY); }
+function gsrSnapshot(gs,m){ return gsrLoadSnapshots()[gs+'|'+m]||null; }
+function gsrPrevMonth(m){ const p=m.split('-').map(Number); const d=new Date(p[0],p[1]-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function gsrYtdAvg(gs,m){ const y=m.split('-')[0]; const vals=Object.values(gsrLoadSnapshots()).filter(s=>s.gs===gs&&s.month.slice(0,4)===y&&s.month<=m).map(s=>s.pct); return vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : null; }
+
+// ── scoring: green ÷ measurable cells (mean of 1/0 cells); grey excluded ──
+function gsrCompute(gs, m){
+  const stops=((typeof GS_TERRITORY==='object'&&GS_TERRITORY[gs])?GS_TERRITORY[gs].stops:[])||[];
+  const metrics=GSR_METRICS.map(row=>{
+    const cells={}; let anyOverride=false;
+    for(const st of stops){
+      const ov=gsrGetOverride(gs, st.id, row.key, m);
+      if(ov!=null) anyOverride=true;
+      const auto=gsrAuto(row, st.id, m);
+      cells[st.id]={ v: (ov!=null?ov:auto) };
+    }
+    const active = row.measurable || anyOverride;
+    let green=0, meas=0, greenStops=0;
+    for(const st of stops){
+      const c=cells[st.id];
+      if(!active){ c.state='grey'; continue; }
+      const val = c.v==null ? 0 : c.v; c.v=val; c.state = val? 'green':'red';
+      meas++; if(val){ green++; greenStops++; }
+    }
+    return {key:row.key,label:row.label,section:row.section,sectionLabel:row.sectionLabel,measurable:row.measurable,active,cells,greenStops,measStops:active?stops.length:0,green,meas,pct:meas?green/meas:0};
+  });
+  const secMap={};
+  for(const mx of metrics){ if(!mx.active) continue; const s=secMap[mx.section]=secMap[mx.section]||{section:mx.section,label:mx.sectionLabel,green:0,meas:0}; s.green+=mx.green; s.meas+=mx.meas; }
+  const sections=Object.values(secMap).map(s=>({section:s.section,label:s.label,green:s.green,meas:s.meas,pct:s.meas?s.green/s.meas:0}));
+  const perStop={};
+  for(const st of stops){ let g=0,me=0; for(const mx of metrics){ if(!mx.active) continue; const val=mx.cells[st.id].v; me++; if(val) g++; } perStop[st.id]={green:g,meas:me,pct:me?g/me:0}; }
+  const green=metrics.reduce((a,mx)=>a+mx.green,0), meas=metrics.reduce((a,mx)=>a+mx.meas,0);
+  const version='gsr:'+metrics.filter(mx=>mx.active).map(mx=>mx.key).sort().join(',');
+  return {gs,month:m,metrics,sections,stops,perStop,overall:{green,meas,pct:meas?green/meas:0},metricSetVersion:version};
+}
+// ── GSR_ENGINE:BODY_END ──
+
+
 
 // KPI helpers
 
