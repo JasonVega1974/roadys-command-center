@@ -51,13 +51,20 @@ source at all; grey cells are excluded from every denominator.
 | Legacy Aggregators | RTS, QPN, TCS, Edge, TATS, OOIDA, TSD, RXO, OTP Capital, Prime Inc. Advantage + | RTS, QPN, TCS, OOIDA, TSD, Prime Inc. Advantage + | Edge, TATS, RXO, OTP Capital |
 | New Aggregators | Motive, Haul Pay, Green Lane, Load Connex, TOA, Cloud Trucks, AtoB, Onramp, Octane | Motive, Green Lane, Load Connex, AtoB | Haul Pay, TOA, Cloud Trucks, Onramp, Octane |
 | Fleets | Fleets | Fleets | — |
-| Fuelman | Fuelman | Fuelman | — |
-| R-Check | R-Check | R-Check | — |
+| Fuelman | Fuelman | — | Fuelman (until edited/sourced) |
+| R-Check | R-Check | — | R-Check (until edited/sourced) |
 | Rewards | Rewards | Rewards | — |
 | Rewards Multipliers | Rewards Multipliers | — | Rewards Multipliers |
 | Merchant Console | Merchant Console (users registered) | — | Merchant Console |
-| Vendor Programs | Sysco, Truck Parking Club, Coke, Cintas, Farmer Bros Coffee, Heartland, DAS, Lynco, Entegra | all 9 (from vendor enrollment) | — |
+| Vendor Programs (Top 8) | Cintas (via Entegra), Sysco, Lynco, DAS, Truck Parking Club, Farmer Brothers, Coca-Cola, Heartland | all 8 (from vendor enrollment) | — |
 | Retention Rate | Retention Rate | — | Retention Rate |
+
+The Vendor Programs Top 8 are matched by vendor ID (the existing `TOP8_VP_IDS`):
+Cintas/Entegra (V00134), Sysco (V00010), Lynco (V00022), DAS (V00036),
+Truck Parking Club (V00112), Farmer Brothers (V00002), Coca-Cola (V00033),
+Heartland (V00232). Cintas runs *via* Entegra, so it is a single row (no separate
+Entegra row). Fuelman and R-Check start grey in v1 and become measurable once a
+source is embedded or a master edits them (see §8).
 
 **Aggregator name mapping** (data → canonical): `RTS Carrier Services`→RTS,
 `OOIDA`→OOIDA (Excel "OIDA"), `TSD Logistics`→TSD, `Prime Inc. Advantage +`→"Prime Inc. Advantage +"
@@ -106,14 +113,37 @@ denominator. Because the grey set is identical for every GS, scores stay compara
   cross-version comparisons are flagged so prev-month/YTD stay valid (don't compare a v1
   average against a v2 average silently).
 
-## 8. Out of scope (v1)
+## 8. Master-mode editing (everything editable)
+
+Gated on index.html's existing edit/master mode (`body.dash-edit-mode`,
+`dashToggleEditMode()`, persisted in localStorage). Non-master users see a read-only
+computed scorecard; a master can edit everything data-driven on the page.
+
+- **Every cell is editable.** In master mode each metric×stop cell is click-to-set:
+  measurable cells toggle green↔red; grey/no-data cells can be set green or red
+  (manual entry), which **activates** that metric.
+- **Overrides** are stored per `(gs, stopId, metricKey, month)` in localStorage
+  (shape ready for Supabase). An override takes precedence over the auto-computed value;
+  clearing it reverts to auto (or back to grey if the metric has no auto source).
+- **Grey → measurable promotion.** A no-data metric with **≥1** master-entered value for
+  the month becomes measurable for that month: it enters the denominators, and its cells
+  with no auto/manual value default to red (a real "no"). A metric with zero manual data
+  stays grey/excluded. This is how Fuelman, R-Check, Rewards Multipliers, Merchant Console,
+  Retention Rate, and the unmatched aggregators come online before the interstate DB does.
+- **Comparability guard.** Each snapshot's `metricSetVersion` records exactly which metrics
+  were measurable that month, so prev-month/YTD comparisons flag when the measurable set
+  changed (e.g. a master activated Fuelman mid-year) rather than comparing silently.
+- Editable data = the cells (which drive every derived "x of xx · %", section average,
+  overall score, and rank). Adding/renaming metric rows or sections is out of scope for v1.
+
+## 9. Out of scope (v1)
 
 - Real authentication / per-GS access control (selector stands in).
 - Live interstate-DB wiring (embedded seeds stand in; structure supports repointing).
-- Backfilling the grey metrics (Rewards Multipliers, Merchant Console, Retention Rate,
-  and the unmatched aggregators) — they render grey until a source exists.
+- Adding/renaming/reordering metric rows or sections (values are editable; structure is fixed).
+- Auto-backfilling grey metrics — they stay grey until a master edits them or a source is embedded.
 
-## 9. Success criteria
+## 10. Success criteria
 
 - New 🏆 page renders, styled like GS Metrics, with a working GS selector + leadership view.
 - Each GS's overall score = green ÷ measurable cells (%), grey excluded; ranking sorts descending.
@@ -121,3 +151,6 @@ denominator. Because the grey set is identical for every GS, scores stay compara
 - Per-stop expansion shows correct green/red per metric.
 - A monthly snapshot is saved and drives prev-month + YTD once ≥2 months exist.
 - Numbers reconcile with gs-command-center for the same stops/metrics.
+- In master mode, any cell is editable; overrides persist and recompute all derived
+  numbers; activating a grey metric brings it into scoring and bumps the snapshot's
+  metric-set version. Non-master users see the read-only computed scorecard.
