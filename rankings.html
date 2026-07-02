@@ -1982,11 +1982,10 @@ function gsrRenderFront(m){
     ${stat('Top performer', scores[0]?gsrEsc(scores[0].gs):'—', scores[0]?gsrPct(scores[0].pct):'')}
   </div>`;
   // ── podium (top 3): 2nd · 1st · 3rd ──
-  const medal=['🥇','🥈','🥉'];
   const podium=`<div style="display:flex;align-items:flex-end;justify-content:center;gap:16px;margin-bottom:26px;flex-wrap:wrap">`+
     [1,0,2].map(idx=>{ const s=scores[idx]; if(!s) return ''; const first=idx===0; const col=gsrColor(s.pct);
       return `<div onclick="gsrOpenModal('${gsrEsc(s.gs)}')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-top:4px solid ${col};border-radius:16px;padding:${first?'22px 24px':'16px 20px'};width:${first?'230px':'195px'};text-align:center;transition:transform .12s${first?';box-shadow:0 12px 34px rgba(0,200,255,.14)':''}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
-        <div style="font-size:${first?'2.6em':'2.1em'};line-height:1">${medal[idx]}</div>
+        <div style="font-size:${first?'1.7em':'1.4em'};font-weight:900;color:${first?'var(--accent)':'var(--muted)'};line-height:1">#${idx+1}</div>
         <div style="font-weight:800;font-size:${first?'1.18em':'1.02em'};margin-top:6px">${gsrEsc(s.gs)}</div>
         <div style="font-size:${first?'2.3em':'1.9em'};font-weight:900;color:${col};line-height:1.1;margin-top:2px">${gsrPct(s.pct)}</div>
         <div style="font-size:.74em;color:var(--muted);margin-top:2px">${s.green}/${s.meas} · ${s.stops} stops</div>
