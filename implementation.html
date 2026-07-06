@@ -5365,6 +5365,9 @@ const STOP_STATE_MAP = {
 
 function implGetSiteGS(site){
   const loc = site.location || '';
+  // Site-name GS overrides — win before state lookup. Duck Thru locations span
+  // several states (Southeast/Northeast) but are all handled by Stefanie Ritter.
+  if(/duck\s*thru/i.test(loc)) return 'Stefanie Ritter';
   // Extract stop ID prefix (R#####, L#####, P#####)
   const idMatch = loc.match(/^([RLP]\d{5})/i);
   if(idMatch){
