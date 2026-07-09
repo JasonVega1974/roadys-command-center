@@ -3,7 +3,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta http-equiv="Cache-Control" content="no-cache"/>
-<title>Roady's — Growth Strategist Rankings</title>
+<title>Roady's — GS Performance Tracker</title>
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
@@ -52,7 +52,7 @@ body.dash-edit-mode #gsr-edit-btn{background:rgba(0,200,255,.18);border-color:va
 </style>
 </head><body>
 <div class="wrap">
-  <div class="sec-hdr"><div class="sec-title">Growth Strategist Rankings</div>
+  <div class="sec-hdr"><div class="sec-title">GS Performance Tracker</div>
     <span class="badge" id="gsr-period" style="background:rgba(0,200,255,.12);color:var(--accent)">—</span>
     <span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <label style="font-size:.8em;color:var(--muted)">Month <select id="gsr-month" class="sel" onchange="gsrSetMonth(this.value)"></select></label>
@@ -60,7 +60,7 @@ body.dash-edit-mode #gsr-edit-btn{background:rgba(0,200,255,.18);border-color:va
       <button class="btn" onclick="gsrToggleDay()" title="Toggle day/night">&#9728;/&#9790;</button>
       <a class="btn" href="index.html">&#8592; Command Center</a>
     </span></div>
-  <div style="color:var(--muted);font-size:.85em;margin:6px 0 18px">Score = green &divide; measurable cells (grey = not tracked, excluded). Click a card for the full scorecard.</div>
+  <div style="margin:14px 0 0"></div>
   <div id="gsr-cards"></div>
 </div>
 <div id="gsr-modal" onclick="if(event.target===this)gsrCloseModal()">
@@ -85,6 +85,15 @@ const GS_TERRITORY = {
   "Stefanie Ritter":{"stops":[{"id":"R00315","name":"Appleton T/P-CITGO"},{"id":"R00608","name":"Bear Creek T/P-CITGO"},{"id":"R03967","name":"Belgium Plaza"},{"id":"R03473","name":"Belgium Travel Plaza"},{"id":"R00326","name":"BP Kenosha Travel Plaza"},{"id":"R01072","name":"BP Pleasant Springs Travel Plaza"},{"id":"R01258","name":"Braj Convenience Store"},{"id":"R01020","name":"Bristol BP"},{"id":"R01083","name":"Eagle Express Travel Center"},{"id":"R01107","name":"Edgerton Travel Plaza"},{"id":"R00320","name":"Francis Creek Travel Plaza-CITGO"},{"id":"R00321","name":"Fremont T/P-CITGO"},{"id":"R01129","name":"Hi Way Hop BP"},{"id":"R03500","name":"Jefferson Travel Plaza"},{"id":"R01219","name":"Mauston Interstate BP"},{"id":"R01227","name":"PDC Truck Stop"},{"id":"R00325","name":"Plainfield T/P-CITGO"},{"id":"R01121","name":"Planeview Travel Plaza"},{"id":"R01167","name":"Refuel Pantry-Columbus West"},{"id":"R03915","name":"Refuel Pantry-Sturtevant"},{"id":"R00935","name":"Sparta Travel Center"},{"id":"R01635","name":"Station Hwy 33 Citgo"},{"id":"R03972","name":"Station Kewaskum"},{"id":"R03907","name":"Station Wild Goose"}]},
   "Steph Leslie":{"stops":[{"id":"R03922","name":"80122-Belfield Truck Stop"},{"id":"R03923","name":"80126-Jamestown Shell"},{"id":"R03920","name":"80132-Dawn to Dusk"},{"id":"R03924","name":"80143-New Town"},{"id":"R03539","name":"80145-SPR #45 Cheyenne TS"},{"id":"R03921","name":"80159-Tower City Travel Center"},{"id":"R03628","name":"80229-KJ's Alpine Phillips 66"},{"id":"R03929","name":"Allstar"},{"id":"R03638","name":"Anvil Block Marathon #112"},{"id":"R02592","name":"Bar-B Travel Plaza"},{"id":"R01186","name":"Battlefield Fuel Stop"},{"id":"P03659","name":"Big Springs Travel Center"},{"id":"R01165","name":"Big's 211"},{"id":"R00717","name":"Blackfoot Stinker Truck Stop #85"},{"id":"R00718","name":"Bliss Stinker Truck Stop #74"},{"id":"R00641","name":"Cenex Zip Trip #50"},{"id":"R00642","name":"Cenex Zip Trip #54"},{"id":"R00640","name":"Cenex Zip Trip #59"},{"id":"R00639","name":"Cenex Zip Trip #60"},{"id":"R00958","name":"Cenex Zip Trip #75"},{"id":"R01084","name":"Dilley Truck Stop"},{"id":"R01017","name":"Downieville Fuel Stop"},{"id":"R01178","name":"Fast Trac 21"},{"id":"R03469","name":"FastLane Center (#27)"},{"id":"R00262","name":"FastLane Eolia (#26)"},{"id":"R01066","name":"FastLane Gasper's Truck Plaza (#51)"},{"id":"R01067","name":"FastLane Moberly Truck Plaza (#59)"},{"id":"R00670","name":"FastLane Taylor (#63)"},{"id":"R01183","name":"Flatonia Travel Center"},{"id":"R03523","name":"Food-N-Fuel"},{"id":"R03494","name":"Garden Inn Truck Plaza-Cabool"},{"id":"R03495","name":"Garden Inn Truck Plaza-Forest City"},{"id":"R00297","name":"Hot Spot T/S #2013"},{"id":"R00294","name":"Hot Spot T/S #6004"},{"id":"R01184","name":"Junction Travel Center"},{"id":"R00408","name":"La Porte Travel Plaza aka Moody's Travel Plaza"},{"id":"R01182","name":"Laredo Fuel Stop"},{"id":"R00723","name":"Lewiston Stinker Store #42"},{"id":"R01241","name":"Majors 660 Diboll Truck Plaza"},{"id":"R01240","name":"Majors 661 Henderson Truck Plaza"},{"id":"R01338","name":"Majors 664 Stallings Dr Truck Plaza"},{"id":"R01236","name":"New Deal Truck Stop"},{"id":"R00901","name":"On The Go Travel Center"},{"id":"R03871","name":"Qmart"},{"id":"R00099","name":"Schatz Crossroads"},{"id":"R03970","name":"Stinker 122 Fargo"},{"id":"R01244","name":"Stinker's Broken Wheel Truck Stop #218"},{"id":"R01243","name":"Stinker's Ghost Town Truck Stop #217"},{"id":"R01245","name":"Stinker's Outpost Fuel Stop #219"},{"id":"R01038","name":"Texas Best Smokehouse 5"},{"id":"R01168","name":"Timeout Market 647"},{"id":"P03660","name":"Tomahawk Truck Stop"},{"id":"R03909","name":"Truckers Paradise"},{"id":"R04115","name":"Velocity Truck Stop"},{"id":"R03791","name":"Waco Truck Stop"}]}
 };
+// ── RETENTION seed (per-stop retention %, 0–1) ──
+// TODO: replace with Interstate live data in the migration PR.
+// Deterministic per-stop values so reloads stay stable: most stops 0.85–0.96,
+// ~15% intentionally lower (0.60–0.82). *_PREV is the companion prior-month set,
+// wired to the "Prev" sub-stat on the Retention card and the movement math.
+function _retHash(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0)/4294967295; }
+function _retVal(id,shift){ const low=_retHash('low:'+id)<0.15; const r=_retHash(shift+':'+id); const v=low?0.60+r*0.22:0.85+r*0.11; return Math.round(v*1000)/1000; }
+const RETENTION_BY_STOP={}, RETENTION_BY_STOP_PREV={};
+Object.values(GS_TERRITORY).forEach(t=>(t.stops||[]).forEach(st=>{ RETENTION_BY_STOP[st.id]=_retVal(st.id,'cur'); RETENTION_BY_STOP_PREV[st.id]=_retVal(st.id,'prev'); }));
 const AGG_DISCOUNTS_BY_STOP = {
   "L03461":[["AtoB","BO",-0.1,0.1],["ATS","BO",-0.1,0.11],["Factorloads","BO",-0.1,0.08],["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["OOIDA","BO",-0.05,0.08],["Prime Inc. Advantage +","BO",-0.08,0.05],["TSD Logistics","BO",-0.07,0.08]],
   "L03465":[["Greenlane","BO",-0.08,0.08],["Motive","R-",-0.12,0],["Prime Inc. Advantage +","R-",-0.2,0],["QPN","R-",-0.2,0],["RTS Carrier Services","R-",-0.2,0],["TSD Logistics","R-",-0.2,0]],
@@ -1866,7 +1875,7 @@ function gsrSaveJSON(k,o){ try{ localStorage.setItem(k, JSON.stringify(o)); }cat
 function gsrOvId(gs,sid,key,m){ return [gs,sid,key,m].join('|'); }
 function gsrGetOverride(gs,sid,key,m){ const v=gsrLoadJSON(GSR_OV_KEY)[gsrOvId(gs,sid,key,m)]; return v==null?undefined:v; }
 function gsrSetOverride(gs,sid,key,m,val){ const o=gsrLoadJSON(GSR_OV_KEY); const id=gsrOvId(gs,sid,key,m); if(val==null) delete o[id]; else o[id]=val?1:0; gsrSaveJSON(GSR_OV_KEY,o); }
-function gsrSaveSnapshot(r){ const o=gsrLoadJSON(GSR_SNAP_KEY); o[r.gs+'|'+r.month]={gs:r.gs,month:r.month,pct:r.overall.pct,green:r.overall.green,meas:r.overall.meas,metricSetVersion:r.metricSetVersion,ts:Date.now()}; gsrSaveJSON(GSR_SNAP_KEY,o); }
+function gsrSaveSnapshot(r){ const o=gsrLoadJSON(GSR_SNAP_KEY); const secs={}; (r.sections||[]).forEach(s=>{ secs[s.section]={green:s.green,meas:s.meas}; }); o[r.gs+'|'+r.month]={gs:r.gs,month:r.month,pct:r.overall.pct,green:r.overall.green,meas:r.overall.meas,sections:secs,metricSetVersion:r.metricSetVersion,ts:Date.now()}; gsrSaveJSON(GSR_SNAP_KEY,o); }
 function gsrLoadSnapshots(){ return gsrLoadJSON(GSR_SNAP_KEY); }
 function gsrSnapshot(gs,m){ return gsrLoadSnapshots()[gs+'|'+m]||null; }
 function gsrPrevMonth(m){ const p=m.split('-').map(Number); const d=new Date(p[0],p[1]-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
@@ -1916,6 +1925,42 @@ function gsrGetMonth(){ try{ return localStorage.getItem('roadys_gsr_month')||gs
 function gsrSetMonth(v){ try{ localStorage.setItem('roadys_gsr_month',v); }catch(e){} gsrRerender(); }
 function gsrAllScores(m){ return gsrGSList().map(gs=>{ const r=gsrCompute(gs,m); return {gs,pct:r.overall.pct,green:r.overall.green,meas:r.overall.meas,stops:r.stops.length}; }).sort((a,b)=>b.pct-a.pct); }
 
+// ── dashboard rollups: months, categories, retention, network averages ──
+const GSR_SEED_MONTHS=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'];
+const GSR_ALL_MONTHS=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+// category → the GSR_METRICS sections it rolls up
+const GSR_CATS={ fuel:['legacy','new','fleets','fuelman','rcheck'], rewards:['rewards','rwdmult'], vendor:['vendor'] };
+const GSR_CAT_LABEL={ fuel:'Fuel Average', rewards:'Rewards', vendor:'Vendor Programs' };
+function gsrCatOf(section){ for(const c in GSR_CATS){ if(GSR_CATS[c].includes(section)) return c; } return null; }
+// network green/meas per category for a month (live, honors master-mode overrides)
+function gsrCatTotals(m){ const acc={fuel:{green:0,meas:0},rewards:{green:0,meas:0},vendor:{green:0,meas:0}};
+  gsrGSList().forEach(gs=>{ gsrCompute(gs,m).metrics.forEach(mx=>{ const c=gsrCatOf(mx.section); if(c){ acc[c].green+=mx.green; acc[c].meas+=mx.meas; } }); });
+  for(const c in acc){ acc[c].pct=acc[c].meas?acc[c].green/acc[c].meas:null; } return acc; }
+// YTD mean of a category's monthly pct across closed seed months <= m
+function gsrCatYtd(cat,m){ const vals=GSR_SEED_MONTHS.filter(mo=>mo<=m).map(mo=>gsrCatTotals(mo)[cat].pct).filter(v=>v!=null); return vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : null; }
+// per-GS green/meas/pct for a single category in a single month
+function gsrCatByGS(gs, m, cat){
+  const r = gsrCompute(gs, m);
+  const sections = GSR_CATS[cat] || [];
+  let green=0, meas=0;
+  for(const mx of r.metrics){ if(sections.includes(mx.section)){ green += mx.green; meas += mx.meas; } }
+  return { green, meas, pct: meas ? green/meas : null };
+}
+// per-GS YTD mean of a category's pct across closed seed months <= m
+function gsrCatByGSYtd(gs, cat, m){
+  const vals = GSR_SEED_MONTHS.filter(mo => mo <= m).map(mo => gsrCatByGS(gs, mo, cat).pct).filter(v => v != null);
+  return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+}
+// network average of the 6 GS overall scores (current = live, prev = saved snapshots)
+function gsrNetAvg(m){ const s=gsrAllScores(m); return s.length? s.reduce((a,x)=>a+x.pct,0)/s.length : null; }
+function gsrNetAvgSnap(m){ const gss=gsrGSList(); const vals=gss.map(gs=>gsrSnapshot(gs,m)).filter(x=>x&&x.pct!=null).map(x=>x.pct); return (vals.length&&vals.length===gss.length)? vals.reduce((a,b)=>a+b,0)/vals.length : null; }
+function gsrNetYtd(m){ const vals=gsrGSList().map(gs=>gsrYtdAvg(gs,m)).filter(v=>v!=null); return vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : null; }
+// retention (mean over stop ids); network = all stops, per-GS = that GS's stops
+function gsrRetMean(ids,seed){ const vals=ids.map(id=>seed[id]).filter(v=>v!=null); return vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : null; }
+function gsrAllStopIds(){ const out=[]; gsrGSList().forEach(gs=>((GS_TERRITORY[gs]||{}).stops||[]).forEach(st=>out.push(st.id))); return out; }
+function gsrRetentionNetwork(seed){ return gsrRetMean(gsrAllStopIds(), seed); }
+function gsrRetentionGS(gs,seed){ return gsrRetMean(((GS_TERRITORY[gs]||{}).stops||[]).map(s=>s.id), seed); }
+
 // ── scorecard (tile grid + expandable stops) — used inside the modal ──
 function gsrScorecardHTML(gs,m){
   const r=gsrCompute(gs,m);
@@ -1952,10 +1997,50 @@ function gsrScorecardHTML(gs,m){
   const headCard=`<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--border);border-left:4px solid ${gsrColor(r.overall.pct)};border-radius:12px;padding:14px 18px;margin-bottom:16px">
       <div style="font-size:1.4em;font-weight:800">${gsrEsc(gs)}</div>
       <div style="font-size:2.1em;font-weight:900;color:${gsrColor(r.overall.pct)};line-height:1">${gsrPct(r.overall.pct)}</div>
-      <div style="color:var(--muted);font-size:.85em;line-height:1.5"><div><b style="color:var(--text)">${r.overall.green}/${r.overall.meas}</b> measurable cells green</div><div>Rank <b style="color:var(--text)">#${rank}</b> of ${scores.length} · ${r.stops.length} stops</div></div></div>`;
+      <div style="color:var(--muted);font-size:.85em;line-height:1.5"><div><b style="color:var(--text)">${r.overall.green}/${r.overall.meas}</b></div><div>Rank <b style="color:var(--text)">#${rank}</b> of ${scores.length} · ${r.stops.length} stops</div></div></div>`;
   return headCard + secHtml +
-    `<div style="font-family:var(--ff);font-size:.82em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:8px 0 6px">Truck stops (${r.stops.length})${gsrIsEdit()?' — click a stop, then a tag to set green/red':''}</div>
+    `<div style="font-family:var(--ff);font-size:.82em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:8px 0 6px">Truck stops (${r.stops.length})</div>
      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">${stopRows}</div>`;
+}
+
+// ── category drill-down: 12-month per-GS grid (mirrors Full Standings styling) ──
+function gsrCatModalHTML(cat, m){
+  const label=GSR_CAT_LABEL[cat]||cat;
+  const net=gsrCatTotals(m)[cat]||{green:0,meas:0,pct:null};
+  // per-GS rows: {gs, cur, ytd}
+  const rows=gsrGSList().map(gs=>({ gs, cur:gsrCatByGS(gs,m,cat).pct, ytd:gsrCatByGSYtd(gs,cat,m) }));
+  rows.sort((a,b)=>((b.ytd==null?-1:b.ytd)-(a.ytd==null?-1:a.ytd))||((b.cur==null?-1:b.cur)-(a.cur==null?-1:a.cur))||a.gs.localeCompare(b.gs));
+  const monShort=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const thBase='padding:9px 8px;font-family:var(--ff);font-size:.84em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface2);white-space:nowrap';
+  const tdBase='padding:9px 8px;text-align:center;border-bottom:1px solid var(--border)';
+  const head=`<tr>
+    <th style="${thBase};text-align:left;left:0;z-index:3;min-width:150px">GS Name</th>
+    ${monShort.map(mo=>`<th style="${thBase};text-align:center;min-width:50px">${mo}</th>`).join('')}
+    <th style="${thBase};text-align:center;min-width:56px;color:var(--accent)">YTD</th>
+  </tr>`;
+  const body=rows.map(row=>{
+    const cells=GSR_ALL_MONTHS.map(mo=>{
+      const v=GSR_SEED_MONTHS.includes(mo)?gsrCatByGS(row.gs,mo,cat).pct:null;
+      return (v==null)
+        ? `<td style="${tdBase};color:var(--dim)">%</td>`
+        : `<td style="${tdBase};font-weight:800;color:${gsrColor(v)}">${gsrPct(v)}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="padding:9px 12px;font-weight:700;white-space:nowrap;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--surface);z-index:1">${gsrEsc(row.gs)}</td>
+      ${cells}
+      <td style="${tdBase};font-weight:800;color:${gsrColor(row.ytd)}">${gsrPct(row.ytd)}</td>
+    </tr>`;
+  }).join('');
+  const headCard=`<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--border);border-left:4px solid ${gsrColor(net.pct)};border-radius:12px;padding:14px 18px;margin-bottom:16px">
+      <div><div style="font-size:1.4em;font-weight:800">${gsrEsc(label)}</div>
+        <div style="color:var(--muted);font-size:.82em">12-month trend by Growth Strategist</div></div>
+      <div style="margin-left:auto;text-align:right">
+        <div style="font-size:2.1em;font-weight:900;color:${gsrColor(net.pct)};line-height:1">${gsrPct(net.pct)}</div>
+        <div style="color:var(--muted);font-size:.82em"><b style="color:var(--text)">${net.green}/${net.meas}</b> · ${gsrMonthLabel(m)}</div></div></div>`;
+  return headCard +
+    `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow-x:auto">
+      <table style="border-collapse:collapse;width:100%;min-width:720px"><thead>${head}</thead><tbody>${body}</tbody></table>
+    </div>`;
 }
 function gsrStopCellsHTML(r,gs,sid,m){ const edit=gsrIsEdit();
   return '<div style="display:flex;flex-wrap:wrap;gap:5px">'+r.metrics.map(mx=>{ const c=mx.cells[sid]; let bg,fg,txt;
@@ -1970,59 +2055,101 @@ function gsrToggleCell(gs,sid,key,m){ const cur=gsrGetOverride(gs,sid,key,m); le
 
 // ── dashboard cards ──
 function gsrRenderFront(m){
-  const scores=gsrAllScores(m);
-  const avg=scores.length?scores.reduce((a,s)=>a+s.pct,0)/scores.length:0;
-  const totalStops=scores.reduce((a,s)=>a+s.stops,0);
-  // ── summary strip ──
-  const stat=(lbl,val,sub)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;flex:1;min-width:150px"><div style="font-size:.66em;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">${lbl}</div><div style="font-size:1.5em;font-weight:800;margin-top:2px">${val}</div>${sub?`<div style="font-size:.74em;color:var(--muted)">${sub}</div>`:''}</div>`;
-  const summary=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:22px">
-    ${stat('Growth Strategists', scores.length, 'ranked by score')}
-    ${stat('Network avg score', gsrPct(avg), gsrMonthLabel(m))}
-    ${stat('Total stops', totalStops.toLocaleString(), 'across territories')}
-    ${stat('Top performer', scores[0]?gsrEsc(scores[0].gs):'—', scores[0]?gsrPct(scores[0].pct):'')}
-  </div>`;
-  // ── podium (top 3): 2nd · 1st · 3rd ──
-  const podium=`<div style="display:flex;align-items:flex-end;justify-content:center;gap:16px;margin-bottom:26px;flex-wrap:wrap">`+
-    [1,0,2].map(idx=>{ const s=scores[idx]; if(!s) return ''; const first=idx===0; const col=gsrColor(s.pct);
-      return `<div onclick="gsrOpenModal('${gsrEsc(s.gs)}')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-top:4px solid ${col};border-radius:16px;padding:${first?'22px 24px':'16px 20px'};width:${first?'230px':'195px'};text-align:center;transition:transform .12s${first?';box-shadow:0 12px 34px rgba(0,200,255,.14)':''}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
-        <div style="font-size:${first?'1.7em':'1.4em'};font-weight:900;color:${first?'var(--accent)':'var(--muted)'};line-height:1">#${idx+1}</div>
-        <div style="font-weight:800;font-size:${first?'1.18em':'1.02em'};margin-top:6px">${gsrEsc(s.gs)}</div>
-        <div style="font-size:${first?'2.3em':'1.9em'};font-weight:900;color:${col};line-height:1.1;margin-top:2px">${gsrPct(s.pct)}</div>
-        <div style="font-size:.74em;color:var(--muted);margin-top:2px">${s.green}/${s.meas} · ${s.stops} stops</div>
-      </div>`; }).join('')+`</div>`;
-  // ── full standings (all 6) ──
-  const rows=scores.map((s,i)=>{ const col=gsrColor(s.pct); const prev=gsrSnapshot(s.gs,gsrPrevMonth(m)); const ytd=gsrYtdAvg(s.gs,m);
-    const mv=(prev&&prev.pct!=null)?(s.pct>prev.pct?'<span style="color:var(--green)">▲</span>':(s.pct<prev.pct?'<span style="color:var(--red)">▼</span>':'<span style="color:var(--muted)">–</span>')):'';
-    return `<div onclick="gsrOpenModal('${gsrEsc(s.gs)}')" style="cursor:pointer;display:flex;align-items:center;gap:14px;padding:12px 16px;${i===0?'':'border-top:1px solid var(--border)'}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-      <span style="width:26px;text-align:center;font-weight:800;font-size:1.1em;color:${i<3?'var(--accent)':'var(--muted)'}">${i+1}</span>
-      <span style="width:160px;font-weight:700;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${gsrEsc(s.gs)}</span>
-      <span style="flex:1;min-width:80px;height:10px;background:var(--surface2);border-radius:5px;overflow:hidden"><span style="display:block;height:100%;width:${Math.round(s.pct*100)}%;background:${col}"></span></span>
-      <span style="width:78px;text-align:right;font-weight:800;color:${col}">${gsrPct(s.pct)} ${mv}</span>
-      <span style="width:150px;text-align:right;font-size:.74em;color:var(--muted)">prev ${gsrPct(prev?prev.pct:null)} · YTD ${gsrPct(ytd)}</span>
-      <span style="color:var(--accent);font-size:.9em">›</span>
+  const scores=gsrAllScores(m);                       // current month, sorted by pct desc
+  const curByGS={}; scores.forEach(s=>curByGS[s.gs]=s.pct);
+  const prevM=gsrPrevMonth(m);
+  const cardBase='flex:1;min-width:210px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;transition:transform .12s,border-color .12s';
+  const hoverIn="this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)'";
+  const hoverOut="this.style.transform='';this.style.borderColor='var(--border)'";
+
+  // ── top row: 3 large dashboard cards ──
+  const bigCard=(lbl,val,valCol,subs)=>`<div style="${cardBase};min-height:132px" onmouseover="${hoverIn}" onmouseout="${hoverOut}">
+      <div style="font-family:var(--ff);font-size:.86em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">${lbl}</div>
+      <div style="font-size:2.4em;font-weight:900;line-height:1;color:${valCol}">${val}</div>
+      <div style="font-size:.78em;color:var(--muted);line-height:1.55">${subs.map(x=>`<div>${x}</div>`).join('')}</div>
     </div>`;
+  const retCur=gsrRetentionNetwork(RETENTION_BY_STOP), retPrev=gsrRetentionNetwork(RETENTION_BY_STOP_PREV);
+  const netCur=gsrNetAvg(m), netPrev=gsrNetAvgSnap(prevM), netYtd=gsrNetYtd(m);
+  const totalStops=gsrAllStopIds().length, terr=gsrGSList().length;
+  const topRow=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+    ${bigCard('Retention Rate', gsrPct(retCur), gsrColor(retCur), ['Prev '+gsrMonthLabel(prevM)+': '+gsrPct(retPrev)])}
+    ${bigCard('GS Network Average Score', gsrPct(netCur), gsrColor(netCur), ['Prev '+gsrMonthLabel(prevM)+': '+gsrPct(netPrev), 'YTD: '+gsrPct(netYtd)])}
+    ${bigCard('Total Active Stops', totalStops.toLocaleString(), 'var(--text)', ['<span style="color:var(--muted)">&#8211; 0 vs prev month</span>', terr+' territories'])}
+  </div>`;
+
+  // ── middle row: 3 category cards (score / possible · %) ──
+  const cur=gsrCatTotals(m), prev=gsrCatTotals(prevM);
+  const catCard=(lbl,key)=>{ const c=cur[key], p=prev[key], y=gsrCatYtd(key,m); const col=gsrColor(c.pct);
+    return `<div onclick="gsrOpenCatModal('${key}')" style="${cardBase};min-height:120px;cursor:pointer" onmouseover="${hoverIn}" onmouseout="${hoverOut}">
+      <div style="font-family:var(--ff);font-size:.86em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)">${lbl}</div>
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:2.1em;font-weight:900;line-height:1;color:${col}">${gsrPct(c.pct)}</span><span style="font-size:.98em;font-weight:700;color:var(--muted)">${c.green}/${c.meas}</span></div>
+      <div style="font-size:.78em;color:var(--muted);line-height:1.55"><div>Prev ${gsrMonthLabel(prevM)}: ${gsrPct(p.pct)}</div><div>YTD: ${gsrPct(y)}</div></div>
+    </div>`; };
+  const catRow=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px">
+    ${catCard('Fuel Average','fuel')}
+    ${catCard('Rewards','rewards')}
+    ${catCard('Vendor Programs','vendor')}
+  </div>`;
+
+  // ── standings grid: GS · Jan–Dec · YTD · Retention ──
+  const pctByMonth={}; GSR_SEED_MONTHS.forEach(mo=>{ pctByMonth[mo]={}; gsrAllScores(mo).forEach(s=>pctByMonth[mo][s.gs]=s.pct); });
+  const gsRows=gsrGSList().map(gs=>({ gs, cur:curByGS[gs], ytd:gsrYtdAvg(gs,m), ret:gsrRetentionGS(gs,RETENTION_BY_STOP) }));
+  gsRows.sort((a,b)=>((b.ytd==null?-1:b.ytd)-(a.ytd==null?-1:a.ytd))||((b.cur==null?-1:b.cur)-(a.cur==null?-1:a.cur))||a.gs.localeCompare(b.gs));
+  const monShort=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const thBase='padding:9px 8px;font-family:var(--ff);font-size:.84em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface2);white-space:nowrap';
+  const head=`<tr>
+    <th style="${thBase};text-align:left;left:0;z-index:3;min-width:150px">GS Name</th>
+    ${monShort.map(mo=>`<th style="${thBase};text-align:center;min-width:50px">${mo}</th>`).join('')}
+    <th style="${thBase};text-align:center;min-width:56px;color:var(--accent)">YTD</th>
+    <th style="${thBase};text-align:center;min-width:76px;color:var(--accent)">Retention Rate</th>
+  </tr>`;
+  const tdBase='padding:9px 8px;text-align:center;border-bottom:1px solid var(--border)';
+  const body=gsRows.map(row=>{
+    const cells=GSR_ALL_MONTHS.map(mo=>{ const v=pctByMonth[mo]?pctByMonth[mo][row.gs]:undefined;
+      return (v==null)
+        ? `<td style="${tdBase};color:var(--dim)">%</td>`
+        : `<td style="${tdBase};font-weight:800;color:${gsrColor(v)}">${gsrPct(v)}</td>`;
+    }).join('');
+    return `<tr onclick="gsrOpenModal('${gsrEsc(row.gs)}')" style="cursor:pointer" onmouseover="this.style.background='var(--surface2)';this.querySelector('.gsr-name').style.background='var(--surface2)'" onmouseout="this.style.background='';this.querySelector('.gsr-name').style.background='var(--surface)'">
+      <td class="gsr-name" style="padding:9px 12px;font-weight:700;white-space:nowrap;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--surface);z-index:1">${gsrEsc(row.gs)}</td>
+      ${cells}
+      <td style="${tdBase};font-weight:800;color:${gsrColor(row.ytd)}">${gsrPct(row.ytd)}</td>
+      <td style="${tdBase};font-weight:800;color:${gsrColor(row.ret)}">${gsrPct(row.ret)}</td>
+    </tr>`;
   }).join('');
-  const standings=`<div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">Full standings — #1 to #${scores.length}</div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden">${rows}</div>`;
+  const standings=`<div style="font-family:var(--ff);font-size:.9em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">Full standings</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow-x:auto">
+      <table style="border-collapse:collapse;width:100%;min-width:760px"><thead>${head}</thead><tbody>${body}</tbody></table>
+    </div>`;
+
   const grid=document.getElementById('gsr-cards');
-  if(grid) grid.innerHTML=summary+podium+standings;
+  if(grid) grid.innerHTML=topRow+catRow+standings;
 }
 
-// ── modal ──
-let gsrModalGS=null;
-function gsrOpenModal(gs){ gsrModalGS=gs; const m=gsrGetMonth();
+// ── modal ── (can show a GS scorecard OR a category drill-down, never both)
+let gsrModalGS=null, gsrModalKind=null, gsrModalCat=null; // kind: 'gs' | 'cat' | null
+function gsrOpenModal(gs){ gsrModalKind='gs'; gsrModalGS=gs; gsrModalCat=null; const m=gsrGetMonth();
   const ov=document.getElementById('gsr-modal');
   document.getElementById('gsr-modal-body').innerHTML=gsrScorecardHTML(gs,m);
   ov.style.display='flex';
 }
-function gsrCloseModal(){ gsrModalGS=null; const ov=document.getElementById('gsr-modal'); if(ov){ ov.style.display='none'; ov.classList.remove('full'); } const c=document.querySelector('.gsr-modal-card'); if(c) c.classList.remove('full'); }
+function gsrOpenCatModal(cat){ gsrModalKind='cat'; gsrModalCat=cat; gsrModalGS=null; const m=gsrGetMonth();
+  const ov=document.getElementById('gsr-modal');
+  document.getElementById('gsr-modal-body').innerHTML=gsrCatModalHTML(cat,m);
+  ov.style.display='flex';
+}
+function gsrCloseModal(){ gsrModalGS=null; gsrModalKind=null; gsrModalCat=null; const ov=document.getElementById('gsr-modal'); if(ov){ ov.style.display='none'; ov.classList.remove('full'); } const c=document.querySelector('.gsr-modal-card'); if(c) c.classList.remove('full'); }
 function gsrToggleFull(){ const ov=document.getElementById('gsr-modal'); const c=document.querySelector('.gsr-modal-card'); const on=!ov.classList.contains('full'); ov.classList.toggle('full',on); if(c) c.classList.toggle('full',on); const b=document.getElementById('gsr-full-btn'); if(b) b.innerHTML=on?'&#10066; Exit full screen':'&#9974; Full screen'; }
 function gsrRerender(){
-  const m=gsrGetMonth(), cal=new Date(), curCal=cal.getFullYear()+'-'+String(cal.getMonth()+1).padStart(2,'0');
-  if(m<curCal){ gsrGSList().forEach(gs=>{ try{ gsrSaveSnapshot(gsrCompute(gs,m)); }catch(e){} }); }
+  const cal=new Date(), curCal=cal.getFullYear()+'-'+String(cal.getMonth()+1).padStart(2,'0');
+  // Backfill snapshots for every closed seed month (not just the open one) so
+  // gsrYtdAvg / prev-month reads and the category cards are always complete.
+  GSR_SEED_MONTHS.filter(mo=>mo<curCal).forEach(mo=>{ gsrGSList().forEach(gs=>{ try{ gsrSaveSnapshot(gsrCompute(gs,mo)); }catch(e){} }); });
+  const m=gsrGetMonth();
   const badge=document.getElementById('gsr-period'); if(badge) badge.textContent=gsrMonthLabel(m);
   gsrRenderFront(m);
-  if(gsrModalGS){ document.getElementById('gsr-modal-body').innerHTML=gsrScorecardHTML(gsrModalGS,m); }
+  if(gsrModalKind==='gs' && gsrModalGS){ document.getElementById('gsr-modal-body').innerHTML=gsrScorecardHTML(gsrModalGS,m); }
+  else if(gsrModalKind==='cat' && gsrModalCat){ document.getElementById('gsr-modal-body').innerHTML=gsrCatModalHTML(gsrModalCat,m); }
 }
 
 // ── init ──
