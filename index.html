@@ -12483,7 +12483,7 @@ function crmToday(){ return new Date().toISOString().slice(0,10); }
 
 const CRM_STAGES   = ['Prospect','Contacted','Meeting Scheduled','Proposal Sent','Negotiation','Closed Won','Closed Lost'];
 const CRM_OWNERS   = ['Robert Watson','Angel Long'];
-const CRM_SOURCES  = ['Referral','Cold Call','Trade Show','Conference','Website','GS Lead','Existing Member','Other'];
+const CRM_SOURCES  = ['Referral','Cold Call','Trade Show','Conference','Website','GS Lead','Existing Member','Market Research','Other'];
 const CRM_PRIORITIES = ['High','Medium','Low'];
 const CRM_STAGE_COLORS = {'Prospect':'#64748b','Contacted':'#3b82f6','Meeting Scheduled':'#8b5cf6','Proposal Sent':'#f59e0b','Negotiation':'#f97316','Closed Won':'#22c55e','Closed Lost':'#ef4444'};
 
@@ -12701,6 +12701,11 @@ function crmBuildForm(l, defaultStage){
   h+='<div>'+lbl('Phone')+fi('cmf-phone','tel',l&&l.phone)+'</div>';
   h+='<div>'+lbl('Email')+fi('cmf-email','email',l&&l.email)+'</div>';
   h+='<div>'+lbl('State(s)')+fi('cmf-state','text',l&&l.state,'e.g. TX, OK')+'</div>';
+  h+='<div>'+lbl('Street')+fi('cmf-street','text',l&&l.street,'e.g. 1695 Silver City Hwy NW')+'</div>';
+  h+='<div>'+lbl('City')+fi('cmf-city','text',l&&l.city)+'</div>';
+  h+='<div>'+lbl('ZIP')+fi('cmf-zip','text',l&&l.zip)+'</div>';
+  h+='<div>'+lbl('Highway / Exit')+fi('cmf-exit','text',l&&l.exit,'e.g. Exit 82 / I-10')+'</div>';
+  h+='<div>'+lbl('Lanes of Travel')+fi('cmf-lanes','text',l&&l.lanes,'e.g. I-40 E-W corridor')+'</div>';
   h+='<div>'+lbl('Stage')+fs('cmf-stage',CRM_STAGES,l&&l.stage||defaultStage)+'</div>';
   h+='<div>'+lbl('Priority')+fs('cmf-priority',CRM_PRIORITIES,l&&l.priority||'Medium')+'</div>';
   h+='<div>'+lbl('Owner')+fs('cmf-owner',CRM_OWNERS,l&&l.owner||CRM_OWNERS[0])+'</div>';
@@ -12742,6 +12747,11 @@ function crmSaveLead(){
     phone:(document.getElementById('cmf-phone')?.value||'').trim(),
     email:(document.getElementById('cmf-email')?.value||'').trim(),
     state:(document.getElementById('cmf-state')?.value||'').trim(),
+    street:(document.getElementById('cmf-street')?.value||'').trim(),
+    city:(document.getElementById('cmf-city')?.value||'').trim(),
+    zip:(document.getElementById('cmf-zip')?.value||'').trim(),
+    exit:(document.getElementById('cmf-exit')?.value||'').trim(),
+    lanes:(document.getElementById('cmf-lanes')?.value||'').trim(),
     stage:document.getElementById('cmf-stage')?.value||'Prospect',
     priority:document.getElementById('cmf-priority')?.value||'Medium',
     owner:document.getElementById('cmf-owner')?.value||CRM_OWNERS[0],
