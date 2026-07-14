@@ -2296,6 +2296,7 @@ function renderCRMScheduler(){
     const allItems=[...items,...calls];
     da.innerHTML=allItems.length?allItems.map(item=>{
       let leadId,company,owner,isOvd,isTdy,date,labelExtra='';
+      const isLead=!!item.stage;
       if(item.stage){
         leadId=item.id;
         company=item.company;
@@ -2312,7 +2313,9 @@ function renderCRMScheduler(){
         isTdy=date===today;
         labelExtra=' · '+item.callType;
       }
-      return '<div style="background:'+(isOvd?'rgba(255,71,87,.07)':'rgba(255,214,10,.07)')+';border:1px solid '+(isOvd?'rgba(255,71,87,.3)':'rgba(255,214,10,.3)')+';border-radius:8px;padding:10px 12px;margin-bottom:6px">'+
+      const rowOnClick=isLead?' onclick="crmOpenLeadModal(\''+crmEsc(leadId)+'\')"':'';
+      const rowCursor=isLead?';cursor:pointer':'';
+      return '<div'+rowOnClick+' style="background:'+(isOvd?'rgba(255,71,87,.07)':'rgba(255,214,10,.07)')+';border:1px solid '+(isOvd?'rgba(255,71,87,.3)':'rgba(255,214,10,.3)')+';border-radius:8px;padding:10px 12px;margin-bottom:6px'+rowCursor+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:.8em;font-weight:700">'+crmEsc(company)+'</div>'+
         '<span style="font-size:.65em;font-weight:700;color:'+(isOvd?'var(--red)':'var(--yellow)')+'">'+( isOvd?'OVERDUE':'DUE TODAY')+'</span></div>'+
         '<div style="font-size:.68em;color:var(--muted);margin-top:3px">'+crmEsc(owner)+' &middot; '+date+labelExtra+'</div>'+
