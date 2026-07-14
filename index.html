@@ -13355,20 +13355,24 @@ function crmAdvanceStage(id){
 }
 
 // ── LEAD TABLE ──
-function renderCRMTable(){
-  const tbl=document.getElementById('crm-tbl'); if(!tbl) return;
-  const thead=tbl.querySelector('thead'), tbody=tbl.querySelector('tbody');
+function crmTableFilteredLeads(){
   const sf=document.getElementById('crm-stage-filter')?.value||'all';
   const of=document.getElementById('crm-owner-filter')?.value||'all';
   const pf=document.getElementById('crm-priority-filter')?.value||'all';
   const q=(document.getElementById('crm-search')?.value||'').toLowerCase();
-  const rows=CRM_LEADS.filter(l=>{
+  return CRM_LEADS.filter(l=>{
     if(sf!=='all'&&l.stage!==sf) return false;
     if(of!=='all'&&l.owner!==of) return false;
     if(pf!=='all'&&l.priority!==pf) return false;
     if(q&&![l.company,l.contact,l.state,l.city,l.notes].some(v=>(v||'').toLowerCase().indexOf(q)>=0)) return false;
     return true;
   });
+}
+
+function renderCRMTable(){
+  const tbl=document.getElementById('crm-tbl'); if(!tbl) return;
+  const thead=tbl.querySelector('thead'), tbody=tbl.querySelector('tbody');
+  const rows=crmTableFilteredLeads();
   thead.innerHTML='<tr><th>Company</th><th>Contact / Phone</th><th>Address</th><th>City</th><th>State</th><th>Priority</th><th>Locs</th><th></th></tr>';
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No leads match filters</td></tr>'; return; }
   tbody.innerHTML=rows.map(l=>{
@@ -13528,12 +13532,34 @@ function crmDeleteLead(id){
 }
 
 function crmExport(){
-  const hdr=['ID','Company','Contact','Phone','Email','Stage','Priority','Owner','State','Locations','Gallons','Deal Value','Follow-Up','Source','Notes'];
-  const rows=CRM_LEADS.map(l=>[l.id,l.company,l.contact,l.phone,l.email,l.stage,l.priority,l.owner,l.state,l.locations,l.estGallons,l.dealValue,l.followUp,l.source,'"'+(l.notes||'').replace(/"/g,'""')+'"']);
-  const csv=[hdr.join(','),...rows.map(r=>r.join(','))].join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
+  // Column order leads with the Lead Table's call-sheet fields, then spreadsheet extras.
+  const cols=[
+    ['Company',      l=>l.company],
+    ['Contact',      l=>l.contact],
+    ['Phone',        l=>l.phone],
+    ['Email',        l=>l.email],
+    ['Address',      l=>l.street],
+    ['City',         l=>l.city],
+    ['State',        l=>l.state],
+    ['ZIP',          l=>l.zip],
+    ['Highway/Exit', l=>l.exit],
+    ['Priority',     l=>l.priority],
+    ['Locations',    l=>l.locations],
+    ['Stage',        l=>l.stage],
+    ['Owner',        l=>l.owner],
+    ['Source',       l=>l.source],
+    ['Follow-Up',    l=>l.followUp],
+    ['Notes',        l=>l.notes]
+  ];
+  // RFC-4180 quoting: wrap any cell containing quote/comma/newline and double its quotes.
+  const cell=v=>{ const s=(v==null?'':String(v)); return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const leads=crmTableFilteredLeads();   // export exactly what the current filters show
+  const lines=[cols.map(c=>c[0]).join(',')].concat(leads.map(l=>cols.map(c=>cell(c[1](l))).join(',')));
+  const csv='﻿'+lines.join('\r\n');  // BOM so Excel reads UTF-8 correctly
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='roadys_crm_'+crmToday()+'.csv'; a.click();
+  a.download='roadys_crm_leads_'+crmToday()+'.csv'; a.click();
+  toast('Exported '+leads.length+' lead'+(leads.length===1?'':'s')+' to CSV');
 }
 
 // ── CALENDAR ──
