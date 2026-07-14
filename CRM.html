@@ -996,6 +996,49 @@ let crmCalYear = new Date().getFullYear();
 let crmCalMonth = new Date().getMonth();
 let crmSelectedTemplate = null;
 
+// ── In-modal call scheduler: data layer ──
+let CRM_CALLS = [];
+function crmCallsLoadLocal(){ try{ const s=localStorage.getItem('roadys_crm_calls'); if(s) CRM_CALLS=JSON.parse(s);}catch(e){} }
+function crmCallsSaveLocal(){ try{ localStorage.setItem('roadys_crm_calls', JSON.stringify(CRM_CALLS)); }catch(e){} }
+async function crmLoadCallsFromSupabase(){
+  try{ const sb=getRoadysSB(); const {data,error}=await sb.from('crm_scheduled_calls').select('*').order('scheduled_at',{ascending:true});
+    if(error) throw error;
+    CRM_CALLS=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company,owner:r.owner,callType:r.call_type,scheduledAt:r.scheduled_at,status:r.status,note:r.note,source:r.source}));
+    crmCallsSaveLocal();
+  }catch(e){ console.warn('calls load',e); }
+}
+async function crmSaveCallToSupabase(c){
+  try{ const sb=getRoadysSB(); const row={id:c.id,lead_id:c.leadId,company:c.company,owner:c.owner,call_type:c.callType,scheduled_at:c.scheduledAt,status:c.status,note:c.note,source:c.source};
+    const {error}=await sb.from('crm_scheduled_calls').upsert(row,{onConflict:'id'}); if(error) throw error;
+  }catch(e){ console.warn('call save',e); toast('Call saved locally (cloud sync failed)','terr'); }
+}
+
+// ── In-modal call scheduler: mini-calendar (self-contained; no dependency on the Calendar tab) ──
+function crmMiniCalendar(hostId, onPick){
+  const host=document.getElementById(hostId); if(!host) return;
+  let y=new Date().getFullYear(), m=new Date().getMonth(), sel=null;
+  function draw(){
+    const first=new Date(y,m,1), start=first.getDay(), days=new Date(y,m+1,0).getDate();
+    const today=new Date(); today.setHours(0,0,0,0);
+    let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <button type="button" class="btn" data-nav="-1">‹</button>
+      <b style="font-size:.85em">${first.toLocaleString('en-US',{month:'long'})} ${y}</b>
+      <button type="button" class="btn" data-nav="1">›</button></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.72em;text-align:center">`;
+    ['S','M','T','W','T','F','S'].forEach(d=>h+=`<div style="color:var(--muted)">${d}</div>`);
+    for(let i=0;i<start;i++) h+='<div></div>';
+    for(let d=1;d<=days;d++){ const dt=new Date(y,m,d); const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const past=dt<today; const isSel=sel===iso;
+      h+=`<div data-day="${iso}" style="padding:5px 0;border-radius:5px;cursor:${past?'not-allowed':'pointer'};
+        ${isSel?'background:var(--accent);color:#fff;':past?'color:var(--faint);':'background:var(--surface-2,#1c2431);'}">${d}</div>`; }
+    h+='</div>'; host.innerHTML=h;
+    host.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{ m+=+b.dataset.nav; if(m<0){m=11;y--;} if(m>11){m=0;y++;} draw(); });
+    host.querySelectorAll('[data-day]').forEach(c=>c.onclick=()=>{ const iso=c.dataset.day; if(new Date(iso)<today) return; sel=iso; draw(); onPick(iso); });
+  }
+  draw();
+}
+function crmTimeOptions(){ let o=''; for(let h=7;h<=19;h++) for(const mm of ['00','15','30','45']){ const hh=String(h).padStart(2,'0'); const d=new Date(2000,0,1,h,+mm); o+=`<option value="${hh}:${mm}">${d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</option>`; } return o; }
+
 function crmLoad(){
   try{ const s=localStorage.getItem('roadys_crm_v2'); if(s) CRM_LEADS=JSON.parse(s); } catch(e){}
   if(!CRM_LEADS.length) CRM_LEADS = crmSampleData();
@@ -1900,6 +1943,7 @@ function crmOpenLeadModal(id, defaultStage){
   document.getElementById('crm-modal-title').textContent=lead?'EDIT LEAD \u2014 '+lead.company:'ADD NEW LEAD';
   document.getElementById('crm-modal-body').innerHTML=crmBuildForm(lead, defaultStage||'Prospect');
   document.getElementById('crm-modal').style.display='flex';
+  if(document.getElementById('cmf-sched-cal')){ crmMiniCalendar('cmf-sched-cal', iso=>{ document.getElementById('cmf-sched-date').value=iso; }); crmRenderLeadCalls(id); }
 }
 function crmCloseModal(){
   document.getElementById('crm-modal').style.display='none';
@@ -1924,6 +1968,21 @@ function crmBuildForm(l, defaultStage){
       '<div style="font-size:.63em;color:var(--muted)">'+crmEsc(a.date)+' &middot; '+crmEsc(a.by)+'</div></div></div>'
     ).join('');
   }
+  const _si = CRM_STAGES.indexOf((l&&l.stage)||defaultStage);
+  const _showSched = _si>=1 || (((l&&l.stage)||defaultStage)==='Prospect' && ((l&&l.phone)||'').trim());
+  const _sched = !_showSched ? '' : `
+<div id="cmf-sched-section" style="grid-column:1/-1;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+  <div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:10px">📞 Schedule a Call</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <label>With who<select id="cmf-sched-who">${['Unassigned',...CRM_OWNERS].map(o=>`<option ${o===((l&&l.owner)||'Unassigned')?'selected':''}>${o}</option>`).join('')}</select></label>
+    <label>Call type<select id="cmf-sched-type">${['Initial Call','Follow-up Call','3rd Call','Call Back'].map(t=>`<option>${t}</option>`).join('')}</select></label>
+    <div><label>Date</label><div id="cmf-sched-cal" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px"></div><input type="hidden" id="cmf-sched-date"></div>
+    <div><label>Time<select id="cmf-sched-time">${crmTimeOptions()}</select></label>
+      <label style="margin-top:8px;display:block">Note<input id="cmf-sched-note" placeholder="optional"></label>
+      <button type="button" class="btn btn-accent" style="margin-top:8px" onclick="crmScheduleCall('${(l&&l.id)||''}')">Schedule Call</button></div>
+  </div>
+  <div id="cmf-lead-calls" style="margin-top:12px"></div>
+</div>`;
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
   h+='<div style="grid-column:1/-1">'+lbl('Company Name *')+fi('cmf-company','text',l&&l.company,'e.g. Mountain Fuel Centers')+'</div>';
   h+='<div>'+lbl('Contact Name')+fi('cmf-contact','text',l&&l.contact)+'</div>';
@@ -1944,6 +2003,7 @@ function crmBuildForm(l, defaultStage){
   h+='<div>'+lbl('Est. Deal Value ($/yr)')+fi('cmf-deal','number',l&&l.dealValue||0)+'</div>';
   h+='<div>'+lbl('Next Follow-Up')+fi('cmf-followup','date',l&&l.followUp)+'</div>';
   h+='<div style="grid-column:1/-1">'+lbl('Notes')+'<textarea id="cmf-notes" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.85em;resize:vertical;font-family:inherit">'+crmEsc(l&&l.notes||'')+'</textarea></div>';
+  h+=_sched;
   h+='</div>';
   if(l){
     h+='<div style="margin-bottom:14px">';
@@ -1962,6 +2022,34 @@ function crmBuildForm(l, defaultStage){
   h+='<button class="btn btn-accent" onclick="crmSaveLead()">\uD83D\uDCBE '+(l?'Update':'Save Lead')+'</button>';
   h+='</div>';
   return h;
+}
+
+// ── In-modal call scheduler: schedule / render / cancel ──
+function crmScheduleCall(leadId){
+  const date=document.getElementById('cmf-sched-date').value;
+  const time=document.getElementById('cmf-sched-time').value;
+  if(!date){ toast('Pick a date','terr'); return; }
+  const lead=CRM_LEADS.find(l=>l.id===leadId)||{};
+  const c={ id:'call_'+Date.now(), leadId:leadId||lead.id||('CRM-'+Date.now()), company:lead.company||'',
+    owner:document.getElementById('cmf-sched-who').value, callType:document.getElementById('cmf-sched-type').value,
+    scheduledAt:new Date(`${date}T${time}:00`).toISOString(), status:'scheduled', note:document.getElementById('cmf-sched-note').value||'', source:'manual' };
+  CRM_CALLS.push(c); crmCallsSaveLocal(); crmSaveCallToSupabase(c);
+  if(lead.activity){ lead.activity.unshift({text:`Scheduled ${c.callType} for ${new Date(c.scheduledAt).toLocaleString()}`,date:new Date().toISOString().slice(0,10),by:c.owner,type:'call'}); crmSave&&crmSave(); }
+  toast('Call scheduled','tok'); crmRenderLeadCalls(leadId);
+  if(typeof renderCRMCalendar==='function') renderCRMCalendar();
+}
+function crmRenderLeadCalls(leadId){
+  const host=document.getElementById('cmf-lead-calls'); if(!host) return;
+  const list=CRM_CALLS.filter(c=>c.leadId===leadId && c.status!=='cancelled').sort((a,b)=>a.scheduledAt<b.scheduledAt?-1:1);
+  host.innerHTML = list.length? '<div style="font-size:.78em;color:var(--muted);margin-bottom:4px">Scheduled calls</div>'+list.map(c=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:4px;font-size:.8em">
+      <span>${new Date(c.scheduledAt).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})} — ${c.callType} (${c.owner})</span>
+      <button type="button" class="btn" onclick="crmCancelCall('${c.id}','${leadId}')">Cancel</button></div>`).join('') : '';
+}
+function crmCancelCall(callId, leadId){
+  const c=CRM_CALLS.find(x=>x.id===callId); if(!c) return; c.status='cancelled';
+  crmCallsSaveLocal(); crmSaveCallToSupabase(c); crmRenderLeadCalls(leadId);
+  if(typeof renderCRMCalendar==='function') renderCRMCalendar(); toast('Call cancelled','tok');
 }
 
 function crmSaveLead(){
@@ -2475,6 +2563,7 @@ function crmDeepLink(){
 function crmInit(){
   const root=document.getElementById('crm-root'); if(root) root.style.display='';
   pgCRM();
+  crmCallsLoadLocal(); crmLoadCallsFromSupabase();
   crmLoadFromSupabase().then(loaded=>{
     if(loaded){
       renderCRMKPIs(); crmFillDropdowns(); renderCRMKanban();
