@@ -472,7 +472,7 @@ git commit -m "feat(crm): crm-emails edge function — reminders + availability 
 
 - [ ] **Step 1: Create the file** with the exact content of spec **Appendix D** (`create extension` for `pg_cron`/`pg_net`; two `cron.schedule` calls with `<PROJECT_REF>` + `<CRON_SECRET>` placeholders; management comments).
 
-- [ ] **Step 2: Verify (documentation-level)** — the file must clearly state that `<PROJECT_REF>` and `<CRON_SECRET>` are replaced before running, and that `0 12 * * *` UTC = 07:00 CDT / 06:00 CST. (Actual scheduling happens in Task B6.)
+- [ ] **Step 2: Verify (documentation-level)** — the file must clearly state that `<PROJECT_REF>` and `<CRON_SECRET>` are replaced before running, and that `0 13 * * *` UTC = 07:00 MDT / 06:00 MST (both CRM owners — Robert Watson, Angel Long — are Mountain time). (Actual scheduling happens in Task B6.)
 
 - [ ] **Step 3: Commit**
 ```bash
@@ -573,7 +573,7 @@ git commit -m "feat(crm): send-availability action wiring in lead modal"
 **Files:**
 - Create: `docs/crm-email-setup.md`
 
-- [ ] **Step 1: Write the runbook** — reproduce spec Section 6 (setup checklist) as an actionable doc: run `sql/2026-07-14-crm-scheduled-calls.sql`; fill `crm_owner_emails`; create Resend account + verify domain (DNS SPF/DKIM); run `sql/2026-07-14-crm-booking.sql`; create/deploy the `crm-emails` edge function; set secrets `RESEND_API_KEY`/`FROM_EMAIL`/`APP_BASE_URL`/`CRON_SECRET`; enable `pg_cron`+`pg_net`; run `sql/2026-07-14-crm-cron.sql` with the project ref + secret; run the Section-7 tests. Include the two **confirm-before-Phase-B** open items (timezone hardcode vs per-owner; sending domain `roadys.com` vs `kingdom-creatives.com` + DNS access).
+- [ ] **Step 1: Write the runbook** — reproduce spec Section 6 (setup checklist) as an actionable doc: run `sql/2026-07-14-crm-scheduled-calls.sql`; fill `crm_owner_emails` (including the `timezone='America/Denver'` correction for the Phase-A-seeded rows); create a Resend account **for `roadys.com`** + verify the domain (DNS SPF/DKIM — access confirmed available); run `sql/2026-07-14-crm-booking.sql`; create/deploy the `crm-emails` edge function; set secrets `RESEND_API_KEY`/`FROM_EMAIL` (`crm@roadys.com`)/`APP_BASE_URL`/`CRON_SECRET`; enable `pg_cron`+`pg_net`; run `sql/2026-07-14-crm-cron.sql` with the project ref + secret; run the Section-7 tests. Both **confirm-before-Phase-B** decisions are resolved (spec §7a, 2026-07-14): timezone hardcoded to `America/Denver` (both owners are Mountain time), sending domain is `roadys.com`.
 
 - [ ] **Step 2: Commit**
 ```bash

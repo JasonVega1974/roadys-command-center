@@ -1,0 +1,143 @@
+<!--
+  Roady's — Public Call-Booking Page
+  -------------------------------------------------------------
+  Public, token-gated scheduling page for CRM prospects. RPC-only
+  against Supabase (resolve_booking_offer / submit_booking_choice) —
+  this page holds NO direct grants on crm_booking_offers and never
+  queries the table directly. Built for Task B4 (Phase 10 CRM
+  scheduling). Visual shell/tokens reused from truck-stop-optin.html.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roady's — Book a Call</title>
+<style>
+:root{
+  --o-bg:#0e1117; --o-surface:#161c26; --o-surface-2:#1c2431; --o-line:#2a3547;
+  --o-text:#e8edf4; --o-muted:#8a98ac; --o-faint:#5c6a7e;
+  --o-amber:#f5a524; --o-green:#34d399; --o-green-soft:#10311f; --o-red:#f87171;
+  --o-radius:12px; --o-sans:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--o-sans);color:var(--o-text);
+  background:radial-gradient(1100px 560px at 80% -10%,#16202e 0,transparent 60%),var(--o-bg);
+  min-height:100vh;line-height:1.45;font-size:14px;-webkit-font-smoothing:antialiased}
+.opt-wrap{max-width:640px;margin:0 auto;padding:24px 18px 80px}
+.opt-head h1{font-size:20px;margin:0 0 2px;letter-spacing:-.2px}
+.opt-head .eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--o-faint);font-weight:700}
+.opt-sub{font-size:12.5px;color:var(--o-muted);margin-top:2px}
+.opt-card{background:var(--o-surface);border:1px solid var(--o-line);border-radius:var(--o-radius);padding:16px 16px 14px;margin-top:18px}
+#slots{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.slot{background:var(--o-bg);border:1px solid var(--o-line);color:var(--o-text);border-radius:8px;
+  padding:12px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:left;
+  transition:border-color .15s,color .15s}
+.slot:hover{border-color:var(--o-amber);color:var(--o-amber)}
+.slot:disabled{opacity:.5;cursor:default}
+.opt-msg{margin-top:14px;font-size:13px;color:var(--o-muted);min-height:16px}
+.opt-msg.err{color:var(--o-red)}
+</style>
+</head>
+<body>
+<div class="opt-wrap">
+  <div class="opt-head">
+    <div class="eyebrow">Roady's Network</div>
+    <h1 id="title">Book a Call</h1>
+    <div class="opt-sub" id="sub">Pick a time that works for you and we'll call you then.</div>
+  </div>
+  <div class="opt-card">
+    <div id="slots"></div>
+    <div id="msg" class="opt-msg"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   SUPABASE — RPC ONLY. This page calls resolve_booking_offer and
+   submit_booking_choice (both SECURITY DEFINER) and holds NO direct
+   grants on crm_booking_offers. Setup copied verbatim from
+   truck-stop-optin.html / gs-command-center.html (same project/anon key).
+   ===================================================================== */
+const ROADYS_SB_URL = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
+const ROADYS_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
+let _sbClient = null;
+function ensureSupabaseLib(){
+  if(typeof window !== 'undefined' && window.supabase) return Promise.resolve(window.supabase);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+    s.onload = () => window.supabase ? resolve(window.supabase) : reject(new Error('supabase-js loaded but window.supabase undefined'));
+    s.onerror = () => reject(new Error('supabase-js CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+function getRoadysSB(){
+  if(_sbClient) return _sbClient;
+  if(typeof window !== 'undefined' && window.supabase){
+    try { _sbClient = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON); return _sbClient; }
+    catch(e){ console.warn('getRoadysSB: ' + e.message); return null; }
+  }
+  return null;
+}
+let sb=null; // set once the lib has loaded, in init()
+
+/* ---------- token + messaging ---------- */
+const token=new URLSearchParams(location.search).get('token');
+function byId(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function show(text, isErr){
+  const slots=byId('slots'); if(slots) slots.innerHTML='';
+  const msg=byId('msg');
+  if(msg){ msg.textContent=text; msg.className='opt-msg'+(isErr?' err':''); }
+}
+function reason(r){ return r==='booked'?'This time was already booked. Thank you!':r==='expired'?'This scheduling link has expired.':'Sorry, this link is no longer valid.'; }
+
+/* ---------- resolve + render ---------- */
+async function load(){
+  if(!token){ show('Invalid link.', true); return; }
+  show('Loading available times…');
+  const {data,error}=await sb.rpc('resolve_booking_offer',{p_token:token});
+  if(error||!data?.ok){ show(reason(data?.reason), true); return; }
+  byId('msg').textContent='';
+  renderSlots(data.company, data.slots);
+}
+function renderSlots(company, slots){
+  document.getElementById('title').textContent=`Pick a time to talk — ${company||'Roady\'s'}`;
+  document.getElementById('slots').innerHTML=(slots||[]).map(s=>{
+    const d=new Date(s); return `<button type="button" class="slot" data-slot="${esc(s)}">${esc(d.toLocaleString('en-US',{weekday:'long',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</button>`;
+  }).join('');
+  document.querySelectorAll('.slot').forEach(b=>b.onclick=()=>choose(b.dataset.slot));
+}
+
+/* ---------- submit + confirm ---------- */
+async function choose(slotIso){
+  document.querySelectorAll('.slot').forEach(b=>b.disabled=true);
+  const {data,error}=await sb.rpc('submit_booking_choice',{p_token:token,p_slot:slotIso});
+  if(error||!data?.ok){ show(reason(data?.reason), true); return; }
+  // Best-effort confirmation email — the booking itself already succeeded via the
+  // RPC above, so a failure here (edge function not yet deployed, etc.) must never
+  // block the success message shown to the prospect.
+  try{ await sb.functions.invoke('crm-emails',{body:{action:'send_confirmation',token}}); }catch(e){}
+  show(`You're booked for ${new Date(slotIso).toLocaleString()} — a confirmation email is on its way.`);
+}
+
+/* ---------- init ---------- */
+async function init(){
+  try{ await ensureSupabaseLib(); }catch(e){ show('Could not reach the scheduling service. Please try again later.', true); return; }
+  sb=getRoadysSB();
+  if(!sb){ show('Could not reach the scheduling service. Please try again later.', true); return; }
+  await load();
+}
+
+if(typeof document!=='undefined'){
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+}
+})();
+</script>
+</body>
+</html>
