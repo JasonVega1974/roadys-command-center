@@ -738,6 +738,17 @@ body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-fa
           </select>
         </div>
         <div class="impl-form-group"><label>Start Date *</label><input type="date" id="implEditStartDate" required /></div>
+        <div class="impl-form-group"><label>Growth Strategist</label>
+          <select id="implEditGS">
+            <option value="">Auto (by state / rules)</option>
+            <option value="Logan">Logan</option>
+            <option value="Burt Newman">Burt Newman</option>
+            <option value="Maria Coleman">Maria Coleman</option>
+            <option value="Shannon Bumbalough">Shannon Bumbalough</option>
+            <option value="Stefanie Ritter">Stefanie Ritter</option>
+            <option value="Steph Leslie">Steph Leslie</option>
+          </select>
+        </div>
         <div class="impl-modal-actions">
           <button type="button" class="impl-btn impl-btn-secondary" onclick="implCloseEditSiteModal()">Cancel</button>
           <button type="button" class="impl-btn impl-btn-primary" onclick="implHandleEditSite()">Save Changes</button>
@@ -4697,6 +4708,7 @@ async function implFlushToSupabase(el){
       id:           s.id,
       location:     s.location||'',
       project_type: s.projectType||'',
+      gs_override:  s.gsOverride||'',
       start_date:   s.startDate||'',
       tasks:        s.tasks||[],
       updated_at:   new Date().toISOString(),
@@ -5364,6 +5376,8 @@ const STOP_STATE_MAP = {
 };
 
 function implGetSiteGS(site){
+  // Manual per-site override (set in Edit Site) wins over all auto-derivation.
+  if(site.gsOverride) return site.gsOverride;
   const loc = site.location || '';
   // Site-name GS overrides — win before state lookup. Duck Thru locations span
   // several states (Southeast/Northeast) but are all handled by Stefanie Ritter.
@@ -5514,6 +5528,7 @@ function implOpenEditSiteModal(sid){
   document.getElementById('implEditProjectType').value=s.projectType||'';
   const d=implParseDate(s.startDate);
   document.getElementById('implEditStartDate').value = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+  document.getElementById('implEditGS').value=s.gsOverride||'';
   document.getElementById('implEditSiteModal').classList.add('active');
 }
 function implCloseEditSiteModal(){document.getElementById('implEditSiteModal').classList.remove('active');}
@@ -5529,6 +5544,7 @@ async function implHandleEditSite(){
   if(ptChanged && !confirm(`Changing project type from "${s.projectType}" to "${pt}" will reset the task list to the new template. Existing task progress will be lost. Continue?`)) return;
   s.location=loc;
   s.startDate=sd;
+  s.gsOverride=document.getElementById('implEditGS').value;
   if(ptChanged){
     s.projectType=pt;
     const tplTasks=implTplGet(pt);
@@ -5782,6 +5798,7 @@ function implInit(){
           id:           s.id,
           location:     s.location||'',
           project_type: s.projectType||'',
+          gs_override:  s.gsOverride||'',
           start_date:   s.startDate||'',
           tasks:        s.tasks||[],
           updated_at:   new Date().toISOString(),
@@ -7915,6 +7932,7 @@ async function implLoadFromSupabase(){
         id:          r.id,
         location:    r.location||'',
         projectType: r.project_type||'',
+        gsOverride:  r.gs_override||'',
         startDate:   r.start_date||'',
         tasks:       r.tasks||[],
       }));
@@ -7949,6 +7967,7 @@ async function implSaveSiteToSupabase(site){
       id:           site.id,
       location:     site.location||site.name||'',
       project_type: site.projectType||'',
+      gs_override:  site.gsOverride||'',
       start_date:   site.startDate||'',
       tasks:        site.tasks||[],
       updated_at:   new Date().toISOString(),
@@ -7973,6 +7992,7 @@ async function implMigrateAllToSupabase(){
       id:           site.id,
       location:     site.location||site.name||'',
       project_type: site.projectType||'',
+      gs_override:  site.gsOverride||'',
       start_date:   site.startDate||'',
       tasks:        site.tasks||[],
       updated_at:   new Date().toISOString(),
