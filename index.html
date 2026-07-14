@@ -77,6 +77,7 @@ a{color:var(--accent);text-decoration:none;}
 
 /* MEMBER DIRECTORY TABLES */
 .mem-tbl{width:100%;border-collapse:collapse;font-size:.78em;}
+#crm-tbl{font-size:.95em;}
 .mem-tbl thead th{position:sticky;top:0;background:var(--bg);color:var(--muted);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;padding:10px 12px;text-align:left;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:700;}
 .mem-tbl thead th:hover{color:var(--accent);}
 .mem-tbl thead th .sort-arrow{opacity:.3;margin-left:3px;font-size:.9em;}
@@ -1213,6 +1214,7 @@ R01180,no,yes,yes,no,yes,no</code>
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
           <input id="crm-kb-search" type="text" placeholder="🔍 Search pipeline..." oninput="renderCRMKanban()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 12px;font-size:.82em;">
           <select id="crm-kb-owner" onchange="renderCRMKanban()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
+          <select id="crm-kb-state" onchange="renderCRMKanban()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All States</option></select>
           <button class="btn btn-accent" onclick="crmOpenLeadModal(null)" style="font-size:.8em">➕ Add Lead</button>
         </div>
         <div id="crm-kanban" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:400px"></div>
@@ -13258,6 +13260,13 @@ function crmFillDropdowns(){
     el.innerHTML='<option value="all">All Owners</option>'+CRM_OWNERS.map(o=>'<option value="'+crmEsc(o)+'">'+crmEsc(o)+'</option>').join('');
     if(cur) el.value=cur;
   });
+  const stateEl=document.getElementById('crm-kb-state');
+  if(stateEl){
+    const curSt=stateEl.value;
+    const states=[...new Set(CRM_LEADS.map(l=>(l.state||'').trim()).filter(Boolean))].sort();
+    stateEl.innerHTML='<option value="all">All States</option>'+states.map(s=>'<option value="'+crmEsc(s)+'">'+crmEsc(s)+'</option>').join('');
+    if(curSt) stateEl.value=curSt;
+  }
   const sf=document.getElementById('crm-stage-filter'); if(!sf) return;
   const cur=sf.value;
   sf.innerHTML='<option value="all">All Stages</option>'+CRM_STAGES.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
@@ -13291,15 +13300,17 @@ function renderCRMKPIs(){
 function renderCRMKanban(){
   const kb=document.getElementById('crm-kanban'); if(!kb) return;
   const ownerF=(document.getElementById('crm-kb-owner')?.value)||'all';
+  const stateF=(document.getElementById('crm-kb-state')?.value)||'all';
   const q=((document.getElementById('crm-kb-search')?.value)||'').toLowerCase();
   let html='';
   CRM_STAGES.forEach(stage=>{
     const cards=CRM_LEADS.filter(l=>{
       if(l.stage!==stage) return false;
       if(ownerF!=='all'&&l.owner!==ownerF) return false;
+      if(stateF!=='all'&&(l.state||'').trim()!==stateF) return false;
       if(q&&l.company.toLowerCase().indexOf(q)<0&&(l.contact||'').toLowerCase().indexOf(q)<0) return false;
       return true;
-    });
+    }).sort((a,b)=>(a.state||'').localeCompare(b.state||'')||(a.company||'').localeCompare(b.company||''));
     const stageGal=cards.reduce((s,l)=>s+(l.estGallons||0),0);
     const col=CRM_STAGE_COLORS[stage];
     const isWon=stage==='Closed Won', isLost=stage==='Closed Lost';
@@ -13358,25 +13369,18 @@ function renderCRMTable(){
     if(q&&![l.company,l.contact,l.state,l.city,l.notes].some(v=>(v||'').toLowerCase().indexOf(q)>=0)) return false;
     return true;
   });
-  thead.innerHTML='<tr><th>ID</th><th>Company</th><th>Contact</th><th>Location</th><th>Stage</th><th>Priority</th><th>Owner</th><th>Locs</th><th>Gallons</th><th>Deal $</th><th>Follow-Up</th><th></th></tr>';
-  if(!rows.length){ tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No leads match filters</td></tr>'; return; }
-  const today=crmToday();
+  thead.innerHTML='<tr><th>Company</th><th>Contact / Phone</th><th>Address</th><th>City</th><th>State</th><th>Priority</th><th>Locs</th><th></th></tr>';
+  if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No leads match filters</td></tr>'; return; }
   tbody.innerHTML=rows.map(l=>{
-    const overdue=l.followUp&&l.followUp<today&&l.stage!=='Closed Won'&&l.stage!=='Closed Lost';
-    const col=CRM_STAGE_COLORS[l.stage]||'var(--muted)';
     const pr=l.priority==='High'?'var(--red)':l.priority==='Medium'?'var(--yellow)':'var(--muted)';
     return '<tr>'+
-      '<td style="font-family:monospace;font-size:.72em;color:var(--muted)">'+crmEsc(l.id)+'</td>'+
       '<td style="font-weight:700">'+crmEsc(l.company)+'</td>'+
       '<td><div>'+crmEsc(l.contact)+'</div><div style="font-size:.7em;color:var(--muted)">'+crmEsc(l.phone)+'</div></td>'+
-      '<td><span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:.72em;font-weight:700;background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+crmEsc(l.stage)+'</span></td>'+
+      '<td style="font-size:.82em">'+(l.street?crmEsc(l.street):'&mdash;')+'</td>'+
+      '<td style="font-size:.82em">'+(l.city?crmEsc(l.city):'&mdash;')+'</td>'+
+      '<td style="font-size:.82em">'+(l.state?crmEsc(l.state):'&mdash;')+'</td>'+
       '<td style="color:'+pr+';font-weight:700;font-size:.78em">'+crmEsc(l.priority)+'</td>'+
-      '<td style="font-size:.82em">'+crmEsc(l.owner)+'</td>'+
-      '<td style="font-size:.78em"><div>'+crmEsc(l.city)+(l.city&&l.state?', ':'')+crmEsc(l.state)+'</div>'+(l.exit?'<div style="font-size:.7em;color:var(--muted)">'+crmEsc(l.exit)+'</div>':'')+'</td>'+
       '<td style="text-align:center">'+(l.locations||'&mdash;')+'</td>'+
-      '<td style="text-align:right;font-weight:600">'+(l.estGallons?l.estGallons.toLocaleString():'&mdash;')+'</td>'+
-      '<td style="text-align:right;color:var(--green);font-weight:600">'+(l.dealValue?'$'+Math.round(l.dealValue/1000)+'K':'&mdash;')+'</td>'+
-      '<td style="'+(overdue?'color:var(--red);font-weight:700':'')+'">'+(l.followUp||'&mdash;')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn" style="font-size:.7em;padding:3px 8px" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')">&#9998;</button> '+
         '<button class="btn" style="font-size:.7em;padding:3px 8px;color:var(--red)" onclick="crmDeleteLead(\''+crmEsc(l.id)+'\')">&#128465;</button>'+
@@ -13428,7 +13432,7 @@ function crmBuildForm(l, defaultStage){
   h+='<div>'+lbl('Lanes of Travel')+fi('cmf-lanes','text',l&&l.lanes,'e.g. I-40 E-W corridor')+'</div>';
   h+='<div>'+lbl('Stage')+fs('cmf-stage',CRM_STAGES,l&&l.stage||defaultStage)+'</div>';
   h+='<div>'+lbl('Priority')+fs('cmf-priority',CRM_PRIORITIES,l&&l.priority||'Medium')+'</div>';
-  h+='<div>'+lbl('Owner')+fs('cmf-owner',CRM_OWNERS,l&&l.owner||CRM_OWNERS[0])+'</div>';
+  h+='<div>'+lbl('Owner')+'<select id="cmf-owner" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.85em"><option value=""'+(l&&l.owner?'':' selected')+'>Unassigned</option>'+CRM_OWNERS.map(o=>'<option value="'+crmEsc(o)+'"'+(l&&l.owner===o?' selected':'')+'>'+crmEsc(o)+'</option>').join('')+'</select></div>';
   h+='<div>'+lbl('Source')+fs('cmf-source',CRM_SOURCES,l&&l.source||'Cold Call')+'</div>';
   h+='<div>'+lbl('# Locations')+fi('cmf-locs','number',l&&l.locations||1)+'</div>';
   h+='<div>'+lbl('Est. Monthly Gallons')+fi('cmf-gallons','number',l&&l.estGallons||0)+'</div>';
@@ -13474,7 +13478,7 @@ function crmSaveLead(){
     lanes:(document.getElementById('cmf-lanes')?.value||'').trim(),
     stage:document.getElementById('cmf-stage')?.value||'Prospect',
     priority:document.getElementById('cmf-priority')?.value||'Medium',
-    owner:document.getElementById('cmf-owner')?.value||CRM_OWNERS[0],
+    owner:document.getElementById('cmf-owner')?.value||'',
     source:document.getElementById('cmf-source')?.value||'Other',
     locations:parseInt(document.getElementById('cmf-locs')?.value)||1,
     estGallons:parseInt(document.getElementById('cmf-gallons')?.value)||0,
