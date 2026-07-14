@@ -1040,7 +1040,7 @@ function renderCRMNotifications(hostId='crm-notifications'){
     const t=new Date(c.scheduledAt).getTime();
     let cls=''; if(t<now+hour) cls='crm-note-red'; else if(t<=endToday.getTime()) cls='crm-note-amber';
     const when=new Date(c.scheduledAt).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'});
-    return `<div class="crm-note-row ${cls}"><span><b>${c.company||c.leadId}</b> — ${c.callType} · ${when} · ${c.owner||'Unassigned'}</span>
+    return `<div class="crm-note-row ${cls}"><span><b>${crmEsc(c.company||c.leadId)}</b> — ${crmEsc(c.callType)} · ${when} · ${crmEsc(c.owner||'Unassigned')}</span>
       <button type="button" class="btn" onclick="crmNotifOpen('${crmEsc(c.leadId)}')">Open →</button></div>`;
   }).join('');
   host.innerHTML = rows || '<div style="color:var(--muted);font-size:.82em">No calls scheduled.</div>';

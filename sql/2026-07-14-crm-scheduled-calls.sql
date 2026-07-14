@@ -49,6 +49,7 @@ alter table public.crm_owner_emails enable row level security;
 create policy crm_owner_read   on public.crm_owner_emails for select using (true);
 create policy crm_owner_insert on public.crm_owner_emails for insert with check (true);
 create policy crm_owner_update on public.crm_owner_emails for update using (true) with check (true);
+create policy crm_owner_delete on public.crm_owner_emails for delete using (true);
 
 grant select, insert, update, delete on public.crm_owner_emails to anon, authenticated;
 

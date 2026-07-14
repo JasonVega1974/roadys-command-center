@@ -16304,6 +16304,7 @@ async function implDeleteSiteFromSupabase(id){
 // pgCRMWithSync() removed — CRM is now the standalone CRM.html page.
 
 // ── Call Notifications (Task A5): glowing/pulsing card on the Master Dashboard ──
+function crmNotifEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function renderCRMNotifications(hostId='crm-notifications'){
   const host=document.getElementById(hostId); if(!host) return;
   let calls=[];
@@ -16316,7 +16317,7 @@ async function renderCRMNotifications(hostId='crm-notifications'){
     let cls=''; if(t<now+hour) cls='crm-note-red'; else if(t<=endToday.getTime()) cls='crm-note-amber';
     const when=new Date(c.scheduled_at).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'});
     const link=`CRM.html?lead=${encodeURIComponent(c.lead_id)}&call=1`;
-    return `<div class="crm-note-row ${cls}"><span><b>${c.company||c.lead_id}</b> — ${c.call_type} · ${when} · ${c.owner||'Unassigned'}</span>
+    return `<div class="crm-note-row ${cls}"><span><b>${crmNotifEsc(c.company||c.lead_id)}</b> — ${crmNotifEsc(c.call_type)} · ${when} · ${crmNotifEsc(c.owner||'Unassigned')}</span>
       <a class="btn" href="${link}">Open in CRM →</a></div>`;
   }).join('');
   host.innerHTML = rows || '<div style="color:var(--muted);font-size:.82em">No calls scheduled.</div>';
