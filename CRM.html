@@ -1968,18 +1968,18 @@ function crmBuildForm(l, defaultStage){
       '<div style="font-size:.63em;color:var(--muted)">'+crmEsc(a.date)+' &middot; '+crmEsc(a.by)+'</div></div></div>'
     ).join('');
   }
-  const _si = CRM_STAGES.indexOf((l&&l.stage)||defaultStage);
-  const _showSched = _si>=1 || (((l&&l.stage)||defaultStage)==='Prospect' && ((l&&l.phone)||'').trim());
+  const _si = l ? CRM_STAGES.indexOf(l.stage||defaultStage) : -1;
+  const _showSched = !!l && (_si>=1 || ((l.stage||defaultStage)==='Prospect' && (l.phone||'').trim()));
   const _sched = !_showSched ? '' : `
 <div id="cmf-sched-section" style="grid-column:1/-1;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
   <div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:10px">📞 Schedule a Call</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-    <label>With who<select id="cmf-sched-who">${['Unassigned',...CRM_OWNERS].map(o=>`<option ${o===((l&&l.owner)||'Unassigned')?'selected':''}>${o}</option>`).join('')}</select></label>
+    <label>With who<select id="cmf-sched-who">${['Unassigned',...CRM_OWNERS].map(o=>`<option ${o===(l.owner||'Unassigned')?'selected':''}>${o}</option>`).join('')}</select></label>
     <label>Call type<select id="cmf-sched-type">${['Initial Call','Follow-up Call','3rd Call','Call Back'].map(t=>`<option>${t}</option>`).join('')}</select></label>
     <div><label>Date</label><div id="cmf-sched-cal" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px"></div><input type="hidden" id="cmf-sched-date"></div>
     <div><label>Time<select id="cmf-sched-time">${crmTimeOptions()}</select></label>
       <label style="margin-top:8px;display:block">Note<input id="cmf-sched-note" placeholder="optional"></label>
-      <button type="button" class="btn btn-accent" style="margin-top:8px" onclick="crmScheduleCall('${(l&&l.id)||''}')">Schedule Call</button></div>
+      <button type="button" class="btn btn-accent" style="margin-top:8px" onclick="crmScheduleCall('${l.id}')">Schedule Call</button></div>
   </div>
   <div id="cmf-lead-calls" style="margin-top:12px"></div>
 </div>`;
