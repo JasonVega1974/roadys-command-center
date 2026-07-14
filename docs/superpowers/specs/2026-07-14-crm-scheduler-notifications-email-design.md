@@ -214,12 +214,16 @@ Enable `pg_cron` + `pg_net` extensions (dashboard). Two jobs (SQL in **Appendix
 D**):
 
 - `crm-reminder-1h` — `*/15 * * * *` → POST `reminder_1h`.
-- `crm-reminder-dod` — `0 12 * * *` (UTC) → POST `reminder_dod`.
+- `crm-reminder-dod` — `0 13 * * *` (UTC) → POST `reminder_dod`.
 
-**DST caveat (documented):** `pg_cron` runs in UTC. `12:00 UTC` = **07:00 CDT**
-(summer) / **06:00 CST** (winter). Acceptable for a morning digest; the
-`reminder_dod_sent` flag makes re-runs idempotent. If exact 07:00 year-round is
-needed later, add a second guarded job.
+**DST caveat (documented):** `pg_cron` runs in UTC; both CRM owners (Robert
+Watson, Angel Long) are Mountain time. `13:00 UTC` = **07:00 MDT** (summer) /
+**06:00 MST** (winter). The `reminder_dod` action itself computes "today" from
+the *edge function's* `tzDayBoundsUTC("America/Denver")` — correct regardless
+of when the cron actually fires — so the only DST exposure is the digest
+landing an hour earlier in winter, not a wrong day. Acceptable for a morning
+digest; the `reminder_dod_sent` flag makes re-runs idempotent. If exact 07:00
+year-round is needed later, add a second guarded job.
 
 ### B4. Prospect self-booking
 
@@ -249,7 +253,7 @@ needed later, add a second guarded job.
 
 ### B5. Owner email map — table `crm_owner_emails` 🔧
 
-`owner (text PK) · email · timezone (default America/Chicago) · updated_at`.
+`owner (text PK) · email · timezone (default America/Denver) · updated_at`.
 RLS + grants per checklist. Seed rows for `Robert Watson`, `Angel Long`, `Logan`
 with placeholder emails **you fill in**. SQL in **Appendix A**.
 
@@ -275,9 +279,15 @@ Phase A needs **only step 1**. Steps 2–8 are Phase B.
    + `crm_owner_emails` tables, RLS, grants, trigger) in the Supabase SQL Editor.
    → *Phase A is now fully functional.*
 2. **Fill `crm_owner_emails`** with real addresses (Robert Watson, Angel Long,
-   Logan). One `update` per owner.
-3. **Create a Resend account**, verify your sending domain (add the SPF/DKIM DNS
-   records Resend shows), and copy the **API key**.
+   Logan). One `update` per owner. The seed rows from Phase A default
+   `timezone` to `'America/Chicago'` (fixed to `'America/Denver'` in this
+   spec's Appendix A, but that migration already ran) — also run
+   `update crm_owner_emails set timezone='America/Denver';` so the stored
+   value is correct even though the edge function currently displays times
+   using a hardcoded `TZ` constant rather than this column.
+3. **Create a Resend account for `roadys.com`**, verify the domain (add the
+   SPF/DKIM DNS records Resend shows — DNS access confirmed available), and
+   copy the **API key**.
 4. **Run `sql/2026-07-14-crm-booking.sql`** (Appendix B: `crm_booking_offers`
    table + the three RPCs).
 5. **Create Edge Function `crm-emails`** in the Dashboard → Edge Functions, paste
@@ -318,13 +328,20 @@ Phase A needs **only step 1**. Steps 2–8 are Phase B.
 
 - **Accepted:** anon-key security posture for `send_availability`/`send_confirmation`
   (guards only; Supabase Auth is future hardening). Confirmed 2026-07-14.
-- **Confirm before Phase B — timezone:** display TZ is hardcoded
-  `America/Chicago`. If reps span multiple time zones, switch to per-owner
-  formatting using `crm_owner_emails.timezone` (already stored) before deploying
-  reminders. *Pending your confirmation.*
-- **Confirm before Phase B — sending domain:** checklist step 6 defaults
-  `FROM_EMAIL` to `crm@roadys.com`. Confirm the actual domain to verify in Resend
-  (`roadys.com` vs `kingdom-creatives.com`) and who holds DNS access. *Pending.*
+- **Resolved — timezone:** the only two CRM owners (Robert Watson, Angel Long)
+  are both Mountain time, so display TZ is hardcoded `America/Denver` (a single
+  constant `TZ` in the edge function; see Appendix C) rather than per-owner
+  formatting. `crm_owner_emails.timezone` stays in the schema as a documented,
+  currently-inert column for future multi-timezone support. Confirmed
+  2026-07-14. **Fixed alongside this:** the `reminder_dod` day-boundary
+  calculation in Appendix C originally computed "today" from the edge
+  function runtime's local time (UTC in Deno, not the owners' timezone) — a
+  latent bug caught while resolving this decision. Replaced with
+  `tzDayBoundsUTC(TZ)`, which derives the correct UTC day-window from `TZ`'s
+  actual current offset (handles the MST/MDT transition correctly).
+- **Resolved — sending domain:** `roadys.com`, with DNS access confirmed
+  available. `FROM_EMAIL` defaults to `crm@roadys.com` (checklist step 6).
+  Confirmed 2026-07-14.
 
 ## 8. Out of scope / follow-ups
 
@@ -382,7 +399,7 @@ create trigger crm_sched_touch before update on public.crm_scheduled_calls
 create table if not exists public.crm_owner_emails (
   owner      text primary key,
   email      text not null,
-  timezone   text not null default 'America/Chicago',
+  timezone   text not null default 'America/Denver', -- both current owners are Mountain time
   updated_at timestamptz default now()
 );
 
@@ -548,8 +565,27 @@ async function ownerEmail(owner: string | null): Promise<string | null> {
   return data?.email ?? null;
 }
 const callLink = (leadId: string) => `${BASE}/CRM.html?lead=${encodeURIComponent(leadId)}&call=1`;
+const TZ = "America/Denver"; // both current CRM owners (Robert Watson, Angel Long) are Mountain time
 const fmt = (iso: string) => new Date(iso).toLocaleString("en-US",
-  { timeZone: "America/Chicago", dateStyle: "medium", timeStyle: "short" });
+  { timeZone: TZ, dateStyle: "medium", timeStyle: "short" });
+
+// Returns the [start, end) instants (as Date objects, true UTC) for "today" in TZ,
+// computed from TZ's actual current UTC offset (handles MST/MDT correctly) rather
+// than the edge function runtime's local time (which is UTC, not TZ).
+function tzDayBoundsUTC(tz: string, now = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(now).map(p => [p.type, p.value])
+  );
+  const asIfUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = asIfUTC - now.getTime(); // tz's current offset from UTC
+  const localMidnightAsUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, 0, 0, 0);
+  const start = new Date(localMidnightAsUTC - offsetMs);
+  const end = new Date(start.getTime() + 24 * 3600 * 1000);
+  return { start, end };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -584,8 +620,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "reminder_dod") {
-      const start = new Date(); start.setHours(0,0,0,0);
-      const end = new Date(start); end.setDate(end.getDate()+1);
+      const { start, end } = tzDayBoundsUTC(TZ);
       const { data: calls } = await sb.from("crm_scheduled_calls").select("*")
         .eq("status","scheduled").eq("reminder_dod_sent", false)
         .gte("scheduled_at", start.toISOString()).lt("scheduled_at", end.toISOString());
@@ -665,8 +700,8 @@ select cron.schedule('crm-reminder-1h', '*/15 * * * *', $$
   );
 $$);
 
--- Start-of-day digest: 12:00 UTC (= 07:00 CDT / 06:00 CST)
-select cron.schedule('crm-reminder-dod', '0 12 * * *', $$
+-- Start-of-day digest: 13:00 UTC (= 07:00 MDT / 06:00 MST — both owners are Mountain time)
+select cron.schedule('crm-reminder-dod', '0 13 * * *', $$
   select net.http_post(
     url    := 'https://<PROJECT_REF>.functions.supabase.co/crm-emails',
     headers:= jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
