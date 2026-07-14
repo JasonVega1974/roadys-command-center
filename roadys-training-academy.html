@@ -1274,19 +1274,19 @@ function _rwdDrawDashboard(stage, src) {
   stage.style.fontSize = 'clamp(16px, 2vh, 28px)';
 
   var kpis = [
-    { val:'$138,071', lbl:'YTD Rewards Added',          sub:'2025 YTD: $181,633',     delta:'▼ 24.0% · –$43,562',    dc:'var(--red)',    bc:'rgba(232,64,64,.14)',  brd:'rgba(232,64,64,.45)'  },
-    { val:'$96,782',  lbl:'YTD Rewards Redeemed',       sub:'2025 YTD: $131,725',     delta:'▼ 26.5% · –$34,943',    dc:'var(--red)',    bc:'rgba(232,64,64,.14)',  brd:'rgba(232,64,64,.45)'  },
-    { val:'70.10%',   lbl:'Redemption Rate (YTD Avg)',  sub:'March: 60.25%',          delta:'▼ 2.4pp vs 2025',       dc:'var(--yellow)', bc:'rgba(245,158,11,.1)', brd:'rgba(245,158,11,.4)'  },
-    { val:'12.47M',   lbl:'Loyalty Gallons Captured',   sub:'2025 YTD: 15.84M',       delta:'▼ 21.3% · –3.37M gal', dc:'var(--red)',    bc:'rgba(232,64,64,.14)',  brd:'rgba(232,64,64,.45)'  },
-    { val:'$41,289',  lbl:"Net Delta (Owed to Roady's)",sub:'Jan $11.7K · Feb $11.6K · Mar $18.0K', delta:'Adds minus Redeems', dc:'var(--gr)', bc:'rgba(34,197,94,.1)', brd:'rgba(34,197,94,.4)' },
+    { val:'$146,696', lbl:'YTD Rewards Added',          sub:'2025 YTD: $181,633',     delta:'▼ 19.2% · –$34,937',    dc:'var(--red)',    bc:'rgba(232,64,64,.14)',  brd:'rgba(232,64,64,.45)'  },
+    { val:'$102,469', lbl:'YTD Rewards Redeemed',       sub:'2025 YTD: $131,725',     delta:'▼ 22.2% · –$29,256',    dc:'var(--red)',    bc:'rgba(232,64,64,.14)',  brd:'rgba(232,64,64,.45)'  },
+    { val:'69.85%',   lbl:'Redemption Rate (YTD Avg)',  sub:'March: 61.16%',          delta:'▼ 2.7pp vs 2025',       dc:'var(--yellow)', bc:'rgba(245,158,11,.1)', brd:'rgba(245,158,11,.4)'  },
+    { val:'13.27M',   lbl:'Loyalty Gallons Captured',   sub:'2025 YTD: 15.84M',       delta:'▼ 16.2% · –2.57M gal', dc:'var(--red)',    bc:'rgba(232,64,64,.14)',  brd:'rgba(232,64,64,.45)'  },
+    { val:'$44,227',  lbl:"Net Delta (Owed to Roady's)",sub:'Jan $11.7K · Feb $11.6K · Mar $20.9K', delta:'Adds minus Redeems', dc:'var(--gr)', bc:'rgba(34,197,94,.1)', brd:'rgba(34,197,94,.4)' },
     { val:'42 / 50',  lbl:'Active Locations (March)',   sub:'11 below 50% rate',      delta:'7 zero activity this month', dc:'var(--yellow)', bc:'rgba(245,158,11,.1)', brd:'rgba(245,158,11,.4)' },
   ];
 
   var rows = [
-    { m:'January',   mc:'var(--tx)',     mw:'500', bg:'',                              a26:'$46,624', a25:'$64,829', ay:'▼ 24.0%', ayc:'var(--red)',    r26:'$34,898', r25:'$50,880', ry:'▼ 31.4%', ryc:'var(--red)',    rt:'74.85%', rtc:'var(--gr)',     rd:'▼ 3.6pp', rdc:'var(--yellow)' },
+    { m:'January',   mc:'var(--tx)',     mw:'500', bg:'',                              a26:'$46,624', a25:'$64,829', ay:'▼ 28.1%', ayc:'var(--red)',    r26:'$34,898', r25:'$50,880', ry:'▼ 31.4%', ryc:'var(--red)',    rt:'74.85%', rtc:'var(--gr)',     rd:'▼ 3.6pp', rdc:'var(--yellow)' },
     { m:'February',  mc:'var(--tx)',     mw:'500', bg:'',                              a26:'$46,199', a25:'$55,822', ay:'▼ 17.2%', ayc:'var(--red)',    r26:'$34,621', r25:'$39,040', ry:'▼ 11.3%', ryc:'var(--red)',    rt:'74.94%', rtc:'var(--gr)',     rd:'▲ 5.0pp', rdc:'var(--gr)'    },
-    { m:'March ⚠',  mc:'#ff9090',      mw:'700', bg:'background:rgba(232,64,64,.1)', a26:'$45,248', a25:'$60,982', ay:'▼ 25.8%', ayc:'var(--red)',    r26:'$27,262', r25:'$41,805', ry:'▼ 34.8%', ryc:'var(--red)',    rt:'60.25%', rtc:'var(--red)',    rd:'▼ 8.3pp', rdc:'var(--red)'   },
-    { m:'YTD Total', mc:'var(--c)',      mw:'800', bg:'background:rgba(255,255,255,.04)', a26:'$138,071',a25:'$181,633',ay:'▼ 24.0%',ayc:'var(--red)',r26:'$96,782', r25:'$131,725',ry:'▼ 26.5%',ryc:'var(--red)',    rt:'70.10%', rtc:'var(--yellow)', rd:'▼ 2.4pp', rdc:'var(--yellow)' },
+    { m:'March ⚠',  mc:'#ff9090',      mw:'700', bg:'background:rgba(232,64,64,.1)', a26:'$53,873', a25:'$60,982', ay:'▼ 11.7%', ayc:'var(--red)',    r26:'$32,950', r25:'$41,805', ry:'▼ 21.2%', ryc:'var(--red)',    rt:'61.16%', rtc:'var(--red)',    rd:'▼ 7.4pp', rdc:'var(--red)'   },
+    { m:'YTD Total', mc:'var(--c)',      mw:'800', bg:'background:rgba(255,255,255,.04)', a26:'$146,696',a25:'$181,633',ay:'▼ 19.2%',ayc:'var(--red)',r26:'$102,469',r25:'$131,725',ry:'▼ 22.2%',ryc:'var(--red)',    rt:'69.85%', rtc:'var(--yellow)', rd:'▼ 2.7pp', rdc:'var(--yellow)' },
   ];
 
   stage.innerHTML = '';
@@ -2159,8 +2159,8 @@ function rwdPresentAll() {
               <div class="rwd-hero-title">Roady's Rewards — 2026 Improvement Plan</div>
               <div class="rwd-hero-sub">Every major metric is down YoY. This plan identifies the root causes and defines 5 operational actions plus a Promotions App integration roadmap to reverse the decline and restore 2025 performance.</div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-                <span class="rwd-badge" style="background:rgba(232,64,64,.15);color:var(--red);border:1px solid rgba(232,64,64,.3)">📉 YTD Adds ▼24.0%</span>
-                <span class="rwd-badge" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">📊 Rate ▼2.4pp vs 2025</span>
+                <span class="rwd-badge" style="background:rgba(232,64,64,.15);color:var(--red);border:1px solid rgba(232,64,64,.3)">📉 YTD Adds ▼19.2%</span>
+                <span class="rwd-badge" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">📊 Rate ▼2.7pp vs 2025</span>
                 <span class="rwd-badge" style="background:rgba(232,160,32,.15);color:var(--c);border:1px solid rgba(232,160,32,.3)">⚙ Promotions: Q3–Q4 2026</span>
               </div>
             </div>
@@ -2168,38 +2168,38 @@ function rwdPresentAll() {
           <div class="rwd-section-title">📊 YTD 2026 Snapshot (Jan–Mar vs 2025)</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:1.4rem">
             <div class="rwd-kpi-box" style="border-color:rgba(232,64,64,.4)">
-              <div class="rwd-kpi-val" style="color:var(--red)">$138,071</div>
+              <div class="rwd-kpi-val" style="color:var(--red)">$146,696</div>
               <div class="rwd-kpi-lbl">YTD Rewards Added</div>
               <div style="margin-top:8px;font-size:.72em;display:flex;justify-content:space-between;color:var(--tx3)">
-                <span>2025 YTD: $181,633</span><span style="color:var(--red);font-weight:700">▼ 24.0% · –$43,562</span>
+                <span>2025 YTD: $181,633</span><span style="color:var(--red);font-weight:700">▼ 19.2% · –$34,937</span>
               </div>
             </div>
             <div class="rwd-kpi-box" style="border-color:rgba(232,64,64,.4)">
-              <div class="rwd-kpi-val" style="color:var(--red)">$96,782</div>
+              <div class="rwd-kpi-val" style="color:var(--red)">$102,469</div>
               <div class="rwd-kpi-lbl">YTD Rewards Redeemed</div>
               <div style="margin-top:8px;font-size:.72em;display:flex;justify-content:space-between;color:var(--tx3)">
-                <span>2025 YTD: $131,725</span><span style="color:var(--red);font-weight:700">▼ 26.5% · –$34,943</span>
+                <span>2025 YTD: $131,725</span><span style="color:var(--red);font-weight:700">▼ 22.2% · –$29,256</span>
               </div>
             </div>
             <div class="rwd-kpi-box" style="border-color:rgba(245,158,11,.4)">
-              <div class="rwd-kpi-val" style="color:var(--yellow)">70.10%</div>
+              <div class="rwd-kpi-val" style="color:var(--yellow)">69.85%</div>
               <div class="rwd-kpi-lbl">Redemption Rate (YTD Avg)</div>
               <div style="margin-top:8px;font-size:.72em;display:flex;justify-content:space-between;color:var(--tx3)">
-                <span>March: <span style="color:var(--red)">60.25%</span></span><span style="color:var(--yellow);font-weight:700">▼ 2.4pp vs 2025</span>
+                <span>March: <span style="color:var(--red)">61.16%</span></span><span style="color:var(--yellow);font-weight:700">▼ 2.7pp vs 2025</span>
               </div>
             </div>
             <div class="rwd-kpi-box" style="border-color:rgba(232,64,64,.4)">
-              <div class="rwd-kpi-val" style="color:var(--red)">12.47M</div>
+              <div class="rwd-kpi-val" style="color:var(--red)">13.27M</div>
               <div class="rwd-kpi-lbl">Loyalty Gallons Captured</div>
               <div style="margin-top:8px;font-size:.72em;display:flex;justify-content:space-between;color:var(--tx3)">
-                <span>2025 YTD: 15.84M</span><span style="color:var(--red);font-weight:700">▼ 21.3% · –3.37M gal</span>
+                <span>2025 YTD: 15.84M</span><span style="color:var(--red);font-weight:700">▼ 16.2% · –2.57M gal</span>
               </div>
             </div>
             <div class="rwd-kpi-box" style="border-color:rgba(34,197,94,.3)">
-              <div class="rwd-kpi-val" style="color:var(--gr)">$41,289</div>
+              <div class="rwd-kpi-val" style="color:var(--gr)">$44,227</div>
               <div class="rwd-kpi-lbl">Net Delta (Owed to Roady's)</div>
               <div style="margin-top:8px;font-size:.72em;display:flex;justify-content:space-between;color:var(--tx3)">
-                <span>Jan $11.7K · Feb $11.6K</span><span>Mar $18.0K</span>
+                <span>Jan $11.7K · Feb $11.6K</span><span>Mar $20.9K</span>
               </div>
             </div>
             <div class="rwd-kpi-box" style="border-color:rgba(245,158,11,.4)">
@@ -2223,10 +2223,10 @@ function rwdPresentAll() {
                 <th style="padding:8px 10px;text-align:right;color:var(--tx3);font-size:.85em;font-weight:700">vs 2025 Rate</th>
               </tr></thead>
               <tbody>
-                <tr style="border-top:1px solid var(--bd)"><td style="padding:7px 10px;font-weight:600">January</td><td style="padding:7px 10px;text-align:right">$46,624</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 24.0%</td><td style="padding:7px 10px;text-align:right">$34,898</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 31.4%</td><td style="padding:7px 10px;text-align:right;color:var(--gr)">74.85%</td><td style="padding:7px 10px;text-align:right;color:var(--yellow)">▼ 3.6pp</td></tr>
+                <tr style="border-top:1px solid var(--bd)"><td style="padding:7px 10px;font-weight:600">January</td><td style="padding:7px 10px;text-align:right">$46,624</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 28.1%</td><td style="padding:7px 10px;text-align:right">$34,898</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 31.4%</td><td style="padding:7px 10px;text-align:right;color:var(--gr)">74.85%</td><td style="padding:7px 10px;text-align:right;color:var(--yellow)">▼ 3.6pp</td></tr>
                 <tr style="border-top:1px solid var(--bd)"><td style="padding:7px 10px;font-weight:600">February</td><td style="padding:7px 10px;text-align:right">$46,199</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 17.2%</td><td style="padding:7px 10px;text-align:right">$34,621</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 11.3%</td><td style="padding:7px 10px;text-align:right;color:var(--gr)">74.94%</td><td style="padding:7px 10px;text-align:right;color:var(--gr)">▲ 5.0pp</td></tr>
-                <tr style="border-top:1px solid var(--bd);background:rgba(232,64,64,.08)"><td style="padding:7px 10px;font-weight:700;color:#ff9090">March ⚠</td><td style="padding:7px 10px;text-align:right">$45,248</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 25.8%</td><td style="padding:7px 10px;text-align:right">$27,262</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 34.8%</td><td style="padding:7px 10px;text-align:right;color:var(--red)">60.25%</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 8.3pp</td></tr>
-                <tr style="border-top:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04)"><td style="padding:7px 10px;font-weight:800;color:var(--c)">YTD Total</td><td style="padding:7px 10px;text-align:right;font-weight:700">$138,071</td><td style="padding:7px 10px;text-align:right;color:var(--red);font-weight:700">▼ 24.0%</td><td style="padding:7px 10px;text-align:right;font-weight:700">$96,782</td><td style="padding:7px 10px;text-align:right;color:var(--red);font-weight:700">▼ 26.5%</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:var(--yellow)">70.10%</td><td style="padding:7px 10px;text-align:right;color:var(--yellow);font-weight:700">▼ 2.4pp</td></tr>
+                <tr style="border-top:1px solid var(--bd);background:rgba(232,64,64,.08)"><td style="padding:7px 10px;font-weight:700;color:#ff9090">March ⚠</td><td style="padding:7px 10px;text-align:right">$53,873</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 11.7%</td><td style="padding:7px 10px;text-align:right">$32,950</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 21.2%</td><td style="padding:7px 10px;text-align:right;color:var(--red)">61.16%</td><td style="padding:7px 10px;text-align:right;color:var(--red)">▼ 7.4pp</td></tr>
+                <tr style="border-top:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04)"><td style="padding:7px 10px;font-weight:800;color:var(--c)">YTD Total</td><td style="padding:7px 10px;text-align:right;font-weight:700">$146,696</td><td style="padding:7px 10px;text-align:right;color:var(--red);font-weight:700">▼ 19.2%</td><td style="padding:7px 10px;text-align:right;font-weight:700">$102,469</td><td style="padding:7px 10px;text-align:right;color:var(--red);font-weight:700">▼ 22.2%</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:var(--yellow)">69.85%</td><td style="padding:7px 10px;text-align:right;color:var(--yellow);font-weight:700">▼ 2.7pp</td></tr>
               </tbody>
             </table>
           </div>
@@ -2244,7 +2244,7 @@ function rwdPresentAll() {
         <!-- ── ACTIONS ── -->
         <div id="rwd-panel-action" class="rwd-panel" style="display:none">
           <div class="rwd-action-block"><div class="rwd-action-header a1"><div class="rwd-action-num">1</div><div><div class="rwd-action-title">Signage Audit &amp; Deployment</div><div class="rwd-action-sub">Every active location must have Rewards signage at pump, register, and entrance</div></div></div><div class="rwd-action-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="rwd-action-sl">🪧 Why It Matters</div><ul class="rwd-ul"><li>Drivers can't enroll in a program they don't know exists — no signage = no new members</li><li>7 zero-activity locations likely have zero signage presence at all</li><li>11 below-50% locations need pump and register signage as first priority</li></ul><div class="rwd-tip">✓ Signage at all 3 points (pump · register · entrance) required before location is marked compliant</div></div><div><div class="rwd-action-sl">✅ Action Steps</div><ul class="rwd-ul"><li>Audit all 50 network locations for signage presence and condition</li><li>Ship signage kits to any location missing materials — target: 2-week delivery</li><li>Prioritize 7 zero-activity and 11 below-50% locations first</li><li>GS photographs signage placement at every visit and logs in Command Center</li><li>Confirm placement: pump islands, POS counter, and entrance — all three required</li></ul></div></div><div class="rwd-action-checklist"><div class="rwd-cl-title">Checklist</div><label><input type="checkbox"> Audit all 50 locations for signage (pump, register, entrance)</label><label><input type="checkbox"> Ship kits to missing locations within 2 weeks</label><label><input type="checkbox"> Prioritize 18 priority locations first (11 below-50% + 7 zero-activity)</label><label><input type="checkbox"> GS photographs compliance at every location visit</label><label><input type="checkbox"> Mark location "signage compliant" in Command Center</label></div></div></div>
-          <div class="rwd-action-block"><div class="rwd-action-header a2"><div class="rwd-action-num">2</div><div><div class="rwd-action-title">Full Staff Training Sweep</div><div class="rwd-action-sub">Every location needs at least one fully trained Rewards-capable staff member per shift</div></div></div><div class="rwd-action-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="rwd-action-sl">🎓 Why It Matters</div><ul class="rwd-ul"><li>Undertrained staff = missed enrollments and failed redemptions</li><li>18 locations below 70% redemption rate — likely a training gap</li><li>February's 74.94% rate proves locations CAN perform when staff are ready</li><li>March's collapse to 60.25% shows training gaps cause rapid decline</li></ul></div><div><div class="rwd-action-sl">✅ Action Steps</div><ul class="rwd-ul"><li>Complete Roady's Training Academy Rewards module for all location staff</li><li>Focus on enrollment scripts, POS redemption flow, and dispute handling</li><li>Prioritize 18 locations below 70% redemption rate — training gap is likely cause</li><li>Verify Training Academy completion via per-user tracking before marking done</li><li>Goal: every shift has at least one trained staff member who can enroll and redeem</li></ul></div></div><div class="rwd-action-checklist"><div class="rwd-cl-title">Checklist</div><label><input type="checkbox"> Identify all staff at 18 priority locations needing training</label><label><input type="checkbox"> Assign Training Academy Rewards module to all identified staff</label><label><input type="checkbox"> Verify completion via Training Academy tracking</label><label><input type="checkbox"> Confirm at least 1 trained staff member per shift at each location</label><label><input type="checkbox"> Re-check location redemption rate 30 days after training completion</label></div></div></div>
+          <div class="rwd-action-block"><div class="rwd-action-header a2"><div class="rwd-action-num">2</div><div><div class="rwd-action-title">Full Staff Training Sweep</div><div class="rwd-action-sub">Every location needs at least one fully trained Rewards-capable staff member per shift</div></div></div><div class="rwd-action-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="rwd-action-sl">🎓 Why It Matters</div><ul class="rwd-ul"><li>Undertrained staff = missed enrollments and failed redemptions</li><li>18 locations below 70% redemption rate — likely a training gap</li><li>February's 74.94% rate proves locations CAN perform when staff are ready</li><li>March's collapse to 61.16% shows training gaps cause rapid decline</li></ul></div><div><div class="rwd-action-sl">✅ Action Steps</div><ul class="rwd-ul"><li>Complete Roady's Training Academy Rewards module for all location staff</li><li>Focus on enrollment scripts, POS redemption flow, and dispute handling</li><li>Prioritize 18 locations below 70% redemption rate — training gap is likely cause</li><li>Verify Training Academy completion via per-user tracking before marking done</li><li>Goal: every shift has at least one trained staff member who can enroll and redeem</li></ul></div></div><div class="rwd-action-checklist"><div class="rwd-cl-title">Checklist</div><label><input type="checkbox"> Identify all staff at 18 priority locations needing training</label><label><input type="checkbox"> Assign Training Academy Rewards module to all identified staff</label><label><input type="checkbox"> Verify completion via Training Academy tracking</label><label><input type="checkbox"> Confirm at least 1 trained staff member per shift at each location</label><label><input type="checkbox"> Re-check location redemption rate 30 days after training completion</label></div></div></div>
           <div class="rwd-action-block"><div class="rwd-action-header a3"><div class="rwd-action-num">3</div><div><div class="rwd-action-title">Tablet &amp; POS Integration Audit</div><div class="rwd-action-sub">A location without a working tablet cannot process Rewards — this is the fastest explanation for zero activity</div></div></div><div class="rwd-action-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="rwd-action-sl">📱 Why It Matters</div><ul class="rwd-ul"><li>7 zero-activity locations almost certainly have a hardware or connectivity issue</li><li>Tablet offline = no enrollments, no redemptions, no program activity</li><li>POS-integrated stops (SmartDESQ/SmartAuth) have fraud-resistant point adds tied to real transactions</li><li>Loyalty Toggle must be ON in Interstate for integrated locations</li></ul></div><div><div class="rwd-action-sl">✅ Action Steps</div><ul class="rwd-ul"><li>Audit every location — confirm tablet is present, charged, and operational</li><li>Identify which locations are POS-integrated vs tablet-only</li><li>Escalate broken/offline tablets for immediate replacement or repair</li><li>Priority: all 7 zero-activity locations — investigate hardware first</li><li>Work toward SmartDESQ/SmartAuth integration at high-volume tablet-only stops</li></ul></div></div><div class="rwd-action-checklist"><div class="rwd-cl-title">Checklist</div><label><input type="checkbox"> Audit all 50 locations — tablet present, charged, and online?</label><label><input type="checkbox"> Identify 7 zero-activity locations — submit hardware repair/replacement requests</label><label><input type="checkbox"> Confirm Loyalty Toggle is ON in Interstate for all integrated locations</label><label><input type="checkbox"> Submit SmartDESQ integration requests for top tablet-only stops by volume</label><label><input type="checkbox"> Run test transaction at each repaired/integrated location before clearing</label></div></div></div>
           <div class="rwd-action-block"><div class="rwd-action-header a1" style="background:linear-gradient(90deg,rgba(34,197,94,.12),rgba(34,197,94,.04))"><div class="rwd-action-num" style="background:rgba(34,197,94,.2);color:var(--gr)">4</div><div><div class="rwd-action-title">Card Inventory Replenishment</div><div class="rwd-action-sub">A location without physical Rewards cards cannot enroll new members — silent program killer</div></div></div><div class="rwd-action-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="rwd-action-sl">💳 Why It Matters</div><ul class="rwd-ul"><li>Low card inventory directly reduces add transactions and new member enrollment</li><li>Locations that run out have no way to onboard new drivers until stock arrives</li><li>Track cards issued vs new enrollments — a gap signals either low inventory or staff not issuing</li></ul><div class="rwd-tip">📦 Never let a stop run out — every missed card is a missed driver relationship</div></div><div><div class="rwd-action-sl">✅ Action Steps</div><ul class="rwd-ul"><li>Survey all 50 locations for current physical card inventory levels</li><li>Establish minimum stock threshold — recommend 50 cards per location</li><li>Expedite card shipments to locations reporting low or zero inventory immediately</li><li>Set up auto-replenishment trigger when stock drops below threshold</li><li>Track cards issued vs new member enrollments — flag gaps by GS territory monthly</li></ul></div></div><div class="rwd-action-checklist"><div class="rwd-cl-title">Checklist</div><label><input type="checkbox"> Survey all 50 locations for current card stock levels</label><label><input type="checkbox"> Expedite shipments to any location below 50-card threshold</label><label><input type="checkbox"> Set up auto-replenishment trigger in ordering system</label><label><input type="checkbox"> Compare cards issued vs enrollments — flag gaps monthly</label></div></div></div>
           <div class="rwd-action-block"><div class="rwd-action-header a4"><div class="rwd-action-num">5</div><div><div class="rwd-action-title">Growth Strategist Outreach — 18 Priority Locations</div><div class="rwd-action-sub">Direct contact with location managers drives accountability faster than any other action</div></div></div><div class="rwd-action-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="rwd-action-sl">📈 Why It Matters</div><ul class="rwd-ul"><li>11 locations below 50% redemption rate + 7 zero-activity = 18 priority stops</li><li>Personal phone contact with location managers creates accountability that email cannot</li><li>GS call confirms operational readiness: signage ✓ tablet ✓ cards ✓ training ✓</li><li>Re-checking rate the following month closes the feedback loop</li></ul></div><div><div class="rwd-action-sl">✅ Action Steps</div><ul class="rwd-ul"><li>Export 18 priority locations with: Adds $, Redeems $, Rate, % change YoY, Gallons</li><li>Include opportunity estimate per location (cost of current underperformance)</li><li>Submit to Growth Strategist with full context before outreach begins</li><li>GS makes direct phone contact with each location manager — not email</li><li>Verify operational readiness on each call: signage, tablet, cards, training</li><li>Re-check each location's redemption rate the following month and report</li></ul></div></div><div class="rwd-action-checklist"><div class="rwd-cl-title">Checklist</div><label><input type="checkbox"> Export 18 priority locations with full metrics + opportunity estimate</label><label><input type="checkbox"> Submit export to Growth Strategist with context memo</label><label><input type="checkbox"> GS completes direct phone contact with all 18 location managers</label><label><input type="checkbox"> Log operational readiness status per location after each call</label><label><input type="checkbox"> Re-check rate for all 18 locations the following month — report outcomes</label></div></div></div>
@@ -2270,29 +2270,29 @@ function rwdPresentAll() {
                 <!-- 6 KPI cards — thumbnail preview -->
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">
                   <div style="background:rgba(232,64,64,.12);border:1px solid rgba(232,64,64,.35);border-radius:7px;padding:7px 8px">
-                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--red);line-height:1">$138,071</div>
+                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--red);line-height:1">$146,696</div>
                     <div style="font-size:.75em;color:var(--tx3);margin-top:3px">YTD Adds</div>
-                    <div style="font-size:.7em;color:var(--red);margin-top:3px">▼ 24.0% · –$43,562</div>
+                    <div style="font-size:.7em;color:var(--red);margin-top:3px">▼ 19.2% · –$34,937</div>
                   </div>
                   <div style="background:rgba(232,64,64,.12);border:1px solid rgba(232,64,64,.35);border-radius:7px;padding:7px 8px">
-                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--red);line-height:1">$96,782</div>
+                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--red);line-height:1">$102,469</div>
                     <div style="font-size:.75em;color:var(--tx3);margin-top:3px">YTD Redeems</div>
-                    <div style="font-size:.7em;color:var(--red);margin-top:3px">▼ 26.5% · –$34,943</div>
+                    <div style="font-size:.7em;color:var(--red);margin-top:3px">▼ 22.2% · –$29,256</div>
                   </div>
                   <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:7px;padding:7px 8px">
-                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--yellow);line-height:1">70.10%</div>
+                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--yellow);line-height:1">69.85%</div>
                     <div style="font-size:.75em;color:var(--tx3);margin-top:3px">Redemption Rate</div>
-                    <div style="font-size:.7em;color:var(--yellow);margin-top:3px">March: 60.25% · ▼ 2.4pp</div>
+                    <div style="font-size:.7em;color:var(--yellow);margin-top:3px">March: 61.16% · ▼ 2.7pp</div>
                   </div>
                   <div style="background:rgba(232,64,64,.12);border:1px solid rgba(232,64,64,.35);border-radius:7px;padding:7px 8px">
-                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--red);line-height:1">12.47M</div>
+                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--red);line-height:1">13.27M</div>
                     <div style="font-size:.75em;color:var(--tx3);margin-top:3px">Loyalty Gallons</div>
-                    <div style="font-size:.7em;color:var(--red);margin-top:3px">▼ 21.3% · –3.37M gal</div>
+                    <div style="font-size:.7em;color:var(--red);margin-top:3px">▼ 16.2% · –2.57M gal</div>
                   </div>
                   <div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);border-radius:7px;padding:7px 8px">
-                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--gr);line-height:1">$41,289</div>
+                    <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--gr);line-height:1">$44,227</div>
                     <div style="font-size:.75em;color:var(--tx3);margin-top:3px">Net Delta (Owed)</div>
-                    <div style="font-size:.7em;color:var(--tx3);margin-top:3px">Jan $11.7K · Feb $11.6K · Mar $18K</div>
+                    <div style="font-size:.7em;color:var(--tx3);margin-top:3px">Jan $11.7K · Feb $11.6K · Mar $20.9K</div>
                   </div>
                   <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:7px;padding:7px 8px">
                     <div style="font-family:var(--fh);font-size:1.35em;font-weight:900;color:var(--yellow);line-height:1">42 / 50</div>
@@ -2311,9 +2311,9 @@ function rwdPresentAll() {
               <div class="rwd-slide-icon">💥</div>
               <div class="rwd-slide-title" style="color:var(--red)">March Collapse + Operational Failure</div>
               <div class="rwd-slide-content single">
-                <div class="rwd-slide-tip" style="background:rgba(232,64,64,.1);border-color:rgba(232,64,64,.3);color:#ff9090;margin-bottom:12px">⚠ 14.7pp drop in one month — Feb 74.94% → Mar 60.25% — while adds fell 25.8% YoY</div>
+                <div class="rwd-slide-tip" style="background:rgba(232,64,64,.1);border-color:rgba(232,64,64,.3);color:#ff9090;margin-bottom:12px">⚠ 13.8pp drop in one month — Feb 74.94% → Mar 61.16% — while adds fell 11.7% YoY</div>
                 <ul class="rwd-slide-ul">
-                  <li><strong style="color:var(--red)">Fuel Gallons:</strong> 3.37M loyalty gallons lost YTD vs 2025 — drivers disengaging</li>
+                  <li><strong style="color:var(--red)">Fuel Gallons:</strong> 2.57M loyalty gallons lost YTD vs 2025 — drivers disengaging</li>
                   <li><strong style="color:var(--yellow)">Member Retention:</strong> When drivers can't redeem, they stop returning — 11 stops below 50%</li>
                   <li><strong style="color:#a855f7">Operational:</strong> Locations not ready — no signage, untrained staff, broken tablets, no cards</li>
                   <li>Root cause: operational failures at the stop level — all fixable with direct action</li>
@@ -2333,7 +2333,7 @@ function rwdPresentAll() {
                   <div class="rwd-stat"><div class="rwd-stat-val" style="color:var(--yellow)">+$14K/mo</div><div class="rwd-stat-lbl">Activate 7 zero-activity stops</div></div>
                 </div>
                 <ul class="rwd-slide-ul">
-                  <li><strong style="color:var(--gr)">Fuel Gallons:</strong> 3.37M gallon recovery — each gallon is a driver choosing Roady's</li>
+                  <li><strong style="color:var(--gr)">Fuel Gallons:</strong> 2.57M gallon recovery — each gallon is a driver choosing Roady's</li>
                   <li><strong style="color:#00c8ff">Member Value:</strong> +$13,362 in redeems if March rate matched February's 74.94%</li>
                   <li><strong style="color:var(--yellow)">Operational:</strong> 7 zero-activity stops at avg rate = +$7K–$14K/month</li>
                   <li>February proved recovery is possible — it held 74.94% while adds were down 17%</li>
@@ -2347,7 +2347,7 @@ function rwdPresentAll() {
               <div class="rwd-slide-icon">⛽</div>
               <div class="rwd-slide-title">Restoring Gallon Volume</div>
               <div class="rwd-slide-content single">
-                <div class="rwd-slide-tip" style="margin-bottom:12px">⛽ 3.37M loyalty gallons lost YTD — every gallon represents a driver who chose Roady's specifically for the program</div>
+                <div class="rwd-slide-tip" style="margin-bottom:12px">⛽ 2.57M loyalty gallons lost YTD — every gallon represents a driver who chose Roady's specifically for the program</div>
                 <ul class="rwd-slide-ul">
                   <li><strong style="color:var(--c)">Action 03 — Tablet Audit:</strong> Zero-activity stops cannot capture any loyalty gallons. Fix hardware first.</li>
                   <li><strong style="color:var(--c)">Action 01 — Signage:</strong> Drivers fueling at stops without Rewards signage don't enroll — gallons go untracked</li>
