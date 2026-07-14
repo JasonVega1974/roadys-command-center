@@ -314,6 +314,18 @@ Phase A needs **only step 1**. Steps 2–8 are Phase B.
 
 ---
 
+## 7a. Decisions & open items
+
+- **Accepted:** anon-key security posture for `send_availability`/`send_confirmation`
+  (guards only; Supabase Auth is future hardening). Confirmed 2026-07-14.
+- **Confirm before Phase B — timezone:** display TZ is hardcoded
+  `America/Chicago`. If reps span multiple time zones, switch to per-owner
+  formatting using `crm_owner_emails.timezone` (already stored) before deploying
+  reminders. *Pending your confirmation.*
+- **Confirm before Phase B — sending domain:** checklist step 6 defaults
+  `FROM_EMAIL` to `crm@roadys.com`. Confirm the actual domain to verify in Resend
+  (`roadys.com` vs `kingdom-creatives.com`) and who holds DNS access. *Pending.*
+
 ## 8. Out of scope / follow-ups
 
 - Reconciling the 5 orphan commits on local `main` (GS-header `7aa0baa` vs remote
