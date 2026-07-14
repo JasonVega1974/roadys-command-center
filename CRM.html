@@ -1973,10 +1973,12 @@ function renderCRMTable(){
 function crmOpenLeadModal(id, defaultStage){
   const lead=id?CRM_LEADS.find(l=>l.id===id):null;
   crmEditId=id||null;
+  window._crmAvailSlots=[];  // reset queued availability slots \u2014 don't leak between leads
   document.getElementById('crm-modal-title').textContent=lead?'EDIT LEAD \u2014 '+lead.company:'ADD NEW LEAD';
   document.getElementById('crm-modal-body').innerHTML=crmBuildForm(lead, defaultStage||'Prospect');
   document.getElementById('crm-modal').style.display='flex';
   if(document.getElementById('cmf-sched-cal')){ crmMiniCalendar('cmf-sched-cal', iso=>{ document.getElementById('cmf-sched-date').value=iso; }); crmRenderLeadCalls(id); }
+  if(document.getElementById('cmf-avail-slots')) crmRenderAvailSlots();
 }
 function crmCloseModal(){
   document.getElementById('crm-modal').style.display='none';
@@ -2017,6 +2019,15 @@ function crmBuildForm(l, defaultStage){
     </div>
   </div>
   <div id="cmf-lead-calls" style="margin-top:12px"></div>
+  <div id="cmf-avail-section" style="margin-top:16px;border-top:1px dashed var(--border);padding-top:12px">
+    <div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:10px">✉️ Send Availability</div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
+      <div>${lbl('Prospect Email')}${fi('cmf-avail-email','email',l.email,'prospect@example.com')}</div>
+      <button type="button" class="btn" onclick="crmAddAvailSlot()">+ Add slot</button>
+    </div>
+    <div id="cmf-avail-slots" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>
+    <button type="button" class="btn btn-accent" onclick="crmSendAvailability('${l.id}')">✉️ Send availability</button>
+  </div>
 </div>`;
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
   h+='<div style="grid-column:1/-1">'+lbl('Company Name *')+fi('cmf-company','text',l&&l.company,'e.g. Mountain Fuel Centers')+'</div>';
@@ -2087,6 +2098,50 @@ function crmCancelCall(callId, leadId){
   crmCallsSaveLocal(); crmSaveCallToSupabase(c); crmRenderLeadCalls(leadId);
   if(typeof renderCRMCalendar==='function') renderCRMCalendar(); toast('Call cancelled','tok');
   renderCRMNotifications();
+}
+
+// ── In-modal "Send availability": queues up to 6 date/time slots (reusing the
+// existing mini-calendar + time picker), then invokes the crm-emails edge function ──
+function crmAddAvailSlot(){
+  const date=document.getElementById('cmf-sched-date')?.value;
+  const time=document.getElementById('cmf-sched-time')?.value;
+  if(!date){ toast('Pick a date first','terr'); return; }
+  window._crmAvailSlots=window._crmAvailSlots||[];
+  if(window._crmAvailSlots.length>=6){ toast('Max 6 slots — remove one first','terr'); return; }
+  const iso=new Date(`${date}T${time||'09:00'}:00`).toISOString();
+  window._crmAvailSlots.push(iso);
+  crmRenderAvailSlots();
+}
+function crmRemoveAvailSlot(i){
+  if(!window._crmAvailSlots) return;
+  window._crmAvailSlots.splice(i,1);
+  crmRenderAvailSlots();
+}
+function crmRenderAvailSlots(){
+  const host=document.getElementById('cmf-avail-slots'); if(!host) return;
+  const slots=window._crmAvailSlots||[];
+  host.innerHTML = slots.length ? slots.map((iso,i)=>
+    '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 10px;font-size:.75em">'+
+      new Date(iso).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})+
+      '<span onclick="crmRemoveAvailSlot('+i+')" style="cursor:pointer;color:var(--red);font-weight:700">&times;</span></span>'
+  ).join('') : '<div style="color:var(--muted);font-size:.78em">No slots queued yet — pick a date/time above, then "+ Add slot"</div>';
+}
+async function crmSendAvailability(leadId){
+  const lead=CRM_LEADS.find(l=>l.id===leadId)||{};
+  const email=(document.getElementById('cmf-avail-email')?.value||lead.email||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('Valid prospect email required','terr'); return; }
+  if(!window._crmAvailSlots||!window._crmAvailSlots.length){ toast('Add at least one slot','terr'); return; }
+  try{
+    const sb=getRoadysSB();
+    const {data,error}=await sb.functions.invoke('crm-emails',{body:{action:'send_availability',lead_id:leadId,prospect_email:email,slots:window._crmAvailSlots}});
+    if(error||data?.error) throw error||new Error(data.error);
+    toast('Availability email sent','tok');
+    window._crmAvailSlots=[];
+    crmRenderAvailSlots();
+  }catch(e){
+    toast('Send failed (is the edge function deployed?)','terr');
+    console.warn(e);
+  }
 }
 
 function crmSaveLead(){
