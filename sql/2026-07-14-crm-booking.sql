@@ -72,11 +72,14 @@ begin
 end $$;
 
 -- list open offers for the CRM "awaiting response" badge (safe columns only)
+-- NOTE: token is intentionally excluded — this function is anon/authenticated
+-- callable, and the token is the sole secret protecting a booking offer from
+-- hijack via submit_booking_choice. Never add token back to this return set.
 create or replace function public.list_open_offers()
-returns table(token uuid, lead_id text, company text, owner text,
+returns table(lead_id text, company text, owner text,
               offered_slots jsonb, status text, created_at timestamptz)
 language sql security definer set search_path = public, pg_temp as $$
-  select token, lead_id, company, owner, offered_slots, status, created_at
+  select lead_id, company, owner, offered_slots, status, created_at
   from public.crm_booking_offers
   where status = 'open' and expires_at > now()
   order by created_at desc;

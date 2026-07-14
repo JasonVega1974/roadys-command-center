@@ -13,6 +13,9 @@ const sb = createClient(SB_URL, SB_KEY);
 const CORS = { "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type, x-cron-secret" };
 
+function esc(s: unknown): string {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c] as string));
+}
 async function sendEmail(to: string, subject: string, html: string, replyTo?: string) {
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -73,7 +76,7 @@ Deno.serve(async (req) => {
         const to = await ownerEmail(c.owner); if (!to) continue;
         const { data: lead } = await sb.from("crm_leads").select("phone").eq("id", c.lead_id).maybeSingle();
         await sendEmail(to, `CRM Call Reminder — ${c.company ?? c.lead_id}`,
-          `<h2>Call in ~1 hour</h2><p><b>${c.company ?? ""}</b><br>Type: ${c.call_type}<br>
+          `<h2>Call coming up</h2><p><b>${esc(c.company)}</b><br>Type: ${c.call_type}<br>
            Time: ${fmt(c.scheduled_at)}<br>Phone: ${lead?.phone ?? "—"}</p>
            <p><a href="${callLink(c.lead_id)}">Open in CRM →</a></p>`);
         await sb.from("crm_scheduled_calls").update({ reminder_1h_sent: true }).eq("id", c.id);
@@ -94,7 +97,7 @@ Deno.serve(async (req) => {
       for (const [owner, list] of Object.entries(byOwner)) {
         const to = await ownerEmail(owner); if (!to) continue;
         const rows = list.sort((a,b)=>a.scheduled_at<b.scheduled_at?-1:1)
-          .map(c=>`<li>${fmt(c.scheduled_at)} — <b>${c.company??""}</b> (${c.call_type})
+          .map(c=>`<li>${fmt(c.scheduled_at)} — <b>${esc(c.company)}</b> (${c.call_type})
                    — <a href="${callLink(c.lead_id)}">open</a></li>`).join("");
         await sendEmail(to, `CRM Call Reminder — ${list.length} call(s) today`,
           `<h2>Today's scheduled calls</h2><ul>${rows}</ul>`);
@@ -132,7 +135,7 @@ Deno.serve(async (req) => {
         `<p>You're all set for <b>${fmt(offer.chosen_slot)}</b>. We look forward to speaking with you.</p>`, reply);
       const to = await ownerEmail(offer.owner);
       if (to) await sendEmail(to, `CRM Call Reminder — new booking (${offer.company ?? ""})`,
-        `<p>${offer.prospect_email} booked <b>${fmt(offer.chosen_slot)}</b> — ${offer.company ?? ""}.</p>
+        `<p>${esc(offer.prospect_email)} booked <b>${fmt(offer.chosen_slot)}</b> — ${esc(offer.company)}.</p>
          <p><a href="${callLink(offer.lead_id)}">Open in CRM →</a></p>`);
       return json({ ok: true });
     }
