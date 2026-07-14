@@ -738,6 +738,17 @@ body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-fa
           </select>
         </div>
         <div class="impl-form-group"><label>Start Date *</label><input type="date" id="implEditStartDate" required /></div>
+        <div class="impl-form-group"><label>Growth Strategist</label>
+          <select id="implEditGS">
+            <option value="">Auto (by state / rules)</option>
+            <option value="Logan">Logan</option>
+            <option value="Burt Newman">Burt Newman</option>
+            <option value="Maria Coleman">Maria Coleman</option>
+            <option value="Shannon Bumbalough">Shannon Bumbalough</option>
+            <option value="Stefanie Ritter">Stefanie Ritter</option>
+            <option value="Steph Leslie">Steph Leslie</option>
+          </select>
+        </div>
         <div class="impl-modal-actions">
           <button type="button" class="impl-btn impl-btn-secondary" onclick="implCloseEditSiteModal()">Cancel</button>
           <button type="button" class="impl-btn impl-btn-primary" onclick="implHandleEditSite()">Save Changes</button>
@@ -1004,10 +1015,10 @@ let LAST_IMPORT = null;
 // Territory managers (sample - can be updated via import)
 // Territory manager assignments — editable via data entry
 let MANAGER_MAP = {
-  'CT':'Logan','DE':'Logan','IA':'Logan','ME':'Logan','MD':'Logan','MA':'Logan','MI':'Logan','MN':'Logan','NH':'Logan','NJ':'Logan','NY':'Logan','OH':'Logan','PA':'Logan','RI':'Logan','VT':'Logan','VA':'Logan','WV':'Logan',
+  'CT':'Logan','DE':'Logan','IA':'Logan','IL':'Logan','ME':'Logan','MD':'Logan','MA':'Logan','MI':'Logan','MN':'Logan','NH':'Logan','NJ':'Logan','NY':'Logan','OH':'Logan','PA':'Logan','RI':'Logan','VT':'Logan','VA':'Logan','WV':'Logan',
   'LA':'Burt Newman',
   'AZ':'Maria Coleman','CA':'Maria Coleman','NV':'Maria Coleman','NM':'Maria Coleman','OR':'Maria Coleman','UT':'Maria Coleman','WA':'Maria Coleman',
-  'AL':'Shannon Bumbalough','AR':'Shannon Bumbalough','FL':'Shannon Bumbalough','GA':'Shannon Bumbalough','IL':'Shannon Bumbalough','KY':'Shannon Bumbalough','MS':'Shannon Bumbalough','MO':'Shannon Bumbalough','NC':'Shannon Bumbalough','SC':'Shannon Bumbalough','TN':'Shannon Bumbalough',
+  'AL':'Shannon Bumbalough','AR':'Shannon Bumbalough','FL':'Shannon Bumbalough','GA':'Shannon Bumbalough','KY':'Shannon Bumbalough','MS':'Shannon Bumbalough','MO':'Shannon Bumbalough','NC':'Shannon Bumbalough','SC':'Shannon Bumbalough','TN':'Shannon Bumbalough',
   'WI':'Stefanie Ritter',
   'CO':'Steph Leslie','ID':'Steph Leslie','KS':'Steph Leslie','MT':'Steph Leslie','NE':'Steph Leslie','ND':'Steph Leslie','OK':'Steph Leslie','SD':'Steph Leslie','TX':'Steph Leslie','WY':'Steph Leslie',
   'default':'Unassigned'
@@ -1015,10 +1026,10 @@ let MANAGER_MAP = {
 
 // Region definitions (manager → states)
 const REGIONS = {
-  'Logan':               {states:['CT','DE','IA','ME','MD','MA','MI','MN','NH','NJ','NY','OH','PA','RI','VT','VA','WV'], color:'#888888', label:'Northeast'},
+  'Logan':               {states:['CT','DE','IA','IL','ME','MD','MA','MI','MN','NH','NJ','NY','OH','PA','RI','VT','VA','WV'], color:'#888888', label:'Northeast'},
   'Burt Newman':         {states:['LA'], color:'#FF6B35', label:'Louisiana'},
   'Maria Coleman':       {states:['AZ','CA','NV','NM','OR','UT','WA'], color:'#00D68F', label:'West'},
-  'Shannon Bumbalough':  {states:['AL','AR','FL','GA','IL','KY','MS','MO','NC','SC','TN'], color:'#FF4757', label:'Southeast'},
+  'Shannon Bumbalough':  {states:['AL','AR','FL','GA','KY','MS','MO','NC','SC','TN'], color:'#FF4757', label:'Southeast'},
   'Stefanie Ritter':     {states:['WI'], color:'#7C3AED', label:'Upper Midwest'},
   'Steph Leslie':        {states:['CO','ID','KS','MT','NE','ND','OK','SD','TX','WY'], color:'#00C8FF', label:'Central'}
 };
@@ -4318,7 +4329,7 @@ const IMPL_PROJECT_TYPES = [
   { key: "Change of Ownership", label: "Change of Ownership" },
   { key: "Roady's Lite", label: "Roady's Lite" }
 ];
-const IMPL_TEAM = ["Accounting","Angel","(OPEN)","Burt","Gene","Growth Strategist","Jack","Jason","Kaden","Maria","Robert","Sergey","Shannon","Stefanie","Steph","Trisha"];
+const IMPL_TEAM = ["Accounting","Angel","(OPEN)","Burt","Gene","Growth Strategist","Jack","Jason","Kaden","Logan","Maria","Robert","Sergey","Shannon","Stefanie","Steph","Trisha"];
 
 const IMPL_TEMPLATES = {
   "Onboarding": {
@@ -4697,6 +4708,7 @@ async function implFlushToSupabase(el){
       id:           s.id,
       location:     s.location||'',
       project_type: s.projectType||'',
+      gs_override:  s.gsOverride||'',
       start_date:   s.startDate||'',
       tasks:        s.tasks||[],
       updated_at:   new Date().toISOString(),
@@ -5364,6 +5376,8 @@ const STOP_STATE_MAP = {
 };
 
 function implGetSiteGS(site){
+  // Manual per-site override (set in Edit Site) wins over all auto-derivation.
+  if(site.gsOverride) return site.gsOverride;
   const loc = site.location || '';
   // Site-name GS overrides — win before state lookup. Duck Thru locations span
   // several states (Southeast/Northeast) but are all handled by Stefanie Ritter.
@@ -5514,6 +5528,7 @@ function implOpenEditSiteModal(sid){
   document.getElementById('implEditProjectType').value=s.projectType||'';
   const d=implParseDate(s.startDate);
   document.getElementById('implEditStartDate').value = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+  document.getElementById('implEditGS').value=s.gsOverride||'';
   document.getElementById('implEditSiteModal').classList.add('active');
 }
 function implCloseEditSiteModal(){document.getElementById('implEditSiteModal').classList.remove('active');}
@@ -5529,6 +5544,7 @@ async function implHandleEditSite(){
   if(ptChanged && !confirm(`Changing project type from "${s.projectType}" to "${pt}" will reset the task list to the new template. Existing task progress will be lost. Continue?`)) return;
   s.location=loc;
   s.startDate=sd;
+  s.gsOverride=document.getElementById('implEditGS').value;
   if(ptChanged){
     s.projectType=pt;
     const tplTasks=implTplGet(pt);
@@ -5782,6 +5798,7 @@ function implInit(){
           id:           s.id,
           location:     s.location||'',
           project_type: s.projectType||'',
+          gs_override:  s.gsOverride||'',
           start_date:   s.startDate||'',
           tasks:        s.tasks||[],
           updated_at:   new Date().toISOString(),
@@ -7915,6 +7932,7 @@ async function implLoadFromSupabase(){
         id:          r.id,
         location:    r.location||'',
         projectType: r.project_type||'',
+        gsOverride:  r.gs_override||'',
         startDate:   r.start_date||'',
         tasks:       r.tasks||[],
       }));
@@ -7949,6 +7967,7 @@ async function implSaveSiteToSupabase(site){
       id:           site.id,
       location:     site.location||site.name||'',
       project_type: site.projectType||'',
+      gs_override:  site.gsOverride||'',
       start_date:   site.startDate||'',
       tasks:        site.tasks||[],
       updated_at:   new Date().toISOString(),
@@ -7973,6 +7992,7 @@ async function implMigrateAllToSupabase(){
       id:           site.id,
       location:     site.location||site.name||'',
       project_type: site.projectType||'',
+      gs_override:  site.gsOverride||'',
       start_date:   site.startDate||'',
       tasks:        site.tasks||[],
       updated_at:   new Date().toISOString(),
