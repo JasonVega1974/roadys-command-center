@@ -974,6 +974,8 @@ body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-fa
 <div class="toast" id="toast"></div>
 
 <script>
+// Boot-time redirect: legacy #crm hash links now resolve to the standalone CRM page.
+if (['#crm','#/crm','#/CRM','#CRM'].includes(location.hash)) location.replace('CRM.html');
 // ═══════════════════════════════════════════
 //  ROADYS SUPABASE CONFIG
 //  Project: Roady's Truck Stops Tech
