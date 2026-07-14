@@ -2216,6 +2216,14 @@ function renderCRMCalendar(){
     if(!evMap[l.followUp]) evMap[l.followUp]=[];
     evMap[l.followUp].push(l);
   });
+  (CRM_CALLS||[]).filter(c=>c.status==='scheduled').forEach(c=>{
+    if(ownerF!=='all'&&c.owner!==ownerF) return;
+    const ds=c.scheduledAt.slice(0,10);
+    const prefix=crmCalYear+'-'+String(crmCalMonth+1).padStart(2,'0');
+    if(ds.indexOf(prefix)!==0) return;
+    if(!evMap[ds]) evMap[ds]=[];
+    evMap[ds].push(c);
+  });
   const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let html='<div style="display:grid;grid-template-columns:repeat(7,1fr)">';
   DAYS.forEach(d=>{ html+='<div style="text-align:center;font-size:.68em;font-weight:700;color:var(--muted);padding:8px 0;text-transform:uppercase;background:var(--bg)">'+d+'</div>'; });
@@ -2226,9 +2234,14 @@ function renderCRMCalendar(){
     const isToday=ds===today;
     html+='<div style="background:'+(isToday?'rgba(0,200,255,.07)':'var(--bg)')+';border:1px solid '+(isToday?'var(--accent)':'var(--border)')+';min-height:76px;padding:5px">';
     html+='<div style="font-size:.75em;font-weight:'+(isToday?'800':'500')+';color:'+(isToday?'var(--accent)':'var(--muted)')+';margin-bottom:3px">'+day+'</div>';
-    evs.forEach(l=>{
-      const col=CRM_STAGE_COLORS[l.stage]||'var(--muted)';
-      html+='<div onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="font-size:.6em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;border-radius:3px;padding:2px 5px;margin-bottom:2px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+crmEsc(l.company.split(' ').slice(0,2).join(' '))+'</div>';
+    evs.forEach(item=>{
+      if(item.stage){
+        const col=CRM_STAGE_COLORS[item.stage]||'var(--muted)';
+        html+='<div onclick="crmOpenLeadModal(\''+crmEsc(item.id)+'\')" style="font-size:.6em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;border-radius:3px;padding:2px 5px;margin-bottom:2px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+crmEsc(item.company.split(' ').slice(0,2).join(' '))+'</div>';
+      }else{
+        const time=item.scheduledAt.slice(11,16);
+        html+='<div onclick="crmOpenLeadModal(\''+crmEsc(item.leadId)+'\')" style="font-size:.6em;background:rgba(100,180,255,.15);color:#4b9eff;border:1px solid rgba(100,180,255,.4);border-radius:3px;padding:2px 5px;margin-bottom:2px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-decoration:underline dotted">'+time+' &middot; '+crmEsc(item.company)+' &middot; '+crmEsc(item.callType)+'</div>';
+      }
     });
     html+='</div>';
   }
@@ -2277,13 +2290,33 @@ function renderCRMScheduler(){
   const da=document.getElementById('crm-due-alerts');
   if(da){
     const today=crmToday();
+    const now=new Date();
     const items=CRM_LEADS.filter(l=>l.followUp&&l.stage!=='Closed Won'&&l.stage!=='Closed Lost'&&l.followUp<=today).sort((a,b)=>a.followUp.localeCompare(b.followUp));
-    da.innerHTML=items.length?items.map(l=>{
-      const isOvd=l.followUp<today;
-      return '<div onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="background:'+(isOvd?'rgba(255,71,87,.07)':'rgba(255,214,10,.07)')+';border:1px solid '+(isOvd?'rgba(255,71,87,.3)':'rgba(255,214,10,.3)')+';border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:.8em;font-weight:700">'+crmEsc(l.company)+'</div>'+
+    const calls=(CRM_CALLS||[]).filter(c=>c.status==='scheduled'&&c.scheduledAt.slice(0,10)<=today).sort((a,b)=>a.scheduledAt.localeCompare(b.scheduledAt));
+    const allItems=[...items,...calls];
+    da.innerHTML=allItems.length?allItems.map(item=>{
+      let leadId,company,owner,isOvd,isTdy,date,labelExtra='';
+      if(item.stage){
+        leadId=item.id;
+        company=item.company;
+        owner=item.owner;
+        date=item.followUp;
+        isOvd=item.followUp<today;
+        isTdy=item.followUp===today;
+      }else{
+        leadId=item.leadId;
+        company=item.company;
+        owner=item.owner;
+        date=item.scheduledAt.slice(0,10);
+        isOvd=new Date(item.scheduledAt)<now;
+        isTdy=date===today;
+        labelExtra=' · '+item.callType;
+      }
+      return '<div style="background:'+(isOvd?'rgba(255,71,87,.07)':'rgba(255,214,10,.07)')+';border:1px solid '+(isOvd?'rgba(255,71,87,.3)':'rgba(255,214,10,.3)')+';border-radius:8px;padding:10px 12px;margin-bottom:6px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:.8em;font-weight:700">'+crmEsc(company)+'</div>'+
         '<span style="font-size:.65em;font-weight:700;color:'+(isOvd?'var(--red)':'var(--yellow)')+'">'+( isOvd?'OVERDUE':'DUE TODAY')+'</span></div>'+
-        '<div style="font-size:.68em;color:var(--muted);margin-top:3px">'+crmEsc(l.owner)+' &middot; '+l.followUp+' &middot; '+l.stage+'</div></div>';
+        '<div style="font-size:.68em;color:var(--muted);margin-top:3px">'+crmEsc(owner)+' &middot; '+date+labelExtra+'</div>'+
+        '<button onclick="crmOpenLeadModal(\''+crmEsc(leadId)+'\')" class="btn" style="font-size:.65em;padding:3px 8px;margin-top:6px">Open</button></div>';
     }).join(''):'<div style="color:var(--green);font-size:.78em;padding:8px">&#10003; All follow-ups on track!</div>';
   }
   const sq=document.getElementById('crm-schedule-queue');
