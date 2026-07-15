@@ -844,6 +844,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 <div id="crm-root" class="page active" style="display:none;max-width:1440px;margin:0 auto;padding:24px 28px">
       <div class="sec-hdr"><div class="sec-title">CRM — BUSINESS DEVELOPMENT</div><span class="badge ba" id="crm-badge">Pipeline Command</span>
         <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <a class="btn" href="https://jasonvega1974.github.io/roadys-command-center/value-props.html" target="_blank" rel="noopener">Value Props</a>
           <select id="crm-whoami" onchange="crmSetWhoAmI(this.value)" title="Who's logged in — stamps activity log entries and notes" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;font-weight:600;cursor:pointer">
             <option value="">👤 Who are you?</option>
           </select>
@@ -876,6 +877,10 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
           <input id="crm-kb-search" type="text" placeholder="🔍 Search pipeline..." oninput="renderCRMKanban()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 12px;font-size:.82em;">
           <select id="crm-kb-owner" onchange="renderCRMKanban()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
           <select id="crm-kb-state" onchange="renderCRMKanban()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All States</option></select>
+          <select id="crm-kb-sort" onchange="renderCRMKanban()" title="Sort cards within each stage" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;">
+            <option value="state">Sort: State</option>
+            <option value="name">Sort: Name</option>
+          </select>
           <button class="btn btn-accent" onclick="crmOpenLeadModal(null)" style="font-size:.8em">➕ Add Lead</button>
         </div>
         <div id="crm-kanban" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:400px"></div>
@@ -2033,6 +2038,12 @@ function renderCRMKanban(){
   const ownerF=(document.getElementById('crm-kb-owner')?.value)||'all';
   const stateF=(document.getElementById('crm-kb-state')?.value)||'all';
   const q=((document.getElementById('crm-kb-search')?.value)||'').toLowerCase();
+  const sortBy=(document.getElementById('crm-kb-sort')?.value)||'state';
+  // Applies within every stage column — "sort by name" vs "sort by state"
+  // is a single toggle for the whole board, not a per-column setting.
+  const kbSort=sortBy==='name'
+    ? (a,b)=>(a.company||'').localeCompare(b.company||'')||(a.state||'').localeCompare(b.state||'')
+    : (a,b)=>(a.state||'').localeCompare(b.state||'')||(a.company||'').localeCompare(b.company||'');
   let html='';
   CRM_STAGES.forEach(stage=>{
     const cards=CRM_LEADS.filter(l=>{
@@ -2041,7 +2052,7 @@ function renderCRMKanban(){
       if(stateF!=='all'&&(l.state||'').trim()!==stateF) return false;
       if(q&&l.company.toLowerCase().indexOf(q)<0&&(l.contact||'').toLowerCase().indexOf(q)<0) return false;
       return true;
-    }).sort((a,b)=>(a.state||'').localeCompare(b.state||'')||(a.company||'').localeCompare(b.company||''));
+    }).sort(kbSort);
     const stageGal=cards.reduce((s,l)=>s+(l.estGallons||0),0);
     const col=CRM_STAGE_COLORS[stage];
     const isWon=stage==='Closed Won', isLost=stage==='Closed Lost';
