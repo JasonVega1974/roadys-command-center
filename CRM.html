@@ -941,9 +941,10 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
         <div style="display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start">
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
             <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:10px">NEW NOTE</div>
-            <select id="crm-notes-lead-pick" onchange="crmNotesPickLead(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.82em;margin-bottom:16px">
+            <select id="crm-notes-lead-pick" onchange="crmNotesPickLead(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.82em;margin-bottom:6px">
               <option value="">Select a lead…</option>
             </select>
+            <input id="crm-notes-lead-search" type="text" placeholder="🔍 Search leads by company or state…" oninput="crmNotesPopulateLeadPicker()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;margin-bottom:16px">
 
             <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:10px;border-top:1px solid var(--border);padding-top:14px">ARCHIVE</div>
             <input id="crm-notes-search" type="text" placeholder="🔍 Search company…" oninput="renderCRMNotesArchive()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;margin-bottom:6px">
@@ -2814,15 +2815,23 @@ function crmNotesInitEditor(){
   return crmNotesQuill;
 }
 
+// Rebuilds the "New Note" lead dropdown, filtered by the search field
+// underneath it (company or state, case-insensitive). Preserves the
+// current selection if it still matches the filter.
+function crmNotesPopulateLeadPicker(){
+  const pick=document.getElementById('crm-notes-lead-pick'); if(!pick) return;
+  const q=(document.getElementById('crm-notes-lead-search')?.value||'').trim().toLowerCase();
+  const cur=pick.value;
+  const leads=CRM_LEADS.filter(l=>!q || (l.company||'').toLowerCase().indexOf(q)>=0 || (l.state||'').toLowerCase().indexOf(q)>=0)
+    .slice().sort((a,b)=>(a.company||'').localeCompare(b.company||''));
+  pick.innerHTML='<option value="">Select a lead…</option>'+leads.map(l=>
+    '<option value="'+crmEsc(l.id)+'">'+crmEsc(l.company)+(l.state?' — '+crmEsc(l.state):'')+'</option>').join('');
+  if(cur && leads.some(l=>l.id===cur)) pick.value=cur;
+}
+
 function renderCRMNotes(){
   crmNotesLoadLocal();
-  const pick=document.getElementById('crm-notes-lead-pick');
-  if(pick){
-    const cur=pick.value;
-    pick.innerHTML='<option value="">Select a lead…</option>'+CRM_LEADS.slice().sort((a,b)=>(a.company||'').localeCompare(b.company||'')).map(l=>
-      '<option value="'+crmEsc(l.id)+'">'+crmEsc(l.company)+(l.state?' — '+crmEsc(l.state):'')+'</option>').join('');
-    if(cur) pick.value=cur;
-  }
+  crmNotesPopulateLeadPicker();
   const sf=document.getElementById('crm-notes-filter-state');
   if(sf && !sf.dataset.filled){
     const states=[...new Set(CRM_LEADS.map(l=>(l.state||'').trim()).filter(Boolean))].sort();
