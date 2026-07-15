@@ -990,6 +990,16 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
             </div>
           </div>
         </div>
+
+        <!-- ═══ NOTES HISTORY — every note across every lead, from the Notes
+             tab or a lead's card/modal, sortable + independently searchable ═══ -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+            <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent)">📋 NOTES HISTORY <span id="crm-notes-hist-count" style="color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0"></span></div>
+            <input id="crm-notes-hist-search" type="text" placeholder="🔍 Search all notes…" oninput="renderCRMNotesHistory()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;min-width:220px">
+          </div>
+          <div style="overflow-x:auto;max-height:420px"><table class="mem-tbl" id="crm-notes-hist-tbl"><thead></thead><tbody></tbody></table></div>
+        </div>
       </div>
 
       <!-- ═══ ANALYTICS ═══ -->
@@ -2747,13 +2757,14 @@ async function crmLoadNotesFromSupabase(){
   }catch(e){ console.warn('notes load',e); }
 }
 // Re-renders every place notes are visible — the Kanban card badge, the
-// Notes tab archive (if open), and the lead modal's notes section (if that
-// lead's modal is open) — so a note written from any one of these three
-// surfaces shows up in the other two without a page reload.
+// Notes tab archive + full History table (if open), and the lead modal's
+// notes section (if that lead's modal is open) — so a note written from
+// any one of these surfaces (Notes tab, lead modal, Kanban card) shows up
+// in all the others without a page reload.
 function crmNotesRefreshSurfaces(){
   if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
   const notesPanel=document.getElementById('crm-panel-notes');
-  if(notesPanel && notesPanel.style.display!=='none') renderCRMNotesArchive();
+  if(notesPanel && notesPanel.style.display!=='none'){ renderCRMNotesArchive(); renderCRMNotesHistory(); }
   const modal=document.getElementById('crm-modal');
   if(modal && modal.style.display==='flex' && crmEditId) crmRenderLeadNotes(crmEditId);
 }
@@ -2849,6 +2860,7 @@ function renderCRMNotes(){
     of.dataset.filled='1';
   }
   renderCRMNotesArchive();
+  renderCRMNotesHistory();
 }
 
 function crmNotesFilteredList(){
@@ -2950,6 +2962,7 @@ function crmNotesSave(){
   crmNotesSaveLocal(); crmSaveNoteToSupabase(n);
   toast('Note saved');
   crmNotesView(n.id);
+  renderCRMNotesHistory();
   if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
 }
 
@@ -2960,6 +2973,7 @@ function crmNotesDelete(id){
   crmNotesSaveLocal(); crmDeleteNoteFromSupabase(id);
   crmSelectedNote=null; crmNotesShowEmpty();
   renderCRMNotesArchive();
+  renderCRMNotesHistory();
   if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
   toast('Note deleted','terr');
 }
@@ -2989,6 +3003,56 @@ function crmNotesExportCSV(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='roadys_crm_notes_'+crmToday()+'.csv'; a.click();
   toast('Exported '+notes.length+' note'+(notes.length===1?'':'s')+' to CSV');
+}
+
+// ── Notes History table: every note across every lead (regardless of
+// whether it was written from this tab or from a lead's card/modal — both
+// write to the same CRM_NOTES array), sortable by column, own search box.
+// Follows the same {col,dir} + sort-arrow pattern used by the other
+// sortable tables in this codebase (mcSort/mlSort/obSort in index.html).
+let crmNotesHistSort={col:'createdAt',dir:'desc'};
+function crmNotesHistSortBy(col){
+  if(crmNotesHistSort.col===col) crmNotesHistSort.dir=crmNotesHistSort.dir==='asc'?'desc':'asc';
+  else crmNotesHistSort={col,dir:col==='createdAt'?'desc':'asc'};
+  renderCRMNotesHistory();
+}
+function crmNotesHistoryFilteredList(){
+  const q=(document.getElementById('crm-notes-hist-search')?.value||'').trim().toLowerCase();
+  let list=CRM_NOTES.filter(n=> !q ||
+    (n.company||'').toLowerCase().indexOf(q)>=0 ||
+    (n.owner||'').toLowerCase().indexOf(q)>=0 ||
+    (n.state||'').toLowerCase().indexOf(q)>=0 ||
+    (n.stage||'').toLowerCase().indexOf(q)>=0 ||
+    crmNotesStripHTML(n.body).toLowerCase().indexOf(q)>=0
+  );
+  const {col,dir}=crmNotesHistSort, d=dir==='asc'?1:-1;
+  list=list.slice().sort((a,b)=>(String(a[col]||'')).localeCompare(String(b[col]||''))*d);
+  return list;
+}
+function renderCRMNotesHistory(){
+  const tbl=document.getElementById('crm-notes-hist-tbl'); if(!tbl) return;
+  const cols=[{k:'company',l:'Truck Stop'},{k:'state',l:'State'},{k:'stage',l:'Stage'},{k:'owner',l:'Person'},{k:'createdAt',l:'Date/Time'}];
+  const arrow=k=>crmNotesHistSort.col===k?(crmNotesHistSort.dir==='asc'?'↑':'↓'):'↕';
+  tbl.querySelector('thead').innerHTML='<tr>'+cols.map(c=>
+    '<th class="'+(crmNotesHistSort.col===c.k?'sorted':'')+'" onclick="crmNotesHistSortBy(\''+c.k+'\')">'+c.l+'<span class="sort-arrow">'+arrow(c.k)+'</span></th>'
+  ).join('')+'<th>Note</th></tr>';
+  const list=crmNotesHistoryFilteredList();
+  const tbody=tbl.querySelector('tbody');
+  tbody.innerHTML = list.length ? list.map(n=>{
+    const when=n.createdAt?new Date(n.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'—';
+    const col=CRM_STAGE_COLORS[n.stage]||'var(--muted)';
+    const preview=crmNotesStripHTML(n.body).slice(0,70);
+    return '<tr onclick="crmNotesView(\''+n.id+'\')" style="cursor:pointer">'+
+      '<td style="font-weight:600">'+crmEsc(n.company||'—')+'</td>'+
+      '<td>'+crmEsc(n.state||'—')+'</td>'+
+      '<td><span style="color:'+col+'">'+crmEsc(n.stage||'—')+'</span></td>'+
+      '<td>'+crmEsc(n.owner||'Unassigned')+'</td>'+
+      '<td>'+when+'</td>'+
+      '<td class="wrap" style="max-width:320px">'+crmEsc(preview)+(preview.length>=70?'…':'')+'</td>'+
+    '</tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No notes yet.</td></tr>';
+  const countEl=document.getElementById('crm-notes-hist-count');
+  if(countEl) countEl.textContent='('+list.length+' note'+(list.length===1?'':'s')+')';
 }
 
 // ── Lead-modal notes section: same CRM_NOTES as the Notes tab, so a note
@@ -3025,6 +3089,7 @@ function crmAddLeadNote(leadId){
   crmNotesSaveLocal(); crmSaveNoteToSupabase(n);
   crmLeadNoteQuill.root.innerHTML='';
   crmRenderLeadNotes(leadId);
+  renderCRMNotesArchive(); renderCRMNotesHistory();
   if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
   toast('Note added');
 }
@@ -3034,6 +3099,7 @@ function crmDeleteLeadNoteInline(id,leadId){
   CRM_NOTES=CRM_NOTES.filter(x=>x.id!==id);
   crmNotesSaveLocal(); crmDeleteNoteFromSupabase(id);
   crmRenderLeadNotes(leadId);
+  renderCRMNotesArchive(); renderCRMNotesHistory();
   if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
   toast('Note deleted','terr');
 }
