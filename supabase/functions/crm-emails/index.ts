@@ -1,5 +1,5 @@
 // Supabase Edge Function: crm-emails
-// Actions: reminder_1h | reminder_dod | send_availability | send_confirmation
+// Actions: reminder_1h | reminder_dod | send_availability | send_confirmation | send_template
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SB_URL   = Deno.env.get("SUPABASE_URL")!;
@@ -15,6 +15,13 @@ const CORS = { "Access-Control-Allow-Origin": "*",
 
 function esc(s: unknown): string {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c] as string));
+}
+// Merge tags mirror the exact set CRM.html's Email Templates tab previews with:
+// {{contact}} {{company}} {{owner}} {{state}} {{locations}}. Merge first (plain
+// text), THEN esc() the result — that also makes the template's own static
+// text HTML-safe, not just the interpolated lead fields.
+function mergeTemplate(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
 }
 async function sendEmail(to: string, subject: string, html: string, replyTo?: string) {
   const r = await fetch("https://api.resend.com/emails", {
@@ -137,6 +144,30 @@ Deno.serve(async (req) => {
       if (to) await sendEmail(to, `CRM Call Reminder — new booking (${offer.company ?? ""})`,
         `<p>${esc(offer.prospect_email)} booked <b>${fmt(offer.chosen_slot)}</b> — ${esc(offer.company)}.</p>
          <p><a href="${callLink(offer.lead_id)}">Open in CRM →</a></p>`);
+      return json({ ok: true });
+    }
+
+    if (action === "send_template") {
+      const { lead_id, template_id } = body;
+      if (!lead_id || !template_id) return json({ error: "bad_request" }, 400);
+      const { data: lead } = await sb.from("crm_leads")
+        .select("id,company,contact,email,state,locations,owner").eq("id", lead_id).maybeSingle();
+      if (!lead) return json({ error: "lead_not_found" }, 404);
+      if (!lead.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(lead.email))
+        return json({ error: "no_lead_email" }, 400);
+      // Note: crm_email_templates has no deleted_at column (no delete UI exists
+      // for templates), unlike crm_leads/crm_lead_notes — plain lookup by id.
+      const { data: tmpl } = await sb.from("crm_email_templates")
+        .select("subject,body").eq("id", template_id).maybeSingle();
+      if (!tmpl) return json({ error: "template_not_found" }, 404);
+      const vars: Record<string, string> = {
+        contact: lead.contact ?? "", company: lead.company ?? "", owner: lead.owner ?? "",
+        state: lead.state ?? "", locations: String(lead.locations ?? ""),
+      };
+      const subject = mergeTemplate(tmpl.subject, vars);
+      const html = esc(mergeTemplate(tmpl.body, vars)).replace(/\n/g, "<br>");
+      const reply = await ownerEmail(lead.owner) ?? undefined;
+      await sendEmail(lead.email, subject, html, reply);
       return json({ ok: true });
     }
 
