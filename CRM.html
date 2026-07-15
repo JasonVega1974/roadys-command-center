@@ -819,6 +819,17 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .impl-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
 @media (max-width:768px){.impl-charts{grid-template-columns:1fr;}.impl-dashboard{grid-template-columns:1fr;}}
 
+/* ── Mobile — CRM.html has no sidebar/app-shell, so this only needs to
+   stack the two-column layouts and tighten spacing, not collapse nav. ── */
+@media (max-width:820px){
+  #crm-root{padding:14px 12px!important;}
+  .sec-hdr{flex-wrap:wrap;row-gap:8px;}
+  .crm-2col{grid-template-columns:1fr!important;}
+  .kb-col{width:200px!important;}
+  #crm-modal>div,#crm-deleted-modal>div{width:100%!important;}
+  #crm-modal-body{padding:16px!important;}
+}
+
 /* ── Call Notifications (Task A5) ── */
 @keyframes crmPulse { 0%,100%{box-shadow:0 0 0 rgba(0,0,0,0)} 50%{box-shadow:0 0 16px var(--pulse)} }
 .crm-note-red   { --pulse:#ef4444aa; border-left:3px solid #ef4444; animation:crmPulse 1.6s ease-in-out infinite; }
@@ -878,6 +889,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
           <select id="crm-owner-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
           <select id="crm-priority-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Priorities</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select>
           <button class="btn" onclick="crmExport()">📥 Export CSV</button>
+          <label class="btn" style="cursor:pointer">📤 Import CSV<input type="file" accept=".csv" id="crm-import-file" onchange="crmImportCSV(this)" style="display:none"></label>
           <button class="btn" onclick="crmOpenDeletedModal()">🗑 Deleted Leads</button>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">
@@ -903,7 +915,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
       <!-- ═══ AUTO-SCHEDULER ═══ -->
       <div id="crm-panel-scheduler" class="crm-panel" style="display:none">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="crm-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
             <div style="font-family:var(--ff);font-size:.88em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:14px">⚡ SMART FOLLOW-UP RULES</div>
             <div id="crm-rules-list"></div>
@@ -922,7 +934,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
       <!-- ═══ EMAIL TEMPLATES ═══ -->
       <div id="crm-panel-emails" class="crm-panel" style="display:none">
-        <div style="display:grid;grid-template-columns:280px 1fr;gap:16px">
+        <div class="crm-2col" style="display:grid;grid-template-columns:280px 1fr;gap:16px">
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
             <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">TEMPLATES</div>
             <div id="crm-email-list"></div>
@@ -938,7 +950,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
       <!-- ═══ NOTES COMMAND CENTER ═══ -->
       <div id="crm-panel-notes" class="crm-panel" style="display:none">
-        <div style="display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start">
+        <div class="crm-2col" style="display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start">
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
             <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:10px">NEW NOTE</div>
             <select id="crm-notes-lead-pick" onchange="crmNotesPickLead(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.82em;margin-bottom:6px">
@@ -1005,7 +1017,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
       <!-- ═══ ANALYTICS ═══ -->
       <div id="crm-panel-analytics" class="crm-panel" style="display:none">
         <div class="kpi-grid" id="crm-analytics-kpis" style="margin-bottom:20px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="crm-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
             <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">PIPELINE BY STAGE</div>
             <div class="cw" style="height:200px"><canvas id="crm-chart-stage"></canvas></div>
@@ -2113,25 +2125,44 @@ function crmMoveToStage(id,stage){
 }
 
 // ── LEAD TABLE ──
+// Column sort state for the Lead Table — same {col,dir} + sort-arrow
+// pattern as the Notes History table. Applied here (not just in
+// renderCRMTable) so CSV export shares the table's current sort order.
+let crmTblSort={col:'company',dir:'asc'};
+function crmTblSortBy(col){
+  if(crmTblSort.col===col) crmTblSort.dir=crmTblSort.dir==='asc'?'desc':'asc';
+  else crmTblSort={col,dir:'asc'};
+  renderCRMTable();
+}
 function crmTableFilteredLeads(){
   const sf=document.getElementById('crm-stage-filter')?.value||'all';
   const of=document.getElementById('crm-owner-filter')?.value||'all';
   const pf=document.getElementById('crm-priority-filter')?.value||'all';
   const q=(document.getElementById('crm-search')?.value||'').toLowerCase();
-  return CRM_LEADS.filter(l=>{
+  const list=CRM_LEADS.filter(l=>{
     if(sf!=='all'&&l.stage!==sf) return false;
     if(of!=='all'&&l.owner!==of) return false;
     if(pf!=='all'&&l.priority!==pf) return false;
     if(q&&![l.company,l.contact,l.state,l.city,l.notes].some(v=>(v||'').toLowerCase().indexOf(q)>=0)) return false;
     return true;
   });
+  const {col,dir}=crmTblSort, d=dir==='asc'?1:-1;
+  const PR_RANK={High:3,Medium:2,Low:1};
+  list.sort((a,b)=>{
+    if(col==='priority') return ((PR_RANK[a.priority]||0)-(PR_RANK[b.priority]||0))*d;
+    if(col==='locations') return ((+a.locations||0)-(+b.locations||0))*d;
+    return String(a[col]||'').localeCompare(String(b[col]||''),undefined,{numeric:true,sensitivity:'base'})*d;
+  });
+  return list;
 }
 
 function renderCRMTable(){
   const tbl=document.getElementById('crm-tbl'); if(!tbl) return;
   const thead=tbl.querySelector('thead'), tbody=tbl.querySelector('tbody');
   const rows=crmTableFilteredLeads();
-  thead.innerHTML='<tr><th>Company</th><th>Contact / Phone</th><th>Address</th><th>City</th><th>State</th><th>Priority</th><th>Locs</th><th></th></tr>';
+  const cols=[{k:'company',l:'Company'},{k:'contact',l:'Contact / Phone'},{k:'street',l:'Address'},{k:'city',l:'City'},{k:'state',l:'State'},{k:'priority',l:'Priority'},{k:'locations',l:'Locs'}];
+  const arrow=k=>crmTblSort.col===k?(crmTblSort.dir==='asc'?'↑':'↓'):'↕';
+  thead.innerHTML='<tr>'+cols.map(c=>'<th class="'+(crmTblSort.col===c.k?'sorted':'')+'" onclick="crmTblSortBy(\''+c.k+'\')">'+c.l+'<span class="sort-arrow">'+arrow(c.k)+'</span></th>').join('')+'<th></th></tr>';
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No leads match filters</td></tr>'; return; }
   tbody.innerHTML=rows.map(l=>{
     const pr=l.priority==='High'?'var(--red)':l.priority==='Medium'?'var(--yellow)':'var(--muted)';
@@ -2190,7 +2221,7 @@ function crmBuildForm(l, defaultStage){
   const _sched = !_showSched ? '' : `
 <div id="cmf-sched-section" style="grid-column:1/-1;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
   <div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:10px">📞 Schedule a Call</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div class="crm-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
     <div>${lbl('With who')}${fs('cmf-sched-who',['Unassigned',...CRM_OWNERS],l.owner||'Unassigned')}</div>
     <div>${lbl('Call type')}${fs('cmf-sched-type',['Initial Call','Follow-up Call','3rd Call','Call Back'])}</div>
     <div>${lbl('Date')}<div id="cmf-sched-cal" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px"></div><input type="hidden" id="cmf-sched-date"></div>
@@ -2203,7 +2234,7 @@ function crmBuildForm(l, defaultStage){
   <div id="cmf-lead-calls" style="margin-top:12px"></div>
   <div id="cmf-avail-section" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
     <div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:10px">✉️ Send Availability</div>
-    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
+    <div class="crm-2col" style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
       <div>${lbl('Prospect Email')}${fi('cmf-avail-email','email',l.email,'prospect@example.com')}</div>
       <button type="button" class="btn" onclick="crmAddAvailSlot()">+ Add slot</button>
     </div>
@@ -2211,7 +2242,7 @@ function crmBuildForm(l, defaultStage){
     <button type="button" class="btn btn-accent" onclick="crmSendAvailability('${l.id}')">✉️ Send availability</button>
   </div>
 </div>`;
-  let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
+  let h='<div class="crm-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
   h+='<div style="grid-column:1/-1">'+lbl('Company Name *')+fi('cmf-company','text',l&&l.company,'e.g. Mountain Fuel Centers')+'</div>';
   h+='<div>'+lbl('Contact Name')+fi('cmf-contact','text',l&&l.contact)+'</div>';
   h+='<div>'+lbl('Phone')+fi('cmf-phone','tel',l&&l.phone)+'</div>';
@@ -2335,11 +2366,22 @@ async function crmSendAvailability(leadId){
   }
 }
 
+// Cheap normalized-match duplicate check: lowercase, strip punctuation/
+// spacing differences ("Mountain Fuel Centers" vs "Mountain Fuel Centers, LLC"
+// vs extra whitespace). Not full fuzzy matching — just enough to catch the
+// two-owners-add-the-same-operator-independently case without a library.
+function crmNormCompany(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+
 function crmSaveLead(){
   const company=(document.getElementById('cmf-company')?.value||'').trim();
   if(!company){ toast('Company name is required','terr'); return; }
   const isEdit=!!crmEditId;
   const existing=isEdit?CRM_LEADS.find(l=>l.id===crmEditId):null;
+  const dup=CRM_LEADS.find(l=>l.id!==crmEditId && crmNormCompany(l.company)===crmNormCompany(company));
+  if(dup){
+    const ok=confirm('A lead for "'+dup.company+'" already exists ('+(dup.state||'no state listed')+' · '+dup.stage+' · '+(dup.owner||'Unassigned')+').\n\nAdd this one anyway?');
+    if(!ok) return;
+  }
   const obj={
     id: isEdit?crmEditId:'CRM-'+String(Date.now()).slice(-6),
     company,
@@ -2432,6 +2474,89 @@ function crmExport(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='roadys_crm_leads_'+crmToday()+'.csv'; a.click();
   toast('Exported '+leads.length+' lead'+(leads.length===1?'':'s')+' to CSV');
+}
+
+// Full RFC-4180 char-by-char CSV parser (handles quoted fields, embedded
+// commas/newlines, escaped double-quotes) — ported from implParseCSVRows in
+// index.html rather than a naive line.split(',') that breaks on real-world
+// CSVs (e.g. a company name containing a comma).
+function crmParseCSVRows(text){
+  const rows=[]; let row=[]; let field=''; let inQuote=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQuote){
+      if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else{inQuote=false;} }
+      else field+=c;
+    } else {
+      if(c==='"') inQuote=true;
+      else if(c===',') { row.push(field); field=''; }
+      else if(c==='\r') { /* skip */ }
+      else if(c==='\n') { row.push(field); field=''; rows.push(row); row=[]; }
+      else field+=c;
+    }
+  }
+  if(field||row.length>0){ row.push(field); rows.push(row); }
+  return rows;
+}
+// Header names match crmExport()'s column labels (case-insensitive), plus a
+// couple of common alternate spellings. New leads only — never overwrites
+// an existing lead, and skips (doesn't overwrite) anything that matches an
+// existing company via the same normalized check crmSaveLead() uses.
+function crmImportCSV(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const text=String(e.target.result||'').replace(/^﻿/,'');   // strip BOM
+      const rows=crmParseCSVRows(text).filter(r=>r.some(c=>(c||'').trim()));
+      if(rows.length<2){ toast('CSV needs a header row and at least one data row','terr'); return; }
+      const headerMap={company:'company',contact:'contact',phone:'phone',email:'email',
+        address:'street',city:'city',state:'state',zip:'zip',
+        'highway/exit':'exit','highway / exit':'exit',exit:'exit',
+        priority:'priority',locations:'locations',stage:'stage',owner:'owner',source:'source',
+        'follow-up':'followUp',followup:'followUp',notes:'notes'};
+      const headers=rows[0].map(h=>(h||'').trim().toLowerCase());
+      const colIdx={};
+      headers.forEach((h,i)=>{ if(headerMap[h]) colIdx[headerMap[h]]=i; });
+      if(colIdx.company===undefined){ toast('CSV must have a Company column','terr'); return; }
+
+      let imported=0, skipped=0;
+      const now=Date.now();
+      rows.slice(1).forEach((r,i)=>{
+        const get=k=>colIdx[k]!==undefined?(r[colIdx[k]]||'').trim():'';
+        const company=get('company');
+        if(!company) return;
+        if(CRM_LEADS.some(l=>crmNormCompany(l.company)===crmNormCompany(company))){ skipped++; return; }
+        const stageVal=get('stage'), priorityVal=get('priority');
+        const lead={
+          id:'CRM-'+String(now+i).slice(-6),
+          company, contact:get('contact'), phone:get('phone'), email:get('email'),
+          state:get('state'), street:get('street'), city:get('city'), zip:get('zip'),
+          exit:get('exit'), lanes:'',
+          stage:CRM_STAGES.includes(stageVal)?stageVal:'Prospect',
+          priority:CRM_PRIORITIES.includes(priorityVal)?priorityVal:'Medium',
+          owner:CRM_OWNERS.includes(get('owner'))?get('owner'):'',
+          source:CRM_SOURCES.includes(get('source'))?get('source'):'Other',
+          locations:parseInt(get('locations'))||1, estGallons:0, dealValue:0,
+          followUp:get('followUp'), notes:get('notes'),
+          created:crmToday(),
+          activity:[{text:'Lead imported from CSV',date:crmToday(),by:crmWhoAmI(),type:'note'}]
+        };
+        CRM_LEADS.push(lead);
+        crmSaveLeadToSupabase(lead);
+        imported++;
+      });
+      crmSave();
+      renderCRMKPIs(); crmFillDropdowns(); renderCRMKanban(); renderCRMTable();
+      toast('Imported '+imported+' lead'+(imported===1?'':'s')+(skipped?', skipped '+skipped+' duplicate'+(skipped===1?'':'s'):''));
+    }catch(err){
+      console.warn('CSV import error',err);
+      toast('Import failed — check the file format','terr');
+    }finally{
+      input.value='';
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ── CALENDAR ──
