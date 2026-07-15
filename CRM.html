@@ -2476,7 +2476,7 @@ function renderCRMEmails(){
     '<div style="font-size:.8em;font-weight:700">'+crmEsc(t.name)+'</div>'+
     '<div style="font-size:.66em;color:'+(CRM_STAGE_COLORS[t.stage]||'var(--muted)')+';margin-top:2px">'+t.stage+'</div></div>'
   ).join('');
-  if(crmSelectedTemplate) crmSelectTemplate(crmSelectedTemplate);
+  if(crmSelectedTemplate) crmShowTemplatePreview(crmSelectedTemplate);
   else{
     const ed=document.getElementById('crm-email-editor');
     if(ed) ed.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted);font-size:.82em">&larr; Select a template to preview or edit</div>';
@@ -2486,6 +2486,13 @@ function renderCRMEmails(){
 function crmSelectTemplate(id){
   crmSelectedTemplate=id;
   renderCRMEmails();
+}
+
+// Renders the preview pane for one template. Split out from crmSelectTemplate
+// so renderCRMEmails() can call this directly instead of crmSelectTemplate()
+// — calling crmSelectTemplate() from here would recurse into
+// renderCRMEmails() again on every click (stack overflow, preview never renders).
+function crmShowTemplatePreview(id){
   const t=CRM_TEMPLATES.find(x=>x.id===id); if(!t) return;
   const ed=document.getElementById('crm-email-editor'); if(!ed) return;
   const sample={contact:'Dave Richardson',company:'Mountain Fuel Centers',owner:'Robert Watson',state:'UT',locations:'4'};
