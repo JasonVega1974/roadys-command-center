@@ -9,6 +9,8 @@
 <title>Roady's CRM — Business Development</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
@@ -188,6 +190,29 @@ a{color:var(--accent);text-decoration:none;}
 .ec-tab:hover{border-color:var(--border2);color:var(--text);}
 .ec-tab.active{background:rgba(0,200,255,.12);border-color:var(--accent);color:var(--accent);}
 .ec-panel{display:none;}
+.kb-col.kb-drop-active{border-color:var(--accent);background:rgba(0,200,255,.05);}
+.kb-card-dragging{opacity:.4;}
+
+/* Quill (Notes tab) reskinned to match the app's theme tokens — the Snow
+   theme ships light-only CSS otherwise, which breaks in night mode. */
+.ql-toolbar.ql-snow{background:var(--surface2);border-color:var(--border)!important;border-radius:8px 8px 0 0;}
+.ql-container.ql-snow{background:var(--bg);border-color:var(--border)!important;border-radius:0 0 8px 8px;font-family:var(--fb);font-size:.88em;}
+.ql-editor{color:var(--text);min-height:160px;line-height:1.6;}
+.ql-editor.ql-blank::before{color:var(--muted);font-style:normal;}
+.ql-snow .ql-stroke{stroke:var(--muted);}
+.ql-snow .ql-fill,.ql-snow .ql-stroke.ql-fill{fill:var(--muted);}
+.ql-snow .ql-picker{color:var(--muted);}
+.ql-snow .ql-picker-options{background:var(--surface);border-color:var(--border)!important;}
+.ql-snow .ql-picker-label{border:none!important;}
+.ql-snow .ql-tooltip{background:var(--surface);border-color:var(--border);color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.3);}
+.ql-snow .ql-tooltip input[type=text]{background:var(--bg);border-color:var(--border);color:var(--text);}
+.ql-toolbar.ql-snow .ql-formats button:hover .ql-stroke,
+.ql-toolbar.ql-snow .ql-formats button.ql-active .ql-stroke{stroke:var(--accent);}
+.ql-toolbar.ql-snow .ql-formats button:hover .ql-fill,
+.ql-toolbar.ql-snow .ql-formats button.ql-active .ql-fill{fill:var(--accent);}
+.ql-note-preview{color:var(--text);}
+.ql-note-preview p{margin:0 0 .7em;}
+.ql-note-preview:last-child p:last-child{margin-bottom:0;}
 .ec-panel.active{display:block;}
 .entry-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;}
 .entry-panel h3{font-family:var(--ff);font-size:.9em;margin:16px 0 8px;color:var(--accent);}
@@ -800,7 +825,14 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
 <!-- CRM — Business Development (extracted standalone from index.html) -->
 <div id="crm-root" class="page active" style="display:none;max-width:1440px;margin:0 auto;padding:24px 28px">
-      <div class="sec-hdr"><div class="sec-title">CRM — BUSINESS DEVELOPMENT</div><span class="badge ba" id="crm-badge">Pipeline Command</span><button class="btn" onclick="toggleTheme(!document.body.classList.contains('day-mode'))" style="margin-left:auto" title="Toggle Day/Night Mode">🌓</button></div>
+      <div class="sec-hdr"><div class="sec-title">CRM — BUSINESS DEVELOPMENT</div><span class="badge ba" id="crm-badge">Pipeline Command</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <select id="crm-whoami" onchange="crmSetWhoAmI(this.value)" title="Who's logged in — stamps activity log entries and notes" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;font-weight:600;cursor:pointer">
+            <option value="">👤 Who are you?</option>
+          </select>
+          <button class="btn" onclick="toggleTheme(!document.body.classList.contains('day-mode'))" title="Toggle Day/Night Mode">🌓</button>
+        </span>
+      </div>
 
       <!-- ── Call Notifications (Task A5) ── -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
@@ -817,6 +849,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
         <button class="ec-tab" onclick="crmTab('calendar',this)">📅 Calendar</button>
         <button class="ec-tab" onclick="crmTab('scheduler',this)">⚡ Auto-Scheduler</button>
         <button class="ec-tab" onclick="crmTab('emails',this)">✉️ Email Templates</button>
+        <button class="ec-tab" onclick="crmTab('notes',this)">📝 Notes</button>
         <button class="ec-tab" onclick="crmTab('analytics',this)">📈 Analytics</button>
       </div>
 
@@ -839,6 +872,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
           <select id="crm-owner-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
           <select id="crm-priority-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Priorities</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select>
           <button class="btn" onclick="crmExport()">📥 Export CSV</button>
+          <button class="btn" onclick="crmOpenDeletedModal()">🗑 Deleted Leads</button>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">
           <div style="overflow-x:auto;max-height:600px"><table class="mem-tbl" id="crm-tbl"><thead></thead><tbody></tbody></table></div>
@@ -896,6 +930,60 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
         </div>
       </div>
 
+      <!-- ═══ NOTES COMMAND CENTER ═══ -->
+      <div id="crm-panel-notes" class="crm-panel" style="display:none">
+        <div style="display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:10px">NEW NOTE</div>
+            <select id="crm-notes-lead-pick" onchange="crmNotesPickLead(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.82em;margin-bottom:16px">
+              <option value="">Select a lead…</option>
+            </select>
+
+            <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:10px;border-top:1px solid var(--border);padding-top:14px">ARCHIVE</div>
+            <input id="crm-notes-search" type="text" placeholder="🔍 Search company…" oninput="renderCRMNotesArchive()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;margin-bottom:6px">
+            <select id="crm-notes-filter-state" onchange="renderCRMNotesArchive()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.78em;margin-bottom:6px">
+              <option value="all">All States</option>
+            </select>
+            <select id="crm-notes-filter-stage" onchange="renderCRMNotesArchive()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.78em;margin-bottom:6px">
+              <option value="all">All Stages</option>
+            </select>
+            <select id="crm-notes-filter-owner" onchange="renderCRMNotesArchive()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.78em;margin-bottom:10px">
+              <option value="all">All Owners</option>
+            </select>
+            <button class="btn" onclick="crmNotesExportCSV()" style="width:100%;margin-bottom:12px;font-size:.76em">📊 Export Filtered to CSV</button>
+            <div id="crm-notes-archive" style="max-height:440px;overflow-y:auto"></div>
+          </div>
+
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;min-height:300px">
+            <div id="crm-notes-view-empty" style="text-align:center;padding:60px 20px;color:var(--muted);font-size:.82em">Pick a lead on the left to write a note, or click an archive entry to view one.</div>
+
+            <div id="crm-notes-view-readonly" style="display:none">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+                <div>
+                  <div id="crm-notes-ro-title" style="font-family:var(--ff);font-size:.9em;font-weight:800;letter-spacing:.06em;color:var(--accent)"></div>
+                  <div id="crm-notes-ro-meta" style="font-size:.7em;color:var(--muted);margin-top:2px"></div>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="btn" onclick="crmNotesEdit(crmSelectedNote)" style="font-size:.75em">&#9998; Edit</button>
+                  <button class="btn" onclick="crmNotesEmail(crmSelectedNote)" style="font-size:.75em">&#9993; Email</button>
+                  <button class="btn" style="font-size:.75em;color:var(--red)" onclick="crmNotesDelete(crmSelectedNote)">&#128465; Delete</button>
+                </div>
+              </div>
+              <div id="crm-notes-ro-body" class="ql-note-preview" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"></div>
+            </div>
+
+            <div id="crm-notes-view-editor" style="display:none">
+              <div id="crm-notes-ed-title" style="font-family:var(--ff);font-size:.9em;font-weight:800;letter-spacing:.06em;color:var(--orange);margin-bottom:10px"></div>
+              <div id="crm-notes-quill"></div>
+              <div style="display:flex;gap:8px;margin-top:12px">
+                <button class="btn btn-accent" onclick="crmNotesSave()" style="font-size:.8em">&#128190; Save Note</button>
+                <button class="btn" onclick="crmNotesCancelEdit()" style="font-size:.8em">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ ANALYTICS ═══ -->
       <div id="crm-panel-analytics" class="crm-panel" style="display:none">
         <div class="kpi-grid" id="crm-analytics-kpis" style="margin-bottom:20px"></div>
@@ -931,6 +1019,19 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
             <button onclick="crmCloseModal()" style="background:none;border:none;color:var(--muted);font-size:1.4em;cursor:pointer">✕</button>
           </div>
           <div id="crm-modal-body" style="padding:24px"></div>
+        </div>
+      </div>
+
+      <!-- DELETED LEADS MODAL -->
+      <div id="crm-deleted-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9500;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:640px;max-width:100%;position:relative;margin:auto">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--border)">
+            <div style="font-family:var(--ff);font-size:1em;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)">🗑 DELETED LEADS</div>
+            <button onclick="crmCloseDeletedModal()" style="background:none;border:none;color:var(--muted);font-size:1.4em;cursor:pointer">✕</button>
+          </div>
+          <div id="crm-deleted-body" style="padding:24px">
+            <div style="text-align:center;color:var(--muted);font-size:.85em">Loading…</div>
+          </div>
         </div>
       </div>
 </div>
@@ -999,6 +1100,26 @@ function sbHideSyncing(ok){
 function crmEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function crmToday(){ return new Date().toISOString().slice(0,10); }
 
+// ── Identity picker: which owner is using this browser right now ──
+// Persisted per-browser (not a real login) so activity-log entries and notes
+// can say who actually did something instead of a hardcoded 'You' — useful
+// with two owners sharing the same CRM.
+const CRM_WHOAMI_KEY='roadys_crm_whoami';
+function crmWhoAmI(){
+  try{ return localStorage.getItem(CRM_WHOAMI_KEY) || 'Unassigned'; }catch(e){ return 'Unassigned'; }
+}
+function crmSetWhoAmI(name){
+  try{ localStorage.setItem(CRM_WHOAMI_KEY, name||''); }catch(e){}
+  const sel=document.getElementById('crm-whoami'); if(sel) sel.value=name||'';
+  if(name) toast('Signed in as '+name);
+}
+function crmInitWhoAmI(){
+  const sel=document.getElementById('crm-whoami'); if(!sel) return;
+  sel.innerHTML='<option value="">👤 Who are you?</option>'+CRM_OWNERS.map(o=>'<option value="'+crmEsc(o)+'">'+crmEsc(o)+'</option>').join('');
+  let saved=''; try{ saved=localStorage.getItem(CRM_WHOAMI_KEY)||''; }catch(e){}
+  sel.value=saved;
+}
+
 const CRM_STAGES   = ['Prospect','Qualified','Contacted','Meeting Scheduled','Proposal Sent','Negotiation','Closed Won','Closed Lost'];
 const CRM_OWNERS   = ['Robert Watson','Angel Long'];
 const CRM_SOURCES  = ['Referral','Cold Call','Trade Show','Conference','Website','GS Lead','Existing Member','Market Research','Other'];
@@ -1065,7 +1186,7 @@ function crmMiniCalendar(hostId, onPick){
     for(let d=1;d<=days;d++){ const dt=new Date(y,m,d); const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const past=dt<today; const isSel=sel===iso;
       h+=`<div data-day="${iso}" style="padding:5px 0;border-radius:5px;cursor:${past?'not-allowed':'pointer'};
-        ${isSel?'background:var(--accent);color:#fff;':past?'color:var(--faint);':'background:var(--surface-2,#1c2431);'}">${d}</div>`; }
+        ${isSel?'background:var(--accent);color:#fff;':past?'color:var(--faint);':'background:var(--surface-2,#1c2431);color:#fff;'}">${d}</div>`; }
     h+='</div>'; host.innerHTML=h;
     host.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{ m+=+b.dataset.nav; if(m<0){m=11;y--;} if(m>11){m=0;y++;} draw(); });
     host.querySelectorAll('[data-day]').forEach(c=>c.onclick=()=>{ const iso=c.dataset.day; if(new Date(iso)<today) return; sel=iso; draw(); onPick(iso); });
@@ -1829,6 +1950,7 @@ function crmTab(name,el){
   if(name==='calendar')  renderCRMCalendar();
   if(name==='scheduler') renderCRMScheduler();
   if(name==='emails')    renderCRMEmails();
+  if(name==='notes')     renderCRMNotes();
   if(name==='analytics') renderCRMAnalytics();
 }
 
@@ -1893,7 +2015,7 @@ function renderCRMKanban(){
     const stageGal=cards.reduce((s,l)=>s+(l.estGallons||0),0);
     const col=CRM_STAGE_COLORS[stage];
     const isWon=stage==='Closed Won', isLost=stage==='Closed Lost';
-    html+='<div style="flex-shrink:0;width:230px;background:var(--surface);border-radius:12px;border:1px solid var(--border);display:flex;flex-direction:column;max-height:700px">';
+    html+='<div class="kb-col" data-stage="'+crmEsc(stage)+'" ondragover="crmKbDragOver(event)" ondragleave="crmKbDragLeave(event)" ondrop="crmKbDrop(event,\''+stage+'\')" style="flex-shrink:0;width:230px;background:var(--surface);border-radius:12px;border:1px solid var(--border);display:flex;flex-direction:column;max-height:700px;transition:border-color .12s,background .12s">';
     html+='<div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);border-top:3px solid '+col+';border-radius:12px 12px 0 0">';
     html+='<div style="display:flex;justify-content:space-between;align-items:center">';
     html+='<div style="font-size:.7em;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:'+col+'">'+stage+'</div>';
@@ -1903,7 +2025,7 @@ function renderCRMKanban(){
     cards.forEach(l=>{
       const overdue=l.followUp&&l.followUp<crmToday()&&!isWon&&!isLost;
       const prBorder=l.priority==='High'?'var(--red)':l.priority==='Medium'?'var(--yellow)':'var(--dim)';
-      html+='<div onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="background:var(--bg);border:1px solid var(--border);border-left:3px solid '+prBorder+';border-radius:8px;padding:10px 11px;cursor:pointer">';
+      html+='<div draggable="true" ondragstart="crmKbDragStart(event,\''+crmEsc(l.id)+'\')" ondragend="crmKbDragEnd(event)" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="background:var(--bg);border:1px solid var(--border);border-left:3px solid '+prBorder+';border-radius:8px;padding:10px 11px;cursor:grab">';
       html+='<div style="font-weight:700;font-size:.8em;margin-bottom:3px">'+crmEsc(l.company)+'</div>';
       html+='<div style="font-size:.68em;color:var(--muted);margin-bottom:2px">'+crmEsc(l.contact)+' &middot; '+crmEsc(l.city)+(l.city&&l.state?', ':'')+crmEsc(l.state)+'</div>';
       if(l.exit) html+='<div style="font-size:.63em;color:var(--dim);margin-bottom:6px">'+crmEsc(l.exit)+'</div>';
@@ -1925,12 +2047,50 @@ function crmAdvanceStage(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
   const idx=CRM_STAGES.indexOf(l.stage);
   if(idx<0||idx>=CRM_STAGES.length-1) return;
-  const next=CRM_STAGES[idx+1];
-  l.stage=next;
+  crmMoveToStage(id,CRM_STAGES[idx+1]);
+}
+
+// \u2500\u2500 Kanban drag-and-drop: pick up a card, drop it on any column \u2500\u2500
+let crmKbDragId=null;
+function crmKbDragStart(ev,id){
+  crmKbDragId=id;
+  ev.dataTransfer.effectAllowed='move';
+  try{ ev.dataTransfer.setData('text/plain',id); }catch(e){}
+  ev.currentTarget.classList.add('kb-card-dragging');
+}
+function crmKbDragEnd(ev){
+  ev.currentTarget.classList.remove('kb-card-dragging');
+  document.querySelectorAll('.kb-col.kb-drop-active').forEach(c=>c.classList.remove('kb-drop-active'));
+}
+function crmKbDragOver(ev){
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect='move';
+  ev.currentTarget.classList.add('kb-drop-active');
+}
+function crmKbDragLeave(ev){
+  ev.currentTarget.classList.remove('kb-drop-active');
+}
+function crmKbDrop(ev,stage){
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('kb-drop-active');
+  const id=crmKbDragId||ev.dataTransfer.getData('text/plain');
+  crmKbDragId=null;
+  if(id) crmMoveToStage(id,stage);
+}
+// Shared by the Advance button and drag-and-drop so a stage change always
+// logs activity and syncs to Supabase the same way a full lead save does \u2014
+// the old Advance button only saved locally, so quick moves never reached
+// the other owner until someone re-opened and saved the lead modal.
+function crmMoveToStage(id,stage){
+  const l=CRM_LEADS.find(x=>x.id===id); if(!l||l.stage===stage) return;
+  const from=l.stage;
+  l.stage=stage;
   l.activity=l.activity||[];
-  l.activity.push({text:'Advanced to '+next,date:crmToday(),by:'You',type:'stage'});
-  crmSave(); renderCRMKPIs(); renderCRMKanban();
-  toast(crmEsc(l.company)+' \u2192 '+next);
+  l.activity.push({text:'Moved from '+from+' to '+stage,date:crmToday(),by:crmWhoAmI(),type:'stage'});
+  crmSave(); crmSaveLeadToSupabase(l);
+  renderCRMKPIs(); renderCRMKanban();
+  const lp=document.getElementById('crm-panel-leads'); if(lp&&lp.style.display!=='none') renderCRMTable();
+  toast(crmEsc(l.company)+' \u2192 '+stage);
 }
 
 // ── LEAD TABLE ──
@@ -2173,7 +2333,7 @@ function crmSaveLead(){
     followUp:document.getElementById('cmf-followup')?.value||'',
     notes:(document.getElementById('cmf-notes')?.value||'').trim(),
     created:existing?.created||crmToday(),
-    activity:existing?.activity||[{text:'Lead created',date:crmToday(),by:'You',type:'note'}],
+    activity:existing?.activity||[{text:'Lead created',date:crmToday(),by:crmWhoAmI(),type:'note'}],
   };
   if(isEdit){ const i=CRM_LEADS.findIndex(l=>l.id===crmEditId); if(i>=0) CRM_LEADS[i]=obj; }
   else CRM_LEADS.push(obj);
@@ -2191,7 +2351,7 @@ function crmLogActivity(id){
   const type=document.getElementById('cmf-act-type')?.value||'note';
   if(!text){ toast('Enter activity description','terr'); return; }
   l.activity=l.activity||[];
-  l.activity.push({text,date:crmToday(),by:'You',type});
+  l.activity.push({text,date:crmToday(),by:crmWhoAmI(),type});
   crmSave();
   const icons={email:'&#9993;',call:'&#128222;',meeting:'&#129309;',stage:'&rarr;',won:'&#127942;',lost:'&#10007;',referral:'&#128279;',note:'&#128221;'};
   const log=document.getElementById('cmf-activity-log');
@@ -2205,7 +2365,7 @@ function crmLogActivity(id){
 
 function crmDeleteLead(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
-  if(!confirm('Delete "'+l.company+'"?')) return;
+  if(!confirm('Archive "'+l.company+'"? It will disappear from the pipeline — restore it later from Deleted Leads if this was a mistake.')) return;
   CRM_LEADS=CRM_LEADS.filter(x=>x.id!==id);
   crmSave(); crmCloseModal();
   renderCRMKPIs(); renderCRMKanban();
@@ -2409,7 +2569,7 @@ function crmMarkDone(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
   const rule=CRM_RULES.find(r=>r.active&&r.stage===l.stage);
   l.activity=l.activity||[];
-  l.activity.push({text:(rule?rule.action:'Follow-up')+' completed',date:crmToday(),by:'You',type:'note'});
+  l.activity.push({text:(rule?rule.action:'Follow-up')+' completed',date:crmToday(),by:crmWhoAmI(),type:'note'});
   const nxt=new Date(); nxt.setDate(nxt.getDate()+(rule?.days||7));
   l.followUp=nxt.toISOString().slice(0,10);
   crmSave(); renderCRMScheduler(); renderCRMCalendar();
@@ -2545,6 +2705,228 @@ function crmNewTemplate(){
   crmSaveTemplates(); crmSaveTemplateToSupabase(t); crmSelectedTemplate=id; renderCRMEmails(); crmEditTmpl(id);
 }
 
+// ── NOTES COMMAND CENTER ──
+// Rich-text notes per lead (bold/italic/underline/color via Quill), synced
+// through crm_lead_notes, filterable archive by lead/state/stage/owner,
+// CSV export and per-note mailto export.
+let CRM_NOTES=[];
+let crmNotesQuill=null;
+let crmSelectedNote=null;    // id of the note currently shown (readonly or being edited)
+let crmNotesNewLeadId=null;  // lead chosen for a brand-new note before it has an id
+
+function crmNotesLoadLocal(){ try{ const s=localStorage.getItem('roadys_crm_notes_v1'); if(s) CRM_NOTES=JSON.parse(s); }catch(e){} }
+function crmNotesSaveLocal(){ try{ localStorage.setItem('roadys_crm_notes_v1', JSON.stringify(CRM_NOTES)); }catch(e){} }
+
+async function crmLoadNotesFromSupabase(){
+  const sb=getRoadysSB(); if(!sb) return;
+  try{
+    const {data,error}=await sb.from('crm_lead_notes').select('*').is('deleted_at',null).order('created_at',{ascending:false});
+    if(error) throw error;
+    CRM_NOTES=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company||'',state:r.state||'',stage:r.stage||'',owner:r.owner||'',body:r.body||'',createdAt:r.created_at,updatedAt:r.updated_at}));
+    crmNotesSaveLocal();
+    const panel=document.getElementById('crm-panel-notes');
+    if(panel && panel.style.display!=='none') renderCRMNotesArchive();
+  }catch(e){ console.warn('notes load',e); }
+}
+async function crmSaveNoteToSupabase(n){
+  const sb=getRoadysSB(); if(!sb) return;
+  try{
+    const row={id:n.id, lead_id:n.leadId, company:n.company||'', state:n.state||'', stage:n.stage||'', owner:n.owner||'', body:n.body||''};
+    const {error}=await sb.from('crm_lead_notes').upsert(row,{onConflict:'id'});
+    if(error) throw error;
+  }catch(e){ console.warn('note save',e); toast('Note saved locally (cloud sync failed)','terr'); }
+}
+async function crmDeleteNoteFromSupabase(id){
+  const sb=getRoadysSB(); if(!sb) return;
+  try{
+    // Soft delete, consistent with crm_leads — no restore UI for notes yet,
+    // but a misclick is still recoverable straight from the database.
+    const {error}=await sb.from('crm_lead_notes').update({deleted_at:new Date().toISOString()}).eq('id',id);
+    if(error) throw error;
+  }catch(e){ console.warn('note delete',e); }
+}
+
+function crmNotesStripHTML(html){
+  const d=document.createElement('div'); d.innerHTML=html||'';
+  return (d.textContent||d.innerText||'').trim();
+}
+
+function crmNotesInitEditor(){
+  if(crmNotesQuill) return crmNotesQuill;
+  crmNotesQuill=new Quill('#crm-notes-quill',{
+    theme:'snow',
+    placeholder:'Write a note… bold, italic, underline, color — like Word.',
+    modules:{ toolbar:[['bold','italic','underline'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],['clean']] }
+  });
+  return crmNotesQuill;
+}
+
+function renderCRMNotes(){
+  crmNotesLoadLocal();
+  const pick=document.getElementById('crm-notes-lead-pick');
+  if(pick){
+    const cur=pick.value;
+    pick.innerHTML='<option value="">Select a lead…</option>'+CRM_LEADS.slice().sort((a,b)=>(a.company||'').localeCompare(b.company||'')).map(l=>
+      '<option value="'+crmEsc(l.id)+'">'+crmEsc(l.company)+(l.state?' — '+crmEsc(l.state):'')+'</option>').join('');
+    if(cur) pick.value=cur;
+  }
+  const sf=document.getElementById('crm-notes-filter-state');
+  if(sf && !sf.dataset.filled){
+    const states=[...new Set(CRM_LEADS.map(l=>(l.state||'').trim()).filter(Boolean))].sort();
+    sf.innerHTML='<option value="all">All States</option>'+states.map(s=>'<option value="'+crmEsc(s)+'">'+crmEsc(s)+'</option>').join('');
+    sf.dataset.filled='1';
+  }
+  const gf=document.getElementById('crm-notes-filter-stage');
+  if(gf && !gf.dataset.filled){
+    gf.innerHTML='<option value="all">All Stages</option>'+CRM_STAGES.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
+    gf.dataset.filled='1';
+  }
+  const of=document.getElementById('crm-notes-filter-owner');
+  if(of && !of.dataset.filled){
+    of.innerHTML='<option value="all">All Owners</option>'+CRM_OWNERS.map(o=>'<option value="'+crmEsc(o)+'">'+crmEsc(o)+'</option>').join('');
+    of.dataset.filled='1';
+  }
+  renderCRMNotesArchive();
+}
+
+function crmNotesFilteredList(){
+  const q=(document.getElementById('crm-notes-search')?.value||'').toLowerCase();
+  const sf=document.getElementById('crm-notes-filter-state')?.value||'all';
+  const gf=document.getElementById('crm-notes-filter-stage')?.value||'all';
+  const of=document.getElementById('crm-notes-filter-owner')?.value||'all';
+  return CRM_NOTES.filter(n=>{
+    if(q && n.company.toLowerCase().indexOf(q)<0) return false;
+    if(sf!=='all' && n.state!==sf) return false;
+    if(gf!=='all' && n.stage!==gf) return false;
+    if(of!=='all' && n.owner!==of) return false;
+    return true;
+  }).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+}
+
+function renderCRMNotesArchive(){
+  const list=document.getElementById('crm-notes-archive'); if(!list) return;
+  const notes=crmNotesFilteredList();
+  if(!notes.length){ list.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);font-size:.78em">No notes match these filters.</div>'; return; }
+  list.innerHTML=notes.map(n=>{
+    const preview=crmNotesStripHTML(n.body).slice(0,90);
+    const active=crmSelectedNote===n.id;
+    const col=CRM_STAGE_COLORS[n.stage]||'var(--muted)';
+    return '<div onclick="crmNotesView(\''+n.id+'\')" style="padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:6px;border:1px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'rgba(0,200,255,.08)':'var(--bg)')+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:.8em;font-weight:700">'+crmEsc(n.company)+'</span><span style="font-size:.62em;color:var(--muted);white-space:nowrap">'+(n.createdAt?n.createdAt.slice(0,10):'')+'</span></div>'+
+      '<div style="font-size:.64em;color:'+col+';margin-top:2px">'+crmEsc(n.state||'')+(n.state&&n.stage?' &middot; ':'')+crmEsc(n.stage||'')+(n.owner?' &middot; '+crmEsc(n.owner):'')+'</div>'+
+      (preview?'<div style="font-size:.7em;color:var(--muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+crmEsc(preview)+'</div>':'')+
+      '</div>';
+  }).join('');
+}
+
+function crmNotesShowEmpty(){
+  document.getElementById('crm-notes-view-empty').style.display='';
+  document.getElementById('crm-notes-view-readonly').style.display='none';
+  document.getElementById('crm-notes-view-editor').style.display='none';
+}
+function crmNotesShowReadonly(){
+  document.getElementById('crm-notes-view-empty').style.display='none';
+  document.getElementById('crm-notes-view-readonly').style.display='';
+  document.getElementById('crm-notes-view-editor').style.display='none';
+}
+function crmNotesShowEditor(){
+  document.getElementById('crm-notes-view-empty').style.display='none';
+  document.getElementById('crm-notes-view-readonly').style.display='none';
+  document.getElementById('crm-notes-view-editor').style.display='';
+}
+
+function crmNotesPickLead(leadId){
+  crmNotesNewLeadId=leadId||null;
+  crmSelectedNote=null;
+  if(!leadId){ crmNotesShowEmpty(); renderCRMNotesArchive(); return; }
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  document.getElementById('crm-notes-ed-title').textContent='New note — '+l.company;
+  crmNotesShowEditor();
+  const q=crmNotesInitEditor();
+  q.root.innerHTML='';
+  renderCRMNotesArchive();
+}
+
+function crmNotesView(id){
+  const n=CRM_NOTES.find(x=>x.id===id); if(!n) return;
+  crmSelectedNote=id;
+  document.getElementById('crm-notes-ro-title').textContent=n.company;
+  document.getElementById('crm-notes-ro-meta').textContent=(n.state?n.state+' &middot; ':'')+(n.stage||'')+(n.owner?' &middot; '+n.owner:'')+(n.createdAt?' &middot; '+n.createdAt.slice(0,10):'');
+  document.getElementById('crm-notes-ro-body').innerHTML=n.body||'<span style="color:var(--muted)">(empty)</span>';
+  crmNotesShowReadonly();
+  renderCRMNotesArchive();
+}
+
+function crmNotesEdit(id){
+  const n=CRM_NOTES.find(x=>x.id===id); if(!n) return;
+  crmSelectedNote=id;
+  crmNotesNewLeadId=n.leadId;
+  document.getElementById('crm-notes-ed-title').textContent='Editing note — '+n.company;
+  crmNotesShowEditor();
+  const q=crmNotesInitEditor();
+  q.root.innerHTML=n.body||'';
+}
+
+function crmNotesCancelEdit(){
+  if(crmSelectedNote) crmNotesView(crmSelectedNote);
+  else crmNotesShowEmpty();
+}
+
+function crmNotesSave(){
+  const leadId=crmNotesNewLeadId; if(!leadId){ toast('Pick a lead first','terr'); return; }
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l){ toast('Lead not found','terr'); return; }
+  const q=crmNotesInitEditor();
+  const body=q.root.innerHTML;
+  if(!crmNotesStripHTML(body)){ toast('Note is empty','terr'); return; }
+  let n=crmSelectedNote?CRM_NOTES.find(x=>x.id===crmSelectedNote):null;
+  if(n){
+    n.body=body; n.company=l.company; n.state=(l.state||'').trim(); n.stage=l.stage||''; n.owner=crmWhoAmI();
+  } else {
+    n={id:'note_'+Date.now(), leadId, company:l.company, state:(l.state||'').trim(), stage:l.stage||'', owner:crmWhoAmI(), body, createdAt:new Date().toISOString()};
+    CRM_NOTES.unshift(n);
+  }
+  crmNotesSaveLocal(); crmSaveNoteToSupabase(n);
+  toast('Note saved');
+  crmNotesView(n.id);
+}
+
+function crmNotesDelete(id){
+  const n=CRM_NOTES.find(x=>x.id===id); if(!n) return;
+  if(!confirm('Archive this note on '+n.company+'? It will disappear from the archive — recoverable from the database if this was a mistake.')) return;
+  CRM_NOTES=CRM_NOTES.filter(x=>x.id!==id);
+  crmNotesSaveLocal(); crmDeleteNoteFromSupabase(id);
+  crmSelectedNote=null; crmNotesShowEmpty();
+  renderCRMNotesArchive();
+  toast('Note deleted','terr');
+}
+
+function crmNotesEmail(id){
+  const n=CRM_NOTES.find(x=>x.id===id); if(!n) return;
+  const subject='Note — '+n.company+(n.stage?' ('+n.stage+')':'');
+  const body='Lead: '+n.company+(n.state?' — '+n.state:'')+(n.stage?'\nStage: '+n.stage:'')+(n.owner?'\nBy: '+n.owner:'')+'\n\n'+crmNotesStripHTML(n.body);
+  window.location.href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+}
+
+function crmNotesExportCSV(){
+  const cols=[
+    ['Lead',  n=>n.company],
+    ['State', n=>n.state],
+    ['Stage', n=>n.stage],
+    ['Owner', n=>n.owner],
+    ['Date',  n=>n.createdAt?n.createdAt.slice(0,10):''],
+    ['Note',  n=>crmNotesStripHTML(n.body)]
+  ];
+  // RFC-4180 quoting: wrap any cell containing quote/comma/newline and double its quotes.
+  const cell=v=>{ const s=(v==null?'':String(v)); return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const notes=crmNotesFilteredList();
+  const lines=[cols.map(c=>c[0]).join(',')].concat(notes.map(n=>cols.map(c=>cell(c[1](n))).join(',')));
+  const csv='﻿'+lines.join('\r\n');  // BOM so Excel reads UTF-8 correctly
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='roadys_crm_notes_'+crmToday()+'.csv'; a.click();
+  toast('Exported '+notes.length+' note'+(notes.length===1?'':'s')+' to CSV');
+}
+
 // ── ANALYTICS ──
 function renderCRMAnalytics(){
   const won=CRM_LEADS.filter(l=>l.stage==='Closed Won');
@@ -2621,7 +3003,7 @@ async function crmLoadFromSupabase(){
   const sb=getRoadysSB(); if(!sb) return false;
   try{
     sbShowSyncing('⟳ Loading CRM...');
-    const {data,error}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false});
+    const {data,error}=await sb.from('crm_leads').select('*').is('deleted_at',null).order('created_at',{ascending:false});
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
     if(data&&data.length){
       CRM_LEADS=data.map(r=>({
@@ -2698,12 +3080,64 @@ async function crmSaveLeadToSupabase(lead){
 async function crmDeleteLeadFromSupabase(id){
   const sb=getRoadysSB(); if(!sb) return;
   try{
-    const {error}=await sb.from('crm_leads').delete().eq('id',id);
+    // Soft delete — sets deleted_at instead of removing the row, so a misclick
+    // is recoverable (see sql/2026-07-15-crm-leads-soft-delete.sql).
+    const {error}=await sb.from('crm_leads').update({deleted_at:new Date().toISOString()}).eq('id',id);
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
   }catch(e){
     console.warn('crmDeleteLeadFromSupabase error:',e);
   }
 }
+
+// ── Deleted Leads modal: view + restore soft-deleted leads ──
+function crmOpenDeletedModal(){
+  document.getElementById('crm-deleted-modal').style.display='flex';
+  crmLoadDeletedLeads();
+}
+function crmCloseDeletedModal(){
+  document.getElementById('crm-deleted-modal').style.display='none';
+}
+async function crmLoadDeletedLeads(){
+  const body=document.getElementById('crm-deleted-body');
+  const sb=getRoadysSB();
+  if(!sb){ body.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.85em">Supabase not available.</div>'; return; }
+  body.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.85em">Loading…</div>';
+  try{
+    const {data,error}=await sb.from('crm_leads').select('*').not('deleted_at','is',null).order('deleted_at',{ascending:false});
+    if(error) throw error;
+    if(!data||!data.length){ body.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.85em">No deleted leads.</div>'; return; }
+    body.innerHTML=data.map(r=>
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)">'+
+      '<div><div style="font-weight:700;font-size:.85em">'+crmEsc(r.company||'')+'</div>'+
+      '<div style="font-size:.68em;color:var(--muted);margin-top:2px">'+crmEsc(r.stage||'')+(r.owner?' &middot; '+crmEsc(r.owner):'')+' &middot; deleted '+(r.deleted_at?r.deleted_at.slice(0,10):'')+'</div></div>'+
+      '<button class="btn btn-accent" style="font-size:.75em;flex-shrink:0" onclick="crmRestoreLead(\''+crmEsc(r.id)+'\')">&#8617; Restore</button>'+
+      '</div>'
+    ).join('');
+  }catch(e){
+    console.warn('deleted leads load',e);
+    body.innerHTML='<div style="text-align:center;color:var(--red);font-size:.85em">Failed to load — check the console.</div>';
+  }
+}
+async function crmRestoreLead(id){
+  const sb=getRoadysSB(); if(!sb) return;
+  try{
+    const {error}=await sb.from('crm_leads').update({deleted_at:null}).eq('id',id);
+    if(error) throw error;
+    toast('Lead restored');
+    crmLoadDeletedLeads();
+    crmLoadFromSupabase().then(()=>{
+      renderCRMKPIs(); renderCRMKanban();
+      const lp=document.getElementById('crm-panel-leads'); if(lp&&lp.style.display!=='none'){ crmFillDropdowns(); renderCRMTable(); }
+    });
+  }catch(e){
+    console.warn('restore lead error',e);
+    toast('Restore failed','terr');
+  }
+}
+document.addEventListener('click',e=>{
+  const m=document.getElementById('crm-deleted-modal');
+  if(m&&e.target===m) crmCloseDeletedModal();
+});
 
 // ═══════════════════════════════════════════
 //  STANDALONE BOOT + PIN GATE + DEEP LINK
@@ -2745,10 +3179,12 @@ function crmDeepLink(){
 // then pull fresh from Supabase and re-render, then honor the deep link.
 function crmInit(){
   const root=document.getElementById('crm-root'); if(root) root.style.display='';
+  crmInitWhoAmI();
   pgCRM();
   crmCallsLoadLocal(); renderCRMNotifications();
   crmLoadCallsFromSupabase().then(()=>renderCRMNotifications());
   crmLoadTemplatesFromSupabase();
+  crmLoadNotesFromSupabase();
   crmLoadFromSupabase().then(loaded=>{
     if(loaded){
       renderCRMKPIs(); crmFillDropdowns(); renderCRMKanban();
@@ -2756,6 +3192,27 @@ function crmInit(){
     }
     crmDeepLink();
   }).catch(()=>{ crmDeepLink(); });
+  crmStartBackgroundRefresh();
+}
+
+// Periodic quiet re-pull of crm_leads so two owners working the CRM at the
+// same time don't silently overwrite each other for an entire session —
+// this app has no Realtime subscription, so without this a stale tab could
+// go unnoticed for hours. Skips while the lead modal is open so it never
+// clobbers an edit in progress.
+function crmStartBackgroundRefresh(){
+  setInterval(()=>{
+    const modal=document.getElementById('crm-modal');
+    if(modal && modal.style.display==='flex') return;
+    crmLoadFromSupabase().then(loaded=>{
+      if(!loaded) return;
+      renderCRMKPIs();
+      if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
+      if(document.getElementById('crm-panel-leads')?.style.display!=='none'){ crmFillDropdowns(); renderCRMTable(); }
+      if(document.getElementById('crm-panel-calendar')?.style.display!=='none') renderCRMCalendar();
+      if(document.getElementById('crm-panel-analytics')?.style.display!=='none') renderCRMAnalytics();
+    });
+  }, 90000);
 }
 
 function crmShowPinGate(){
