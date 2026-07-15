@@ -2366,10 +2366,16 @@ async function crmSendAvailability(leadId){
   }
 }
 
-// Cheap normalized-match duplicate check: lowercase, strip punctuation/
-// spacing differences ("Mountain Fuel Centers" vs "Mountain Fuel Centers, LLC"
-// vs extra whitespace). Not full fuzzy matching — just enough to catch the
-// two-owners-add-the-same-operator-independently case without a library.
+// Cheap normalized-match duplicate check: lowercase, collapse punctuation/
+// whitespace differences into a single space — "Mountain Fuel Centers."
+// vs "Mountain Fuel Centers" vs "Mountain  Fuel   Centers" all match.
+// KNOWN LIMITATION: this is NOT fuzzy matching. It does not catch naming
+// variants ("Segovia Truck Stop" vs "Segovia 66 Truck Stop") or
+// corporate-suffix differences ("Mountain Fuel Centers" vs "Mountain Fuel
+// Centers, LLC") — those normalize to different strings and pass through
+// as distinct companies. Revisit with real fuzzy matching (e.g. trigram
+// or Levenshtein similarity) if that turns out to matter once both
+// owners are actively adding leads.
 function crmNormCompany(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
 
 function crmSaveLead(){
