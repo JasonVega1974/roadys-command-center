@@ -17,6 +17,7 @@
   --ff:'Barlow Condensed','Arial Narrow',sans-serif;
   --fb:'DM Sans','Segoe UI',sans-serif;
 }
+html.day-mode,
 body.day-mode{
   --bg:#F0F2F5;--surface:#FFFFFF;--surface2:#F7F8FA;--border:#D8DCE3;--border2:#C0C7D3;
   --accent:#0078D4;--green:#0B8A50;--red:#D32F2F;--yellow:#E6A800;--orange:#D4520A;
@@ -31,6 +32,7 @@ body.day-mode .tog .slider{background:#B0BEC5;}
 body.day-mode .tog input:checked+.slider{background:#4FC3F7;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{color-scheme:dark;}
+html.day-mode,
 body.day-mode{color-scheme:light;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:14px;}
 select option{background:var(--surface);color:var(--text);}
@@ -2674,14 +2676,21 @@ async function crmDeleteLeadFromSupabase(id){
 // ═══════════════════════════════════════════
 // Restore day/night theme preference (mirrors index.html loadTheme) — runs
 // synchronously here (not on DOMContentLoaded) to avoid a flash of the wrong theme.
-try{ if(localStorage.getItem('roadys_theme')==='day') document.body.classList.add('day-mode'); }catch(e){}
+// Applied to both <html> and <body>: body.height:100% means overflowed page
+// content renders outside body's own box, so its background falls back to
+// <html>'s — without the class there too, that fallback background stays
+// stuck on the dark palette and shows through once you scroll past one
+// viewport's worth of content.
+try{ if(localStorage.getItem('roadys_theme')==='day'){ document.documentElement.classList.add('day-mode'); document.body.classList.add('day-mode'); } }catch(e){}
 
 // ── Day/Night theme toggle (shared 'roadys_theme' key with index.html) ──
 function toggleTheme(isDay){
   if(isDay){
+    document.documentElement.classList.add('day-mode');
     document.body.classList.add('day-mode');
     localStorage.setItem('roadys_theme','day');
   } else {
+    document.documentElement.classList.remove('day-mode');
     document.body.classList.remove('day-mode');
     localStorage.setItem('roadys_theme','night');
   }
