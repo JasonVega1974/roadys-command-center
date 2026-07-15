@@ -78,6 +78,14 @@ sync upserts them to the cloud. (The earlier proposed `stop_records`
 table in `sql/membership_supabase_notes.sql` was never built — superseded
 by `gs_stop_records`.)
 
+CRM Phase B (from `CRM.html` / `call-booking.html`): `crm_scheduled_calls`,
+`crm_owner_emails` (`sql/2026-07-14-crm-scheduled-calls.sql`),
+`crm_booking_offers` (`sql/2026-07-14-crm-booking.sql`, RPC-only — no
+direct anon/authenticated grants, reached only via SECURITY DEFINER RPCs),
+and `crm_email_templates` (`sql/2026-07-15-crm-email-templates.sql`) — the
+Email Templates tab's canned-outreach library, synced so edits are shared
+between owners instead of living per-browser in `localStorage`.
+
 ## Project structure quick reference
 
 - `index.html` — Roady's Network Command Center (admin/master dashboard).
