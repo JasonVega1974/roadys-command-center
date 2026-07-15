@@ -798,7 +798,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
 <!-- CRM — Business Development (extracted standalone from index.html) -->
 <div id="crm-root" class="page active" style="display:none;max-width:1440px;margin:0 auto;padding:24px 28px">
-      <div class="sec-hdr"><div class="sec-title">CRM — BUSINESS DEVELOPMENT</div><span class="badge ba" id="crm-badge">Pipeline Command</span></div>
+      <div class="sec-hdr"><div class="sec-title">CRM — BUSINESS DEVELOPMENT</div><span class="badge ba" id="crm-badge">Pipeline Command</span><button class="btn" onclick="toggleTheme(!document.body.classList.contains('day-mode'))" style="margin-left:auto" title="Toggle Day/Night Mode">🌓</button></div>
 
       <!-- ── Call Notifications (Task A5) ── -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
@@ -2672,8 +2672,20 @@ async function crmDeleteLeadFromSupabase(id){
 // ═══════════════════════════════════════════
 //  STANDALONE BOOT + PIN GATE + DEEP LINK
 // ═══════════════════════════════════════════
-// Restore day/night theme preference (mirrors index.html loadTheme).
+// Restore day/night theme preference (mirrors index.html loadTheme) — runs
+// synchronously here (not on DOMContentLoaded) to avoid a flash of the wrong theme.
 try{ if(localStorage.getItem('roadys_theme')==='day') document.body.classList.add('day-mode'); }catch(e){}
+
+// ── Day/Night theme toggle (shared 'roadys_theme' key with index.html) ──
+function toggleTheme(isDay){
+  if(isDay){
+    document.body.classList.add('day-mode');
+    localStorage.setItem('roadys_theme','day');
+  } else {
+    document.body.classList.remove('day-mode');
+    localStorage.setItem('roadys_theme','night');
+  }
+}
 
 // Settings soft-lock: reads the same roadys_settings store index.html writes.
 let SETTINGS={hidden:{},locked:{},pin:''};
