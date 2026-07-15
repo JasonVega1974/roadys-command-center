@@ -213,6 +213,12 @@ a{color:var(--accent);text-decoration:none;}
 .ql-note-preview{color:var(--text);}
 .ql-note-preview p{margin:0 0 .7em;}
 .ql-note-preview:last-child p:last-child{margin-bottom:0;}
+.crm-hl-btn{width:28px;height:24px;border:1px solid transparent;border-radius:4px;background:transparent;cursor:pointer;font-size:14px;line-height:1;padding:0;color:var(--muted);vertical-align:middle;}
+.crm-hl-btn:hover{background:rgba(255,214,10,.15);border-color:rgba(255,214,10,.35);}
+.ql-container.ql-snow.crm-ql-compact{font-size:.82em;}
+.ql-container.ql-snow.crm-ql-compact .ql-editor{min-height:70px;padding:8px 10px;}
+.crm-lead-note-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+.crm-lead-note-meta{font-size:.66em;color:var(--muted);display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;}
 .ec-panel.active{display:block;}
 .entry-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;}
 .entry-panel h3{font-family:var(--ff);font-size:.9em;margin:16px 0 8px;color:var(--accent);}
@@ -974,6 +980,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 
             <div id="crm-notes-view-editor" style="display:none">
               <div id="crm-notes-ed-title" style="font-family:var(--ff);font-size:.9em;font-weight:800;letter-spacing:.06em;color:var(--orange);margin-bottom:10px"></div>
+              <div id="crm-notes-toolbar" class="ql-toolbar ql-snow"></div>
               <div id="crm-notes-quill"></div>
               <div style="display:flex;gap:8px;margin-top:12px">
                 <button class="btn btn-accent" onclick="crmNotesSave()" style="font-size:.8em">&#128190; Save Note</button>
@@ -2025,8 +2032,9 @@ function renderCRMKanban(){
     cards.forEach(l=>{
       const overdue=l.followUp&&l.followUp<crmToday()&&!isWon&&!isLost;
       const prBorder=l.priority==='High'?'var(--red)':l.priority==='Medium'?'var(--yellow)':'var(--dim)';
+      const noteCount=CRM_NOTES.filter(n=>n.leadId===l.id).length;
       html+='<div draggable="true" ondragstart="crmKbDragStart(event,\''+crmEsc(l.id)+'\')" ondragend="crmKbDragEnd(event)" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="background:var(--bg);border:1px solid var(--border);border-left:3px solid '+prBorder+';border-radius:8px;padding:10px 11px;cursor:grab">';
-      html+='<div style="font-weight:700;font-size:.8em;margin-bottom:3px">'+crmEsc(l.company)+'</div>';
+      html+='<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-weight:700;font-size:.8em">'+crmEsc(l.company)+'</span>'+(noteCount?'<span style="font-size:.62em;color:var(--accent);white-space:nowrap" title="'+noteCount+' note'+(noteCount===1?'':'s')+'">📝 '+noteCount+'</span>':'')+'</div>';
       html+='<div style="font-size:.68em;color:var(--muted);margin-bottom:2px">'+crmEsc(l.contact)+' &middot; '+crmEsc(l.city)+(l.city&&l.state?', ':'')+crmEsc(l.state)+'</div>';
       if(l.exit) html+='<div style="font-size:.63em;color:var(--dim);margin-bottom:6px">'+crmEsc(l.exit)+'</div>';
       html+='<div style="display:flex;justify-content:space-between;font-size:.65em;margin-bottom:6px"><span style="color:var(--accent);font-weight:600">'+Math.round((l.estGallons||0)/1000)+'K gal</span><span style="color:'+prBorder+';font-weight:700">'+l.priority+'</span></div>';
@@ -2141,6 +2149,7 @@ function crmOpenLeadModal(id, defaultStage){
   document.getElementById('crm-modal').style.display='flex';
   if(document.getElementById('cmf-sched-cal')){ crmMiniCalendar('cmf-sched-cal', iso=>{ document.getElementById('cmf-sched-date').value=iso; }); crmRenderLeadCalls(id); }
   if(document.getElementById('cmf-avail-slots')) crmRenderAvailSlots();
+  if(document.getElementById('cmf-notes-list')) crmRenderLeadNotes(id);
 }
 function crmCloseModal(){
   document.getElementById('crm-modal').style.display='none';
@@ -2222,6 +2231,15 @@ function crmBuildForm(l, defaultStage){
     h+='<button class="btn" onclick="crmLogActivity(\''+crmEsc(l.id)+'\')" style="font-size:.78em">+ Log</button>';
     h+='</div>';
     h+='<div style="margin-top:10px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px" id="cmf-activity-log">'+actLog+'</div>';
+    h+='</div>';
+    // Rich-text notes archive for this lead — shares CRM_NOTES with the Notes
+    // tab, so a note written here shows there and vice versa.
+    h+='<div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">';
+    h+='<div style="font-size:.72em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📝 Notes</div>';
+    h+='<div id="cmf-notes-list" style="margin-bottom:10px"></div>';
+    h+='<div id="cmf-notes-toolbar" class="ql-toolbar ql-snow"></div>';
+    h+='<div id="cmf-notes-quill" class="crm-ql-compact"></div>';
+    h+='<button type="button" class="btn btn-accent" style="margin-top:8px;font-size:.78em" onclick="crmAddLeadNote(\''+crmEsc(l.id)+'\')">+ Add Note</button>';
     h+='</div>';
   }
   h+='<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--border)">';
@@ -2724,9 +2742,19 @@ async function crmLoadNotesFromSupabase(){
     if(error) throw error;
     CRM_NOTES=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company||'',state:r.state||'',stage:r.stage||'',owner:r.owner||'',body:r.body||'',createdAt:r.created_at,updatedAt:r.updated_at}));
     crmNotesSaveLocal();
-    const panel=document.getElementById('crm-panel-notes');
-    if(panel && panel.style.display!=='none') renderCRMNotesArchive();
+    crmNotesRefreshSurfaces();
   }catch(e){ console.warn('notes load',e); }
+}
+// Re-renders every place notes are visible — the Kanban card badge, the
+// Notes tab archive (if open), and the lead modal's notes section (if that
+// lead's modal is open) — so a note written from any one of these three
+// surfaces shows up in the other two without a page reload.
+function crmNotesRefreshSurfaces(){
+  if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
+  const notesPanel=document.getElementById('crm-panel-notes');
+  if(notesPanel && notesPanel.style.display!=='none') renderCRMNotesArchive();
+  const modal=document.getElementById('crm-modal');
+  if(modal && modal.style.display==='flex' && crmEditId) crmRenderLeadNotes(crmEditId);
 }
 async function crmSaveNoteToSupabase(n){
   const sb=getRoadysSB(); if(!sb) return;
@@ -2751,13 +2779,38 @@ function crmNotesStripHTML(html){
   return (d.textContent||d.innerText||'').trim();
 }
 
+// Hand-authored toolbar markup (rather than Quill's array-shorthand config)
+// so a custom one-click Highlight button can sit next to the built-in
+// tools — Quill auto-binds any element with a recognized ql-* class.
+function crmQuillToolbarHTML(){
+  return '<span class="ql-formats"><button class="ql-bold"></button><button class="ql-italic"></button><button class="ql-underline"></button></span>'+
+    '<span class="ql-formats"><select class="ql-color"></select><button type="button" class="crm-hl-btn" title="Highlight">🖍</button></span>'+
+    '<span class="ql-formats"><button class="ql-list" value="ordered"></button><button class="ql-list" value="bullet"></button></span>'+
+    '<span class="ql-formats"><button class="ql-clean"></button></span>';
+}
+// Wires the custom Highlight button: toggles a fixed yellow background on
+// the current selection using Quill's built-in `background` format — same
+// underlying attribute the color picker uses, just one click instead of a
+// dropdown.
+function crmQuillWireHighlight(quill,toolbarEl){
+  const btn=toolbarEl&&toolbarEl.querySelector('.crm-hl-btn'); if(!btn) return;
+  btn.addEventListener('click',()=>{
+    const range=quill.getSelection(true);
+    if(!range||range.length===0) return;
+    const fmt=quill.getFormat(range);
+    quill.format('background', fmt.background?false:'#FFF176');
+  });
+}
 function crmNotesInitEditor(){
   if(crmNotesQuill) return crmNotesQuill;
+  const toolbar=document.getElementById('crm-notes-toolbar');
+  toolbar.innerHTML=crmQuillToolbarHTML();
   crmNotesQuill=new Quill('#crm-notes-quill',{
     theme:'snow',
-    placeholder:'Write a note… bold, italic, underline, color — like Word.',
-    modules:{ toolbar:[['bold','italic','underline'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],['clean']] }
+    placeholder:'Write a note… bold, italic, underline, color, highlight — like Word.',
+    modules:{ toolbar:{ container:'#crm-notes-toolbar' } }
   });
+  crmQuillWireHighlight(crmNotesQuill,toolbar);
   return crmNotesQuill;
 }
 
@@ -2888,6 +2941,7 @@ function crmNotesSave(){
   crmNotesSaveLocal(); crmSaveNoteToSupabase(n);
   toast('Note saved');
   crmNotesView(n.id);
+  if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
 }
 
 function crmNotesDelete(id){
@@ -2897,6 +2951,7 @@ function crmNotesDelete(id){
   crmNotesSaveLocal(); crmDeleteNoteFromSupabase(id);
   crmSelectedNote=null; crmNotesShowEmpty();
   renderCRMNotesArchive();
+  if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
   toast('Note deleted','terr');
 }
 
@@ -2925,6 +2980,53 @@ function crmNotesExportCSV(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='roadys_crm_notes_'+crmToday()+'.csv'; a.click();
   toast('Exported '+notes.length+' note'+(notes.length===1?'':'s')+' to CSV');
+}
+
+// ── Lead-modal notes section: same CRM_NOTES as the Notes tab, so a note
+// written here shows in the Notes tab archive and vice versa. The modal's
+// body is fully rebuilt (innerHTML) every time it opens, so the mini Quill
+// instance is intentionally re-created each open rather than cached.
+let crmLeadNoteQuill=null;
+function crmRenderLeadNotes(leadId){
+  const list=document.getElementById('cmf-notes-list'); if(!list) return;
+  const notes=CRM_NOTES.filter(n=>n.leadId===leadId).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  list.innerHTML = notes.length ? notes.map(n=>
+    '<div class="crm-lead-note-card">'+
+    '<div class="crm-lead-note-meta"><span>'+crmEsc(n.owner||'Unassigned')+'</span><span>'+(n.createdAt?n.createdAt.slice(0,10):'')+'</span></div>'+
+    '<div class="ql-note-preview">'+(n.body||'')+'</div>'+
+    '<div style="margin-top:6px"><button type="button" class="btn" style="font-size:.68em;color:var(--red)" onclick="crmDeleteLeadNoteInline(\''+n.id+'\',\''+crmEsc(leadId)+'\')">&#128465; Delete</button></div>'+
+    '</div>'
+  ).join('') : '<div style="color:var(--muted);font-size:.75em;padding:6px 0">No notes yet — add one below.</div>';
+
+  const toolbar=document.getElementById('cmf-notes-toolbar');
+  if(toolbar && !toolbar.dataset.built){
+    toolbar.innerHTML=crmQuillToolbarHTML();
+    toolbar.dataset.built='1';
+    crmLeadNoteQuill=new Quill('#cmf-notes-quill',{ theme:'snow', placeholder:'Quick note…', modules:{ toolbar:{container:'#cmf-notes-toolbar'} } });
+    crmQuillWireHighlight(crmLeadNoteQuill, toolbar);
+  }
+}
+function crmAddLeadNote(leadId){
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  if(!crmLeadNoteQuill) return;
+  const body=crmLeadNoteQuill.root.innerHTML;
+  if(!crmNotesStripHTML(body)){ toast('Note is empty','terr'); return; }
+  const n={id:'note_'+Date.now(), leadId, company:l.company, state:(l.state||'').trim(), stage:l.stage||'', owner:crmWhoAmI(), body, createdAt:new Date().toISOString()};
+  CRM_NOTES.unshift(n);
+  crmNotesSaveLocal(); crmSaveNoteToSupabase(n);
+  crmLeadNoteQuill.root.innerHTML='';
+  crmRenderLeadNotes(leadId);
+  if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
+  toast('Note added');
+}
+function crmDeleteLeadNoteInline(id,leadId){
+  const n=CRM_NOTES.find(x=>x.id===id); if(!n) return;
+  if(!confirm('Archive this note? Recoverable from the database if this was a mistake.')) return;
+  CRM_NOTES=CRM_NOTES.filter(x=>x.id!==id);
+  crmNotesSaveLocal(); crmDeleteNoteFromSupabase(id);
+  crmRenderLeadNotes(leadId);
+  if(document.getElementById('crm-panel-pipeline')?.style.display!=='none') renderCRMKanban();
+  toast('Note deleted','terr');
 }
 
 // ── ANALYTICS ──
@@ -3180,6 +3282,7 @@ function crmDeepLink(){
 function crmInit(){
   const root=document.getElementById('crm-root'); if(root) root.style.display='';
   crmInitWhoAmI();
+  crmNotesLoadLocal();   // populate CRM_NOTES from cache before the first Kanban render so note-count badges aren't blank
   pgCRM();
   crmCallsLoadLocal(); renderCRMNotifications();
   crmLoadCallsFromSupabase().then(()=>renderCRMNotifications());
