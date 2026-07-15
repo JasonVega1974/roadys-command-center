@@ -872,6 +872,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
           <select id="crm-owner-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
           <select id="crm-priority-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Priorities</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select>
           <button class="btn" onclick="crmExport()">📥 Export CSV</button>
+          <button class="btn" onclick="crmOpenDeletedModal()">🗑 Deleted Leads</button>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">
           <div style="overflow-x:auto;max-height:600px"><table class="mem-tbl" id="crm-tbl"><thead></thead><tbody></tbody></table></div>
@@ -1018,6 +1019,19 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
             <button onclick="crmCloseModal()" style="background:none;border:none;color:var(--muted);font-size:1.4em;cursor:pointer">✕</button>
           </div>
           <div id="crm-modal-body" style="padding:24px"></div>
+        </div>
+      </div>
+
+      <!-- DELETED LEADS MODAL -->
+      <div id="crm-deleted-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9500;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:640px;max-width:100%;position:relative;margin:auto">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--border)">
+            <div style="font-family:var(--ff);font-size:1em;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)">🗑 DELETED LEADS</div>
+            <button onclick="crmCloseDeletedModal()" style="background:none;border:none;color:var(--muted);font-size:1.4em;cursor:pointer">✕</button>
+          </div>
+          <div id="crm-deleted-body" style="padding:24px">
+            <div style="text-align:center;color:var(--muted);font-size:.85em">Loading…</div>
+          </div>
         </div>
       </div>
 </div>
@@ -2351,7 +2365,7 @@ function crmLogActivity(id){
 
 function crmDeleteLead(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
-  if(!confirm('Delete "'+l.company+'"? (Removed from your view immediately — recoverable from the database if this was a mistake.)')) return;
+  if(!confirm('Archive "'+l.company+'"? It will disappear from the pipeline — restore it later from Deleted Leads if this was a mistake.')) return;
   CRM_LEADS=CRM_LEADS.filter(x=>x.id!==id);
   crmSave(); crmCloseModal();
   renderCRMKPIs(); renderCRMKanban();
@@ -2706,7 +2720,7 @@ function crmNotesSaveLocal(){ try{ localStorage.setItem('roadys_crm_notes_v1', J
 async function crmLoadNotesFromSupabase(){
   const sb=getRoadysSB(); if(!sb) return;
   try{
-    const {data,error}=await sb.from('crm_lead_notes').select('*').order('created_at',{ascending:false});
+    const {data,error}=await sb.from('crm_lead_notes').select('*').is('deleted_at',null).order('created_at',{ascending:false});
     if(error) throw error;
     CRM_NOTES=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company||'',state:r.state||'',stage:r.stage||'',owner:r.owner||'',body:r.body||'',createdAt:r.created_at,updatedAt:r.updated_at}));
     crmNotesSaveLocal();
@@ -2724,8 +2738,12 @@ async function crmSaveNoteToSupabase(n){
 }
 async function crmDeleteNoteFromSupabase(id){
   const sb=getRoadysSB(); if(!sb) return;
-  try{ const {error}=await sb.from('crm_lead_notes').delete().eq('id',id); if(error) throw error; }
-  catch(e){ console.warn('note delete',e); }
+  try{
+    // Soft delete, consistent with crm_leads — no restore UI for notes yet,
+    // but a misclick is still recoverable straight from the database.
+    const {error}=await sb.from('crm_lead_notes').update({deleted_at:new Date().toISOString()}).eq('id',id);
+    if(error) throw error;
+  }catch(e){ console.warn('note delete',e); }
 }
 
 function crmNotesStripHTML(html){
@@ -2874,7 +2892,7 @@ function crmNotesSave(){
 
 function crmNotesDelete(id){
   const n=CRM_NOTES.find(x=>x.id===id); if(!n) return;
-  if(!confirm('Delete this note on '+n.company+'?')) return;
+  if(!confirm('Archive this note on '+n.company+'? It will disappear from the archive — recoverable from the database if this was a mistake.')) return;
   CRM_NOTES=CRM_NOTES.filter(x=>x.id!==id);
   crmNotesSaveLocal(); crmDeleteNoteFromSupabase(id);
   crmSelectedNote=null; crmNotesShowEmpty();
@@ -3070,6 +3088,56 @@ async function crmDeleteLeadFromSupabase(id){
     console.warn('crmDeleteLeadFromSupabase error:',e);
   }
 }
+
+// ── Deleted Leads modal: view + restore soft-deleted leads ──
+function crmOpenDeletedModal(){
+  document.getElementById('crm-deleted-modal').style.display='flex';
+  crmLoadDeletedLeads();
+}
+function crmCloseDeletedModal(){
+  document.getElementById('crm-deleted-modal').style.display='none';
+}
+async function crmLoadDeletedLeads(){
+  const body=document.getElementById('crm-deleted-body');
+  const sb=getRoadysSB();
+  if(!sb){ body.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.85em">Supabase not available.</div>'; return; }
+  body.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.85em">Loading…</div>';
+  try{
+    const {data,error}=await sb.from('crm_leads').select('*').not('deleted_at','is',null).order('deleted_at',{ascending:false});
+    if(error) throw error;
+    if(!data||!data.length){ body.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.85em">No deleted leads.</div>'; return; }
+    body.innerHTML=data.map(r=>
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)">'+
+      '<div><div style="font-weight:700;font-size:.85em">'+crmEsc(r.company||'')+'</div>'+
+      '<div style="font-size:.68em;color:var(--muted);margin-top:2px">'+crmEsc(r.stage||'')+(r.owner?' &middot; '+crmEsc(r.owner):'')+' &middot; deleted '+(r.deleted_at?r.deleted_at.slice(0,10):'')+'</div></div>'+
+      '<button class="btn btn-accent" style="font-size:.75em;flex-shrink:0" onclick="crmRestoreLead(\''+crmEsc(r.id)+'\')">&#8617; Restore</button>'+
+      '</div>'
+    ).join('');
+  }catch(e){
+    console.warn('deleted leads load',e);
+    body.innerHTML='<div style="text-align:center;color:var(--red);font-size:.85em">Failed to load — check the console.</div>';
+  }
+}
+async function crmRestoreLead(id){
+  const sb=getRoadysSB(); if(!sb) return;
+  try{
+    const {error}=await sb.from('crm_leads').update({deleted_at:null}).eq('id',id);
+    if(error) throw error;
+    toast('Lead restored');
+    crmLoadDeletedLeads();
+    crmLoadFromSupabase().then(()=>{
+      renderCRMKPIs(); renderCRMKanban();
+      const lp=document.getElementById('crm-panel-leads'); if(lp&&lp.style.display!=='none'){ crmFillDropdowns(); renderCRMTable(); }
+    });
+  }catch(e){
+    console.warn('restore lead error',e);
+    toast('Restore failed','terr');
+  }
+}
+document.addEventListener('click',e=>{
+  const m=document.getElementById('crm-deleted-modal');
+  if(m&&e.target===m) crmCloseDeletedModal();
+});
 
 // ═══════════════════════════════════════════
 //  STANDALONE BOOT + PIN GATE + DEEP LINK

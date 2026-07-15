@@ -5,6 +5,10 @@ BEGIN;
 -- stage are denormalized snapshots (not live-joined to crm_leads) so a
 -- note stays meaningful for filtering/export even if the lead's info
 -- later changes or the lead itself gets soft-deleted.
+-- Notes are soft-deleted too (deleted_at), consistent with crm_leads —
+-- see sql/2026-07-15-crm-leads-soft-delete.sql. No restore UI for notes
+-- yet (lower stakes than losing a whole lead record); restore via SQL:
+-- update public.crm_lead_notes set deleted_at = null where id = '<note id>';
 CREATE TABLE IF NOT EXISTS public.crm_lead_notes (
   id         text primary key,
   lead_id    text not null,
@@ -13,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.crm_lead_notes (
   stage      text not null default '',
   owner      text not null default '',
   body       text not null default '',
+  deleted_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -26,9 +31,10 @@ CREATE POLICY crm_notes_delete ON public.crm_lead_notes FOR DELETE USING (true);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.crm_lead_notes TO anon, authenticated;
 
-CREATE INDEX IF NOT EXISTS crm_lead_notes_lead_id ON public.crm_lead_notes (lead_id);
-CREATE INDEX IF NOT EXISTS crm_lead_notes_state    ON public.crm_lead_notes (state);
-CREATE INDEX IF NOT EXISTS crm_lead_notes_stage    ON public.crm_lead_notes (stage);
+CREATE INDEX IF NOT EXISTS crm_lead_notes_lead_id    ON public.crm_lead_notes (lead_id);
+CREATE INDEX IF NOT EXISTS crm_lead_notes_state       ON public.crm_lead_notes (state);
+CREATE INDEX IF NOT EXISTS crm_lead_notes_stage       ON public.crm_lead_notes (stage);
+CREATE INDEX IF NOT EXISTS crm_lead_notes_deleted_at  ON public.crm_lead_notes (deleted_at);
 
 -- reuse the existing search-path-pinned trigger fn touch_updated_at()
 CREATE TRIGGER crm_notes_touch BEFORE UPDATE ON public.crm_lead_notes
