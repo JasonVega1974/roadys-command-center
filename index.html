@@ -789,12 +789,6 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .impl-form-group input:focus,.impl-form-group select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.15);}
 .impl-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
 @media (max-width:768px){.impl-charts{grid-template-columns:1fr;}.impl-dashboard{grid-template-columns:1fr;}}
-
-/* ── Call Notifications (Task A5) ── */
-@keyframes crmPulse { 0%,100%{box-shadow:0 0 0 rgba(0,0,0,0)} 50%{box-shadow:0 0 16px var(--pulse)} }
-.crm-note-red   { --pulse:#ef4444aa; border-left:3px solid #ef4444; animation:crmPulse 1.6s ease-in-out infinite; }
-.crm-note-amber { --pulse:#f59e0baa; border-left:3px solid #f59e0b; animation:crmPulse 2.2s ease-in-out infinite; }
-.crm-note-row   { background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.82em }
 </style>
 </head>
 <body>
@@ -1000,12 +994,6 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
     <!-- ══ MASTER DASHBOARD (KPI Executive Summary) ══ -->
     <div class="page" id="pg-master">
       <div class="sec-hdr"><div class="sec-title">EXECUTIVE SUMMARY</div><span class="badge ba" id="master-period">Nov 2025</span><button class="btn dash-edit-toggle" id="dash-edit-toggle" onclick="dashToggleEditMode()" style="margin-left:auto;font-size:.75em" title="Toggle edit mode for adding / editing / deleting rows and cards">&#9998; Edit Layout</button></div>
-
-      <!-- ── Call Notifications (Task A5) ── -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
-        <div style="font-weight:800;font-size:.85em;letter-spacing:.06em;color:var(--accent);margin-bottom:10px">🔔 CALL NOTIFICATIONS</div>
-        <div id="crm-notifications"><div style="color:var(--muted);font-size:.82em">Loading…</div></div>
-      </div>
 
       <div class="kpi-grid" id="master-kpis"></div>
     </div>
@@ -16303,27 +16291,6 @@ async function implDeleteSiteFromSupabase(id){
 // ══════════════════════════════════════
 // pgCRMWithSync() removed — CRM is now the standalone CRM.html page.
 
-// ── Call Notifications (Task A5): glowing/pulsing card on the Master Dashboard ──
-function crmNotifEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-async function renderCRMNotifications(hostId='crm-notifications'){
-  const host=document.getElementById(hostId); if(!host) return;
-  let calls=[];
-  try{ const sb=getRoadysSB(); const {data}=await sb.from('crm_scheduled_calls').select('*').eq('status','scheduled').order('scheduled_at',{ascending:true}); calls=data||[]; }
-  catch(e){ host.innerHTML='<div style="color:var(--muted);font-size:.82em">Notifications unavailable.</div>'; return; }
-  const now=Date.now(), hour=36e5, endToday=new Date(); endToday.setHours(23,59,59,999);
-  const week=now+7*24*hour;
-  const rows=calls.filter(c=>new Date(c.scheduled_at).getTime()<=week).map(c=>{
-    const t=new Date(c.scheduled_at).getTime();
-    let cls=''; if(t<now+hour) cls='crm-note-red'; else if(t<=endToday.getTime()) cls='crm-note-amber';
-    const when=new Date(c.scheduled_at).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'});
-    const link=`CRM.html?lead=${encodeURIComponent(c.lead_id)}&call=1`;
-    return `<div class="crm-note-row ${cls}"><span><b>${crmNotifEsc(c.company||c.lead_id)}</b> — ${crmNotifEsc(c.call_type)} · ${when} · ${crmNotifEsc(c.owner||'Unassigned')}</span>
-      <a class="btn" href="${link}">Open in CRM →</a></div>`;
-  }).join('');
-  host.innerHTML = rows || '<div style="color:var(--muted);font-size:.82em">No calls scheduled.</div>';
-}
-
-
 /* ══════════════════════════════════════════════
    IMPLEMENTATION SUB-TABS & TEMPLATE EDITOR
    ══════════════════════════════════════════════ */
@@ -16907,8 +16874,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     // Default to Master Dashboard
     const dashNi = document.querySelector('.ni[data-nav-id="master"]');
     if(dashNi) nav('master', dashNi);
-    // Call Notifications (Task A5): initial render + 60s refresh
-    renderCRMNotifications(); setInterval(()=>renderCRMNotifications(), 60000);
   }catch(e){console.error('[Init] DOMContentLoaded error:',e);}
 });
 
