@@ -87,6 +87,7 @@
 .agp[data-agp-theme="light"] .agp-btn:hover{border-color:#b6c1d0}
 *{box-sizing:border-box}
 .agp{
+  display:none;
   font-family:var(--agp-sans);
   color:var(--agp-text);
   background:
@@ -410,7 +411,7 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
 .agp-authcard button{margin-top:2px}
 .agp-authmsg{font-size:12.5px;color:#f87171;min-height:16px}
 </style>
-<div id="agpAuthGate" class="agp-authgate" hidden>
+<div id="agpAuthGate" class="agp-authgate">
   <form class="agp-authcard" id="agpAuthForm">
     <div class="agp-mark">RA</div>
     <h2>Aggregator Launch Planner</h2>
@@ -1903,6 +1904,7 @@ async function signOut(){
 }
 function startPlanner(){
   hideAuthGate();
+  const root=document.querySelector(".agp"); if(root) root.style.display="block";
   render();
   if(S.ui.tab&&S.ui.tab!=="pipeline")gotoTab(S.ui.tab);
   window.scrollTo(0,0);
