@@ -87,7 +87,6 @@
 .agp[data-agp-theme="light"] .agp-btn:hover{border-color:#b6c1d0}
 *{box-sizing:border-box}
 .agp{
-  display:none;
   font-family:var(--agp-sans);
   color:var(--agp-text);
   background:
@@ -400,28 +399,6 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
 </style>
 </head>
 <body>
-<style>
-.agp-authgate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#0e1117;padding:20px}
-.agp-authgate[hidden]{display:none}
-.agp-authcard{background:#161c26;border:1px solid #2a3547;border-radius:14px;padding:28px;width:340px;max-width:100%;display:flex;flex-direction:column;gap:12px;color:#e8edf4;font-family:"Inter","Segoe UI",system-ui,sans-serif}
-.agp-authcard .agp-mark{width:40px;height:40px;border-radius:10px;background:#f5a524;color:#0e1117;display:flex;align-items:center;justify-content:center;font-weight:800}
-.agp-authcard h2{margin:6px 0 0;font-size:18px}
-.agp-authcard p{margin:0 0 6px;font-size:13px;color:#8a98ac}
-.agp-authcard input{background:#0e1117;border:1px solid #2a3547;border-radius:8px;color:#e8edf4;padding:10px 12px;font-size:14px;font-family:inherit}
-.agp-authcard button{margin-top:2px}
-.agp-authmsg{font-size:12.5px;color:#f87171;min-height:16px}
-</style>
-<div id="agpAuthGate" class="agp-authgate">
-  <form class="agp-authcard" id="agpAuthForm">
-    <div class="agp-mark">RA</div>
-    <h2>Aggregator Launch Planner</h2>
-    <p>Sign in with your Roady's admin account to continue.</p>
-    <input id="agpAuthEmail" type="email" placeholder="Email" autocomplete="username" required>
-    <input id="agpAuthPass" type="password" placeholder="Password" autocomplete="current-password" required>
-    <button type="submit" id="agpAuthBtn" class="agp-btn primary">Sign in</button>
-    <div id="agpAuthMsg" class="agp-authmsg"></div>
-  </form>
-</div>
 <div class="agp">
 
   <!-- ===== TOP BAR ===== -->
@@ -442,7 +419,6 @@ table.agp-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:9
         <button class="agp-btn ghost sm" id="agpImport">Import</button>
         <button class="agp-btn ghost sm" id="agpPrint">Print</button>
         <button class="agp-btn ghost sm danger" id="agpReset">Reset</button>
-        <button class="agp-btn ghost sm" id="agpSignOut" hidden>Sign out</button>
       </div>
     </div>
   </header>
@@ -1065,14 +1041,14 @@ function nearestLaunch(){
 /* ---------- toast ---------- */
 let toastTimer=null;
 function toast(msg){const t=$("#agpToast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200);}
-/* Copy a stop's personalized opt-in link. get_optin_token is authenticated-only, so under the
-   pre-auth anon planner the RPC returns a permission-denied error object (it does NOT throw) —
-   we degrade to a "sign in" hint and copy nothing. Works once the planner authenticates (Task 9). */
+/* Copy a stop's personalized opt-in link. get_optin_token is authenticated-only; the planner
+   has no login flow (removed 2026-07-17), so this always runs as anon and the RPC always
+   returns a permission-denied error object (it does NOT throw) — degrade to a static hint. */
 async function copyOptinLink(locId){
   const sb=getRoadysSB();
   if(!sb){ toast("Connection unavailable — try again"); return; }      // SDK/CDN not loaded (not the anon case)
   const {data,error}=await sb.rpc("get_optin_token",{p_loc_id:locId});
-  if(error||!data){ toast("Sign in to copy opt-in links"); return; }   // anon: get_optin_token is authenticated-only
+  if(error||!data){ toast("Copy link unavailable — admin-only feature"); return; }   // anon: get_optin_token is authenticated-only
   const url=new URL("truck-stop-optin.html?t="+encodeURIComponent(data), location.href).href;
   try{ await navigator.clipboard.writeText(url); toast("Opt-in link copied"); }
   catch(e){ toast("Copy this link: "+url); }
@@ -1459,12 +1435,14 @@ function optinLinksCSV(rows){
   const body=(rows||[]).map(r=>[r.stop_code,r.stop_name,r.optin_url].map(csvCell).join(","));
   return [head.map(csvCell).join(","),...body].join("\r\n");
 }
-// Admin-only: call the SECURITY DEFINER RPC (authenticated only) and download the links as CSV.
+// Admin-only: call the SECURITY DEFINER RPC (authenticated only). The planner has no login
+// flow (removed 2026-07-17), so this always runs as anon and the RPC always errors permission-
+// denied — surfaced via the generic error branch below.
 async function exportOptinLinks(){
   const sb=getRoadysSB();
-  if(!sb){ toast("Sign in to export opt-in links"); return; }
+  if(!sb){ toast("Connection unavailable — try again"); return; }
   const {data,error}=await sb.rpc("export_optin_links");
-  if(error){ toast("Export failed — "+String(error.message||"").slice(0,80)); return; }
+  if(error){ toast("Export unavailable — admin-only feature"); return; }
   if(!data||!data.length){ toast("No opt-in links to export"); return; }
   downloadCSV("optin-links-"+new Date().toISOString().slice(0,10)+".csv", optinLinksCSV(data));
   toast(data.length+" opt-in links exported");
@@ -1877,53 +1855,16 @@ function applyTheme(){
   if(light)root.setAttribute("data-agp-theme","light");else root.removeAttribute("data-agp-theme");
   const btn=$("#agpTheme");if(btn)btn.textContent=light?"☀️":"🌙";
 }
-/* ---- auth gate: email+password Supabase Auth (NOT magic links). Gates all
-   cloud access — required because Phase B strips anon's agp_* grants, so the
-   planner must run as the `authenticated` role. ---- */
-function showAuthGate(){
-  const g=$("#agpAuthGate"); if(g) g.hidden=false;
-  const f=$("#agpAuthForm"); if(f&&!f._wired){ f._wired=true; f.addEventListener("submit",onSignIn); }
-  setSyncState("offline");   // not syncing while gated
-}
-function hideAuthGate(){ const g=$("#agpAuthGate"); if(g) g.hidden=true; }
-async function onSignIn(e){
-  if(e&&e.preventDefault) e.preventDefault();
-  const sb=getRoadysSB(), msg=$("#agpAuthMsg");
-  if(!sb){ if(msg) msg.textContent="Connection unavailable — try again."; return; }
-  const email=(($("#agpAuthEmail")||{}).value||"").trim(), pass=($("#agpAuthPass")||{}).value||"";
-  const btn=$("#agpAuthBtn"); if(btn) btn.disabled=true; if(msg) msg.textContent="";
-  const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
-  if(btn) btn.disabled=false;
-  if(error){ if(msg) msg.textContent=(error.message||"Sign-in failed."); return; }
-  if(data && data.session) _authToken = data.session.access_token;   // live before the first sync
-  startPlanner();
-}
-async function signOut(){
-  const sb=getRoadysSB(); if(sb){ try{ await sb.auth.signOut(); }catch(e){} }
-  location.reload();
-}
 function startPlanner(){
-  hideAuthGate();
-  const root=document.querySelector(".agp"); if(root) root.style.display="block";
   render();
   if(S.ui.tab&&S.ui.tab!=="pipeline")gotoTab(S.ui.tab);
   window.scrollTo(0,0);
-  const so=$("#agpSignOut"); if(so){ so.hidden=false; if(!so._wired){ so._wired=true; so.addEventListener("click",signOut); } }
   syncInit();   // async: pull from Supabase (or first-run seed), then re-render
 }
 async function init(){
   loadLocal();bind();applyTheme();
-  let sb=null;
-  try{ await ensureSupabaseLib(); sb=getRoadysSB(); }catch(e){ console.warn(e&&e.message); }
-  // Fail CLOSED: no SDK/client (CDN blocked) -> cannot authenticate -> show the gate, never the
-  // planner. This is a public Pages URL; without auth there is nothing to show post-Phase-B anyway.
-  if(!sb){ showAuthGate(); return; }
-  let session=null;
-  try{ const {data}=await sb.auth.getSession(); session=data&&data.session||null; }
-  catch(e){ console.warn("getSession: "+(e&&e.message)); }
-  if(!session){ showAuthGate(); return; }   // GATE: no render / no table reads until signed in
-  _authToken = session.access_token;        // live on reload-with-session before the first sync
-  startPlanner();                            // authenticated
+  try{ await ensureSupabaseLib(); getRoadysSB(); }catch(e){ console.warn(e&&e.message); }
+  startPlanner();
 }
 window.AGP={get state(){return S;},save,render,reset(){S=seed();render();commit();},
   // headless-test hooks (no effect in normal use)
