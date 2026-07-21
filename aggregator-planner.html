@@ -779,13 +779,12 @@ const STAGES=[
   {id:1,name:"Agreement",owner:"Scott / Gene",steps:[
     {id:"nda_loi",   name:"NDA / LOI signed",        hint:"If required by aggregator"},
     {id:"agreement", name:"Agreement reviewed & signed", hint:"Discount terms locked in"},
-    {id:"merchant_ids",name:"Merchant / Quik IDs provided", hint:"Per-location acquirer IDs"},
+    {id:"merchant_ids",name:"Processor Account ID Entered", hint:"Per-location acquirer IDs"},
   ]},
   {id:2,name:"Integration",owner:"Aaron (Tech)",steps:[
     {id:"tech_integration",name:"Tech integration",     hint:"~28-day window with counterpart"},
     {id:"api_file",   name:"API / data file shared",    hint:"Transaction feed format agreed"},
     {id:"reporting_data",name:"Reporting data validated",hint:"Daily ingest, fields correct"},
-    {id:"interstate_build",name:"Interstate build-out",  hint:"Program configured in Interstate"},
     {id:"xero_build", name:"Xero / accounting build-out",hint:"Settlement + reconciliation wired"},
   ]},
   {id:3,name:"Discounts",owner:"Jason / Kaden + GS",steps:[
@@ -817,7 +816,7 @@ const STAGES=[
 ];
 const ALL_STEPS=STAGES.flatMap(s=>s.steps.map(st=>({...st,stage:s.id,stageName:s.name,stageOwner:s.owner})));
 const STEP_OWNER_DEFAULT={nda_loi:"Scott Rhinehart",agreement:"Scott Rhinehart",merchant_ids:"Gene Betts",
-  tech_integration:"Aaron Todd",api_file:"Aaron Todd",reporting_data:"Aaron Todd",interstate_build:"Aaron Todd",xero_build:"Aaron Todd",
+  tech_integration:"Aaron Todd",api_file:"Aaron Todd",reporting_data:"Aaron Todd",xero_build:"Aaron Todd",
   location_optins:"Kaden Leslie",discounts_entered:"Kaden Leslie",aggregator_testing:"",dev_testing:"Aaron Todd",uat:"",
   accounting_review:"",gallon_reports:"",merchant_console:"",fuel_training:"Kaden Leslie",rm_training:"Kaden Leslie",
   press_release:"Jason Vega / Deanna Rhinehart",pre_launch:"Gene Betts",email_blast:"Gene Betts",go_live:"Gene Betts",kpi_tracking:"Gene Betts",annual_meeting:"John F."};
