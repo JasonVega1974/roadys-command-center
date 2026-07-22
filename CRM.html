@@ -2203,6 +2203,7 @@ function crmOpenLeadModal(id, defaultStage){
   if(document.getElementById('cmf-sched-cal')){ crmMiniCalendar('cmf-sched-cal', iso=>{ document.getElementById('cmf-sched-date').value=iso; }); crmRenderLeadCalls(id); }
   if(document.getElementById('cmf-avail-slots')) crmRenderAvailSlots();
   if(document.getElementById('cmf-notes-list')) crmRenderLeadNotes(id);
+  if(document.getElementById('cmf-tmpl-pick')) crmInitTmplPicker(id);
 }
 function crmCloseModal(){
   document.getElementById('crm-modal').style.display='none';
@@ -2284,6 +2285,19 @@ function crmBuildForm(l, defaultStage){
     h+='<button class="btn" onclick="crmLogActivity(\''+crmEsc(l.id)+'\')" style="font-size:.78em">+ Log</button>';
     h+='</div>';
     h+='<div style="margin-top:10px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px" id="cmf-activity-log">'+actLog+'</div>';
+    h+='</div>';
+    // Manual one-click send: pick a template (defaults to the one matching
+    // this lead's stage), preview it merged with this lead's real data, send
+    // via the crm-emails edge function's send_template action.
+    h+='<div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">';
+    h+='<div style="font-size:.72em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">✉️ Send Template Email</div>';
+    if(!l.email){
+      h+='<div style="color:var(--muted);font-size:.78em">Add an email address above to send a template.</div>';
+    } else {
+      h+='<select id="cmf-tmpl-pick" onchange="crmRenderTmplPreview(\''+crmEsc(l.id)+'\')" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.85em;margin-bottom:10px"></select>';
+      h+='<div id="cmf-tmpl-preview" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;font-size:.8em"></div>';
+      h+='<button type="button" class="btn btn-accent" onclick="crmSendTemplateEmail(\''+crmEsc(l.id)+'\',this)" style="font-size:.8em">&#9993; Send Email</button>';
+    }
     h+='</div>';
     // Rich-text notes archive for this lead — shares CRM_NOTES with the Notes
     // tab, so a note written here shows there and vice versa.
@@ -2377,6 +2391,54 @@ async function crmSendAvailability(leadId){
   }
 }
 
+// ── Send Template Email (lead modal): pick a template, preview it merged
+// with this lead's real data, send via crm-emails' send_template action.
+// The server re-fetches the lead and template itself and re-merges there —
+// this preview is cosmetic only, not what actually gets sent.
+function crmInitTmplPicker(leadId){
+  const sel=document.getElementById('cmf-tmpl-pick'); if(!sel) return;
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  crmLoadTemplates();
+  if(!CRM_TEMPLATES.length){ sel.innerHTML='<option value="">No templates yet</option>'; return; }
+  const defaultTmpl=CRM_TEMPLATES.find(t=>t.stage===l.stage)||CRM_TEMPLATES[0];
+  sel.innerHTML=CRM_TEMPLATES.map(t=>
+    '<option value="'+crmEsc(t.id)+'"'+(t.id===defaultTmpl.id?' selected':'')+'>'+crmEsc(t.name)+' ('+crmEsc(t.stage)+')</option>'
+  ).join('');
+  crmRenderTmplPreview(leadId);
+}
+function crmRenderTmplPreview(leadId){
+  const sel=document.getElementById('cmf-tmpl-pick'), prev=document.getElementById('cmf-tmpl-preview');
+  if(!sel||!prev) return;
+  const t=CRM_TEMPLATES.find(x=>x.id===sel.value);
+  const l=CRM_LEADS.find(x=>x.id===leadId);
+  if(!t||!l){ prev.innerHTML=''; return; }
+  const vars={contact:l.contact||'',company:l.company||'',owner:l.owner||crmWhoAmI(),state:l.state||'',locations:l.locations||''};
+  const mrg=s=>(s||'').replace(/\{\{(\w+)\}\}/g,(_,k)=>vars[k]||'');
+  prev.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+crmEsc(mrg(t.subject))+'</div>'+
+    '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;color:var(--muted)">'+crmEsc(mrg(t.body))+'</pre>';
+}
+async function crmSendTemplateEmail(leadId,btn){
+  const sel=document.getElementById('cmf-tmpl-pick'); if(!sel||!sel.value){ toast('Pick a template','terr'); return; }
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  const t=CRM_TEMPLATES.find(x=>x.id===sel.value); if(!t) return;
+  if(btn) btn.disabled=true;
+  try{
+    const sb=getRoadysSB();
+    const {data,error}=await sb.functions.invoke('crm-emails',{body:{action:'send_template',lead_id:leadId,template_id:t.id}});
+    if(error||data?.error) throw error||new Error(data.error);
+    l.activity=l.activity||[];
+    l.activity.push({text:'Sent email: '+t.name,date:crmToday(),by:crmWhoAmI(),type:'email'});
+    crmSave(); crmSaveLeadToSupabase(l);
+    crmRenderActivityLog(l);
+    toast('Email sent to '+l.email);
+  }catch(e){
+    toast('Send failed (is the edge function deployed?)','terr');
+    console.warn(e);
+  }finally{
+    if(btn) btn.disabled=false;
+  }
+}
+
 // Cheap normalized-match duplicate check: lowercase, collapse punctuation/
 // whitespace differences into a single space — "Mountain Fuel Centers."
 // vs "Mountain Fuel Centers" vs "Mountain  Fuel   Centers" all match.
@@ -2433,6 +2495,16 @@ function crmSaveLead(){
   crmSaveLeadToSupabase(obj);
 }
 
+// Shared by crmLogActivity() and crmSendTemplateEmail() so both refresh the
+// modal's activity log the same way instead of duplicating the icon map.
+function crmRenderActivityLog(l){
+  const icons={email:'&#9993;',call:'&#128222;',meeting:'&#129309;',stage:'&rarr;',won:'&#127942;',lost:'&#10007;',referral:'&#128279;',note:'&#128221;'};
+  const log=document.getElementById('cmf-activity-log'); if(!log) return;
+  log.innerHTML=(l.activity||[]).slice().reverse().map(a=>
+    '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:.9em;flex-shrink:0">'+(icons[a.type]||'&#128221;')+'</span>'+
+    '<div><div style="font-size:.75em">'+crmEsc(a.text)+'</div><div style="font-size:.63em;color:var(--muted)">'+crmEsc(a.date)+' &middot; '+crmEsc(a.by)+'</div></div></div>'
+  ).join('');
+}
 function crmLogActivity(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
   const text=(document.getElementById('cmf-act-text')?.value||'').trim();
@@ -2441,12 +2513,7 @@ function crmLogActivity(id){
   l.activity=l.activity||[];
   l.activity.push({text,date:crmToday(),by:crmWhoAmI(),type});
   crmSave();
-  const icons={email:'&#9993;',call:'&#128222;',meeting:'&#129309;',stage:'&rarr;',won:'&#127942;',lost:'&#10007;',referral:'&#128279;',note:'&#128221;'};
-  const log=document.getElementById('cmf-activity-log');
-  if(log) log.innerHTML=l.activity.slice().reverse().map(a=>
-    '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:.9em;flex-shrink:0">'+(icons[a.type]||'&#128221;')+'</span>'+
-    '<div><div style="font-size:.75em">'+crmEsc(a.text)+'</div><div style="font-size:.63em;color:var(--muted)">'+crmEsc(a.date)+' &middot; '+crmEsc(a.by)+'</div></div></div>'
-  ).join('');
+  crmRenderActivityLog(l);
   const inp=document.getElementById('cmf-act-text'); if(inp) inp.value='';
   toast('Activity logged');
 }
