@@ -220,6 +220,34 @@ If all of the above pass, Phase B is fully live.
 
 ---
 
+## Update — `send_template` action (manual template send)
+
+`supabase/functions/crm-emails/index.ts` gained a fifth action,
+`send_template`: the lead modal's new "✉️ Send Template Email" section
+calls it to send one of the Email Templates tab's templates to a specific
+lead, merged with that lead's real data server-side (not just the sample
+data the client preview shows).
+
+**If Phase B is already deployed**, this needs a **redeploy, not a fresh
+setup** — no new SQL, no new secrets, no cron changes:
+
+1. Supabase Dashboard → **Edge Functions** → `crm-emails` → open the
+   function editor.
+2. Replace its contents with the current `supabase/functions/crm-emails/index.ts`
+   from this repo (the whole file, not just the new action).
+3. Click **Deploy**.
+
+Until you redeploy, the "Send Email" button in the lead modal will fail
+with a `send failed` toast (the deployed function doesn't recognize
+`send_template` yet) — the other four actions (reminders, availability,
+confirmation) are unaffected either way.
+
+**Test:** open any lead that has an email address, pick a template, click
+**✉ Send Email** — confirm the address receives it and the lead's
+Activity Log gets a new "Sent email: &lt;template name&gt;" entry.
+
+---
+
 ## Troubleshooting: reminder emails not arriving
 
 If test emails from Step 8 (or later, real production reminders) don't

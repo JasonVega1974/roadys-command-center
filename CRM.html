@@ -1155,11 +1155,22 @@ function crmInitWhoAmI(){
   sel.value=saved;
 }
 
-const CRM_STAGES   = ['Prospect','Qualified','Contacted','Meeting Scheduled','Proposal Sent','Negotiation','Closed Won','Closed Lost'];
+const CRM_STAGES   = ['Prospect','Qualified','Contacted','Meeting Scheduled','Proposal Sent','Negotiation','Closed Won','Closed Lost','Not Qualified'];
 const CRM_OWNERS   = ['Robert Watson','Angel Long'];
 const CRM_SOURCES  = ['Referral','Cold Call','Trade Show','Conference','Website','GS Lead','Existing Member','Market Research','Other'];
 const CRM_PRIORITIES = ['High','Medium','Low'];
-const CRM_STAGE_COLORS = {'Prospect':'#64748b','Qualified':'#14b8a6','Contacted':'#3b82f6','Meeting Scheduled':'#8b5cf6','Proposal Sent':'#f59e0b','Negotiation':'#f97316','Closed Won':'#22c55e','Closed Lost':'#ef4444'};
+const CRM_STAGE_COLORS = {'Prospect':'#64748b','Qualified':'#14b8a6','Contacted':'#3b82f6','Meeting Scheduled':'#8b5cf6','Proposal Sent':'#f59e0b','Negotiation':'#f97316','Closed Won':'#22c55e','Closed Lost':'#ef4444','Not Qualified':'#78716c'};
+// Stages a lead can sit in without being an open opportunity any more. Used
+// everywhere "active pipeline" is computed so parked leads stop inflating
+// pipeline value/gallons, overdue counts and follow-up queues. "Not Qualified"
+// is deliberately NOT counted as a loss in win rate — it never became a real
+// opportunity, so won/(won+lost) only looks at Closed Won / Closed Lost.
+const CRM_CLOSED_STAGES = ['Closed Won','Closed Lost','Not Qualified'];
+function crmIsClosedStage(stage){ return CRM_CLOSED_STAGES.indexOf(stage)>=0; }
+// Short label for the analytics stage chart — plain split(' ')[0] would render
+// "Closed Won"/"Closed Lost" both as "Closed" and "Not Qualified" as "Not".
+const CRM_STAGE_SHORT = {'Meeting Scheduled':'Meeting','Proposal Sent':'Proposal','Closed Won':'Won','Closed Lost':'Lost','Not Qualified':'Not Qual'};
+function crmStageShort(stage){ return CRM_STAGE_SHORT[stage]||stage; }
 
 let CRM_LEADS = [];
 let crmEditId = null;
@@ -2014,13 +2025,13 @@ function renderCRMKPIs(){
   const el=document.getElementById('crm-kpis'); if(!el) return;
   const won=CRM_LEADS.filter(l=>l.stage==='Closed Won').length;
   const lost=CRM_LEADS.filter(l=>l.stage==='Closed Lost').length;
-  const active=CRM_LEADS.filter(l=>l.stage!=='Closed Won'&&l.stage!=='Closed Lost').length;
-  const pipeGal=CRM_LEADS.filter(l=>l.stage!=='Closed Lost').reduce((s,l)=>s+(l.estGallons||0),0);
-  const pipeVal=CRM_LEADS.filter(l=>l.stage!=='Closed Won'&&l.stage!=='Closed Lost').reduce((s,l)=>s+(l.dealValue||0),0);
+  const active=CRM_LEADS.filter(l=>!crmIsClosedStage(l.stage)).length;
+  const pipeGal=CRM_LEADS.filter(l=>l.stage!=='Closed Lost'&&l.stage!=='Not Qualified').reduce((s,l)=>s+(l.estGallons||0),0);
+  const pipeVal=CRM_LEADS.filter(l=>!crmIsClosedStage(l.stage)).reduce((s,l)=>s+(l.dealValue||0),0);
   const winRate=won+lost>0?Math.round(won/(won+lost)*100):0;
   const today=crmToday();
-  const overdue=CRM_LEADS.filter(l=>l.followUp&&l.followUp<today&&l.stage!=='Closed Won'&&l.stage!=='Closed Lost').length;
-  const dueToday=CRM_LEADS.filter(l=>l.followUp===today&&l.stage!=='Closed Won'&&l.stage!=='Closed Lost').length;
+  const overdue=CRM_LEADS.filter(l=>l.followUp&&l.followUp<today&&!crmIsClosedStage(l.stage)).length;
+  const dueToday=CRM_LEADS.filter(l=>l.followUp===today&&!crmIsClosedStage(l.stage)).length;
   el.innerHTML=
     '<div class="kc"><div class="kc-lbl">Total Leads</div><div class="kc-val">'+CRM_LEADS.length+'</div><div class="kc-sub">'+active+' active</div></div>'+
     '<div class="kc up"><div class="kc-lbl">Pipeline Value</div><div class="kc-val" style="color:var(--accent)">$'+Math.round(pipeVal/1000)+'K</div><div class="kc-sub">Est. annual revenue</div></div>'+
@@ -2055,7 +2066,9 @@ function renderCRMKanban(){
     }).sort(kbSort);
     const stageGal=cards.reduce((s,l)=>s+(l.estGallons||0),0);
     const col=CRM_STAGE_COLORS[stage];
-    const isWon=stage==='Closed Won', isLost=stage==='Closed Lost';
+    // Terminal columns (Won / Lost / Not Qualified) get no Advance button, no
+    // "+ Add to" button and no overdue highlighting — nothing moves forward.
+    const isTerminal=crmIsClosedStage(stage);
     html+='<div class="kb-col" data-stage="'+crmEsc(stage)+'" ondragover="crmKbDragOver(event)" ondragleave="crmKbDragLeave(event)" ondrop="crmKbDrop(event,\''+stage+'\')" style="flex-shrink:0;width:230px;background:var(--surface);border-radius:12px;border:1px solid var(--border);display:flex;flex-direction:column;max-height:700px;transition:border-color .12s,background .12s">';
     html+='<div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);border-top:3px solid '+col+';border-radius:12px 12px 0 0">';
     html+='<div style="display:flex;justify-content:space-between;align-items:center">';
@@ -2064,7 +2077,7 @@ function renderCRMKanban(){
     if(stageGal>0) html+='<div style="font-size:.63em;color:var(--muted);margin-top:2px">'+Math.round(stageGal/1000)+'K gal</div>';
     html+='</div><div style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:7px">';
     cards.forEach(l=>{
-      const overdue=l.followUp&&l.followUp<crmToday()&&!isWon&&!isLost;
+      const overdue=l.followUp&&l.followUp<crmToday()&&!isTerminal;
       const prBorder=l.priority==='High'?'var(--red)':l.priority==='Medium'?'var(--yellow)':'var(--dim)';
       const noteCount=CRM_NOTES.filter(n=>n.leadId===l.id).length;
       html+='<div draggable="true" ondragstart="crmKbDragStart(event,\''+crmEsc(l.id)+'\')" ondragend="crmKbDragEnd(event)" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="background:var(--bg);border:1px solid var(--border);border-left:3px solid '+prBorder+';border-radius:8px;padding:10px 11px;cursor:grab">';
@@ -2075,11 +2088,11 @@ function renderCRMKanban(){
       html+='<div style="display:flex;justify-content:space-between;font-size:.63em;color:var(--muted);margin-bottom:8px"><span>'+(l.owner||'').split(' ')[0]+'</span>';
       if(l.followUp) html+='<span style="color:'+(overdue?'var(--red)':'var(--muted)')+'">'+l.followUp+'</span>';
       html+='</div><div style="display:flex;gap:4px">';
-      if(!isWon&&!isLost) html+='<button onclick="event.stopPropagation();crmAdvanceStage(\''+crmEsc(l.id)+'\')" style="flex:1;background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.3);color:var(--green);padding:3px;border-radius:4px;cursor:pointer;font-size:.62em;font-weight:700">&rarr; Advance</button>';
+      if(!isTerminal) html+='<button onclick="event.stopPropagation();crmAdvanceStage(\''+crmEsc(l.id)+'\')" style="flex:1;background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.3);color:var(--green);padding:3px;border-radius:4px;cursor:pointer;font-size:.62em;font-weight:700">&rarr; Advance</button>';
       html+='<button onclick="event.stopPropagation();crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="flex:1;background:rgba(0,200,255,.08);border:1px solid rgba(0,200,255,.2);color:var(--accent);padding:3px;border-radius:4px;cursor:pointer;font-size:.62em;font-weight:700">&#9998; Edit</button>';
       html+='</div></div>';
     });
-    if(!isWon&&!isLost) html+='<button onclick="crmOpenLeadModal(null,\''+stage+'\')" style="width:100%;background:transparent;border:1px dashed var(--border);color:var(--dim);padding:7px;border-radius:6px;cursor:pointer;font-size:.7em;margin-top:4px">+ Add to '+stage+'</button>';
+    if(!isTerminal) html+='<button onclick="crmOpenLeadModal(null,\''+stage+'\')" style="width:100%;background:transparent;border:1px dashed var(--border);color:var(--dim);padding:7px;border-radius:6px;cursor:pointer;font-size:.7em;margin-top:4px">+ Add to '+stage+'</button>';
     html+='</div></div>';
   });
   kb.innerHTML=html;
@@ -2087,6 +2100,9 @@ function renderCRMKanban(){
 
 function crmAdvanceStage(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
+  // Closed Won / Closed Lost / Not Qualified are end states — never step a lead
+  // from one terminal column into the next one just because it's adjacent.
+  if(crmIsClosedStage(l.stage)) return;
   const idx=CRM_STAGES.indexOf(l.stage);
   if(idx<0||idx>=CRM_STAGES.length-1) return;
   crmMoveToStage(id,CRM_STAGES[idx+1]);
@@ -2203,6 +2219,7 @@ function crmOpenLeadModal(id, defaultStage){
   if(document.getElementById('cmf-sched-cal')){ crmMiniCalendar('cmf-sched-cal', iso=>{ document.getElementById('cmf-sched-date').value=iso; }); crmRenderLeadCalls(id); }
   if(document.getElementById('cmf-avail-slots')) crmRenderAvailSlots();
   if(document.getElementById('cmf-notes-list')) crmRenderLeadNotes(id);
+  if(document.getElementById('cmf-tmpl-pick')) crmInitTmplPicker(id);
 }
 function crmCloseModal(){
   document.getElementById('crm-modal').style.display='none';
@@ -2284,6 +2301,19 @@ function crmBuildForm(l, defaultStage){
     h+='<button class="btn" onclick="crmLogActivity(\''+crmEsc(l.id)+'\')" style="font-size:.78em">+ Log</button>';
     h+='</div>';
     h+='<div style="margin-top:10px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px" id="cmf-activity-log">'+actLog+'</div>';
+    h+='</div>';
+    // Manual one-click send: pick a template (defaults to the one matching
+    // this lead's stage), preview it merged with this lead's real data, send
+    // via the crm-emails edge function's send_template action.
+    h+='<div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">';
+    h+='<div style="font-size:.72em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">✉️ Send Template Email</div>';
+    if(!l.email){
+      h+='<div style="color:var(--muted);font-size:.78em">Add an email address above to send a template.</div>';
+    } else {
+      h+='<select id="cmf-tmpl-pick" onchange="crmRenderTmplPreview(\''+crmEsc(l.id)+'\')" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.85em;margin-bottom:10px"></select>';
+      h+='<div id="cmf-tmpl-preview" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;font-size:.8em"></div>';
+      h+='<button type="button" class="btn btn-accent" onclick="crmSendTemplateEmail(\''+crmEsc(l.id)+'\',this)" style="font-size:.8em">&#9993; Send Email</button>';
+    }
     h+='</div>';
     // Rich-text notes archive for this lead — shares CRM_NOTES with the Notes
     // tab, so a note written here shows there and vice versa.
@@ -2377,6 +2407,54 @@ async function crmSendAvailability(leadId){
   }
 }
 
+// ── Send Template Email (lead modal): pick a template, preview it merged
+// with this lead's real data, send via crm-emails' send_template action.
+// The server re-fetches the lead and template itself and re-merges there —
+// this preview is cosmetic only, not what actually gets sent.
+function crmInitTmplPicker(leadId){
+  const sel=document.getElementById('cmf-tmpl-pick'); if(!sel) return;
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  crmLoadTemplates();
+  if(!CRM_TEMPLATES.length){ sel.innerHTML='<option value="">No templates yet</option>'; return; }
+  const defaultTmpl=CRM_TEMPLATES.find(t=>t.stage===l.stage)||CRM_TEMPLATES[0];
+  sel.innerHTML=CRM_TEMPLATES.map(t=>
+    '<option value="'+crmEsc(t.id)+'"'+(t.id===defaultTmpl.id?' selected':'')+'>'+crmEsc(t.name)+' ('+crmEsc(t.stage)+')</option>'
+  ).join('');
+  crmRenderTmplPreview(leadId);
+}
+function crmRenderTmplPreview(leadId){
+  const sel=document.getElementById('cmf-tmpl-pick'), prev=document.getElementById('cmf-tmpl-preview');
+  if(!sel||!prev) return;
+  const t=CRM_TEMPLATES.find(x=>x.id===sel.value);
+  const l=CRM_LEADS.find(x=>x.id===leadId);
+  if(!t||!l){ prev.innerHTML=''; return; }
+  const vars={contact:l.contact||'',company:l.company||'',owner:l.owner||crmWhoAmI(),state:l.state||'',locations:l.locations||''};
+  const mrg=s=>(s||'').replace(/\{\{(\w+)\}\}/g,(_,k)=>vars[k]||'');
+  prev.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+crmEsc(mrg(t.subject))+'</div>'+
+    '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;color:var(--muted)">'+crmEsc(mrg(t.body))+'</pre>';
+}
+async function crmSendTemplateEmail(leadId,btn){
+  const sel=document.getElementById('cmf-tmpl-pick'); if(!sel||!sel.value){ toast('Pick a template','terr'); return; }
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  const t=CRM_TEMPLATES.find(x=>x.id===sel.value); if(!t) return;
+  if(btn) btn.disabled=true;
+  try{
+    const sb=getRoadysSB();
+    const {data,error}=await sb.functions.invoke('crm-emails',{body:{action:'send_template',lead_id:leadId,template_id:t.id}});
+    if(error||data?.error) throw error||new Error(data.error);
+    l.activity=l.activity||[];
+    l.activity.push({text:'Sent email: '+t.name,date:crmToday(),by:crmWhoAmI(),type:'email'});
+    crmSave(); crmSaveLeadToSupabase(l);
+    crmRenderActivityLog(l);
+    toast('Email sent to '+l.email);
+  }catch(e){
+    toast('Send failed (is the edge function deployed?)','terr');
+    console.warn(e);
+  }finally{
+    if(btn) btn.disabled=false;
+  }
+}
+
 // Cheap normalized-match duplicate check: lowercase, collapse punctuation/
 // whitespace differences into a single space — "Mountain Fuel Centers."
 // vs "Mountain Fuel Centers" vs "Mountain  Fuel   Centers" all match.
@@ -2433,6 +2511,16 @@ function crmSaveLead(){
   crmSaveLeadToSupabase(obj);
 }
 
+// Shared by crmLogActivity() and crmSendTemplateEmail() so both refresh the
+// modal's activity log the same way instead of duplicating the icon map.
+function crmRenderActivityLog(l){
+  const icons={email:'&#9993;',call:'&#128222;',meeting:'&#129309;',stage:'&rarr;',won:'&#127942;',lost:'&#10007;',referral:'&#128279;',note:'&#128221;'};
+  const log=document.getElementById('cmf-activity-log'); if(!log) return;
+  log.innerHTML=(l.activity||[]).slice().reverse().map(a=>
+    '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:.9em;flex-shrink:0">'+(icons[a.type]||'&#128221;')+'</span>'+
+    '<div><div style="font-size:.75em">'+crmEsc(a.text)+'</div><div style="font-size:.63em;color:var(--muted)">'+crmEsc(a.date)+' &middot; '+crmEsc(a.by)+'</div></div></div>'
+  ).join('');
+}
 function crmLogActivity(id){
   const l=CRM_LEADS.find(x=>x.id===id); if(!l) return;
   const text=(document.getElementById('cmf-act-text')?.value||'').trim();
@@ -2441,12 +2529,7 @@ function crmLogActivity(id){
   l.activity=l.activity||[];
   l.activity.push({text,date:crmToday(),by:crmWhoAmI(),type});
   crmSave();
-  const icons={email:'&#9993;',call:'&#128222;',meeting:'&#129309;',stage:'&rarr;',won:'&#127942;',lost:'&#10007;',referral:'&#128279;',note:'&#128221;'};
-  const log=document.getElementById('cmf-activity-log');
-  if(log) log.innerHTML=l.activity.slice().reverse().map(a=>
-    '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:.9em;flex-shrink:0">'+(icons[a.type]||'&#128221;')+'</span>'+
-    '<div><div style="font-size:.75em">'+crmEsc(a.text)+'</div><div style="font-size:.63em;color:var(--muted)">'+crmEsc(a.date)+' &middot; '+crmEsc(a.by)+'</div></div></div>'
-  ).join('');
+  crmRenderActivityLog(l);
   const inp=document.getElementById('cmf-act-text'); if(inp) inp.value='';
   toast('Activity logged');
 }
@@ -2642,7 +2725,7 @@ function renderCRMCalendar(){
   const upcoming=document.getElementById('crm-upcoming'); if(!upcoming) return;
   const future=new Date(); future.setDate(future.getDate()+30);
   const futureStr=future.toISOString().slice(0,10);
-  const list=CRM_LEADS.filter(l=>l.followUp&&l.followUp>=today&&l.followUp<=futureStr&&l.stage!=='Closed Won'&&l.stage!=='Closed Lost'&&(ownerF==='all'||l.owner===ownerF)).sort((a,b)=>a.followUp.localeCompare(b.followUp));
+  const list=CRM_LEADS.filter(l=>l.followUp&&l.followUp>=today&&l.followUp<=futureStr&&!crmIsClosedStage(l.stage)&&(ownerF==='all'||l.owner===ownerF)).sort((a,b)=>a.followUp.localeCompare(b.followUp));
   upcoming.innerHTML=list.length?list.map(l=>{
     const isOvd=l.followUp<today, isTdy=l.followUp===today;
     const col=CRM_STAGE_COLORS[l.stage];
@@ -2681,7 +2764,7 @@ function renderCRMScheduler(){
   if(da){
     const today=crmToday();
     const now=new Date();
-    const items=CRM_LEADS.filter(l=>l.followUp&&l.stage!=='Closed Won'&&l.stage!=='Closed Lost'&&l.followUp<=today).sort((a,b)=>a.followUp.localeCompare(b.followUp));
+    const items=CRM_LEADS.filter(l=>l.followUp&&!crmIsClosedStage(l.stage)&&l.followUp<=today).sort((a,b)=>a.followUp.localeCompare(b.followUp));
     const calls=(CRM_CALLS||[]).filter(c=>c.status==='scheduled'&&c.scheduledAt.slice(0,10)<=today).sort((a,b)=>a.scheduledAt.localeCompare(b.scheduledAt));
     const allItems=[...items,...calls];
     da.innerHTML=allItems.length?allItems.map(item=>{
@@ -2715,7 +2798,7 @@ function renderCRMScheduler(){
   const sq=document.getElementById('crm-schedule-queue');
   if(sq){
     const suggestions=[];
-    CRM_LEADS.filter(l=>l.stage!=='Closed Won'&&l.stage!=='Closed Lost').forEach(l=>{
+    CRM_LEADS.filter(l=>!crmIsClosedStage(l.stage)).forEach(l=>{
       const rule=CRM_RULES.find(r=>r.active&&r.stage===l.stage); if(!rule) return;
       const last=l.activity&&l.activity[l.activity.length-1]; if(!last) return;
       const days=Math.floor((Date.now()-new Date(last.date).getTime())/86400000);
@@ -3250,7 +3333,7 @@ function crmDeleteLeadNoteInline(id,leadId){
 function renderCRMAnalytics(){
   const won=CRM_LEADS.filter(l=>l.stage==='Closed Won');
   const lost=CRM_LEADS.filter(l=>l.stage==='Closed Lost');
-  const active=CRM_LEADS.filter(l=>l.stage!=='Closed Won'&&l.stage!=='Closed Lost');
+  const active=CRM_LEADS.filter(l=>!crmIsClosedStage(l.stage));
   const pipeVal=active.reduce((s,l)=>s+(l.dealValue||0),0);
   const winRate=won.length+lost.length>0?Math.round(won.length/(won.length+lost.length)*100):0;
   const avgDeal=won.length?Math.round(won.reduce((s,l)=>s+(l.dealValue||0),0)/won.length):0;
@@ -3264,7 +3347,7 @@ function renderCRMAnalytics(){
   setTimeout(()=>{
     try{
       const stageEl=document.getElementById('crm-chart-stage');
-      if(stageEl) mkchart('crm-chart-stage',{type:'bar',data:{labels:CRM_STAGES.map(s=>s.split(' ')[0]),datasets:[{data:CRM_STAGES.map(s=>CRM_LEADS.filter(l=>l.stage===s).length),backgroundColor:CRM_STAGES.map(s=>CRM_STAGE_COLORS[s]+'99'),borderColor:CRM_STAGES.map(s=>CRM_STAGE_COLORS[s]),borderWidth:1,borderRadius:4}]},options:{...CDO,plugins:{legend:{display:false}}}});
+      if(stageEl) mkchart('crm-chart-stage',{type:'bar',data:{labels:CRM_STAGES.map(crmStageShort),datasets:[{data:CRM_STAGES.map(s=>CRM_LEADS.filter(l=>l.stage===s).length),backgroundColor:CRM_STAGES.map(s=>CRM_STAGE_COLORS[s]+'99'),borderColor:CRM_STAGES.map(s=>CRM_STAGE_COLORS[s]),borderWidth:1,borderRadius:4}]},options:{...CDO,plugins:{legend:{display:false}}}});
       const ownerEl=document.getElementById('crm-chart-owner');
       if(ownerEl){
         const og={};CRM_LEADS.forEach(l=>{if(!og[l.owner])og[l.owner]=0;og[l.owner]+=(l.estGallons||0);});
@@ -3298,7 +3381,7 @@ function renderCRMAnalytics(){
   const lb=document.getElementById('crm-leaderboard');
   if(lb){
     const og={};const ov={};const ol={};
-    CRM_LEADS.filter(l=>l.stage!=='Closed Lost').forEach(l=>{
+    CRM_LEADS.filter(l=>l.stage!=='Closed Lost'&&l.stage!=='Not Qualified').forEach(l=>{
       if(!og[l.owner]){og[l.owner]=0;ov[l.owner]=0;ol[l.owner]=0;}
       og[l.owner]+=(l.estGallons||0);ov[l.owner]+=(l.dealValue||0);ol[l.owner]++;
     });
