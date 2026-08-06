@@ -709,14 +709,18 @@ function renderMap(ordered,dest){
     if(mid) window.open(`https://www.google.com/maps/search/gas+station/@${mid.lat},${mid.lng},10z`,'_blank');
   });
   $('btnGMapsDir').onclick=()=>window.open(gmDirUrl,'_blank');
-  // Show embed preview of first stop area
-  const mid=ordered[Math.floor(ordered.length/2)]||ordered[0];
+  // Show Google Maps embed
+  const GKEY='AIzaSyBZsOxCFwhVeU7sNL9aAH-RBmOwWCw2U28';
   const embed=$('mapEmbed');
-  embed.innerHTML=`<iframe width="100%" height="340" style="border:0;border-radius:0 0 10px 10px" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
-    src="https://www.google.com/maps/embed/v1/directions?key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFmBWY&origin=${encodeURIComponent(state.origin.label)}&destination=${encodeURIComponent(dest.label)}&waypoints=${ordered.slice(0,8).map(s=>encodeURIComponent(s.city+', '+s.stateAbbr)).join('|')}&mode=driving"></iframe>`;
+  const embOrigin=encodeURIComponent(state.origin.label);
+  const embDest=encodeURIComponent(dest.label);
+  const embWaypoints=ordered.slice(0,8).map(s=>encodeURIComponent(s.city+', '+s.stateAbbr)).join('|');
+  embed.innerHTML=`<iframe width="100%" height="420" style="border:0;border-radius:0 0 10px 10px;display:block" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"
+    src="https://www.google.com/maps/embed/v1/directions?key=${GKEY}&origin=${embOrigin}&destination=${embDest}&waypoints=${embWaypoints}&mode=driving&avoid=tolls"></iframe>`;
   embed.style.display='block';
-  $('map').style.padding='0';
-  $('map').querySelector('div:not(#mapEmbed)') && ($('map').querySelector('div:not(#mapEmbed)').style.display='none');
+  // Hide the placeholder text
+  const placeholder=$('map').querySelector('div:not(#mapEmbed)');
+  if(placeholder) placeholder.style.display='none';
 }
 const gmapsDir=s=>`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.street? s.street+', '+s.city+', '+s.stateAbbr+' '+s.zip : s.lat+','+s.lng)}`;
 const wazeDir=s=>`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
