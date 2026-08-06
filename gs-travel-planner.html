@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 :root{
   --asphalt:#15181D; --panel:#1E232A; --panel2:#252B34; --line:#323A45;
@@ -347,7 +347,7 @@ details.dirs .dm{color:var(--paint);font-size:12px}
 <div id="printRoot"></div>
 <input type="file" id="importFile" accept=".json" style="display:none">
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
    GS TRAVEL PLANNER — Roady's Command Center
@@ -1047,7 +1047,16 @@ function init(){
   else{addStopRow();addStopRow();addStopRow()}
 }
 window.findHotels=findHotels; window.loadTrip=loadTrip; window.delTrip=delTrip; window.removePin=removePin;
-init();
+// Ensure Leaflet is ready before init
+if(typeof L !== 'undefined'){
+  init();
+} else {
+  document.querySelector('script[src*="leaflet"]').addEventListener('load', init);
+  document.querySelector('script[src*="leaflet"]').addEventListener('error', function(){
+    document.getElementById('status').textContent = '⚠ Map library failed to load — check your internet connection and refresh.';
+    document.getElementById('status').className = 'statusLine err';
+  });
+}
 </script>
 </body>
 </html>
