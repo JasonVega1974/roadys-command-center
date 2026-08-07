@@ -204,6 +204,15 @@ details.dirs .dm{color:var(--paint);font-size:12px}
   .pHotel b{font-family:Oswald;text-transform:uppercase}
   .pFoot{font-size:8.5pt;color:#555;margin-top:8pt;border-top:1pt solid #999;padding-top:4pt}
 }
+
+.altRow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 4px 26px}
+.altLbl{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em}
+.altBtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:5px 10px;font-size:12.5px;line-height:1.25;text-align:left;cursor:pointer}
+.altBtn small{display:block;font-size:11px;color:var(--faint)}
+.altBtn:hover{border-color:var(--paint);color:var(--ink)}
+.altBtn.on{background:rgba(31,122,69,.18);border-color:var(--sign);color:var(--ink)}
+.altBtn.on small{color:#7fd0a1}
+
 /* ===================== GUIDED TOUR ("Roadee") ===================== */
 #tourOverlay{position:fixed;inset:0;z-index:4000;display:none;pointer-events:none}
 #tourOverlay.on{display:block}
@@ -316,6 +325,12 @@ details.dirs .dm{color:var(--paint);font-size:12px}
           <select id="optMode">
             <option value="auto" selected>Auto (shortest route)</option>
             <option value="lock">Keep my order</option>
+          </select>
+        </div>
+        <div><label class="f">Route Preference</label>
+          <select id="routePref">
+            <option value="fast" selected>Fastest time</option>
+            <option value="short">Shortest distance</option>
           </select>
         </div>
       </div>
@@ -437,7 +452,7 @@ const AIRPORTS = [
 const MAX_STOPS = 25;
 let state = {
   gs:'', trip:'', startDate:'', day1Start:'08:00', dayStart:'08:00', dayEnd:'17:00',
-  visitMin:90, lunchMin:45, optMode:'auto',
+  visitMin:90, lunchMin:45, optMode:'auto', routePref:'fast',
   origin:null, dest:null, sameEnd:true,
   stops:[], pins:[], route:null, schedule:null
 };
@@ -632,6 +647,83 @@ async function osrm(path){
 }
 function coordStr(pts){return pts.map(p=>`${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';')}
 
+/* Route each leg on its own and ask OSRM for alternatives, so we can actually
+   compare options the way Google does. Falls back to a single route if the
+   alternatives request fails. */
+async function routeLeg(a,b){
+  const c=coordStr([a,b]);
+  let routes=[];
+  try{
+    const j=await osrm(`/route/v1/driving/${c}?alternatives=3&overview=false&steps=true`);
+    routes=j.routes||[];
+  }catch(e){
+    const j=await osrm(`/route/v1/driving/${c}?overview=false&steps=true`);
+    routes=j.routes||[];
+  }
+  if(!routes.length) throw new Error('no route between two points');
+  const alts=routes.map(r=>({
+    dist:r.distance, dur:r.duration,
+    via:legVia(r),
+    steps:(r.legs&&r.legs[0]?r.legs[0].steps:[]).map(st=>({t:instr(st),d:st.distance}))
+  }));
+  // de-dupe near-identical options
+  const seen=[], out=[];
+  alts.forEach(x=>{ if(!seen.some(s=>Math.abs(s-x.dur)<60)){seen.push(x.dur); out.push(x)} });
+  return out;
+}
+function legVia(r){
+  const steps=(r.legs&&r.legs[0]?r.legs[0].steps:[]);
+  const roads=[];
+  steps.forEach(st=>{ const n=(st.name||'').trim();
+    if(n && /^(I-|US-|US |SR |Hwy|State|[A-Z]{1,2}-?\d)/i.test(n) && !roads.includes(n)) roads.push(n); });
+  return roads.slice(0,2).join(' / ') || 'local roads';
+}
+function pickAlt(alts,pref){
+  let best=0;
+  alts.forEach((x,i)=>{ if(pref==='short' ? x.dist<alts[best].dist : x.dur<alts[best].dur) best=i });
+  return best;
+}
+function legFrom(alts,chosen){
+  const a=alts[chosen]||alts[0];
+  return {alts, chosen, dist:a.dist, dur:a.dur, steps:a.steps, via:a.via};
+}
+async function routeAllLegs(pts){
+  const pref=state.routePref||'fast';
+  const jobs=[]; for(let i=0;i<pts.length-1;i++) jobs.push([pts[i],pts[i+1]]);
+  const legs=new Array(jobs.length);
+  const BATCH=4;
+  for(let i=0;i<jobs.length;i+=BATCH){
+    const slice=jobs.slice(i,i+BATCH);
+    const res=await Promise.all(slice.map(([a,b])=>routeLeg(a,b)));
+    res.forEach((alts,k)=>{ legs[i+k]=legFrom(alts,pickAlt(alts,pref)) });
+    status(`Comparing route options… ${Math.min(i+BATCH,jobs.length)} of ${jobs.length} legs`);
+  }
+  return legs;
+}
+// Switch a single leg to a different option, then re-time the whole trip.
+function setLegAlt(legIdx,altIdx){
+  const L=state.route&&state.route.legs&&state.route.legs[legIdx];
+  if(!L||!L.alts[altIdx]) return;
+  Object.assign(L, legFrom(L.alts,altIdx));
+  const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
+  const dest=state.sameEnd?state.origin:state.dest;
+  if(!ordered.length||!dest) return;
+  state.schedule=buildSchedule(ordered,dest);
+  renderAll(ordered,dest);
+  markDirty();
+  toast(`Leg updated — ${fmtMi(L.dist)}, ${fmtDur(L.dur)}`);
+}
+// Re-pick every leg against the current preference without re-fetching.
+function repickAllLegs(){
+  if(!state.route) return;
+  const pref=state.routePref||'fast';
+  state.route.legs.forEach(L=>Object.assign(L, legFrom(L.alts,pickAlt(L.alts,pref))));
+  const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
+  const dest=state.sameEnd?state.origin:state.dest;
+  if(!ordered.length||!dest) return;
+  state.schedule=buildSchedule(ordered,dest);
+  renderAll(ordered,dest); markDirty();
+}
 async function buildRoute(){
   // validate
   if(!state.origin){status('Set your start point (airport) first.',1);return}
@@ -650,18 +742,16 @@ async function buildRoute(){
     if(state.optMode==='auto' && stops.length>1){
       ordered = await optimizeOrder(state.origin, stops, dest);
     }
-    status('Fetching driving route & turn-by-turn directions…');
     const pts=[{lat:state.origin.lat,lng:state.origin.lng},...ordered.map(s=>({lat:s.lat,lng:s.lng})),{lat:dest.lat,lng:dest.lng}];
-    const j=await osrm(`/route/v1/driving/${coordStr(pts)}?overview=full&geometries=geojson&steps=true`);
-    const r=j.routes[0];
-    state.route={
-      ordered:ordered.map(s=>s.uid),
-      geometry:r.geometry,
-      legs:r.legs.map(l=>({dist:l.distance,dur:l.duration,steps:l.steps.map(st=>({t:instr(st),d:st.distance}))}))
-    };
+    status(`Comparing route options for ${pts.length-1} legs…`);
+    const legs=await routeAllLegs(pts);
+    state.route={ ordered:ordered.map(s=>s.uid), legs };
     state.schedule=buildSchedule(ordered,dest);
     renderAll(ordered,dest);
-    status(`✓ Route built — ${fmtMi(r.distance)}, ${fmtDur(r.duration)} driving, ${state.schedule.days.length} day(s).`);
+    const td=legs.reduce((a,l)=>a+l.dur,0), tm=legs.reduce((a,l)=>a+l.dist,0);
+    const nAlt=legs.reduce((a,l)=>a+(l.alts.length>1?1:0),0);
+    status(`✓ Route built — ${fmtMi(tm)}, ${fmtDur(td)} driving, ${state.schedule.days.length} day(s).`
+      + (nAlt?` Picked the ${state.routePref==='short'?'shortest':'fastest'} option on ${nAlt} leg${nAlt>1?'s':''}.`:''));
     saveTrip(true);
   }catch(e){
     console.error(e);
@@ -815,8 +905,17 @@ function renderItinerary(ordered,dest){
         html+=`<div class="signCard airCard"><span class="exitTab">${it.k==='depart'?'WHEELS UP → WHEELS DOWN':'DAY START'}</span><h4>${it.k==='depart'?'Depart':'Leave hotel'} — ${esc(it.label)}</h4><div class="times">${fmtT(it.time)}</div></div>`;
       }else if(it.k==='drive'){
         const leg=state.route.legs[it.legIdx];
-        html+=`<div class="legChip"><span class="dots">┊</span><span class="mm">${fmtMi(leg.dist)} · ${fmtDur(leg.dur)}</span><span>drive</span></div>
-        <details class="dirs"><summary>Turn-by-turn directions</summary><ol>${leg.steps.map(st=>`<li>${esc(st.t)} <span class="dm">${st.d>50?fmtMi(st.d):''}</span></li>`).join('')}</ol></details>`;
+        const alts=leg.alts||[];
+        html+=`<div class="legChip"><span class="dots">┊</span><span class="mm">${fmtMi(leg.dist)} · ${fmtDur(leg.dur)}</span><span>drive${leg.via?` via ${esc(leg.via)}`:''}</span></div>`;
+        if(alts.length>1){
+          const best=alts.reduce((a,b)=>a.dur<b.dur?a:b).dur;
+          html+=`<div class="altRow"><span class="altLbl">Route options:</span>${alts.map((a,ai)=>{
+            const delta=Math.round((a.dur-best)/60);
+            return `<button class="altBtn${ai===leg.chosen?' on':''}" onclick="setLegAlt(${it.legIdx},${ai})">
+              ${fmtDur(a.dur)} · ${fmtMi(a.dist)}<small>${esc(a.via)}${delta>0?` · +${delta} min`:' · fastest'}</small></button>`;
+          }).join('')}</div>`;
+        }
+        html+=`<details class="dirs"><summary>Turn-by-turn directions</summary><ol>${leg.steps.map(st=>`<li>${esc(st.t)} <span class="dm">${st.d>50?fmtMi(st.d):''}</span></li>`).join('')}</ol></details>`;
       }else if(it.k==='lunch'){
         html+=`<div class="legChip"><span class="dots">┊</span><span class="mm" style="background:#6b4b00">🍔 Lunch · ${it.dur} min</span><span>${fmtT(it.time)}–${fmtT(it.time+it.dur)}</span></div>`;
       }else if(it.k==='visit'){
@@ -1029,7 +1128,7 @@ function collect(){
   state.startDate=$('startDate').value; state.day1Start=$('day1Start').value;
   state.dayStart=$('dayStart').value; state.dayEnd=$('dayEnd').value;
   state.visitMin=+$('visitMin').value; state.lunchMin=+$('lunchMin').value;
-  state.optMode=$('optMode').value; state.sameEnd=$('sameEnd').checked;
+  state.optMode=$('optMode').value; state.routePref=$('routePref').value; state.sameEnd=$('sameEnd').checked;
 }
 function markDirty(){dirty=true;collect();clearTimeout(markDirty._t);markDirty._t=setTimeout(()=>saveTrip(true),1500)}
 const tripKey=(gs,tr)=>`gsp2:trip:${(gs||'unnamed').toLowerCase()}:${(tr||'untitled').toLowerCase()}`;
@@ -1075,7 +1174,7 @@ function loadTrip(k){
   }catch(e){toast('⚠ Could not load that trip')}
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
-function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',origin:null,dest:null,sameEnd:true,stops:[],pins:[],route:null,schedule:null}}
+function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',origin:null,dest:null,sameEnd:true,stops:[],pins:[],route:null,schedule:null}}
 function hydrateUI(){
   const gsSel=$('gsName');
   if([...gsSel.options].some(o=>o.value===state.gs||o.text===state.gs)){gsSel.value=state.gs;$('gsNameOther').style.display='none'}
@@ -1083,7 +1182,7 @@ function hydrateUI(){
   $('tripName').value=state.trip||'';
   $('startDate').value=state.startDate||new Date().toISOString().slice(0,10);
   $('day1Start').value=state.day1Start;$('dayStart').value=state.dayStart;$('dayEnd').value=state.dayEnd;
-  $('visitMin').value=state.visitMin;$('lunchMin').value=state.lunchMin;$('optMode').value=state.optMode;
+  $('visitMin').value=state.visitMin;$('lunchMin').value=state.lunchMin;$('optMode').value=state.optMode;$('routePref').value=state.routePref||'fast';
   $('sameEnd').checked=state.sameEnd;$('destWrap').style.display=state.sameEnd?'none':'block';
   $('originIn').value=state.origin?state.origin.label:'';
   $('originMeta').textContent=state.origin?`✓ Pinned at ${state.origin.lat.toFixed(4)}, ${state.origin.lng.toFixed(4)}`:'';
@@ -1119,6 +1218,7 @@ function init(){
   $('sameEnd').onchange=e=>{$('destWrap').style.display=e.target.checked?'none':'block';markDirty()};
   $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty()};
   ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode'].forEach(id=>$(id).addEventListener('input',markDirty));
+  $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
   $('btnAddStop').onclick=()=>addStopRow();
   $('btnBuild').onclick=buildRoute;
   $('btnClear').onclick=()=>{if(confirm('Remove all stops from this trip?')){state.stops=[];state.route=null;state.schedule=null;renderStops();$('itin').innerHTML='<div class="emptyIt">Stops cleared.</div>';$('totRow').style.display='none';markDirty()}};
@@ -1372,7 +1472,7 @@ function initTour(){
 }
 window.showTour = showTour;
 
-window.findHotels=findHotels; window.loadTrip=loadTrip; window.delTrip=delTrip; window.removePin=removePin; window.saveHotelPick=saveHotelPick;
+window.findHotels=findHotels; window.loadTrip=loadTrip; window.delTrip=delTrip; window.removePin=removePin; window.saveHotelPick=saveHotelPick; window.setLegAlt=setLegAlt;
 init();
 initTour();
 </script>
