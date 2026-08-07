@@ -366,10 +366,9 @@ details.dirs .dm{color:var(--paint);font-size:12px}
         <button class="hbtn" id="btnGasSearch" style="font-size:12.5px;padding:6px 12px">⛽ Gas Stations Along Route</button>
         <span class="small" style="margin-left:auto">Opens Google Maps in a new tab</span>
       </div>
-      <div id="map" style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#0d1013;color:var(--dim);font-size:14px;padding:30px 20px">
-        <div style="font-size:48px">🗺</div>
-        <div style="text-align:center;max-width:380px">Build your route, then use <b style="color:var(--ink)">Open Full Route in Google Maps</b> above for live navigation, real-time traffic, and GPS turn-by-turn.<br><br>Each stop card below also has individual Google Maps, Apple Maps, and Waze buttons.</div>
-        <div id="mapEmbed" style="width:100%;display:none"></div>
+      <div id="map" style="background:#0d1013">
+        <div id="mapEmbed" style="width:100%"></div>
+        <div id="mapHint" style="padding:9px 14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim)">Add stops and hit <b style="color:var(--ink)">Build My Route</b> to plot the full trip here. Each stop card below also has Google Maps, Apple Maps, and Waze buttons.</div>
       </div>
     </div>
 
@@ -619,6 +618,7 @@ function wireEndpoint(inpId,suggId,metaId,slot){
     if(p.lat==null){const r=await geocode({q:p.q});if(r){p.lat=r.lat;p.lng=r.lng}else{$(metaId).textContent='⚠ Could not locate — try a more specific address';state[slot]=null;return}}
     state[slot]=p; markDirty();
     $(metaId).textContent=`✓ Pinned at ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
+    if(slot==='origin' && !state.route) showBaseMap(p.lat,p.lng,9);
   },true);
 }
 
@@ -763,6 +763,16 @@ function renderAll(ordered,dest){
   buildPrint(ordered,dest);
 }
 function numIcon(n,cls){return L.divIcon({className:'',html:`<div class="numPin ${cls||''}">${n}</div>`,iconSize:[30,30],iconAnchor:[15,15]})}
+const GKEY='AIzaSyBZsOxCFwhVeU7sNL9aAH-RBmOwWCw2U28';
+function mapFrame(path){
+  return `<iframe width="100%" height="420" style="border:0;display:block" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed/v1/${path}&key=${GKEY}"></iframe>`;
+}
+// Loads a plain map immediately on page open, and re-centers once a start point is picked.
+function showBaseMap(lat,lng,zoom){
+  const embed=$('mapEmbed'); if(!embed) return;
+  const c = (lat!=null&&lng!=null) ? `${lat},${lng}` : '39.5,-98.35';
+  embed.innerHTML = mapFrame(`view?center=${c}&zoom=${zoom||(lat!=null?9:4)}&maptype=roadmap`);
+}
 function renderMap(ordered,dest){
   // Build Google Maps multi-waypoint URL (max 10 waypoints in free Maps)
   const origin=`${state.origin.lat},${state.origin.lng}`;
@@ -776,18 +786,13 @@ function renderMap(ordered,dest){
     if(mid) window.open(`https://www.google.com/maps/search/gas+station/@${mid.lat},${mid.lng},10z`,'_blank');
   });
   $('btnGMapsDir').onclick=()=>window.open(gmDirUrl,'_blank');
-  // Show Google Maps embed
-  const GKEY='AIzaSyBZsOxCFwhVeU7sNL9aAH-RBmOwWCw2U28';
-  const embed=$('mapEmbed');
+  // Swap the embed over to the full directions view
   const embOrigin=encodeURIComponent(state.origin.label);
   const embDest=encodeURIComponent(dest.label);
   const embWaypoints=ordered.slice(0,8).map(s=>encodeURIComponent(s.city+', '+s.stateAbbr)).join('|');
-  embed.innerHTML=`<iframe width="100%" height="420" style="border:0;border-radius:0 0 10px 10px;display:block" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"
-    src="https://www.google.com/maps/embed/v1/directions?key=${GKEY}&origin=${embOrigin}&destination=${embDest}&waypoints=${embWaypoints}&mode=driving&avoid=tolls"></iframe>`;
-  embed.style.display='block';
-  // Hide the placeholder text
-  const placeholder=$('map').querySelector('div:not(#mapEmbed)');
-  if(placeholder) placeholder.style.display='none';
+  $('mapEmbed').innerHTML=mapFrame(`directions?origin=${embOrigin}&destination=${embDest}&waypoints=${embWaypoints}&mode=driving`);
+  const hint=$('mapHint');
+  if(hint) hint.innerHTML=`Showing your full route. Use <b style="color:var(--ink)">Open Full Route in Google Maps</b> above for live traffic and GPS navigation.`;
 }
 const gmapsDir=s=>`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.street? s.street+', '+s.city+', '+s.stateAbbr+' '+s.zip : s.lat+','+s.lng)}`;
 const wazeDir=s=>`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
@@ -1066,7 +1071,7 @@ function loadTrip(k){
       const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
       const dest=state.sameEnd?state.origin:state.dest;
       if(ordered.length&&dest)renderAll(ordered,dest);
-    }
+    } else if(state.origin){ showBaseMap(state.origin.lat,state.origin.lng,9) }
   }catch(e){toast('⚠ Could not load that trip')}
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
@@ -1107,7 +1112,7 @@ function importTrip(file){
 
 /* ---------------- init ---------------- */
 function init(){
-  // Map handled via Google Maps links
+  showBaseMap();   // plain US map right away; upgrades to the route once built
   $('startDate').value=new Date().toISOString().slice(0,10);
   wireEndpoint('originIn','originSugg','originMeta','origin');
   wireEndpoint('destIn','destSugg','destMeta','dest');
