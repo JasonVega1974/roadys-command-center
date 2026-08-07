@@ -205,6 +205,9 @@ details.dirs .dm{color:var(--paint);font-size:12px}
   .pFoot{font-size:8.5pt;color:#555;margin-top:8pt;border-top:1pt solid #999;padding-top:4pt}
 }
 
+.dayTab{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:20px;padding:4px 13px;font-size:12.5px;cursor:pointer}
+.dayTab:hover{border-color:var(--paint);color:var(--ink)}
+.dayTab.on{background:var(--paint);border-color:var(--paint);color:#1a1a1a;font-weight:600}
 .altRow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 4px 26px}
 .altLbl{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em}
 .altBtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:5px 10px;font-size:12.5px;line-height:1.25;text-align:left;cursor:pointer}
@@ -380,6 +383,7 @@ details.dirs .dm{color:var(--paint);font-size:12px}
         <button class="hbtn blue" id="btnGMaps" style="font-size:12.5px;padding:6px 12px">Open Full Route in Google Maps ↗</button>
         <button class="hbtn" id="btnGMapsDir" style="font-size:12.5px;padding:6px 12px">Turn-by-Turn Directions ↗</button>
         <button class="hbtn" id="btnGasSearch" style="font-size:12.5px;padding:6px 12px">⛽ Gas Stations Along Route</button>
+        <div id="dayTabs" style="display:none;gap:5px;flex-wrap:wrap;width:100%;margin-top:6px"></div>
         <span class="small" style="margin-left:auto">Opens Google Maps in a new tab</span>
       </div>
       <div id="map" style="background:#0d1013">
@@ -913,26 +917,79 @@ function showBaseMap(lat,lng,zoom){
   const c = (lat!=null&&lng!=null) ? `${lat},${lng}` : '39.5,-98.35';
   embed.innerHTML = mapFrame(`view?center=${c}&zoom=${zoom||(lat!=null?9:4)}&maptype=roadmap`);
 }
+const EMBED_WP_MAX=9;   // origin + destination + this many waypoints
+
+/* Build the point list for one day of the schedule, or the whole trip. */
+function mapPointsFor(dayIdx,ordered,dest){
+  const P=(lat,lng,label)=>({lat,lng,label});
+  if(dayIdx===null){
+    const pts=[P(state.origin.lat,state.origin.lng,state.origin.label)];
+    ordered.forEach(s=>pts.push(P(s.lat,s.lng,`${s.name}, ${s.city}, ${s.stateAbbr}`)));
+    pts.push(P(dest.lat,dest.lng,dest.label));
+    return pts;
+  }
+  const d=state.schedule.days[dayIdx]; if(!d) return [];
+  const pts=[];
+  d.items.forEach(it=>{
+    if(it.k==='depart'||it.k==='resume') pts.push(P(it.lat,it.lng,it.label));
+    else if(it.k==='visit')              pts.push(P(it.lat,it.lng,it.label));
+    else if(it.k==='hotel')              pts.push(P(it.lat,it.lng,'Overnight — '+it.near));
+    else if(it.k==='arrive')             pts.push(P(it.lat,it.lng,it.label));
+  });
+  return pts;
+}
+
+function drawMapFor(dayIdx,ordered,dest){
+  const pts=mapPointsFor(dayIdx,ordered,dest);
+  const hint=$('mapHint');
+  if(pts.length<2){
+    if(hint) hint.textContent='Not enough points to draw this day.';
+    return;
+  }
+  // Exact coordinates — never city names, so two stops in one town stay distinct.
+  const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+  const o=pts[0], dst=pts[pts.length-1];
+  let mid=pts.slice(1,-1), truncated=0;
+  if(mid.length>EMBED_WP_MAX){ truncated=mid.length-EMBED_WP_MAX; mid=mid.slice(0,EMBED_WP_MAX) }
+  const wp=mid.map(c).join('|');
+  $('mapEmbed').innerHTML=mapFrame(`directions?origin=${c(o)}&destination=${c(dst)}${wp?`&waypoints=${wp}`:''}&mode=driving`);
+
+  if(hint){
+    const label = dayIdx===null ? 'the full trip' : `Day ${dayIdx+1}`;
+    hint.innerHTML = truncated
+      ? `Showing ${label} — Google's embed caps at ${EMBED_WP_MAX} stops, so <b style="color:var(--warn)">${truncated} more aren't drawn</b>. Use the <b style="color:var(--ink)">Day</b> tabs above to see every stop, or open the full route in Google Maps.`
+      : `Showing <b style="color:var(--ink)">${label}</b> — ${pts.length} points, exactly as listed in your itinerary below.`;
+  }
+  [...document.querySelectorAll('.dayTab')].forEach(b=>
+    b.classList.toggle('on', (b.dataset.day==='all'? dayIdx===null : +b.dataset.day===dayIdx)));
+}
+
 function renderMap(ordered,dest){
-  // Build Google Maps multi-waypoint URL (max 10 waypoints in free Maps)
-  const origin=`${state.origin.lat},${state.origin.lng}`;
-  const destination=`${dest.lat},${dest.lng}`;
-  const wps=ordered.slice(0,8).map(s=>`${s.lat},${s.lng}`).join('|');
-  const gmUrl=`https://www.google.com/maps/dir/${origin}/${wps?wps+'/':''}${destination}`;
-  const gmDirUrl=`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(state.origin.label)}&destination=${encodeURIComponent(dest.label)}&waypoints=${ordered.slice(0,8).map(s=>encodeURIComponent(s.street+', '+s.city+', '+s.stateAbbr)).join('|')}&travelmode=driving`;
+  // Full-route links (these open real Google Maps, which handles more stops than the embed)
+  const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+  const gmUrl=`https://www.google.com/maps/dir/${c(state.origin)}/${ordered.map(c).join('/')}/${c(dest)}`;
+  const gmDirUrl=`https://www.google.com/maps/dir/?api=1&origin=${c(state.origin)}&destination=${c(dest)}`
+    +`&waypoints=${ordered.slice(0,9).map(c).join('|')}&travelmode=driving`;
   $('btnGMaps').onclick=()=>window.open(gmUrl,'_blank');
+  $('btnGMapsDir').onclick=()=>window.open(gmDirUrl,'_blank');
   $('btnGasSearch') && ($('btnGasSearch').onclick=()=>{
     const mid=ordered[Math.floor(ordered.length/2)]||ordered[0];
     if(mid) window.open(`https://www.google.com/maps/search/gas+station/@${mid.lat},${mid.lng},10z`,'_blank');
   });
-  $('btnGMapsDir').onclick=()=>window.open(gmDirUrl,'_blank');
-  // Swap the embed over to the full directions view
-  const embOrigin=encodeURIComponent(state.origin.label);
-  const embDest=encodeURIComponent(dest.label);
-  const embWaypoints=ordered.slice(0,8).map(s=>encodeURIComponent(s.city+', '+s.stateAbbr)).join('|');
-  $('mapEmbed').innerHTML=mapFrame(`directions?origin=${embOrigin}&destination=${embDest}&waypoints=${embWaypoints}&mode=driving`);
-  const hint=$('mapHint');
-  if(hint) hint.innerHTML=`Showing your full route. Use <b style="color:var(--ink)">Open Full Route in Google Maps</b> above for live traffic and GPS navigation.`;
+
+  // Day tabs so every stop is visible even on long trips
+  const tabs=$('dayTabs');
+  if(tabs){
+    const nd=state.schedule?state.schedule.days.length:0;
+    tabs.innerHTML=`<button class="dayTab on" data-day="all">Full trip</button>`
+      + Array.from({length:nd},(_,i)=>`<button class="dayTab" data-day="${i}">Day ${i+1}</button>`).join('');
+    [...tabs.children].forEach(b=>b.onclick=()=>{
+      const v=b.dataset.day;
+      drawMapFor(v==='all'?null:+v,ordered,dest);
+    });
+    tabs.style.display='flex';
+  }
+  drawMapFor(null,ordered,dest);
 }
 const gmapsDir=s=>`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.street? s.street+', '+s.city+', '+s.stateAbbr+' '+s.zip : s.lat+','+s.lng)}`;
 const wazeDir=s=>`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
