@@ -327,6 +327,7 @@ details.dirs .dm{color:var(--paint);font-size:12px}
             <option value="lock">Keep my order</option>
           </select>
         </div>
+        <div><label class="f">Stop Driving By</label><input type="time" id="driveTil" value="19:00"></div>
         <div><label class="f">Route Preference</label>
           <select id="routePref">
             <option value="fast" selected>Fastest time</option>
@@ -452,7 +453,7 @@ const AIRPORTS = [
 const MAX_STOPS = 25;
 let state = {
   gs:'', trip:'', startDate:'', day1Start:'08:00', dayStart:'08:00', dayEnd:'17:00',
-  visitMin:90, lunchMin:45, optMode:'auto', routePref:'fast',
+  visitMin:90, lunchMin:45, optMode:'auto', routePref:'fast', driveTil:'19:00',
   origin:null, dest:null, sameEnd:true,
   stops:[], pins:[], route:null, schedule:null
 };
@@ -654,16 +655,17 @@ async function routeLeg(a,b){
   const c=coordStr([a,b]);
   let routes=[];
   try{
-    const j=await osrm(`/route/v1/driving/${c}?alternatives=3&overview=false&steps=true`);
+    const j=await osrm(`/route/v1/driving/${c}?alternatives=3&overview=simplified&geometries=geojson&steps=true`);
     routes=j.routes||[];
   }catch(e){
-    const j=await osrm(`/route/v1/driving/${c}?overview=false&steps=true`);
+    const j=await osrm(`/route/v1/driving/${c}?overview=simplified&geometries=geojson&steps=true`);
     routes=j.routes||[];
   }
   if(!routes.length) throw new Error('no route between two points');
   const alts=routes.map(r=>({
     dist:r.distance, dur:r.duration,
     via:legVia(r),
+    geom:(r.geometry&&r.geometry.coordinates)?r.geometry.coordinates:null,
     steps:(r.legs&&r.legs[0]?r.legs[0].steps:[]).map(st=>({t:instr(st),d:st.distance}))
   }));
   // de-dupe near-identical options
@@ -685,7 +687,7 @@ function pickAlt(alts,pref){
 }
 function legFrom(alts,chosen){
   const a=alts[chosen]||alts[0];
-  return {alts, chosen, dist:a.dist, dur:a.dur, steps:a.steps, via:a.via};
+  return {alts, chosen, dist:a.dist, dur:a.dur, steps:a.steps, via:a.via, geom:a.geom};
 }
 async function routeAllLegs(pts){
   const pref=state.routePref||'fast';
@@ -794,56 +796,104 @@ function instr(st){
 }
 
 /* ---------------- scheduler: 8–5 days, visits, lunch, hotels ---------------- */
+/* Where along a leg are we after driving `frac` of its duration?
+   Uses the real road geometry when available, straight-line as a fallback. */
+function pointAlong(geom,frac,a,b){
+  frac=Math.max(0,Math.min(1,frac));
+  if(!geom||geom.length<2){
+    return {lat:a.lat+(b.lat-a.lat)*frac, lng:a.lng+(b.lng-a.lng)*frac};
+  }
+  const pts=geom.map(c=>({lat:c[1],lng:c[0]}));
+  let total=0; const cum=[0];
+  for(let i=1;i<pts.length;i++){ total+=haversine(pts[i-1],pts[i]); cum.push(total) }
+  if(total<=0) return pts[0];
+  const target=total*frac;
+  for(let i=1;i<pts.length;i++){
+    if(cum[i]>=target){
+      const seg=cum[i]-cum[i-1]||1, r=(target-cum[i-1])/seg;
+      return {lat:pts[i-1].lat+(pts[i].lat-pts[i-1].lat)*r, lng:pts[i-1].lng+(pts[i].lng-pts[i-1].lng)*r};
+    }
+  }
+  return pts[pts.length-1];
+}
 function buildSchedule(ordered,dest){
   const legs=state.route.legs;
   const dayStart=tToMin(state.dayStart), dayEnd=tToMin(state.dayEnd), grace=20;
+  const driveTil=tToMin(state.driveTil||'19:00');   // latest you're willing to drive
   const lunchMin=+state.lunchMin;
   let day=0, t=tToMin(state.day1Start), lunch=false;
   const days=[{items:[],date:0}];
   const push=it=>days[days.length-1].items.push(it);
-  push({k:'depart',label:state.origin.label,time:t,lat:state.origin.lat,lng:state.origin.lng});
+
+  let prev={lat:state.origin.lat,lng:state.origin.lng,label:state.origin.label};
+  push({k:'depart',label:state.origin.label,time:t,lat:prev.lat,lng:prev.lng});
+
   for(let i=0;i<ordered.length;i++){
     const leg=legs[i], drv=leg.dur/60, s=ordered[i];
     const vis=+(s.visitOv||state.visitMin);
-    // would this visit blow past end of day? -> overnight BEFORE driving this leg
+    const nextPt={lat:s.lat,lng:s.lng,label:`${s.name}, ${s.city}, ${s.stateAbbr}`};
     let arr=t+drv, end=arr+vis;
-    const lunchNeeded=!lunch && arr>=11.5*60;
-    if(end+(lunchNeeded?0:0)>dayEnd+grace && days[days.length-1].items.some(x=>x.k==='visit'||x.k==='depart')){
-      // close day: hotel near last point
-      const last=lastPoint(days);
-      push({k:'hotel',lat:last.lat,lng:last.lng,near:last.label,time:t});
+
+    // Can't finish this visit inside the work day? Close the day out —
+    // but drive as far toward tomorrow's first stop as we reasonably can tonight.
+    if(end>dayEnd+grace && days[days.length-1].items.some(x=>x.k==='visit'||x.k==='depart')){
+      const evening=Math.max(0,Math.min(drv, driveTil-t));       // minutes we can drive tonight
+      const frac=drv>0?evening/drv:1;
+      const hp = frac>=1 ? nextPt : pointAlong(leg.geom,frac,prev,nextPt);
+      const nearLabel = frac>=1
+        ? `${s.city}, ${s.stateAbbr} — your first stop tomorrow`
+        : `${Math.round(frac*100)}% of the way to ${s.city}, ${s.stateAbbr}`;
+
+      if(evening>1){
+        push({k:'drive',legIdx:i,dist:leg.dist*frac,dur:evening*60,part:'evening',
+              toward:`${s.city}, ${s.stateAbbr}`});
+      }
+      push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
+            toStop:`${s.name}, ${s.city}, ${s.stateAbbr}`,
+            remainMin:Math.round(drv-evening)});
+
       day++; days.push({items:[],date:day}); t=dayStart; lunch=false;
-      push({k:'resume',label:'Hotel near '+last.label,time:t,lat:last.lat,lng:last.lng});
-      arr=t+drv; end=arr+vis;
+      push({k:'resume',label:`Hotel — ${nearLabel}`,time:t,lat:hp.lat,lng:hp.lng});
+
+      const morning=Math.max(0,drv-evening);
+      if(morning>1) push({k:'drive',legIdx:i,dist:leg.dist*(1-frac),dur:morning*60,part:'morning',
+                          toward:`${s.city}, ${s.stateAbbr}`});
+      arr=t+morning; end=arr+vis;
+    } else {
+      push({k:'drive',legIdx:i,dist:leg.dist,dur:leg.dur});
     }
-    push({k:'drive',legIdx:i,dist:leg.dist,dur:leg.dur,from:lastPoint(days,true),});
+
     if(lunchMin>0 && !lunch && arr>=12*60){push({k:'lunch',time:arr,dur:lunchMin});arr+=lunchMin;end=arr+vis;lunch=true}
     push({k:'visit',uid:s.uid,label:s.name,time:arr,end:end,lat:s.lat,lng:s.lng,stop:s});
-    t=end;
+    t=end; prev=nextPt;
     if(lunchMin>0 && !lunch && t>=12*60){push({k:'lunch',time:t,dur:lunchMin});t+=lunchMin;lunch=true}
   }
-  // final leg to destination
+
+  // Final leg home — same evening/morning split so nobody drives all night.
   const fl=legs[legs.length-1], drv=fl.dur/60;
+  const destPt={lat:dest.lat,lng:dest.lng,label:dest.label};
   let arr=t+drv;
-  if(arr>dayEnd+grace+60){ // way past — overnight then drive in
-    const last=lastPoint(days);
-    days[days.length-1].items.push({k:'hotel',lat:last.lat,lng:last.lng,near:last.label,time:t});
-    day++;days.push({items:[],date:day});t=tToMin(state.dayStart);
-    days[days.length-1].items.push({k:'resume',label:'Hotel near '+last.label,time:t,lat:last.lat,lng:last.lng});
-    arr=t+drv;
+  if(arr>driveTil){
+    const evening=Math.max(0,Math.min(drv, driveTil-t));
+    const frac=drv>0?evening/drv:1;
+    const hp=frac>=1?destPt:pointAlong(fl.geom,frac,prev,destPt);
+    const nearLabel=frac>=1?dest.label:`${Math.round(frac*100)}% of the way to ${dest.label}`;
+    if(evening>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist*frac,dur:evening*60,part:'evening',toward:dest.label});
+    push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
+          toStop:dest.label,remainMin:Math.round(drv-evening)});
+    day++;days.push({items:[],date:day});t=dayStart;
+    push({k:'resume',label:`Hotel — ${nearLabel}`,time:t,lat:hp.lat,lng:hp.lng});
+    const morning=Math.max(0,drv-evening);
+    if(morning>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist*(1-frac),dur:morning*60,part:'morning',toward:dest.label});
+    arr=t+morning;
+  } else {
+    push({k:'drive',legIdx:legs.length-1,dist:fl.dist,dur:fl.dur});
   }
-  days[days.length-1].items.push({k:'drive',legIdx:legs.length-1,dist:fl.dist,dur:fl.dur});
-  days[days.length-1].items.push({k:'arrive',label:dest.label,time:arr,lat:dest.lat,lng:dest.lng});
+  push({k:'arrive',label:dest.label,time:arr,lat:dest.lat,lng:dest.lng});
+
   const totalDist=legs.reduce((a,l)=>a+l.dist,0), totalDur=legs.reduce((a,l)=>a+l.dur,0);
   const nights=days.reduce((a,d)=>a+d.items.filter(x=>x.k==='hotel').length,0);
   return {days,totalDist,totalDur,nights,dest};
-  function lastPoint(ds,justLabel){
-    for(let di=ds.length-1;di>=0;di--){const its=ds[di].items;
-      for(let ii=its.length-1;ii>=0;ii--){const it=its[ii];
-        if(it.lat!=null) return justLabel?it.label:it;
-      }}
-    return justLabel?state.origin.label:{lat:state.origin.lat,lng:state.origin.lng,label:state.origin.label};
-  }
 }
 
 /* ---------------- render: map + itinerary + print ---------------- */
@@ -906,8 +956,12 @@ function renderItinerary(ordered,dest){
       }else if(it.k==='drive'){
         const leg=state.route.legs[it.legIdx];
         const alts=leg.alts||[];
-        html+=`<div class="legChip"><span class="dots">┊</span><span class="mm">${fmtMi(leg.dist)} · ${fmtDur(leg.dur)}</span><span>drive${leg.via?` via ${esc(leg.via)}`:''}</span></div>`;
-        if(alts.length>1){
+        const dd=it.dist!=null?it.dist:leg.dist, du=it.dur!=null?it.dur:leg.dur;
+        const partLbl=it.part==='evening'?'🌆 evening drive toward '+esc(it.toward||'')
+                     :it.part==='morning'?'🌅 finish the drive to '+esc(it.toward||'')
+                     :'drive'+(leg.via?` via ${esc(leg.via)}`:'');
+        html+=`<div class="legChip"><span class="dots">┊</span><span class="mm">${fmtMi(dd)} · ${fmtDur(du)}</span><span>${partLbl}</span></div>`;
+        if(alts.length>1 && !it.part){
           const best=alts.reduce((a,b)=>a.dur<b.dur?a:b).dur;
           html+=`<div class="altRow"><span class="altLbl">Route options:</span>${alts.map((a,ai)=>{
             const delta=Math.round((a.dur-best)/60);
@@ -944,7 +998,7 @@ function renderItinerary(ordered,dest){
         html+=`<div class="signCard hotelCard"><span class="exitTab">OVERNIGHT</span>
           <h4>🛏 Hotel Night — near ${esc(it.near)}</h4>
           <div class="times">Day wraps ~${fmtT(it.time)} · back on the road ${esc(fmtT(tToMin(state.dayStart)))} tomorrow</div>
-          <div style="font-size:12.5px;opacity:.85;margin:6px 0 10px">📍 Positioned near your <b>first stop tomorrow</b> to minimize morning drive time.</div>
+          <div style="font-size:12.5px;opacity:.85;margin:6px 0 10px">📍 Positioned toward <b>${esc(it.toStop||'tomorrow\'s first stop')}</b>${it.remainMin>1?` — about <b>${fmtDur(it.remainMin*60)}</b> of driving left in the morning`:` — <b>you're already there</b>, no morning drive`}.</div>
           <div class="scActs">
             <button onclick="findHotels(${it.lat},${it.lng},'${hid}')">🔎 Recommended hotels nearby</button>
             <a target="_blank" href="${bwUrl}">Best Western on Maps</a>
@@ -1058,12 +1112,12 @@ function buildPrint(ordered,dest){
       if(it.k==='depart'||it.k==='resume'){prev=it.label;prevT=it.time}
       if(it.k==='visit'){
         const leg=findLegBefore(d,it);
-        h+=`<tr><td>${esc(short(prev))} → <b>${esc(short(it.label))}</b></td><td>${prevT!=null?fmtT(prevT):''}</td><td>${fmtT(it.time)}</td><td>${leg?fmtMi(leg.dist):''}</td><td>${leg?fmtDur(leg.dur):''}</td></tr>`;
+        h+=`<tr><td>${esc(short(prev))} → <b>${esc(short(it.label))}</b></td><td>${prevT!=null?fmtT(prevT):''}</td><td>${fmtT(it.time)}</td><td>${leg?fmtMi(leg.d):''}</td><td>${leg?fmtDur(leg.u):''}</td></tr>`;
         prev=it.label; prevT=it.end;
       }
       if(it.k==='arrive'){
         const leg=findLegBefore(d,it);
-        h+=`<tr><td>${esc(short(prev))} → <b>${esc(short(it.label))}</b></td><td>${prevT!=null?fmtT(prevT):''}</td><td>${fmtT(it.time)}</td><td>${leg?fmtMi(leg.dist):''}</td><td>${leg?fmtDur(leg.dur):''}</td></tr>`;
+        h+=`<tr><td>${esc(short(prev))} → <b>${esc(short(it.label))}</b></td><td>${prevT!=null?fmtT(prevT):''}</td><td>${fmtT(it.time)}</td><td>${leg?fmtMi(leg.d):''}</td><td>${leg?fmtDur(leg.u):''}</td></tr>`;
       }
       if(it.k==='lunch'){h+=`<tr><td colspan="5" style="font-style:italic">Lunch · ${it.dur} min · ${fmtT(it.time)}–${fmtT(it.time+it.dur)}</td></tr>`}
     });
@@ -1085,7 +1139,8 @@ function buildPrint(ordered,dest){
       if(it.k==='hotel'){
         const hid='h'+di+'_'+Math.round(it.lat*1000);
         const pick=(state.hotelPicks||{})[hid]||'';
-        h+=`<div class="pHotel"><b>🛏 Overnight</b> — near ${esc(it.near)} (near first stop tomorrow)<br>
+        h+=`<div class="pHotel"><b>🛏 Overnight</b> — ${esc(it.near)}<br>
+          <b>Tomorrow:</b> ${esc(it.toStop||'')}${it.remainMin>1?` — about ${fmtDur(it.remainMin*60)} of driving after you pull out`:' — you are already there'}<br>
           ${pick?`<b>Hotel:</b> ${esc(pick)}`:'Hotel: <span class="fillLine"></span> &nbsp; Conf#: <span class="fillLine" style="min-width:90pt"></span>'}
         </div>`;
       }
@@ -1099,7 +1154,14 @@ function buildPrint(ordered,dest){
   $('printRoot').innerHTML=h;
   function findLegBefore(d,it){
     const i=d.items.indexOf(it);
-    for(let k=i-1;k>=0;k--){if(d.items[k].k==='drive')return state.route.legs[d.items[k].legIdx];if(d.items[k].k==='visit')return null}
+    for(let k=i-1;k>=0;k--){
+      const x=d.items[k];
+      if(x.k==='drive'){
+        const L=state.route.legs[x.legIdx]||{};
+        return {steps:L.steps||[], d:(x.dist!=null?x.dist:L.dist), u:(x.dur!=null?x.dur:L.dur)};
+      }
+      if(x.k==='visit')return null;
+    }
     return null;
   }
   function short(l){return String(l||'').split('·')[0].trim().slice(0,48)}
@@ -1126,7 +1188,7 @@ function curGS(){const v=$('gsName').value;return v==='__other'?$('gsNameOther')
 function collect(){
   state.gs=curGS(); state.trip=$('tripName').value.trim();
   state.startDate=$('startDate').value; state.day1Start=$('day1Start').value;
-  state.dayStart=$('dayStart').value; state.dayEnd=$('dayEnd').value;
+  state.dayStart=$('dayStart').value; state.dayEnd=$('dayEnd').value; state.driveTil=$('driveTil').value;
   state.visitMin=+$('visitMin').value; state.lunchMin=+$('lunchMin').value;
   state.optMode=$('optMode').value; state.routePref=$('routePref').value; state.sameEnd=$('sameEnd').checked;
 }
@@ -1174,14 +1236,14 @@ function loadTrip(k){
   }catch(e){toast('⚠ Could not load that trip')}
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
-function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',origin:null,dest:null,sameEnd:true,stops:[],pins:[],route:null,schedule:null}}
+function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,sameEnd:true,stops:[],pins:[],route:null,schedule:null}}
 function hydrateUI(){
   const gsSel=$('gsName');
   if([...gsSel.options].some(o=>o.value===state.gs||o.text===state.gs)){gsSel.value=state.gs;$('gsNameOther').style.display='none'}
   else if(state.gs){gsSel.value='__other';$('gsNameOther').style.display='block';$('gsNameOther').value=state.gs}
   $('tripName').value=state.trip||'';
   $('startDate').value=state.startDate||new Date().toISOString().slice(0,10);
-  $('day1Start').value=state.day1Start;$('dayStart').value=state.dayStart;$('dayEnd').value=state.dayEnd;
+  $('day1Start').value=state.day1Start;$('dayStart').value=state.dayStart;$('dayEnd').value=state.dayEnd;$('driveTil').value=state.driveTil||'19:00';
   $('visitMin').value=state.visitMin;$('lunchMin').value=state.lunchMin;$('optMode').value=state.optMode;$('routePref').value=state.routePref||'fast';
   $('sameEnd').checked=state.sameEnd;$('destWrap').style.display=state.sameEnd?'none':'block';
   $('originIn').value=state.origin?state.origin.label:'';
@@ -1217,7 +1279,7 @@ function init(){
   wireEndpoint('destIn','destSugg','destMeta','dest');
   $('sameEnd').onchange=e=>{$('destWrap').style.display=e.target.checked?'none':'block';markDirty()};
   $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty()};
-  ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode'].forEach(id=>$(id).addEventListener('input',markDirty));
+  ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode','driveTil'].forEach(id=>$(id).addEventListener('input',markDirty));
   $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
   $('btnAddStop').onclick=()=>addStopRow();
   $('btnBuild').onclick=buildRoute;
@@ -1271,6 +1333,7 @@ const TOUR_STEPS = [
        • <b>Visit Length</b> — how long you spend at each stop. Default is <b>1.5 hours</b>.<br>
        • <b>Lunch</b> — pick 30/45/60 minutes, or <b>No lunch break</b> if you eat on the road.<br>
        • <b>Optimize Order</b> — leave on <b>Auto</b> and I'll reorder your stops to cut down driving. Switch to <b>Keep my order</b> if you already know the order you want.<br>
+       • <b>Stop Driving By</b> — the latest you're willing to be behind the wheel. After your last visit of the day, I'll use the evening to get you closer to tomorrow's first stop, then park you at a hotel there. Set this to your work-day end time if you'd rather not drive evenings at all.<br>
        • <b>Route Preference</b> — <b>Fastest time</b> gets you there quickest; <b>Shortest distance</b> saves miles but usually takes longer. Fastest is the right default for fitting more stops in a day.
        <span class="tip">Flip Route Preference after your route is built and everything re-times instantly — no need to rebuild.</span>`
   },
@@ -1337,7 +1400,8 @@ const TOUR_STEPS = [
   {
     t:'Hotels — pick mine or pick your own',
     sel:'#itin',
-    h:`When a day runs long, I drop in a blue <b>Hotel Night</b> card. I place it near your <b>first stop the next morning</b>, so you're not driving an extra hour before your first meeting.<br><br>
+    h:`When a day runs long, I drop in a blue <b>Hotel Night</b> card — and I don't just park you where your last visit ended.<br><br>
+       After that visit I use whatever evening you have left to drive <b>toward tomorrow's first stop</b>, then put you in a hotel at the point you actually reach. Make it all the way and you sleep in that town with zero morning drive; if not, the card tells you exactly how much driving is left in the morning.<br><br>
        • <b>Recommended hotels nearby</b> — finds lodging around that point, with Best Westerns listed first.<br>
        • Or use the Google Maps / Hotels.com links to find your own.<br><br>
        Once you book, type the hotel name and confirmation number into <b>My Hotel Choice</b> and hit <b>Save</b>. It gets stored with the trip and <b>prints on your packet</b>.`
