@@ -482,6 +482,14 @@ const ST_ABBR={'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','Cali
 const GEO_KEY='gsp2:geocache';
 let geoCache={}; try{geoCache=JSON.parse(localStorage.getItem(GEO_KEY)||'{}')}catch(e){}
 let geoQueue=Promise.resolve(), lastGeo=0;
+const GEO_MAX=600;
+function pruneGeoCache(hard){
+  const keys=Object.keys(geoCache);
+  const cap=hard?200:GEO_MAX;
+  if(keys.length<=cap) return;
+  keys.slice(0,keys.length-cap).forEach(k=>delete geoCache[k]);
+  try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){}
+}
 function geocode(addrObj){
   const key=(addrObj.q||`${addrObj.street}|${addrObj.city}|${addrObj.state}|${addrObj.zip}`).toLowerCase();
   if(geoCache[key]) return Promise.resolve(geoCache[key]);
@@ -515,8 +523,8 @@ function geocode(addrObj){
         street, city:a.city||a.town||a.village||a.hamlet||a.county||'',
         stateAbbr:ST_ABBR[a.state]||a.state||'', zip:a.postcode||'',
         display:res[0].display_name||''};
-      geoCache[key]=out;
-      try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){}
+      geoCache[key]=out; pruneGeoCache();
+      try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){pruneGeoCache(true)}
       return out;
     }
     return null;
@@ -669,12 +677,28 @@ function wireEndpoint(inpId,suggId,metaId,slot){
 }
 
 /* ---------------- routing (OSRM) ---------------- */
-async function osrm(path){
-  const r=await fetch('https://router.project-osrm.org'+path);
-  if(!r.ok) throw new Error('OSRM http '+r.status);
-  const j=await r.json();
-  if(j.code!=='Ok') throw new Error('OSRM: '+(j.message||j.code));
-  return j;
+async function osrm(path,tries){
+  tries=tries||3;
+  let lastErr;
+  for(let i=0;i<tries;i++){
+    try{
+      const ctl=new AbortController();
+      const to=setTimeout(()=>ctl.abort(),20000);      // don't hang forever on a dead server
+      const r=await fetch('https://router.project-osrm.org'+path,{signal:ctl.signal});
+      clearTimeout(to);
+      if(r.status===429||r.status>=500) throw new Error('routing server busy ('+r.status+')');
+      if(!r.ok) throw new Error('OSRM http '+r.status);
+      const j=await r.json();
+      if(j.code==='NoRoute') throw new Error('NOROUTE');
+      if(j.code!=='Ok') throw new Error('OSRM: '+(j.message||j.code));
+      return j;
+    }catch(e){
+      lastErr=e;
+      if(e.message==='NOROUTE') throw e;               // real failure, don't retry
+      if(i<tries-1) await new Promise(r=>setTimeout(r,700*(i+1)));
+    }
+  }
+  throw lastErr;
 }
 function coordStr(pts){return pts.map(p=>`${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';')}
 
@@ -787,7 +811,14 @@ async function buildRoute(){
     saveTrip(true);
   }catch(e){
     console.error(e);
-    status('⚠ Routing service problem: '+e.message+' — check internet and try again.',1);
+    const m = e.message==='NOROUTE'
+      ? '⚠ No drivable route between two of your points. Check for a stop pinned in the wrong place (orange bar), then try again.'
+      : /busy|429|50\d/.test(e.message)
+      ? '⚠ The routing service is busy right now. Wait about a minute and hit Build My Route again — your stops are saved.'
+      : /Failed to fetch|NetworkError|aborted/i.test(e.message)
+      ? '⚠ Can\'t reach the routing service. Check your internet connection and try again — nothing is lost.'
+      : '⚠ Routing problem: '+e.message+' — try again in a moment.';
+    status(m,1);
   }finally{$('btnBuild').disabled=false}
 }
 
@@ -876,7 +907,7 @@ function buildSchedule(ordered,dest){
         : `${Math.round(frac*100)}% of the way to ${pl}`;
 
       if(evening>1){
-        push({k:'drive',legIdx:i,dist:leg.dist*frac,dur:evening*60,part:'evening',toward:pl});
+        push({k:'drive',legIdx:i,dist:leg.dist*frac,dur:evening*60,part:(t>=15*60?'evening':'long'),startMin:t,toward:pl});
       }
       push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
             toStop:`${s.name}${pl?' — '+pl:''}`, remainMin:Math.round(drv-evening)});
@@ -906,7 +937,7 @@ function buildSchedule(ordered,dest){
     const frac=drv>0?evening/drv:1;
     const hp=frac>=1?destPt:pointAlong(fl.geom,frac,prev,destPt);
     const nearLabel=frac>=1?dest.label:`${Math.round(frac*100)}% of the way to ${dest.label}`;
-    if(evening>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist*frac,dur:evening*60,part:'evening',toward:dest.label});
+    if(evening>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist*frac,dur:evening*60,part:(t>=15*60?'evening':'long'),startMin:t,toward:dest.label});
     push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
           toStop:dest.label,remainMin:Math.round(drv-evening)});
     day++;days.push({items:[],date:day});t=dayStart;
@@ -1039,6 +1070,7 @@ function renderItinerary(ordered,dest){
         const alts=leg.alts||[];
         const dd=it.dist!=null?it.dist:leg.dist, du=it.dur!=null?it.dur:leg.dur;
         const partLbl=it.part==='evening'?'🌆 evening drive toward '+esc(it.toward||'')
+                     :it.part==='long'   ?'🛣 long haul toward '+esc(it.toward||'')+' — overnight on the way'
                      :it.part==='morning'?'🌅 finish the drive to '+esc(it.toward||'')
                      :'drive'+(leg.via?` via ${esc(leg.via)}`:'');
         html+=`<div class="legChip"><span class="dots">┊</span><span class="mm">${fmtMi(dd)} · ${fmtDur(du)}</span><span>${partLbl}</span></div>`;
@@ -1275,16 +1307,47 @@ function collect(){
 }
 function markDirty(){dirty=true;collect();clearTimeout(markDirty._t);markDirty._t=setTimeout(()=>saveTrip(true),1500)}
 const tripKey=(gs,tr)=>`gsp2:trip:${(gs||'unnamed').toLowerCase()}:${(tr||'untitled').toLowerCase()}`;
+/* Saved trips drop the heavy bits (road geometry, turn lists, unused route
+   alternatives). Those are re-fetched on rebuild; keeping them made a 25-stop
+   trip ~0.5MB and filled the browser's ~5MB budget after a handful of trips. */
+function slimForSave(st){
+  const p=JSON.parse(JSON.stringify(st));
+  if(p.route&&p.route.legs){
+    p.route.legs=p.route.legs.map(L=>({
+      chosen:L.chosen, dist:L.dist, dur:L.dur, via:L.via,
+      alts:(L.alts||[]).map(a=>({dist:a.dist,dur:a.dur,via:a.via}))   // no geom, no steps
+    }));
+    p.route.slim=true;
+  }
+  if(p.schedule) delete p.schedule;   // rebuilt from legs on load
+  return p;
+}
 function saveTrip(silent){
   collect();
   if(!state.gs){if(!silent)toast('Pick your name first');return}
   const tr=state.trip||'Untitled trip';
-  const payload=JSON.parse(JSON.stringify(state));
+  if(!silent){
+    const existing=localStorage.getItem(tripKey(state.gs,tr));
+    if(existing && tripKey(state.gs,tr)!==localStorage.getItem('gsp2:last')){
+      if(!confirm(`You already have a trip called "${tr}". Overwrite it?`)) return;
+    }
+  }
+  const payload=slimForSave(state);
   payload.savedAt=new Date().toISOString();
-  try{localStorage.setItem(tripKey(state.gs,tr),JSON.stringify(payload));
+  try{
+    localStorage.setItem(tripKey(state.gs,tr),JSON.stringify(payload));
     localStorage.setItem('gsp2:last',tripKey(state.gs,tr));
     if(!silent)toast(`💾 Saved "${tr}" for ${state.gs}`);
-  }catch(e){if(!silent)toast('⚠ Could not save (storage full?)')}
+  }catch(e){
+    // Never fail quietly — an autosave that silently drops work is worse than a nag.
+    pruneGeoCache(true);
+    try{
+      localStorage.setItem(tripKey(state.gs,tr),JSON.stringify(payload));
+      if(!silent)toast(`💾 Saved "${tr}"`);
+    }catch(e2){
+      toast('⚠ Browser storage is full — this trip is NOT saved. Open My Trips and delete an old one, then hit Save Trip.',7000);
+    }
+  }
 }
 function listTrips(){
   const out=[];
@@ -1309,10 +1372,15 @@ function loadTrip(k){
     hydrateUI();
     $('tripsModal').style.display='none';
     toast(`📂 Loaded "${state.trip||'Untitled'}"`);
-    if(state.route&&state.schedule){
+    if(state.route&&state.route.legs&&state.route.legs.length){
       const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
       const dest=state.sameEnd?state.origin:state.dest;
-      if(ordered.length&&dest)renderAll(ordered,dest);
+      if(ordered.length&&dest){
+        // Saved trips are stored slim, so re-derive the day plan from the legs.
+        state.schedule=buildSchedule(ordered,dest);
+        renderAll(ordered,dest);
+        if(state.route.slim) status('Trip reopened. Times and hotels are restored — hit Build My Route to refresh turn-by-turn directions.');
+      }
     } else if(state.origin){ showBaseMap(state.origin.lat,state.origin.lng,9) }
   }catch(e){toast('⚠ Could not load that trip')}
 }
