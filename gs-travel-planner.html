@@ -478,6 +478,7 @@ const fmtDate=d=>d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:
 const haversine=(a,b)=>{const R=3958.8,dLa=(b.lat-a.lat)*Math.PI/180,dLo=(b.lng-a.lng)*Math.PI/180,la1=a.lat*Math.PI/180,la2=b.lat*Math.PI/180;const h=Math.sin(dLa/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
 
 /* ---------------- geocoding (Nominatim, cached, throttled) ---------------- */
+const ST_ABBR={'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO','Connecticut':'CT','Delaware':'DE','District of Columbia':'DC','Florida':'FL','Georgia':'GA','Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY','Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK','Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY'};
 const GEO_KEY='gsp2:geocache';
 let geoCache={}; try{geoCache=JSON.parse(localStorage.getItem(GEO_KEY)||'{}')}catch(e){}
 let geoQueue=Promise.resolve(), lastGeo=0;
@@ -489,7 +490,7 @@ function geocode(addrObj){
     const wait=Math.max(0,1150-(Date.now()-lastGeo));
     if(wait) await new Promise(r=>setTimeout(r,wait));
     lastGeo=Date.now();
-    const base='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&';
+    const base='https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&';
     const tryFetch=async p=>{
       const r=await fetch(base+p,{headers:{'Accept':'application/json'}});
       if(!r.ok) throw new Error('geocode http '+r.status);
@@ -507,7 +508,13 @@ function geocode(addrObj){
       }
     }catch(e){ console.warn('geocode fail',e); }
     if(res && res.length){
-      const out={lat:+res[0].lat,lng:+res[0].lon,approx:!addrObj.q&&!res[0].address};
+      const a=res[0].address||{};
+      const street=[a.house_number,a.road].filter(Boolean).join(' ')
+        || a.hamlet || a.neighbourhood || (res[0].display_name||'').split(',')[0] || '';
+      const out={lat:+res[0].lat,lng:+res[0].lon,
+        street, city:a.city||a.town||a.village||a.hamlet||a.county||'',
+        stateAbbr:ST_ABBR[a.state]||a.state||'', zip:a.postcode||'',
+        display:res[0].display_name||''};
       geoCache[key]=out;
       try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){}
       return out;
@@ -518,6 +525,8 @@ function geocode(addrObj){
 }
 
 /* ---------------- stop rows ---------------- */
+const placeLabel=s=>[s.city,s.stateAbbr].filter(Boolean).join(', ')||s.name||'';
+const addrLine=s=>[s.street,[[s.city,s.stateAbbr].filter(Boolean).join(', '),s.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')||'(locating…)';
 function newStop(){return {uid:Math.random().toString(36).slice(2),source:'roadys',id:'',name:'',company:'',street:'',city:'',stateAbbr:'',zip:'',exit:'',phone:'',contact:'',notes:'',visitOv:'',lat:null,lng:null,geo:'empty',query:''}}
 function addStopRow(pref){
   if(state.stops.length>=MAX_STOPS){toast(`Max ${MAX_STOPS} truck stops per trip`);return}
@@ -540,7 +549,7 @@ function renderStops(){
       <div class="stopTop">
         <div class="stopIdx">${i+1}</div>
         <div class="stopSearchWrap">
-          <input class="stopIn" placeholder="Search Roady's stop (name, city, state, ID) — or type any address" value="${esc(s.name?`${s.name}`:s.query)}" autocomplete="off">
+          <input class="stopIn" placeholder="Roady's stop name / city / ID — or type any street address" value="${esc(s.name?`${s.name}`:s.query)}" autocomplete="off">
           <div class="sugg"></div>
         </div>
         <div class="rowBtns">
@@ -549,14 +558,16 @@ function renderStops(){
           <button class="icoB del" title="Remove">✕</button>
         </div>
       </div>
-      ${s.name?`<div class="stopMeta"><b>${esc(s.id||'Custom')}</b> · ${esc(s.street)}, ${esc(s.city)}, ${esc(s.stateAbbr)} ${esc(s.zip)}${s.exit?` · <b>${esc(s.exit)}</b>`:''}${s.phone?` · ☎ ${esc(s.phone)}`:''}${s.geo==='fail'?' · <span style="color:var(--warn)">⚠ couldn\'t pin on map</span>':''}${s.geo==='pending'?' · locating…':''}</div>
+      ${s.name?`<div class="stopMeta"><b>${esc(s.id||(s.source==='airport'?'Airport':'Address'))}</b> · ${esc(addrLine(s))}${s.exit?` · <b>${esc(s.exit)}</b>`:''}${s.phone?` · ☎ ${esc(s.phone)}`:''}${s.geo==='fail'?' · <span style="color:var(--warn)">⚠ couldn\'t pin on map</span>':''}${s.geo==='pending'?' · locating…':''}</div>
       <button class="moreT">${s.contact||s.notes||s.visitOv?'Edit details ▾':'＋ Meeting with / notes'}</button>
       <div class="stopMore">
         <div class="grid2" style="margin-top:6px">
           <div><label class="f">Meeting With</label><input class="inContact" value="${esc(s.contact)}" placeholder="Name / title"></div>
 
           <div><label class="f">Visit length override (min)</label><input class="inVOv" value="${esc(s.visitOv)}" placeholder="default"></div>
-          <div><label class="f">Location ID</label><input value="${esc(s.id)}" disabled></div>
+          ${s.source==='roadys'
+            ? `<div><label class="f">Location ID</label><input value="${esc(s.id)}" disabled></div>`
+            : `<div><label class="f">Phone</label><input class="inPhone" value="${esc(s.phone)}" placeholder="(000) 000-0000"></div>`}
         </div>
         <label class="f">Notes for this visit</label>
         <textarea class="inNotes" rows="2" placeholder="Talking points, follow-ups…">${esc(s.notes)}</textarea>
@@ -567,9 +578,13 @@ function renderStops(){
       if(pick.kind==='roadys'){
         Object.assign(s,{source:'roadys',id:pick.d.id,name:pick.d.name,company:pick.d.company,street:pick.d.street,city:pick.d.city,stateAbbr:pick.d.state,zip:pick.d.zip,exit:pick.d.exit,phone:pick.d.phone,geo:'pending',lat:null,lng:null,query:''});
       }else{
-        Object.assign(s,{source:'custom',id:'',name:pick.label,company:'',street:pick.label,city:'',stateAbbr:'',zip:'',exit:'',phone:'',geo:'pending',lat:null,lng:null,query:pick.label});
+        const isAir = pick.kind==='airport';
+        Object.assign(s,{source:isAir?'airport':'custom',id:'',name:pick.label,company:'',
+          street:pick.label,city:'',stateAbbr:'',zip:'',exit:'',phone:'',
+          geo:isAir?'ok':'pending', lat:isAir?pick.a[2]:null, lng:isAir?pick.a[3]:null,
+          label:pick.label, query:pick.label});
       }
-      renderStops(); markDirty(); geoStop(s);
+      renderStops(); markDirty(); if(s.geo!=='ok') geoStop(s);
     },true);
     row.querySelector('.up').onclick=()=>moveStop(s.uid,-1);
     row.querySelector('.dn').onclick=()=>moveStop(s.uid,1);
@@ -577,7 +592,7 @@ function renderStops(){
     const mt=row.querySelector('.moreT');
     if(mt){mt.onclick=()=>{row.querySelector('.stopMore').classList.toggle('open')}}
     const bind=(cls,prop)=>{const el=row.querySelector(cls);if(el)el.oninput=()=>{s[prop]=el.value;markDirty()}};
-    bind('.inContact','contact');bind('.inNotes','notes');bind('.inVOv','visitOv');
+    bind('.inContact','contact');bind('.inPhone','phone');bind('.inNotes','notes');bind('.inVOv','visitOv');
     box.appendChild(row);
   });
   $('stopCount').textContent=`${state.stops.length} / ${MAX_STOPS}`;
@@ -585,7 +600,18 @@ function renderStops(){
 }
 async function geoStop(s){
   const r=await geocode(s.source==='roadys'?{street:s.street,city:s.city,state:s.stateAbbr,zip:s.zip}:{q:s.query||s.name});
-  if(r){s.lat=r.lat;s.lng=r.lng;s.geo='ok'}else{s.geo='fail'}
+  if(r){
+    s.lat=r.lat; s.lng=r.lng; s.geo='ok';
+    // For typed addresses, fill in the real city/state/zip so the itinerary
+    // and printed packet read like a proper address.
+    if(s.source!=='roadys'){
+      if(r.street)    s.street=r.street;
+      if(r.city)      s.city=r.city;
+      if(r.stateAbbr) s.stateAbbr=r.stateAbbr;
+      if(r.zip)       s.zip=r.zip;
+      if(!s.name || s.name===s.query) s.name=s.label||s.name||[r.street,r.city].filter(Boolean).join(', ')||s.query;
+    }
+  } else { s.geo='fail' }
   renderStops(); markDirty();
 }
 
@@ -612,7 +638,7 @@ function wireSearch(inp,sugg,onPick,includeStops){
       }
       const ah=AIRPORTS.filter(a=>(a[0]+' '+a[1]).toLowerCase().includes(q)).slice(0,7);
       ah.forEach(a=>items.push({kind:'airport',a,label:`${a[1]} (${a[0]})`,html:`✈ <b>${esc(a[0])}</b> — ${esc(a[1])}`}));
-      items.push({kind:'custom',label:inp.value.trim(),html:`📍 Use address: “${esc(inp.value.trim())}”`});
+      items.push({kind:'custom',label:inp.value.trim(),html:`📍 <b>Search this address</b> — “${esc(inp.value.trim())}”<br><span class="sloc" style="font-size:11.5px">any street address, business, or landmark</span>`});
     }
     render();
   };
@@ -835,7 +861,7 @@ function buildSchedule(ordered,dest){
   for(let i=0;i<ordered.length;i++){
     const leg=legs[i], drv=leg.dur/60, s=ordered[i];
     const vis=+(s.visitOv||state.visitMin);
-    const nextPt={lat:s.lat,lng:s.lng,label:`${s.name}, ${s.city}, ${s.stateAbbr}`};
+    const nextPt={lat:s.lat,lng:s.lng,label:placeLabel(s)};
     let arr=t+drv, end=arr+vis;
 
     // Can't finish this visit inside the work day? Close the day out —
@@ -844,24 +870,22 @@ function buildSchedule(ordered,dest){
       const evening=Math.max(0,Math.min(drv, driveTil-t));       // minutes we can drive tonight
       const frac=drv>0?evening/drv:1;
       const hp = frac>=1 ? nextPt : pointAlong(leg.geom,frac,prev,nextPt);
+      const pl=placeLabel(s);
       const nearLabel = frac>=1
-        ? `${s.city}, ${s.stateAbbr} — your first stop tomorrow`
-        : `${Math.round(frac*100)}% of the way to ${s.city}, ${s.stateAbbr}`;
+        ? `${pl} — your first stop tomorrow`
+        : `${Math.round(frac*100)}% of the way to ${pl}`;
 
       if(evening>1){
-        push({k:'drive',legIdx:i,dist:leg.dist*frac,dur:evening*60,part:'evening',
-              toward:`${s.city}, ${s.stateAbbr}`});
+        push({k:'drive',legIdx:i,dist:leg.dist*frac,dur:evening*60,part:'evening',toward:pl});
       }
       push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
-            toStop:`${s.name}, ${s.city}, ${s.stateAbbr}`,
-            remainMin:Math.round(drv-evening)});
+            toStop:`${s.name}${pl?' — '+pl:''}`, remainMin:Math.round(drv-evening)});
 
       day++; days.push({items:[],date:day}); t=dayStart; lunch=false;
       push({k:'resume',label:`Hotel — ${nearLabel}`,time:t,lat:hp.lat,lng:hp.lng});
 
       const morning=Math.max(0,drv-evening);
-      if(morning>1) push({k:'drive',legIdx:i,dist:leg.dist*(1-frac),dur:morning*60,part:'morning',
-                          toward:`${s.city}, ${s.stateAbbr}`});
+      if(morning>1) push({k:'drive',legIdx:i,dist:leg.dist*(1-frac),dur:morning*60,part:'morning',toward:pl});
       arr=t+morning; end=arr+vis;
     } else {
       push({k:'drive',legIdx:i,dist:leg.dist,dur:leg.dur});
@@ -924,7 +948,7 @@ function mapPointsFor(dayIdx,ordered,dest){
   const P=(lat,lng,label)=>({lat,lng,label});
   if(dayIdx===null){
     const pts=[P(state.origin.lat,state.origin.lng,state.origin.label)];
-    ordered.forEach(s=>pts.push(P(s.lat,s.lng,`${s.name}, ${s.city}, ${s.stateAbbr}`)));
+    ordered.forEach(s=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name)));
     pts.push(P(dest.lat,dest.lng,dest.label));
     return pts;
   }
@@ -1033,10 +1057,10 @@ function renderItinerary(ordered,dest){
         const s=it.stop, idx=ordered.findIndex(o=>o.uid===s.uid)+1;
         html+=`<div class="signCard"><span class="exitTab">${esc(s.exit||'STOP '+idx)}</span>
           <h4>${idx}. ${esc(s.name)}</h4>
-          <div class="addr">${esc(s.street)}, ${esc(s.city)}, ${esc(s.stateAbbr)} ${esc(s.zip)}</div>
+          <div class="addr">${esc(addrLine(s))}</div>
           <div class="times">Arrive ${fmtT(it.time)} → Depart ${fmtT(it.end)} <span style="opacity:.8">(${+(s.visitOv||state.visitMin)} min visit)</span></div>
           <div class="scMeta">
-            <span class="scChip">ID: ${esc(s.id||'—')}</span>
+            ${s.id?`<span class="scChip">ID: ${esc(s.id)}</span>`:`<span class="scChip">${s.source==='airport'?'Airport':'Custom address'}</span>`}
             ${s.contact?`<span class="scChip">Meeting: ${esc(s.contact)}</span>`:''}
             ${s.company?`<span class="scChip">${esc(s.company)}</span>`:''}
           </div>
@@ -1183,8 +1207,8 @@ function buildPrint(ordered,dest){
     d.items.forEach(it=>{
       if(it.k==='visit'){
         const s=it.stop, idx=ordered.findIndex(o=>o.uid===s.uid)+1, leg=findLegBefore(d,it);
-        h+=`<div class="pStop"><span class="idTag">ID ${esc(s.id||'—')}</span><h3>${idx}. ${esc(s.name)}</h3>
-          <div class="pRow">${esc(s.street)}, ${esc(s.city)}, ${esc(s.stateAbbr)} ${esc(s.zip)} ${s.exit?` · <b>${esc(s.exit)}</b>`:''}</div>
+        h+=`<div class="pStop"><span class="idTag">${s.id?'ID '+esc(s.id):(s.source==='airport'?'AIRPORT':'ADDRESS')}</span><h3>${idx}. ${esc(s.name)}</h3>
+          <div class="pRow">${esc(addrLine(s))}${s.exit?` · <b>${esc(s.exit)}</b>`:''}</div>
           <div class="pRow"><b>Phone:</b> ${esc(s.phone||'—')} &nbsp; <b>Owner/Co:</b> ${esc(s.company||'—')}</div>
           <div class="pRow"><b>Arrive:</b> ${fmtT(it.time)} &nbsp; <b>Depart:</b> ${fmtT(it.end)} &nbsp; <b>Visit:</b> ${+(s.visitOv||state.visitMin)} min</div>
           <div class="pRow"><b>Meeting with:</b> ${s.contact?esc(s.contact):'<span class="fillLine"></span>'}</div>
@@ -1405,7 +1429,8 @@ const TOUR_STEPS = [
     t:'Step 4 — Add your truck stops',
     sel:'#stopList',
     h:`This is the main event. Click in a stop box and start typing — a stop name, a city, a state, or a location ID like <b>R01205</b>. All <b>372 Roady's locations</b> are already loaded in here, so you don't have to type addresses.<br><br>
-       Pick one from the dropdown and it auto-fills the address, exit number, and phone.<br>
+       Pick one from the dropdown and it auto-fills the address, exit number, and phone.<br><br>
+       <b>Not a Roady's location?</b> Type any street address, business name, or landmark — a customer's office, a distribution center, a hotel — and choose <b>📍 Search this address</b> at the bottom of the list. I'll look it up and treat it like any other stop, with drive times and directions. There's a <b>Phone</b> field under those so you can add a contact number.<br>
        <span class="tip">The colored bar on the left edge tells you the status: <b>yellow</b> = still finding it, <b>green</b> = pinned and ready, <b>orange</b> = couldn't find it (try re-picking it).</span>`
   },
   {
