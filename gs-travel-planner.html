@@ -326,7 +326,7 @@ details.dirs .dm{color:var(--paint);font-size:12px}
         </div>
         <div><label class="f">Optimize Order</label>
           <select id="optMode">
-            <option value="auto" selected>Auto (shortest route)</option>
+            <option value="auto" selected>Auto (fewest days)</option>
             <option value="lock">Keep my order</option>
           </select>
         </div>
@@ -1539,7 +1539,7 @@ const TOUR_STEPS = [
        • <b>Work Day</b> — normally 8:00 AM to 5:00 PM. I won't schedule a visit that runs past your end time.<br>
        • <b>Visit Length</b> — how long you spend at each stop. Default is <b>1.5 hours</b>.<br>
        • <b>Lunch</b> — pick 30/45/60 minutes, or <b>No lunch break</b> if you eat on the road.<br>
-       • <b>Optimize Order</b> — leave on <b>Auto</b> and I'll reorder your stops to cut down driving. Switch to <b>Keep my order</b> if you already know the order you want.<br>
+       • <b>Optimize Order</b> — leave on <b>Auto</b>. I try a bunch of possible orders and keep the one that gets you home in the <b>fewest days and fewest hotel nights</b> — not just the fewest miles, because a shorter route that costs you an extra overnight isn't actually cheaper. If I find a better order I'll tell you what it saved. Switch to <b>Keep my order</b> only when you have a reason, because then I drive your order exactly as listed even if it's slower.<br>
        • <b>Stop Driving By</b> — the latest you're willing to be behind the wheel. After your last visit of the day, I'll use the evening to get you closer to tomorrow's first stop, then park you at a hotel there. Set this to your work-day end time if you'd rather not drive evenings at all.<br>
        • <b>Route Preference</b> — <b>Fastest time</b> gets you there quickest; <b>Shortest distance</b> saves miles but usually takes longer. Fastest is the right default for fitting more stops in a day.
        <span class="tip">Flip Route Preference after your route is built and everything re-times instantly — no need to rebuild.</span>`
@@ -1591,7 +1591,8 @@ const TOUR_STEPS = [
     h:`Once the route builds, the map fills in with your whole trip drawn out.<br><br>
        • <b>Open Full Route in Google Maps</b> — the whole trip in a new tab.<br>
        • <b>Turn-by-Turn Directions</b> — navigation mode, ready to go.<br>
-       • <b>⛽ Gas Stations Along Route</b> — fuel near the middle of your run.<br>
+       • <b>⛽ Gas Stations Along Route</b> — fuel near the middle of your run.<br><br>
+       Under those buttons are <b>day tabs</b> — <i>Full trip · Day 1 · Day 2</i>. Click a day to see just that day's driving, including where you're sleeping. On long trips the Full trip view can't draw every stop (Google caps it), so <b>the day tabs are the accurate view</b> — the map tells you when that happens.<br>
        <span class="tip">Doing this on your phone? Tapping any of these opens your Maps app with the destination already filled in. Just hit <b>Start</b> and drive — no typing addresses.</span>`
   },
   {
@@ -1628,8 +1629,10 @@ const TOUR_STEPS = [
        • <b>💾 Save Trip</b> — saves it under your name right now.<br>
        • <b>📂 My Trips</b> — reopen any trip you've built before.<br>
        • <b>⬇ Export</b> — downloads the trip as a file.<br>
-       • <b>⬆ Import</b> — opens a file someone sent you.<br>
-       <span class="tip">Export/Import is how you hand a route to another GS, or move a trip from your laptop to another computer.</span>`
+       • <b>⬆ Import</b> — opens a file someone sent you.<br><br>
+       <b>Here's the part that trips people up:</b> everything you build is saved <b>only in this browser, on this computer</b>. Plan a trip on your laptop and your phone will show up blank — the trip isn't lost, it's just sitting on the laptop. To get it on another device, hit <b>Export</b> here and <b>Import</b> over there. Same to hand a route to another GS.<br>
+       <span class="warn">Two things to know: clearing your browser history or "site data" erases saved trips for good, and if storage ever fills up I'll warn you in red — delete an old trip from My Trips and save again.</span>
+       <span class="tip">I'd plan on a laptop. Bigger screen, easier to edit, and the print button is right there.</span>`
   },
   {
     t:'Don\'t forget the checklist',
@@ -1639,6 +1642,15 @@ const TOUR_STEPS = [
        • <b>Confirm who you're meeting</b> and the Location ID.<br>
        • <b>Post your notes to Slack <span style="white-space:nowrap">#site-visits</span></b> right after each visit — before you drive off, while it's fresh.<br>
        • <b>Take pictures and video</b> at every location.`
+  },
+  {
+    t:'If something goes sideways',
+    sel:'#btnBuild',
+    h:`Three things account for almost every problem, and all are quick fixes:<br><br>
+       <b>"Build My Route" won't work.</b> Look at the orange message under the button — it tells you exactly what's wrong. Usually it's a stop still being located (yellow bar) — wait a few seconds and click again.<br>
+       <b>A stop has an orange bar.</b> I couldn't find that address. Click the box and pick it again from the dropdown, or type a nearby street address instead.<br>
+       <b>"The routing service is busy."</b> Not your fault — the map service is having a moment. Wait a minute and click Build again. Nothing is lost.<br>
+       <span class="tip">Still stuck? Refresh the page with <b>Ctrl+Shift+R</b> (Cmd+Shift+R on a Mac). That reloads the newest version and clears up most oddities. Your saved trips survive a refresh.</span>`
   },
   {
     t:'That\'s the whole thing. Go get \'em.',
