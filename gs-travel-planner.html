@@ -822,33 +822,91 @@ async function buildRoute(){
   }finally{$('btnBuild').disabled=false}
 }
 
+/* Shortest distance is not the same thing as fewest days on the road.
+   We generate several candidate orders, score each one through the real day
+   planner using estimated drive times (free, no API calls), and keep the order
+   that gets the GS home soonest — fewest days, then fewest hotel nights, then
+   fewest miles. Only the winner gets routed for real. */
+const ROAD_FACTOR=1.18, EST_MPH=62;
+function estLegs(origin,arr,dest){
+  const pts=[origin,...arr,dest];
+  return pts.slice(0,-1).map((p,i)=>{
+    const mi=haversine(p,pts[i+1])*ROAD_FACTOR;
+    return {dist:mi*1609.34, dur:mi/EST_MPH*3600, steps:[], alts:[], chosen:0, geom:null};
+  });
+}
+function scoreOrder(origin,arr,dest){
+  const saveRoute=state.route, saveSched=state.schedule;
+  try{
+    state.route={ordered:arr.map(s=>s.uid),legs:estLegs(origin,arr,dest)};
+    const sc=buildSchedule(arr,dest);
+    const miles=state.route.legs.reduce((a,l)=>a+l.dist,0);
+    return {days:sc.days.length, nights:sc.nights, miles};
+  }catch(e){
+    return {days:99,nights:99,miles:Infinity};
+  }finally{ state.route=saveRoute; state.schedule=saveSched }
+}
+function betterScore(a,b){
+  if(!b) return true;
+  if(a.days!==b.days)     return a.days<b.days;
+  if(a.nights!==b.nights) return a.nights<b.nights;
+  return a.miles<b.miles-1;
+}
+function twoOptOn(arr,origin,dest){
+  const pts=[origin,...arr,dest];
+  const D=(i,j)=>haversine(pts[i],pts[j]);
+  let improved=true;
+  while(improved){improved=false;
+    for(let i=1;i<pts.length-2;i++)for(let k=i+1;k<pts.length-1;k++){
+      if(D(i-1,k)+D(i,k+1)-D(i-1,i)-D(k,k+1) < -0.01){
+        const seg=pts.slice(i,k+1).reverse(); pts.splice(i,seg.length,...seg); improved=true;
+      }}}
+  return pts.slice(1,-1);
+}
+function candidateOrders(origin,stops,dest,seedOrder){
+  const c=[];
+  if(seedOrder) c.push(seedOrder);
+  const nn=nearestNeighbor(origin,stops,dest);
+  c.push(nn, twoOptOn(nn,origin,dest));
+  c.push([...stops]);                                   // the order they typed
+  // a few randomized restarts, each polished with 2-opt
+  for(let r=0;r<12;r++){
+    const sh=[...stops]; for(let i=sh.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[sh[i],sh[j]]=[sh[j],sh[i]]}
+    c.push(twoOptOn(sh,origin,dest));
+  }
+  const seen=new Set(), out=[];
+  c.forEach(o=>{ if(!o||o.length!==stops.length) return;
+    const k=o.map(s=>s.uid).join('>'); if(!seen.has(k)){seen.add(k); out.push(o)} });
+  return out;
+}
 async function optimizeOrder(origin,stops,dest){
-  // Try OSRM /trip (solves order with fixed start & end)
+  let seed=null;
   try{
     const pts=[{lat:origin.lat,lng:origin.lng},...stops.map(s=>({lat:s.lat,lng:s.lng})),{lat:dest.lat,lng:dest.lng}];
     const j=await osrm(`/trip/v1/driving/${coordStr(pts)}?source=first&destination=last&roundtrip=false&overview=false`);
     const order=j.waypoints.map((w,i)=>({i,wi:w.waypoint_index})).sort((a,b)=>a.wi-b.wi).map(o=>o.i);
-    return order.filter(i=>i>0&&i<pts.length-1).map(i=>stops[i-1]);
-  }catch(e){
-    console.warn('OSRM trip failed, falling back to nearest-neighbor + 2-opt',e);
-    return twoOpt(nearestNeighbor(origin,stops,dest),origin,dest);
+    seed=order.filter(i=>i>0&&i<pts.length-1).map(i=>stops[i-1]);
+  }catch(e){ console.warn('OSRM trip unavailable, using local optimizer',e) }
+
+  if(stops.length<3) return seed||stops;
+  let best=null,bestScore=null;
+  candidateOrders(origin,stops,dest,seed).forEach(o=>{
+    const sc=scoreOrder(origin,o,dest);
+    if(betterScore(sc,bestScore)){bestScore=sc;best=o}
+  });
+  if(best&&bestScore){
+    const seedScore = seed ? scoreOrder(origin,seed,dest) : null;
+    if(seedScore && (bestScore.days<seedScore.days || bestScore.nights<seedScore.nights)){
+      const dd=seedScore.days-bestScore.days, nn2=seedScore.nights-bestScore.nights;
+      toast(`Reordered stops to save ${dd>0?dd+' day'+(dd>1?'s':''):''}${dd>0&&nn2>0?' and ':''}${nn2>0?nn2+' hotel night'+(nn2>1?'s':''):''}`,4200);
+    }
   }
+  return best||seed||stops;
 }
 function nearestNeighbor(origin,stops,dest){
   const rem=[...stops],out=[];let cur=origin;
   while(rem.length){let bi=0,bd=Infinity;rem.forEach((s,i)=>{const d=haversine(cur,s);if(d<bd){bd=d;bi=i}});cur=rem[bi];out.push(rem.splice(bi,1)[0])}
   return out;
-}
-function twoOpt(arr,origin,dest){
-  const pts=[origin,...arr,dest];
-  const D=(a,b)=>haversine(pts[a],pts[b]);
-  let improved=true;
-  while(improved){improved=false;
-    for(let i=1;i<pts.length-2;i++)for(let k=i+1;k<pts.length-1;k++){
-      const delta=D(i-1,k)+D(i,k+1)-D(i-1,i)-D(k,k+1);
-      if(delta<-0.01){const seg=pts.slice(i,k+1).reverse();pts.splice(i,seg.length,...seg);improved=true}
-    }}
-  return pts.slice(1,-1);
 }
 function instr(st){
   const m=st.maneuver||{},t=m.type,mod=m.modifier?` ${m.modifier}`:'',rd=st.name?` onto ${st.name}`:'';
