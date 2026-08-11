@@ -472,7 +472,6 @@ let state = {
   origin:null, dest:null, sameEnd:true,
   stops:[], pins:[], route:null, schedule:null
 };
-let gasLayer=null, pinLayer=null;
 let dirty=false;
 
 const $=id=>document.getElementById(id);
@@ -1030,7 +1029,6 @@ function renderAll(ordered,dest){
   renderItinerary(ordered,dest);
   buildPrint(ordered,dest);
 }
-function numIcon(n,cls){return L.divIcon({className:'',html:`<div class="numPin ${cls||''}">${n}</div>`,iconSize:[30,30],iconAnchor:[15,15]})}
 const GKEY='AIzaSyBZsOxCFwhVeU7sNL9aAH-RBmOwWCw2U28';
 function mapFrame(path){
   return `<iframe width="100%" height="420" style="border:0;display:block" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed/v1/${path}&key=${GKEY}"></iframe>`;
@@ -1232,26 +1230,9 @@ async function findHotels(lat,lng,elId){
     });
     hs=hs.slice(0,6);
     if(!hs.length){el.innerHTML='No lodging found in OpenStreetMap here — use the Google Maps link above.';return}
-    el.innerHTML=hs.map(h=>`<div class="hr1">${/best western/i.test(h.name+h.brand)?'<span class="bw">BW</span>':''}<span>${esc(h.name)}</span><span style="opacity:.8">· ${h.d.toFixed(1)} mi</span>${h.phone?` · <a href="tel:${esc(h.phone.replace(/[^\d+]/g,''))}">${esc(h.phone)}</a>`:''} · <a target="_blank" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name)}&query_place_id=&center=${h.lat},${h.lng}">map</a></div>`).join('');
-    hs.forEach(h=>L.marker([h.lat,h.lng],{icon:numIcon('🛏','hotel')}).addTo(markerLayer).bindPopup(`<b>${esc(h.name)}</b><br>${h.d.toFixed(1)} mi from overnight point`));
+    el.innerHTML=hs.map(h=>`<div class="hr1">${/best western/i.test(h.name+h.brand)?'<span class="bw">BW</span>':''}<span>${esc(h.name)}</span><span style="opacity:.8">· ${h.d.toFixed(1)} mi</span>${h.phone?` · <a href="tel:${esc(h.phone.replace(/[^\d+]/g,''))}">${esc(h.phone)}</a>`:''} · <a target="_blank" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name+' '+h.lat+','+h.lng)}">map</a></div>`).join('');
   }catch(e){el.innerHTML='Hotel search unavailable right now — use the Google Maps link above.'}
 }
-async function loadGas(ordered){
-  if(gasLayer){gasLayer.remove()}
-  gasLayer=L.layerGroup().addTo(map);
-  const pts=(ordered||state.stops.filter(s=>s.geo==='ok'));
-  if(!pts.length)return;
-  try{
-    const clauses=pts.slice(0,25).map(s=>`node["amenity"="fuel"](around:5000,${s.lat},${s.lng});`).join('');
-    const j=await overpass(`[out:json][timeout:25];(${clauses});out 120;`);
-    j.elements.forEach(e=>{
-      L.marker([e.lat,e.lon],{icon:L.divIcon({className:'',html:'<div class="gasPin"></div>',iconSize:[14,14],iconAnchor:[7,7]})})
-        .addTo(gasLayer).bindPopup(`⛽ <b>${esc(e.tags?.name||e.tags?.brand||'Fuel station')}</b>`);
-    });
-    toast(`⛽ ${j.elements.length} gas stations shown near your stops`);
-  }catch(e){toast('Gas station lookup unavailable right now')}
-}
-
 /* ---------------- print packet ---------------- */
 function buildPrint(ordered,dest){
   const sc=state.schedule, gs=curGS();
@@ -1347,22 +1328,6 @@ function buildPrint(ordered,dest){
     return null;
   }
   function short(l){return String(l||'').split('·')[0].trim().slice(0,48)}
-}
-
-/* ---------------- pins ---------------- */
-function addPin(latlng,label){
-  const p={lat:latlng.lat,lng:latlng.lng,label:label||'Pin'};
-  state.pins.push(p); drawPin(p); markDirty();
-}
-function drawPin(p){
-  if(!pinLayer)pinLayer=L.layerGroup().addTo(map);
-  const mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:'<div class="cusPin"></div>',iconSize:[22,22],iconAnchor:[4,20]})}).addTo(pinLayer);
-  mk.bindPopup(`<b>📍 ${esc(p.label)}</b><br><a href="#" onclick="removePin(${p.lat},${p.lng});return false">remove pin</a>`);
-}
-function removePin(lat,lng){
-  state.pins=state.pins.filter(p=>!(Math.abs(p.lat-lat)<1e-9&&Math.abs(p.lng-lng)<1e-9));
-  if(pinLayer){pinLayer.clearLayers();state.pins.forEach(drawPin)}
-  markDirty(); toast('Pin removed');
 }
 
 /* ---------------- persistence (per-GS trips) ---------------- */
@@ -1469,8 +1434,6 @@ function hydrateUI(){
   $('destIn').value=state.dest?state.dest.label:'';
   $('destMeta').textContent=state.dest?`✓ Pinned at ${state.dest.lat.toFixed(4)}, ${state.dest.lng.toFixed(4)}`:'';
   renderStops();
-  if(pinLayer)pinLayer.clearLayers();
-  (state.pins||[]).forEach(drawPin);
 }
 
 /* ---------------- export / import ---------------- */
@@ -1802,7 +1765,7 @@ function initTour(){
 }
 window.showTour = showTour;
 
-window.findHotels=findHotels; window.loadTrip=loadTrip; window.delTrip=delTrip; window.removePin=removePin; window.saveHotelPick=saveHotelPick; window.setLegAlt=setLegAlt;
+window.findHotels=findHotels; window.loadTrip=loadTrip; window.delTrip=delTrip; window.saveHotelPick=saveHotelPick; window.setLegAlt=setLegAlt;
 init();
 initTour();
 </script>
