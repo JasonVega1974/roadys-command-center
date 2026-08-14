@@ -874,7 +874,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
       <!-- ═══ KANBAN PIPELINE ═══ -->
       <div id="crm-panel-pipeline" class="crm-panel">
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-          <input id="crm-kb-search" type="text" placeholder="🔍 Search pipeline..." oninput="renderCRMKanban()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 12px;font-size:.82em;">
+          <input id="crm-kb-search" type="text" placeholder="🔍 Search company, contact, phone..." oninput="renderCRMKanban()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 12px;font-size:.82em;">
           <select id="crm-kb-owner" onchange="renderCRMKanban()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
           <select id="crm-kb-state" onchange="renderCRMKanban()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All States</option></select>
           <select id="crm-kb-sort" onchange="renderCRMKanban()" title="Sort cards within each stage" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;">
@@ -889,7 +889,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
       <!-- ═══ LEAD TABLE ═══ -->
       <div id="crm-panel-leads" class="crm-panel" style="display:none">
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-          <input id="crm-search" type="text" placeholder="🔍 Search leads..." oninput="renderCRMTable()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 12px;font-size:.82em;">
+          <input id="crm-search" type="text" placeholder="🔍 Search leads (incl. phone)..." oninput="renderCRMTable()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 12px;font-size:.82em;">
           <select id="crm-stage-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Stages</option></select>
           <select id="crm-owner-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Owners</option></select>
           <select id="crm-priority-filter" onchange="renderCRMTable()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.82em;"><option value="all">All Priorities</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select>
@@ -2044,11 +2044,24 @@ function renderCRMKPIs(){
 }
 
 // ── KANBAN ──
+// Shared lead search matcher for the Pipeline board and the Lead Table.
+// `fields` are plain substring matches; phone is always searched and also
+// matches on digits alone, so "5551234567" finds "(555) 123-4567" and vice
+// versa. `qd` is the query with every non-digit stripped.
+const CRM_KB_SEARCH_FIELDS =['company','contact'];
+const CRM_TBL_SEARCH_FIELDS=['company','contact','state','city','notes'];
+function crmLeadSearchMatch(l,q,qd,fields){
+  if(fields.some(f=>(l[f]||'').toLowerCase().indexOf(q)>=0)) return true;
+  const ph=(l.phone||'');
+  if(ph.toLowerCase().indexOf(q)>=0) return true;
+  return !!qd && ph.replace(/\D/g,'').indexOf(qd)>=0;
+}
 function renderCRMKanban(){
   const kb=document.getElementById('crm-kanban'); if(!kb) return;
   const ownerF=(document.getElementById('crm-kb-owner')?.value)||'all';
   const stateF=(document.getElementById('crm-kb-state')?.value)||'all';
   const q=((document.getElementById('crm-kb-search')?.value)||'').toLowerCase();
+  const qd=q.replace(/\D/g,'');
   const sortBy=(document.getElementById('crm-kb-sort')?.value)||'state';
   // Applies within every stage column — "sort by name" vs "sort by state"
   // is a single toggle for the whole board, not a per-column setting.
@@ -2061,7 +2074,7 @@ function renderCRMKanban(){
       if(l.stage!==stage) return false;
       if(ownerF!=='all'&&l.owner!==ownerF) return false;
       if(stateF!=='all'&&(l.state||'').trim()!==stateF) return false;
-      if(q&&l.company.toLowerCase().indexOf(q)<0&&(l.contact||'').toLowerCase().indexOf(q)<0) return false;
+      if(q&&!crmLeadSearchMatch(l,q,qd,CRM_KB_SEARCH_FIELDS)) return false;
       return true;
     }).sort(kbSort);
     const stageGal=cards.reduce((s,l)=>s+(l.estGallons||0),0);
@@ -2166,11 +2179,12 @@ function crmTableFilteredLeads(){
   const of=document.getElementById('crm-owner-filter')?.value||'all';
   const pf=document.getElementById('crm-priority-filter')?.value||'all';
   const q=(document.getElementById('crm-search')?.value||'').toLowerCase();
+  const qd=q.replace(/\D/g,'');
   const list=CRM_LEADS.filter(l=>{
     if(sf!=='all'&&l.stage!==sf) return false;
     if(of!=='all'&&l.owner!==of) return false;
     if(pf!=='all'&&l.priority!==pf) return false;
-    if(q&&![l.company,l.contact,l.state,l.city,l.notes].some(v=>(v||'').toLowerCase().indexOf(q)>=0)) return false;
+    if(q&&!crmLeadSearchMatch(l,q,qd,CRM_TBL_SEARCH_FIELDS)) return false;
     return true;
   });
   const {col,dir}=crmTblSort, d=dir==='asc'?1:-1;
