@@ -1400,6 +1400,45 @@ function drawMapFor(dayIdx,ordered,dest){
     b.classList.toggle('on', (b.dataset.day==='all'? dayIdx===null : +b.dataset.day===dayIdx)));
 }
 
+/* ---------------- live map preview ----------------
+   Adding, removing or reordering a stop used to leave the map showing the
+   previously built route with nothing to say so — the only thing that ever
+   redrew it was Build My Route. The embed URL is built from coordinates
+   alone (no routing call), so the map can follow edits immediately and for
+   free. Drive times, the day split and turn-by-turn still need a real
+   build, so the hint says so and the day tabs hide until one happens. */
+let mapSig=null;   // geometry already drawn, so typing in a notes field doesn't redraw
+
+function tripGeometrySig(){
+  const dest=state.sameEnd?state.origin:state.dest;
+  if(!state.origin||!dest) return '';
+  return [`${state.origin.lat},${state.origin.lng}`,
+          ...state.stops.filter(s=>s.name&&s.geo==='ok').map(s=>`${s.lat},${s.lng}`),
+          `${dest.lat},${dest.lng}`].join('|');
+}
+function refreshMapPreview(){
+  const dest=state.sameEnd?state.origin:state.dest;
+  if(!state.origin||!dest) return;
+  const sig=tripGeometrySig();
+  if(sig===mapSig) return;              // nothing about the trip's shape moved
+  mapSig=sig;
+  const ready=state.stops.filter(s=>s.name&&s.geo==='ok');
+  const tabs=$('dayTabs');
+  if(!ready.length){                    // back to an empty trip
+    showBaseMap(state.origin.lat,state.origin.lng,9);
+    if(tabs) tabs.style.display='none';
+    const h=$('mapHint');
+    if(h) h.innerHTML='No stops on this trip yet. Add truck stops on the left and they\'ll appear here as you go.';
+    return;
+  }
+  drawMapFor(null,ready,dest);          // always the full trip: any day split is now stale
+  if(tabs) tabs.style.display='none';
+  const hint=$('mapHint'), n=ready.length, s=n>1?'s':'';
+  if(hint) hint.innerHTML = state.route
+    ? `Map updated for your ${n} stop${s}, in the order listed on the left. Drive times, the day split and directions are still from the last build — hit <b style="color:var(--ink)">Build My Route</b> to bring them up to date.`
+    : `Showing your ${n} stop${s} in the order listed on the left. Hit <b style="color:var(--ink)">Build My Route</b> to put them in the smartest order, add drive times and split the trip into days.`;
+}
+
 function renderMap(ordered,dest){
   // Full-route links (these open real Google Maps, which handles more stops than the embed)
   const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
@@ -1426,6 +1465,9 @@ function renderMap(ordered,dest){
     tabs.style.display='flex';
   }
   drawMapFor(null,ordered,dest);
+  // A real build settles the signature, so the next markDirty() (a keystroke in
+  // a notes field, say) doesn't redraw over the built route with a preview.
+  mapSig=tripGeometrySig();
 }
 const gmapsDir=s=>`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.street? s.street+', '+s.city+', '+s.stateAbbr+' '+s.zip : s.lat+','+s.lng)}`;
 const wazeDir=s=>`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
@@ -1653,7 +1695,13 @@ function collect(){
   state.visitMin=+$('visitMin').value; state.lunchMin=+$('lunchMin').value;
   state.optMode=$('optMode').value; state.routePref=$('routePref').value; state.sameEnd=$('sameEnd').checked;
 }
-function markDirty(){dirty=true;collect();clearTimeout(markDirty._t);markDirty._t=setTimeout(()=>saveTrip(true),1500)}
+function markDirty(){
+  dirty=true;collect();
+  clearTimeout(markDirty._t);markDirty._t=setTimeout(()=>saveTrip(true),1500);
+  // Stop edits have to reach the map. Short debounce so a burst of typing
+  // redraws once; refreshMapPreview() itself no-ops unless the shape changed.
+  clearTimeout(markDirty._m);markDirty._m=setTimeout(refreshMapPreview,200);
+}
 const tripKey=(gs,tr)=>`gsp2:trip:${(gs||'unnamed').toLowerCase()}:${(tr||'untitled').toLowerCase()}`;
 /* Saved trips drop the heavy bits (road geometry, turn lists, unused route
    alternatives). Those are re-fetched on rebuild; keeping them made a 25-stop

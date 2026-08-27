@@ -124,6 +124,34 @@ between owners instead of living per-browser in `localStorage`.
   enabled and this page's origin authorized; `drive.file` scope only).
   Both show a "not configured yet" dialog until then.
 
+### Route Planner: the map follows stop edits
+
+The Google embed URL is built from coordinates alone — no routing call —
+so `refreshMapPreview()` redraws it straight from `state.stops` whenever
+`markDirty()` fires (200 ms debounce, and it no-ops unless
+`tripGeometrySig()` changed, so typing in a notes field doesn't churn the
+iframe). Only drive times, the day split and turn-by-turn need OSRM, so
+while a preview is showing the day tabs hide and the hint under the map
+says a build is needed. `renderMap()` re-settles `mapSig` after a real
+build so the optimized order isn't immediately overdrawn.
+
+**Manual test — the map must update on every one of these, with no
+Build My Route in between:**
+
+1. Pick a start airport, add 2–3 Roady's stops, hit **Build My Route**.
+   Map draws the route; day tabs appear.
+2. **Add** a stop → its pin joins the map, day tabs hide, hint switches
+   to "Drive times… still from the last build".
+3. **Reorder** with ▲ / ▼ → the waypoint order on the map follows.
+4. **Remove** with ✕ → that pin drops off.
+5. **Build My Route** again → day tabs come back, hint returns to
+   "Showing the full trip".
+6. Type in Trip Name or a stop's notes → map must *not* redraw.
+7. Delete every stop → falls back to the plain base map.
+
+Regression guard: the pre-fix build showed a stale map through steps
+2–4, so if any of those stop moving the preview hook has been broken.
+
 ## SQL conventions
 
 - New files go under `sql/` named `YYYY-MM-DD-<slug>.sql`. Wrap every
