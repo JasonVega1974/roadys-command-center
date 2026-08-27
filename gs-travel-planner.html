@@ -740,7 +740,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <div class="svRow" style="margin-top:12px"><div class="lbl">Visit summary video/audio recorded &amp; uploaded to #site-visits Slack channel</div><div class="ynG"><button class="ynB yes" data-yn="sv-wrap-video" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-wrap-video" data-val="no">No</button></div></div>
 
     <div class="svSub">📎 Photos &amp; Video</div>
-    <p class="svHint">Attach shots from the visit — signage, restrooms, showers, the lot, the fuel desk. They ride along inside the saved visit on this device and upload with it when you hit <b>☁ Send to Drive</b>. Slack webhooks cannot carry files, so the Slack post points back to them instead.</p>
+    <p class="svHint">Attach shots from the visit — signage, restrooms, showers, the lot, the fuel desk. Photos are resized to 1600px and re-saved as JPEG before they are stored, so a full set fits comfortably; video is kept as-is and is the one thing that can still overrun browser storage. They ride along inside the saved visit on this device and upload with it when you hit <b>☁ Send to Drive</b>. Slack webhooks cannot carry files, so the Slack post points back to them instead.</p>
     <label class="svDrop" id="svDrop">
       <input type="file" id="sv-files" accept="image/*,video/*" multiple>
       <b style="color:var(--ink)">＋ Choose photos / videos</b><br>
@@ -2217,10 +2217,17 @@ let SV_FLEET_CARDS = [
 try{ const b=JSON.parse(localStorage.getItem('roadys_fleet_cards')||'null'); if(Array.isArray(b)&&b.length) SV_FLEET_CARDS=b }catch(e){}
 
 /* Photos and video are held as base64 inside the saved visit, so a visit
-   can single-handedly eat the browser's ~5MB localStorage budget. Warn
-   above these thresholds the same way saveTrip() warns on a fat trip. */
+   can single-handedly eat the browser's ~5MB localStorage budget. Photos
+   are downscaled and re-encoded before they are stored (svShrinkImage),
+   which takes a 4-5MB phone shot down to a couple hundred KB; video is
+   stored byte-for-byte because compressing it client-side is not
+   practical, so it is still the thing that blows the budget. */
 const SV_WARN_CHARS = 2000000;   // ~4MB stored (localStorage counts UTF-16)
-const SV_BIG_FILE   = 5000000;   // per-file confirm threshold, raw bytes
+/* Per-file confirm, raw bytes. Only consulted for files we store as-is —
+   an image's original size says nothing about what actually gets stored. */
+const SV_BIG_FILE   = 5000000;
+const SV_IMG_MAX_DIM = 1600;     // longest edge after downscale, px
+const SV_IMG_QUALITY = 0.8;      // JPEG quality for the re-encode
 
 /* ---------------- state ---------------- */
 let svYN = {};
@@ -2391,20 +2398,111 @@ function svYNIndex(){
 }
 
 /* ---------------- attachments ---------------- */
-function svAddFiles(list){
+
+/* Bitmaps we can safely redraw through a canvas. GIF would lose its
+   animation and SVG is vector — both are stored untouched, as is video. */
+const svIsShrinkable = f => /^image\//.test(f.type||'') && !/^image\/(gif|svg\+xml)$/.test(f.type);
+
+const svB64Len   = bytes => Math.ceil(bytes/3)*4;          // base64 growth, no I/O needed
+const svDataBytes = url => { const i = url.indexOf(',') + 1;
+  return Math.max(0, Math.floor((url.length - i) * 3/4) - (url.endsWith('==') ? 2 : url.endsWith('=') ? 1 : 0)) };
+
+function svReadDataUrl(file){
+  return new Promise((res, rej)=>{
+    const rd = new FileReader();
+    rd.onload  = ()=>res(rd.result);
+    rd.onerror = ()=>rej(new Error('unreadable'));
+    rd.readAsDataURL(file);
+  });
+}
+
+/* createImageBitmap applies the EXIF rotation for us, so a photo shot in
+   portrait does not land sideways on the canvas. Older engines fall back
+   to an <img>, which browsers now orient the same way. */
+async function svDecodeImage(file){
+  if(window.createImageBitmap){
+    try{ return await createImageBitmap(file, {imageOrientation:'from-image'}) }catch(e){}
+  }
+  const url = URL.createObjectURL(file);
+  try{
+    return await new Promise((res, rej)=>{
+      const im = new Image();
+      im.onload  = ()=>res(im);
+      im.onerror = ()=>rej(new Error('undecodable'));
+      im.src = url;
+    });
+  } finally { URL.revokeObjectURL(url) }
+}
+
+/* Downscale to SV_IMG_MAX_DIM on the long edge and re-encode as JPEG.
+   Returns null when the result would not actually be smaller — an
+   already-tiny screenshot is better off stored as it came in. */
+async function svShrinkImage(file){
+  const src = await svDecodeImage(file);
+  const sw = src.width || src.naturalWidth, sh = src.height || src.naturalHeight;
+  if(!sw || !sh) throw new Error('zero-size image');
+
+  const scale = Math.min(1, SV_IMG_MAX_DIM / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h);   // JPEG has no alpha channel
+  cx.drawImage(src, 0, 0, w, h);
+  if(src.close) src.close();
+
+  const data = cv.toDataURL('image/jpeg', SV_IMG_QUALITY);
+  if(!/^data:image\/jpeg/.test(data) || data.length >= svB64Len(file.size)) return null;
+  return {data, w, h, sw, sh};
+}
+
+async function svPrepFile(file){
+  if(svIsShrinkable(file)){
+    try{
+      const out = await svShrinkImage(file);
+      if(out) return {
+        name: file.name.replace(/\.[^.\\/]*$/, '') + '.jpg',
+        type: 'image/jpeg',
+        size: svDataBytes(out.data),
+        originalName: file.name, originalSize: file.size,
+        dims: `${out.w}×${out.h}`,
+        data: out.data
+      };
+    }catch(e){
+      console.warn('Could not downscale ' + file.name + ', storing it as-is:', e);
+    }
+  }
+  return {name:file.name, type:file.type||'application/octet-stream', size:file.size,
+          data: await svReadDataUrl(file)};
+}
+
+async function svAddFiles(list){
   const files = [...list];
   if(!files.length) return;
-  let reading = 0;
-  files.forEach(f=>{
-    if(f.size > SV_BIG_FILE && !confirm(
-      `"${f.name}" is ${svMB(f.size)}.\n\nFiles this big usually will not fit in browser storage — the visit may refuse to save with it attached.\n\nAttach it anyway? You can still push it to Google Drive.`)) return;
-    reading++;
-    const rd = new FileReader();
-    rd.onload  = ()=>{ svAttach.push({name:f.name, type:f.type||'application/octet-stream', size:f.size, data:rd.result}); svRenderAttach(); svTouch() };
-    rd.onerror = ()=> toast('⚠ Could not read '+f.name);
-    rd.readAsDataURL(f);
-  });
-  if(reading) toast(`📎 Reading ${reading} file${reading>1?'s':''}…`);
+
+  // A photo's original size says nothing about what gets stored, since it is
+  // about to be downscaled — only ask about files we keep byte-for-byte.
+  const queue = files.filter(f => svIsShrinkable(f) || f.size <= SV_BIG_FILE || confirm(
+    `"${f.name}" is ${svMB(f.size)}, and ${/^video\//.test(f.type||'') ? 'video cannot be compressed in the browser' : 'this file type is stored as-is'}.\n\n` +
+    `Files this big usually will not fit in browser storage — the visit may refuse to save with it attached.\n\n` +
+    `Attach it anyway? You can still push it to Google Drive.`));
+  if(!queue.length) return;
+
+  toast(`📎 Reading ${queue.length} file${queue.length>1?'s':''}…`);
+  const done = (await Promise.all(queue.map(f =>
+    svPrepFile(f).catch(e=>{ console.warn('Could not read ' + f.name, e); toast('⚠ Could not read ' + f.name); return null })
+  ))).filter(Boolean);
+  if(!done.length) return;
+
+  svAttach.push(...done);          // pushed in the order they were picked
+  svRenderAttach(); svTouch();
+
+  const shrunk = done.filter(a=>a.originalSize);
+  if(shrunk.length){
+    const from = shrunk.reduce((n,a)=>n+a.originalSize, 0), to = shrunk.reduce((n,a)=>n+a.size, 0);
+    toast(`📎 ${shrunk.length} photo${shrunk.length>1?'s':''} resized to ${SV_IMG_MAX_DIM}px — ${svMB(from)} → ${svMB(to)}`);
+  }
 }
 function svRemoveAttach(i){ svAttach.splice(i,1); svRenderAttach(); svTouch() }
 function svRenderAttach(){
@@ -2413,17 +2511,21 @@ function svRenderAttach(){
     const media = a.type.startsWith('image/') ? `<img src="${a.data}" alt="${esc(a.name)}">`
                 : a.type.startsWith('video/') ? `<video src="${a.data}" muted playsinline preload="metadata"></video>`
                 : `<div class="ph">📄</div>`;
+    const note = a.originalSize ? `${svMB(a.size)} · resized from ${svMB(a.originalSize)}` : svMB(a.size);
     return `<div class="svThumb">${media}
       <button class="rm" data-rm="${i}" title="Remove">✕</button>
-      <div class="fn"><b>${esc(a.name)}</b>${svMB(a.size)}</div></div>`;
+      <div class="fn"><b>${esc(a.name)}</b>${note}</div></div>`;
   }).join('');
   const chars = svAttach.reduce((n,a)=>n+a.data.length, 0);
   const el = $('svAttachSize');
   if(!svAttach.length && !svDropped){ el.textContent=''; el.className='svSize'; return }
+  const saved = svAttach.reduce((n,a)=>n + (a.originalSize ? a.originalSize - a.size : 0), 0);
   let msg = svAttach.length
-    ? `${svAttach.length} file${svAttach.length>1?'s':''} · ≈${svMB(chars)} once base64-encoded into the saved visit.`
+    ? `${svAttach.length} file${svAttach.length>1?'s':''} · ≈${svMB(chars)} once base64-encoded into the saved visit`
+      + (saved > 0 ? ` (${svMB(saved)} saved by resizing photos to ${SV_IMG_MAX_DIM}px).` : '.')
+      + ` Using ${Math.round(chars/SV_WARN_CHARS*100)}% of the space a visit should take.`
     : '';
-  if(chars > SV_WARN_CHARS) msg += ' ⚠ That is past what this browser will reliably hold — send it to Drive, then remove the heaviest files here.';
+  if(chars > SV_WARN_CHARS) msg += ' ⚠ That is past what this browser will reliably hold — send it to Drive, then remove the video or the heaviest files here.';
   if(svDropped) msg += ` ⚠ ${svDropped.length} file(s) from the last save were dropped for space: ${svDropped.map(f=>f.name).join(', ')}.`;
   el.textContent = msg;
   el.className = 'svSize' + ((chars>SV_WARN_CHARS||svDropped) ? ' warn' : '');
