@@ -115,6 +115,20 @@ between owners instead of living per-browser in `localStorage`.
   failing quietly. Everything else derives from the DOM — `svYNIndex()`
   reads the Yes/No labels, `svReportBody()` builds the print packet and
   the Drive document — so adding a form row needs no matching JS.
+  The form mirrors `Site Review Master Template` (Administrative,
+  Fuel Gallon, Rewards, Vendor Program, ROI Summary). The **ROI Summary**
+  card is the one section with live math: `svROIRecalc()` fills each
+  revenue Amount from `base × margin`, sums the rows tagged
+  `data-roi-group="rev|sav|exp"`, and derives Net Income; margins start
+  from `SV_ROI_DEFAULTS`, re-applied by `svClear()` after the wipe.
+  Rows that skip grid columns carry `data-col` so the printed report
+  labels them correctly instead of falling back to the `.hdr` position.
+  **`SV_SIGNAGE` / `SV_RESTROOM` / `SV_SHOWER` / `SV_AMENITIES` are
+  index-keyed (`sv-sign-3`, `sv-amen-18`, …) — append only.** Inserting
+  in the middle shifts every id after it and a saved visit restores its
+  answers into the wrong rows. Aggregator rows are slug-keyed instead,
+  so they can move between the Legacy and New groups freely, but
+  renaming a label orphans its saved values.
   Two constants at the top of the `<script>` need real values before
   those buttons do anything: `SLACK_WEBHOOK_URL` (an Incoming Webhook
   for #site-visits; posted with `mode:'no-cors'` + a form-urlencoded

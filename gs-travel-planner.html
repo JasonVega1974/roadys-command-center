@@ -304,6 +304,9 @@ details.dirs .dm{color:var(--paint);font-size:12px}
 .svData > label small{color:var(--faint)}
 .ch{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;text-align:center}
 .svData input{text-align:right;padding:6px 8px}
+/* .c5 adds a fourth value column (Gallons on the fuel tables, Amount on ROI) */
+.svData.c5{grid-template-columns:1fr 96px 96px 96px 96px}
+.svData input[readonly]{background:var(--panel2);color:var(--sign);font-weight:600;cursor:default}
 .svGal{display:grid;grid-template-columns:1fr 140px 1fr;gap:8px;align-items:center;padding:5px 0;border-bottom:1px dashed #2a3138}
 .svGal > label{font-size:13.5px}
 .svGal input{padding:6px 8px}
@@ -346,7 +349,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
 
 @media(max-width:760px){
   #viewVisit .grid2,#viewVisit .grid3{grid-template-columns:1fr}
-  .svData{grid-template-columns:1fr;gap:4px}
+  .svData,.svData.c5{grid-template-columns:1fr;gap:4px}
   .svData.hdr{display:none}
   .svData input{text-align:left}
   .svGal{grid-template-columns:1fr}
@@ -521,6 +524,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <a href="#svSecAdmin">📋 Administrative Review</a>
     <a href="#svSecRewards">🎁 Rewards Review</a>
     <a href="#svSecVendor">🤝 Vendor Programs</a>
+    <a href="#svSecROI">💵 ROI Summary</a>
     <a href="#svSecWrap">📷 Swag &amp; Wrap-Up</a>
     <a href="#svSecSaved">📂 Saved Visits</a>
   </div>
@@ -534,7 +538,9 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <div><label class="f">Date of Visit</label><input type="date" id="sv-hdr-date"></div>
       <div><label class="f">Reviewed With</label><input id="sv-hdr-with" placeholder="Manager / contact name"></div>
       <div><label class="f">Reviewed By (GS)</label><input id="sv-hdr-by" placeholder="Your name"></div>
-      <div><label class="f">Address</label><input id="sv-hdr-addr" placeholder="Street, City, State ZIP"></div>
+      <div><label class="f">Address 1</label><input id="sv-hdr-addr" placeholder="Street"></div>
+      <div><label class="f">Address 2</label><input id="sv-hdr-addr2" placeholder="Suite / unit (optional)"></div>
+      <div><label class="f">City, State, ZIP</label><input id="sv-hdr-citystzip" placeholder="City, ST 00000"></div>
     </div>
     <p class="svHint" style="margin-top:10px">Visits save under the GS name on this device, the same way trips do. Fill it out on site, then Save, Send to Slack, or push the whole thing to Google Drive.</p>
   </div>
@@ -555,8 +561,9 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <div class="svCards" id="sv-fleet-cards"></div>
     <div class="svCmt"><label class="f">Comments</label><textarea id="sv-fleet-cards-comments" rows="2"></textarea></div>
 
-    <div class="svSub">📊 Gallon Report (3-month lookback)</div>
+    <div class="svSub">📊 Gallon Report</div>
     <div class="svGal hdr"><div class="ch" style="text-align:left"></div><div class="ch">Gallons</div><div class="ch" style="text-align:left">Notes</div></div>
+    <div class="svGal"><label><b>12-month rolling total (fleets, aggregators, R-Check, Fuelman)</b></label><input type="number" id="sv-gal-12mo" step="0.01"><input type="text" id="sv-gal-12mo-note"></div>
     <div class="svGal"><label>3-month lookback</label><input type="number" id="sv-gal-3mo" step="0.01"><input type="text" id="sv-gal-3mo-note"></div>
     <div class="svGal"><label>2-month lookback</label><input type="number" id="sv-gal-2mo" step="0.01"><input type="text" id="sv-gal-2mo-note"></div>
     <div class="svGal"><label>1-month lookback</label><input type="number" id="sv-gal-1mo" step="0.01"><input type="text" id="sv-gal-1mo-note"></div>
@@ -564,18 +571,24 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <div class="svCmt"><label class="f">Comments</label><textarea id="sv-gal-comments" rows="2"></textarea></div>
 
     <div class="svSub">🚛 Fleet Discounts</div>
-    <div class="svData hdr"><span></span><span class="ch">Retail −</span><span class="ch">Cost +</span><span class="ch">Better of</span></div>
-    <div class="svData"><label>Fleet 1 discount</label><input type="text" id="sv-fleet1-r"><input type="text" id="sv-fleet1-c"><input type="text" id="sv-fleet1-b"></div>
-    <div class="svData"><label>Fleet 2 discount</label><input type="text" id="sv-fleet2-r"><input type="text" id="sv-fleet2-c"><input type="text" id="sv-fleet2-b"></div>
-    <div class="svData"><label>Fleet 3 discount</label><input type="text" id="sv-fleet3-r"><input type="text" id="sv-fleet3-c"><input type="text" id="sv-fleet3-b"></div>
-    <div class="svData"><label>Fleet 4 discount</label><input type="text" id="sv-fleet4-r"><input type="text" id="sv-fleet4-c"><input type="text" id="sv-fleet4-b"></div>
-    <div class="svData"><label>Fleet 5 discount</label><input type="text" id="sv-fleet5-r"><input type="text" id="sv-fleet5-c"><input type="text" id="sv-fleet5-b"></div>
+    <div class="svData c5 hdr"><span></span><span class="ch">Retail −</span><span class="ch">Cost +</span><span class="ch">Better of</span><span class="ch">Gallons</span></div>
+    <div class="svData c5"><label>Fleet 1 discount</label><input type="text" id="sv-fleet1-r"><input type="text" id="sv-fleet1-c"><input type="text" id="sv-fleet1-b"><input type="text" id="sv-fleet1-g"></div>
+    <div class="svData c5"><label>Fleet 2 discount</label><input type="text" id="sv-fleet2-r"><input type="text" id="sv-fleet2-c"><input type="text" id="sv-fleet2-b"><input type="text" id="sv-fleet2-g"></div>
+    <div class="svData c5"><label>Fleet 3 discount</label><input type="text" id="sv-fleet3-r"><input type="text" id="sv-fleet3-c"><input type="text" id="sv-fleet3-b"><input type="text" id="sv-fleet3-g"></div>
+    <div class="svData c5"><label>Fleet 4 discount</label><input type="text" id="sv-fleet4-r"><input type="text" id="sv-fleet4-c"><input type="text" id="sv-fleet4-b"><input type="text" id="sv-fleet4-g"></div>
+    <div class="svData c5"><label>Fleet 5 discount</label><input type="text" id="sv-fleet5-r"><input type="text" id="sv-fleet5-c"><input type="text" id="sv-fleet5-b"><input type="text" id="sv-fleet5-g"></div>
+    <div class="svData c5"><label>R-Check</label><input type="text" id="sv-rcheck-r"><input type="text" id="sv-rcheck-c"><input type="text" id="sv-rcheck-b"><input type="text" id="sv-rcheck-g"></div>
     <div class="svCmt"><label class="f">Comments / other opportunities (c/w fuel group)</label><textarea id="sv-fleet-comments" rows="2"></textarea></div>
 
-    <div class="svSub">🔗 Aggregator Discounts</div>
-    <div class="svData hdr"><span></span><span class="ch">Retail −</span><span class="ch">Cost +</span><span class="ch">Better of</span></div>
+    <div class="svSub">🔗 Legacy Aggregator Discounts</div>
+    <div class="svData c5 hdr"><span></span><span class="ch">Retail −</span><span class="ch">Cost +</span><span class="ch">Better of</span><span class="ch">Gallons</span></div>
     <div id="sv-agg-rows"></div>
     <div class="svCmt"><label class="f">Comments</label><textarea id="sv-agg-comments" rows="2"></textarea></div>
+
+    <div class="svSub">🆕 New Aggregator Discounts</div>
+    <div class="svData c5 hdr"><span></span><span class="ch">Retail −</span><span class="ch">Cost +</span><span class="ch">Better of</span><span class="ch">Gallons</span></div>
+    <div id="sv-agg-new-rows"></div>
+    <div class="svCmt"><label class="f">Comments</label><textarea id="sv-agg-new-comments" rows="2"></textarea></div>
 
     <div class="svSub">🏗 Rack / Cost Components</div>
     <div class="svData hdr"><span></span><span class="ch">Value</span><span></span><span></span></div>
@@ -656,7 +669,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <div class="svRow"><div class="lbl">Signage present</div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-sign" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-sign" data-val="no">No</button></div></div>
     <div class="svRow"><div class="lbl">Need more rewards cards</div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-cards" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-cards" data-val="no">No</button></div></div>
     <div class="svRow"><div class="lbl">Issues or need for training</div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-train" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-train" data-val="no">No</button></div></div>
-    <div class="svRow"><div class="lbl">Aware of online training<small>www.roadys.rewards-training</small></div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-online" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-online" data-val="no">No</button></div></div>
+    <div class="svRow"><div class="lbl">Aware of online training<small><a href="https://www.youtube.com/watch?v=lFHCHIJe6rM" target="_blank" rel="noopener" style="color:var(--paint)">youtube.com/watch?v=lFHCHIJe6rM</a></small></div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-online" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-online" data-val="no">No</button></div></div>
     <div class="svRow"><div class="lbl">Has Comdata POS (SmartDesq or SmartAuth) for rewards integration</div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-pos" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-pos" data-val="no">No</button></div></div>
     <div class="svRow"><div class="lbl">POS system used for diesel transactions</div><div style="width:220px"><input type="text" id="sv-rw-pos-type" placeholder="Fiscal / GasPOS / NCR / Other"></div></div>
     <div class="svRow"><div class="lbl">Rewards mobile app discussed</div><div class="ynG"><button class="ynB yes" data-yn="sv-rw-app" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-rw-app" data-val="no">No</button></div></div>
@@ -679,6 +692,45 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <div class="svSub">💡 Other Key Vendor Programs to Consider</div>
     <table class="svTbl"><thead><tr><th>Program</th><th style="width:155px">Interested</th><th style="width:380px">Follow-Up Notes</th></tr></thead><tbody id="sv-consider-vendors"></tbody></table>
     <div class="svCmt"><label class="f">Comments</label><textarea id="sv-vp-consider-comments" rows="2"></textarea></div>
+  </div>
+
+  <!-- ---------- ROI SUMMARY ---------- -->
+  <div class="card" id="svSecROI">
+    <h2>💵 ROI Summary</h2>
+    <p class="svHint">The member-facing payback math. Enter gallons (or the annual $ base) and the margin — the Amount, the three totals and Net Income calculate themselves. Type straight into an Amount to override it.</p>
+
+    <div class="svSub">📈 Revenues</div>
+    <div class="svData hdr"><span></span><span class="ch">Gallons / $ Base</span><span class="ch">Margin</span><span class="ch">Amount $</span></div>
+    <div class="svData" data-roi-group="rev" data-roi-calc><label>Diesel Sales — Aggregator <small>· gallons × margin, after transaction fees</small></label><input type="text" id="sv-roi-rev-agg-g"><input type="text" id="sv-roi-rev-agg-m"><input type="text" class="amt" data-col="Amount $" id="sv-roi-rev-agg-a"></div>
+    <div class="svData" data-roi-group="rev" data-roi-calc><label>Diesel Sales — Fleets <small>· gallons × margin, after transaction fees</small></label><input type="text" id="sv-roi-rev-fleet-g"><input type="text" id="sv-roi-rev-fleet-m"><input type="text" class="amt" data-col="Amount $" id="sv-roi-rev-fleet-a"></div>
+    <div class="svData" data-roi-group="rev" data-roi-calc><label>Fuelman <small>· gallons × 1¢</small></label><input type="text" id="sv-roi-rev-fuelman-g"><input type="text" id="sv-roi-rev-fuelman-m"><input type="text" class="amt" data-col="Amount $" id="sv-roi-rev-fuelman-a"></div>
+    <div class="svData" data-roi-group="rev" data-roi-calc><label>Rewards Redeemed Points</label><input type="text" id="sv-roi-rev-points-g"><input type="text" id="sv-roi-rev-points-m"><input type="text" class="amt" data-col="Amount $" id="sv-roi-rev-points-a"></div>
+    <div class="svData" data-roi-group="rev" data-roi-calc><label>Inside Store Sales from Fleet deals <small>· annual $ × margin</small></label><input type="text" id="sv-roi-rev-store-g"><input type="text" id="sv-roi-rev-store-m"><input type="text" class="amt" data-col="Amount $" id="sv-roi-rev-store-a"></div>
+    <div class="svData" data-roi-group="rev" data-roi-calc><label>DEF Sales <small>· gallons × margin, ratio 2:100</small></label><input type="text" id="sv-roi-rev-def-g"><input type="text" id="sv-roi-rev-def-m"><input type="text" class="amt" data-col="Amount $" id="sv-roi-rev-def-a"></div>
+    <div class="svData"><label><b>Total Revenues</b></label><span></span><span></span><input type="text" readonly data-col="Total $" id="sv-roi-rev-total"></div>
+    <div class="svCmt"><label class="f">Comments</label><textarea id="sv-roi-rev-comments" rows="2"></textarea></div>
+
+    <div class="svSub">💰 Savings</div>
+    <div class="svData hdr"><span></span><span class="ch">Amount $</span><span></span><span></span></div>
+    <div class="svData" data-roi-group="sav"><label>Comdata Price File <small>· $295/mo × 12 months</small></label><input type="text" class="amt" data-col="Amount $" id="sv-roi-sav-comdata"><span></span><span></span></div>
+    <div class="svData" data-roi-group="sav"><label>Farmer Brothers</label><input type="text" class="amt" data-col="Amount $" id="sv-roi-sav-farmer"><span></span><span></span></div>
+    <div class="svData" data-roi-group="sav"><label>All Over Media</label><input type="text" class="amt" data-col="Amount $" id="sv-roi-sav-aom"><span></span><span></span></div>
+    <div class="svData" data-roi-group="sav"><label>Fleet Card rates <small>· 2.5–3% vs 3.5%</small></label><input type="text" class="amt" data-col="Amount $" id="sv-roi-sav-cardrate"><span></span><span></span></div>
+    <div class="svData"><label><b>Total Savings</b></label><input type="text" readonly data-col="Total $" id="sv-roi-sav-total"><span></span><span></span></div>
+    <div class="svCmt"><label class="f">Comments</label><textarea id="sv-roi-sav-comments" rows="2"></textarea></div>
+
+    <div class="svSub">🧾 Expenses</div>
+    <div class="svData hdr"><span></span><span class="ch">Amount $</span><span></span><span></span></div>
+    <div class="svData" data-roi-group="exp"><label>Rewards <small>· add points</small></label><input type="text" class="amt" data-col="Amount $" id="sv-roi-exp-points"><span></span><span></span></div>
+    <div class="svData" data-roi-group="exp"><label>Membership Fee <small>· $675 per month</small></label><input type="text" class="amt" data-col="Amount $" id="sv-roi-exp-membership"><span></span><span></span></div>
+    <div class="svData" data-roi-group="exp"><label>Rewards Billing <small>· $65 per month</small></label><input type="text" class="amt" data-col="Amount $" id="sv-roi-exp-billing"><span></span><span></span></div>
+    <div class="svData" data-roi-group="exp"><label>Annual Fee <small>· once a year</small></label><input type="text" class="amt" data-col="Amount $" id="sv-roi-exp-annual"><span></span><span></span></div>
+    <div class="svData"><label><b>Total Expenses</b></label><input type="text" readonly data-col="Total $" id="sv-roi-exp-total"><span></span><span></span></div>
+    <div class="svCmt"><label class="f">Comments</label><textarea id="sv-roi-exp-comments" rows="2"></textarea></div>
+
+    <div class="svSub">🏁 Net Income</div>
+    <div class="svData"><label><b>Net Income</b> <small>· revenues + savings − expenses</small></label><input type="text" readonly data-col="Net $" id="sv-roi-net"><span></span><span></span></div>
+    <div class="svCmt"><label class="f">Comments</label><textarea id="sv-roi-net-comments" rows="2"></textarea></div>
   </div>
 
   <!-- ---------- SWAG & WRAP-UP ---------- -->
@@ -2137,13 +2189,19 @@ window.showTour = showTour;
    =================================================================== */
 
 /* ---------------- reference lists (from site-visit.html) ---------------- */
-const SV_AGGREGATORS = ['Fuelman','RTS','QPN','TCS','Edge','TATS','OOIDA','TSD','RXO','OTP Capital',
-  'Prime Advantage','Motive','Haul Pay','Amazon','Haulers United','Greenlane',
-  'Load Connex','TOA Service','Onramp','Cloud Trucks'];
-const SV_SIGNAGE = ['Pump Decals','Bathroom mirror rewards decals','Driver entrance door signage','Fuel Desk signage','Other signage'];
+/* Split legacy vs new the way the Site Review Master Template does. Row ids
+   are slugged off the label, so a name moving between the two groups keeps
+   its saved value — but renaming a label orphans it. */
+const SV_AGGREGATORS = ['Fuelman|earn 1¢/gallon more on program','RTS','QPN','TCS','Edge','TAFS','OOIDA','TSD','RXO','OTR Capital','Prime Advantage'];
+const SV_AGGREGATORS_NEW = ['Motive','AtoB','Haul Pay','Greenlane','Load Connex','TOA Service','Onramp',
+  'Cloud Trucks','Octane','Coast','Amazon','Haulers United'];
+/* Index-keyed sections (sv-sign-N, sv-rest-N, sv-shower-N, sv-amen-N) — only
+   ever APPEND, never insert. Inserting shifts every id after it and a saved
+   visit would restore its answers into the wrong rows. */
+const SV_SIGNAGE = ['Pump Decals','Bathroom mirror rewards decals','Driver entrance door signage','Fuel Desk signage','Other signage','Fuel Desk Change Mat'];
 const SV_RESTROOM = ['Was the restroom clean and sanitary?','Functionality and Condition of Fixtures','Accessibility and Safety (ADA compliant, non-slip floors, grab bars, hooks, benches)','Privacy and Security (doors, stalls, locks provide privacy, sufficient lighting)','Ventilation and Odor Control (proper airflow to prevent moisture/odors/humidity)'];
 const SV_SHOWER = ['Was the shower clean and sanitary?','Functionality and Condition of Fixtures','Accessibility and Safety (ADA compliant, non-slip floors, grab bars, hooks, benches)','Privacy and Security (doors, stalls, locks provide privacy, sufficient lighting)','Ventilation and Odor Control (proper airflow to prevent moisture/odors/humidity)'];
-const SV_AMENITIES = ['DEF available — how many dispensers','# of gas pumps','Lot surface (paved / gravel)','# of diesel pumps','Branded fuel','Overnight parking','Gas brand','# of parking spaces','Fuel service (self-serve?)','Fast food','Game room','Internet / Wi-Fi','Motel / Hotel','Public copier','Restaurant chains','Restaurant seat count','Propane (bottled)','Public fax'];
+const SV_AMENITIES = ['DEF available — how many dispensers','# of gas pumps','Lot surface (paved / gravel)','# of diesel pumps','Branded fuel','Overnight parking','Gas brand','# of parking spaces','Fuel service (self-serve?)','Fast food','Game room','Internet / Wi-Fi','Motel / Hotel','Public copier','Restaurant chains','Restaurant seat count','Propane (bottled)','Public fax','Service center','Scales'];
 const SV_CURRENT_VENDORS = ['All Over Media','DAS','Ecolab','Entegra','Sysco','Heartland','Lynco','Farmer Brothers','Coca-Cola / CCNA','Global Payments (Heartland)','Iowa Smokehouse','ATM'];
 const SV_CONSIDER_VENDORS = ['Sysco','Heartland','DAS or Lynco','Entegra','Ecolab','Aramark','Coke','ATM','Farmer Bros Coffee','All Over Media','Truck Parking','Other 1','Other 2','Other 3','Other 4','Other 5'];
 
@@ -2177,11 +2235,16 @@ function svTouch(){ svDirtyFlag = true }
 
 /* ---------------- build the generated rows ---------------- */
 function svBuildRows(){
-  $('sv-agg-rows').innerHTML = SV_AGGREGATORS.map(a=>{
-    const id = 'sv-agg-'+svSlug(a);
-    return `<div class="svData"><label>${esc(a)}</label>
-      <input type="text" id="${id}-r"><input type="text" id="${id}-c"><input type="text" id="${id}-b"></div>`;
+  /* "Label|note" — the note is rendered as a <small> so the id stays slugged
+     off the label alone and the printed report reads "Label · note". */
+  const aggRows = list => list.map(a=>{
+    const [label, note] = String(a).split('|');
+    const id = 'sv-agg-'+svSlug(label);
+    return `<div class="svData c5"><label>${esc(label)}${note ? ` <small>· ${esc(note)}</small>` : ''}</label>
+      <input type="text" id="${id}-r"><input type="text" id="${id}-c"><input type="text" id="${id}-b"><input type="text" id="${id}-g"></div>`;
   }).join('');
+  $('sv-agg-rows').innerHTML     = aggRows(SV_AGGREGATORS);
+  $('sv-agg-new-rows').innerHTML = aggRows(SV_AGGREGATORS_NEW);
 
   $('sv-fleet-cards').innerHTML = SV_FLEET_CARDS.map(fc=>
     `<label><input type="checkbox" id="sv-fleet-card-${esc(fc.id)}"><span>${esc(fc.label)}</span></label>`).join('');
@@ -2217,6 +2280,46 @@ function svBuildRows(){
       <td><input type="text" id="sv-consider-${i}-note"></td></tr>`).join('');
 }
 
+/* The template keeps Address 1 / Address 2 / City, State, Zip on separate
+   lines; the report and the Slack post want one string. */
+function svAddress(){
+  return ['sv-hdr-addr','sv-hdr-addr2','sv-hdr-citystzip']
+    .map(id=>($(id)||{value:''}).value.trim()).filter(Boolean).join(', ');
+}
+
+/* ---------------- ROI summary ---------------- */
+/* Margins are network standards from the Site Review Master Template, so a
+   fresh visit starts with them filled in; the dollar figures are per-member
+   and stay blank. svClear() re-applies them after wiping the form. */
+const SV_ROI_DEFAULTS = {
+  'sv-roi-rev-agg-m':'0.05', 'sv-roi-rev-fleet-m':'0.05', 'sv-roi-rev-fuelman-m':'0.01',
+  'sv-roi-rev-store-m':'0.34', 'sv-roi-rev-def-m':'0.50'
+};
+
+const svNum = v => { const n = parseFloat(String(v==null?'':v).replace(/[$,%\s]/g,'')); return isFinite(n) ? n : 0 };
+
+function svROIRecalc(){
+  const panel = $('viewVisit');
+  if(!panel.querySelector('#svSecROI')) return;
+
+  // amount = base × margin, but only once both halves are filled — an amount
+  // typed on its own (Rewards Redeemed Points, say) is left alone.
+  panel.querySelectorAll('[data-roi-calc]').forEach(row=>{
+    const [base, margin, amt] = row.querySelectorAll('input');
+    if(!base || !margin || !amt) return;
+    if(base.value.trim() && margin.value.trim()) amt.value = (svNum(base.value) * svNum(margin.value)).toFixed(2);
+  });
+
+  const group = g => [...panel.querySelectorAll(`.svData[data-roi-group="${g}"] input.amt`)];
+  const total = g => { const els = group(g);
+    return els.some(el=>el.value.trim()) ? els.reduce((t,el)=>t + svNum(el.value), 0) : null };
+
+  const rev = total('rev'), sav = total('sav'), exp = total('exp');
+  const put = (id,v) => { $(id).value = v==null ? '' : v.toFixed(2) };
+  put('sv-roi-rev-total', rev); put('sv-roi-sav-total', sav); put('sv-roi-exp-total', exp);
+  put('sv-roi-net', (rev==null && sav==null && exp==null) ? null : (rev||0) + (sav||0) - (exp||0));
+}
+
 /* ---------------- collect / restore ---------------- */
 const svFields = () => [...$('viewVisit').querySelectorAll('input[id],textarea[id],select[id]')].filter(el=>el.type!=='file');
 
@@ -2233,10 +2336,12 @@ function svRestore(d){
     if(el.type==='checkbox') el.checked = !!v; else el.value = (v==null ? '' : v);
   });
   $('viewVisit').querySelectorAll('.ynB').forEach(b=>b.classList.toggle('on', svYN[b.dataset.yn]===b.dataset.val));
+  svROIRecalc();
 }
 function svClear(){
   svYN = {}; svAttach = []; svDropped = null; svCurrentId = null;
   svRestore({});
+  Object.entries(SV_ROI_DEFAULTS).forEach(([id,v])=>{ const el = $(id); if(el) el.value = v });
   $('sv-hdr-date').value = new Date().toISOString().slice(0,10);
   if(state.gs) $('sv-hdr-by').value = state.gs;
   svRenderAttach();
@@ -2457,7 +2562,7 @@ function svReportBody(){
     </div>
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px">`;
   [['Member', g('sv-hdr-member')], ['Member / Location ID', g('sv-hdr-id')], ['Date of Visit', g('sv-hdr-date')],
-   ['Reviewed With', g('sv-hdr-with')], ['Reviewed By (GS)', g('sv-hdr-by')], ['Address', g('sv-hdr-addr')]]
+   ['Reviewed With', g('sv-hdr-with')], ['Reviewed By (GS)', g('sv-hdr-by')], ['Address', svAddress()]]
    .forEach(([k,v])=>{ h += `<tr><td ${SV_TDK}>${esc(k)}</td><td ${SV_TD}><b>${esc(v||'—')}</b></td></tr>` });
   h += `</table>`;
 
@@ -2495,9 +2600,15 @@ function svReportBody(){
       }
       if(el.classList.contains('svData') || el.classList.contains('svGal')){
         const label = (el.querySelector('label')||{textContent:''}).textContent.trim();
-        const vals = [...el.querySelectorAll('input')].map(i=>i.value.trim());
+        const ins  = [...el.querySelectorAll('input')];
+        const vals = ins.map(i=>i.value.trim());
         if(!vals.some(Boolean)) return;
-        const parts = vals.map((v,i)=> v ? `${cols[i+1] && cols[i+1]!=='' ? esc(cols[i+1])+': ' : ''}${esc(v)}` : null).filter(Boolean);
+        // data-col wins for rows that skip columns (ROI totals, savings, expenses)
+        const parts = vals.map((v,i)=>{
+          if(!v) return null;
+          const col = ins[i].dataset.col || cols[i+1] || '';
+          return `${col ? esc(col)+': ' : ''}${esc(v)}`;
+        }).filter(Boolean);
         openT(); body += row(esc(label), parts.join(' &nbsp;·&nbsp; '));
         return;
       }
@@ -2567,7 +2678,7 @@ function svSlackPayload(){
   const head = [
     `*🚛 Site Visit — ${member}*${g('sv-hdr-id')?`  \`${g('sv-hdr-id')}\``:''}`,
     `📅 *${g('sv-hdr-date')||'no date'}*   ·   👤 GS: *${g('sv-hdr-by')||'—'}*   ·   🤝 With: *${g('sv-hdr-with')||'—'}*`,
-    g('sv-hdr-addr') ? `📍 ${g('sv-hdr-addr')}` : ''
+    svAddress() ? `📍 ${svAddress()}` : ''
   ].filter(Boolean).join('\n');
 
   const blocks = [{type:'section', text:{type:'mrkdwn', text:head}}];
@@ -2808,7 +2919,11 @@ function initSiteVisit(){
     const del = e.target.closest('[data-svdel]');
     if(del){ svDelete(del.dataset.svdel); return }
   });
-  panel.addEventListener('input', e=>{ if(e.target.id !== 'sv-files') svTouch() });
+  panel.addEventListener('input', e=>{
+    if(e.target.id === 'sv-files') return;
+    svTouch();
+    if(e.target.closest('#svSecROI')) svROIRecalc();
+  });
 
   $('sv-files').onchange = e=>{ svAddFiles(e.target.files); e.target.value = '' };
   const drop = $('svDrop');
