@@ -326,13 +326,13 @@ table.svTbl tr:last-child td{border-bottom:none}
 table.svTbl td input{padding:5px 8px;font-size:13px}
 .svCmt{margin-top:10px}
 
-/* photo / video attachments */
+/* photo attachments */
 .svDrop{display:block;cursor:pointer;border:2px dashed var(--line);border-radius:9px;padding:16px;text-align:center;color:var(--dim);font-size:13.5px}
 .svDrop.hot{border-color:var(--sign);background:rgba(31,122,69,.12);color:var(--ink)}
 .svDrop input[type=file]{display:none}
 .svThumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-top:11px}
 .svThumb{background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative}
-.svThumb img,.svThumb video{width:100%;height:100px;object-fit:cover;display:block;background:#0d1013}
+.svThumb img{width:100%;height:100px;object-fit:cover;display:block;background:#0d1013}
 .svThumb .ph{height:100px;display:flex;align-items:center;justify-content:center;font-size:30px;background:#0d1013}
 .svThumb .fn{font-size:11.5px;padding:6px 7px;color:var(--dim);word-break:break-all;line-height:1.3}
 .svThumb .fn b{color:var(--ink);font-weight:600;display:block}
@@ -739,12 +739,12 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <div style="max-width:340px"><label class="f">Swag given to</label><input id="sv-swag-to" placeholder="Name / title"></div>
     <div class="svRow" style="margin-top:12px"><div class="lbl">Visit summary video/audio recorded &amp; uploaded to #site-visits Slack channel</div><div class="ynG"><button class="ynB yes" data-yn="sv-wrap-video" data-val="yes">Yes</button><button class="ynB no" data-yn="sv-wrap-video" data-val="no">No</button></div></div>
 
-    <div class="svSub">📎 Photos &amp; Video</div>
-    <p class="svHint">Attach shots from the visit — signage, restrooms, showers, the lot, the fuel desk. Photos are resized to 1600px and re-saved as JPEG before they are stored, so a full set fits comfortably; video is kept as-is and is the one thing that can still overrun browser storage. They ride along inside the saved visit on this device and upload with it when you hit <b>☁ Send to Drive</b>. Slack webhooks cannot carry files, so the Slack post points back to them instead.</p>
+    <div class="svSub">📎 Photos</div>
+    <p class="svHint">Attach shots from the visit — signage, restrooms, showers, the lot, the fuel desk. Photos are resized to 1600px and re-saved as JPEG before they are stored, so a full set fits comfortably. They ride along inside the saved visit on this device and upload with it when you hit <b>☁ Send to Drive</b>. Slack webhooks cannot carry files, so the Slack post points back to them instead. <b>Photos only</b> — record your visit summary straight to the <b>#site-visits</b> Slack channel instead of attaching it here.</p>
     <label class="svDrop" id="svDrop">
-      <input type="file" id="sv-files" accept="image/*,video/*" multiple>
-      <b style="color:var(--ink)">＋ Choose photos / videos</b><br>
-      <span style="font-size:12.5px">or drag &amp; drop them here</span>
+      <input type="file" id="sv-files" accept="image/*" multiple>
+      <b style="color:var(--ink)">＋ Choose photos</b><br>
+      <span style="font-size:12.5px">or drag &amp; drop photos here</span>
     </label>
     <div class="svThumbs" id="svThumbs"></div>
     <div class="svSize" id="svAttachSize"></div>
@@ -2182,7 +2182,7 @@ window.showTour = showTour;
 /* ===================================================================
    SITE VISIT TAB
    Form + logic ported from site-visit.html, restyled to this app's
-   dark theme. Adds photo/video attachments, a Slack webhook post and
+   dark theme. Adds photo attachments, a Slack webhook post and
    a Google Drive upload on top of the original save/print behaviour.
    Storage follows the trip pattern: one localStorage key per visit,
    namespaced per GS (gsp2:visit:<gs>:<id>).
@@ -2216,12 +2216,11 @@ let SV_FLEET_CARDS = [
 ];
 try{ const b=JSON.parse(localStorage.getItem('roadys_fleet_cards')||'null'); if(Array.isArray(b)&&b.length) SV_FLEET_CARDS=b }catch(e){}
 
-/* Photos and video are held as base64 inside the saved visit, so a visit
-   can single-handedly eat the browser's ~5MB localStorage budget. Photos
-   are downscaled and re-encoded before they are stored (svShrinkImage),
-   which takes a 4-5MB phone shot down to a couple hundred KB; video is
-   stored byte-for-byte because compressing it client-side is not
-   practical, so it is still the thing that blows the budget. */
+/* Photos are held as base64 inside the saved visit, so a visit can
+   single-handedly eat the browser's ~5MB localStorage budget. They are
+   downscaled and re-encoded before they are stored (svShrinkImage),
+   which takes a 4-5MB phone shot down to a couple hundred KB. Video is
+   not accepted at all — it goes to the #site-visits Slack channel. */
 const SV_WARN_CHARS = 2000000;   // ~4MB stored (localStorage counts UTF-16)
 /* Per-file confirm, raw bytes. Only consulted for files we store as-is —
    an image's original size says nothing about what actually gets stored. */
@@ -2399,8 +2398,17 @@ function svYNIndex(){
 
 /* ---------------- attachments ---------------- */
 
+/* Photos only. The file input's accept= filters the picker, but drag and
+   drop ignores it and some pickers still let you choose "all files", so
+   the real gate is here. Video belongs in the #site-visits Slack channel,
+   not in a localStorage record. Files arriving with no MIME type (some
+   drag sources) fall back to their extension so a real photo is not
+   thrown away. */
+const SV_PHOTO_EXT = /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif|svg)$/i;
+const svIsPhoto = f => /^image\//.test(f.type||'') || (!f.type && SV_PHOTO_EXT.test(f.name||''));
+
 /* Bitmaps we can safely redraw through a canvas. GIF would lose its
-   animation and SVG is vector — both are stored untouched, as is video. */
+   animation and SVG is vector — both are stored untouched. */
 const svIsShrinkable = f => /^image\//.test(f.type||'') && !/^image\/(gif|svg\+xml)$/.test(f.type);
 
 const svB64Len   = bytes => Math.ceil(bytes/3)*4;          // base64 growth, no I/O needed
@@ -2481,10 +2489,22 @@ async function svAddFiles(list){
   const files = [...list];
   if(!files.length) return;
 
+  // Anything that is not a photo is turned away here, loudly — silently
+  // ignoring a dropped video looks identical to a bug.
+  const rejected = files.filter(f => !svIsPhoto(f));
+  if(rejected.length){
+    const names = rejected.map(f=>f.name).slice(0,3).join(', ') + (rejected.length>3 ? ` +${rejected.length-3} more` : '');
+    toast(`⚠ Photos only — skipped ${rejected.length} file${rejected.length>1?'s':''}: ${names}. `
+        + `Record the visit summary straight to the #site-visits Slack channel instead.`, 9000);
+  }
+  const photos = files.filter(svIsPhoto);
+  if(!photos.length) return;
+
   // A photo's original size says nothing about what gets stored, since it is
-  // about to be downscaled — only ask about files we keep byte-for-byte.
-  const queue = files.filter(f => svIsShrinkable(f) || f.size <= SV_BIG_FILE || confirm(
-    `"${f.name}" is ${svMB(f.size)}, and ${/^video\//.test(f.type||'') ? 'video cannot be compressed in the browser' : 'this file type is stored as-is'}.\n\n` +
+  // about to be downscaled — only ask about the ones we keep byte-for-byte
+  // (GIF, SVG), which skip the canvas re-encode.
+  const queue = photos.filter(f => svIsShrinkable(f) || f.size <= SV_BIG_FILE || confirm(
+    `"${f.name}" is ${svMB(f.size)}, and this image type is stored as-is.\n\n` +
     `Files this big usually will not fit in browser storage — the visit may refuse to save with it attached.\n\n` +
     `Attach it anyway? You can still push it to Google Drive.`));
   if(!queue.length) return;
@@ -2508,8 +2528,9 @@ function svRemoveAttach(i){ svAttach.splice(i,1); svRenderAttach(); svTouch() }
 function svRenderAttach(){
   const wrap = $('svThumbs');
   wrap.innerHTML = svAttach.map((a,i)=>{
+    // the generic icon also covers video left over in visits saved before
+    // attachments went photos-only — those still load and still go to Drive
     const media = a.type.startsWith('image/') ? `<img src="${a.data}" alt="${esc(a.name)}">`
-                : a.type.startsWith('video/') ? `<video src="${a.data}" muted playsinline preload="metadata"></video>`
                 : `<div class="ph">📄</div>`;
     const note = a.originalSize ? `${svMB(a.size)} · resized from ${svMB(a.originalSize)}` : svMB(a.size);
     return `<div class="svThumb">${media}
@@ -2525,7 +2546,7 @@ function svRenderAttach(){
       + (saved > 0 ? ` (${svMB(saved)} saved by resizing photos to ${SV_IMG_MAX_DIM}px).` : '.')
       + ` Using ${Math.round(chars/SV_WARN_CHARS*100)}% of the space a visit should take.`
     : '';
-  if(chars > SV_WARN_CHARS) msg += ' ⚠ That is past what this browser will reliably hold — send it to Drive, then remove the video or the heaviest files here.';
+  if(chars > SV_WARN_CHARS) msg += ' ⚠ That is past what this browser will reliably hold — send it to Drive, then remove the heaviest photos here.';
   if(svDropped) msg += ` ⚠ ${svDropped.length} file(s) from the last save were dropped for space: ${svDropped.map(f=>f.name).join(', ')}.`;
   el.textContent = msg;
   el.className = 'svSize' + ((chars>SV_WARN_CHARS||svDropped) ? ' warn' : '');
@@ -2753,7 +2774,7 @@ function svReportBody(){
 
   if(svAttach.length || svDropped){
     const files = svAttach.length ? svAttach : (svDropped||[]);
-    h += `<h2 style="font-size:14pt;letter-spacing:.04em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:3px;margin:20px 0 8px">Photos &amp; Video</h2>
+    h += `<h2 style="font-size:14pt;letter-spacing:.04em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:3px;margin:20px 0 8px">Photos</h2>
       <table style="width:100%;border-collapse:collapse">` +
       files.map(f=>`<tr><td ${SV_TDK}>${esc(f.name)}</td><td ${SV_TD}>${esc(f.type||'')} · ${svMB(f.size)}</td></tr>`).join('') +
       `</table><p style="font-size:9.5pt;color:#555;margin-top:6px">Files themselves live in the saved visit on the GS device and in the Drive folder ${esc(GDRIVE_FOLDER)}/${esc(g('sv-hdr-member')||'visit')} — ${esc(g('sv-hdr-date'))}.</p>`;
@@ -2812,12 +2833,12 @@ function svSlackPayload(){
   // instead of dropping it on the floor.
   const n = svAttach.length || (svDropped||[]).length;
   blocks.push({type:'context', elements:[{type:'mrkdwn', text: n
-    ? `📎 *${n} photo/video file${n>1?'s':''} attached to this visit* — ${svAttach.map(a=>a.name).slice(0,6).join(', ')}${n>6?` +${n-6} more`:''}. Slack webhooks cannot carry files, so they are in the saved visit on the GS device and in Drive → *${GDRIVE_FOLDER}/${member} — ${g('sv-hdr-date')}* (☁ Send to Drive on the Site Visit tab).`
-    : '📎 No photos or video attached to this visit.'}]});
+    ? `📎 *${n} photo${n>1?'s':''} attached to this visit* — ${svAttach.map(a=>a.name).slice(0,6).join(', ')}${n>6?` +${n-6} more`:''}. Slack webhooks cannot carry files, so they are in the saved visit on the GS device and in Drive → *${GDRIVE_FOLDER}/${member} — ${g('sv-hdr-date')}* (☁ Send to Drive on the Site Visit tab).`
+    : '📎 No photos attached to this visit.'}]});
 
   const text = `Site Visit — ${member} · ${g('sv-hdr-date')||''} · GS ${g('sv-hdr-by')||'—'}` +
                (flags.length?` · ${flags.length} item(s) need attention`:'') +
-               (n?` · ${n} photo/video file(s) attached in the saved visit / Drive`:'');
+               (n?` · ${n} photo(s) attached in the saved visit / Drive`:'');
   return {text, blocks};
 }
 const svTrim = (s, n) => s.length <= n ? s : s.slice(0, n-40).replace(/\n[^\n]*$/,'') + '\n… _(trimmed — full detail is in the saved visit)_';
@@ -2958,7 +2979,7 @@ async function svSendDrive(){
       {name:`${svSlug(member)}-${date}.json`, parents:[sub]},
       new Blob([JSON.stringify(rec,null,2)], {type:'application/json'})));
 
-    // 3. every photo / video as its own file
+    // 3. every photo as its own file
     for(let i=0;i<svAttach.length;i++){
       const a = svAttach[i];
       btn.textContent = `☁ ${i+1}/${svAttach.length}…`;
@@ -2967,7 +2988,7 @@ async function svSendDrive(){
 
     toast(`☁ ${uploaded.length} file(s) uploaded → Drive / ${GDRIVE_FOLDER} / ${folderName}`, 10000);
     if(doc.webViewLink && confirm(`Uploaded ${uploaded.length} file(s) to Drive:\n\n${GDRIVE_FOLDER} / ${folderName}\n\n`
-      + `• 1 visit report (Google Doc — File → Download → PDF)\n• 1 JSON export\n• ${svAttach.length} photo/video file(s)\n\nOpen the report in Drive now?`)) {
+      + `• 1 visit report (Google Doc — File → Download → PDF)\n• 1 JSON export\n• ${svAttach.length} photo(s)\n\nOpen the report in Drive now?`)) {
       window.open(doc.webViewLink, '_blank', 'noopener');
     }
   }catch(e){
