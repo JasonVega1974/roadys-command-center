@@ -860,6 +860,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
     <div class="ni" data-nav-id="implementation" onclick="nav('implementation',this)"><span class="ni-icon">🚧</span>Implementation</div>
     <div class="ni" data-nav-id="value-props-ext" onclick="window.open('value-props.html','_blank')"><span class="ni-icon">💼</span>Value Props</div>
     <div class="ni" data-nav-id="gs-command" onclick="window.open('gs-command-center.html','_blank')"><span class="ni-icon">🎯</span>GS Command Center</div>
+    <div class="ni" data-nav-id="gs-travel-planner" onclick="window.open('gs-travel-planner.html','_blank')"><span class="ni-icon">🛣️</span>GS Travel Planner</div>
     <div class="ni" data-nav-id="aggregator-planner" onclick="window.open('aggregator-planner.html','_blank')"><span class="ni-icon">🔗</span>Aggregator Planner</div>
     <div class="ni" data-nav-id="mem-contacts" onclick="nav('mem-contacts',this)"><span class="ni-icon">📇</span>Member Directory / Contact List</div>
     <div class="ni" data-nav-id="import" onclick="nav('import',this)"><span class="ni-icon">📥</span>Import / Export</div>
@@ -16670,7 +16671,7 @@ This cannot be undone.`)) return;
    ══════════════════════════════════════════════ */
 const MASTER_PIN = '1234';
 // nav-ids allowed in locked (limited) view
-const LOCKED_NAV_IDS = ['crm','implementation','value-props-ext'];
+const LOCKED_NAV_IDS = ['crm','implementation','value-props-ext','gs-travel-planner'];
 
 let masterUnlocked = false;
 let masterPinBuffer = '';
@@ -16697,7 +16698,7 @@ function masterApplyNavVisibility(){
       const id = el.getAttribute('data-nav-id');
       el.style.display = (id && LOCKED_NAV_IDS.includes(id)) ? '' : 'none';
     });
-    // Show the Tools label since all three are under Tools
+    // Show the Tools label since the allowed items all sit under Tools
     document.querySelectorAll('.nav-lbl').forEach(el=>{
       if(el.textContent.trim()==='Tools') el.style.display='';
     });
