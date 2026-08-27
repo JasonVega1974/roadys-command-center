@@ -104,6 +104,25 @@ between owners instead of living per-browser in `localStorage`.
 - `implementation.html` — Onboarding tracker. Mirrors `impl_sites`,
   `sd_tickets`, `crm_leads` from `index.html`.
 - `vendors.html` — Vendor master + program details.
+- `gs-travel-planner.html` — Two tabs behind one header (`.viewTab`
+  buttons toggle `#viewPlanner` / `#viewVisit`, and swap the header
+  button group). **Route Planner**: OSRM routing, trips under
+  `gsp2:trip:<gs>:<name>`. **Site Visit**: the `site-visit.html` form
+  ported to this app's theme, with photo/video attachments stored as
+  base64 inside the record. Visits save one key per visit under
+  `gsp2:visit:<gs>:<id>`; `svSave()` warns past `SV_WARN_CHARS` and, if
+  the quota still bites, saves the notes and drops the media rather than
+  failing quietly. Everything else derives from the DOM — `svYNIndex()`
+  reads the Yes/No labels, `svReportBody()` builds the print packet and
+  the Drive document — so adding a form row needs no matching JS.
+  Two constants at the top of the `<script>` need real values before
+  those buttons do anything: `SLACK_WEBHOOK_URL` (an Incoming Webhook
+  for #site-visits; posted with `mode:'no-cors'` + a form-urlencoded
+  content type, since Slack's endpoint sends no CORS headers, which
+  means delivery can't be confirmed from the page) and
+  `GDRIVE_CLIENT_ID` (a Web-application OAuth client with the Drive API
+  enabled and this page's origin authorized; `drive.file` scope only).
+  Both show a "not configured yet" dialog until then.
 
 ## SQL conventions
 
