@@ -13,7 +13,7 @@
   --asphalt:#15181D; --panel:#1E232A; --panel2:#252B34; --line:#323A45;
   --ink:#EDF0EE; --dim:#9AA4AE; --faint:#6B7681;
   --paint:#F5B80C; --sign:#1F7A45; --signhi:#2A9257; --svc:#2166B8; --svchi:#2F7CD6;
-  --brand:#C8102E; --warn:#E0562B; --ok:#3BB273;
+  --brand:#C8102E; --warn:#E0562B; --ok:#3BB273; --approx:#E8A33D;
   --r:10px;
 }
 *{box-sizing:border-box}
@@ -56,6 +56,7 @@ label.f{display:block;font-size:12px;color:var(--dim);text-transform:uppercase;l
 .stopRow.geo-ok{border-left:4px solid var(--ok)}
 .stopRow.geo-pending{border-left:4px solid var(--paint)}
 .stopRow.geo-fail{border-left:4px solid var(--warn)}
+.stopRow.geo-approx{border-left:4px solid var(--approx)}
 .stopTop{display:flex;gap:8px;align-items:center}
 .stopIdx{font-family:Oswald;font-weight:600;color:var(--paint);width:24px;text-align:center;flex:0 0 auto}
 .stopSearchWrap{position:relative;flex:1}
@@ -866,6 +867,15 @@ function pruneGeoCache(hard){
   keys.slice(0,keys.length-cap).forEach(k=>delete geoCache[k]);
   try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){}
 }
+/* Nominatim's place_rank says how specific a match is: 30 is a building or
+   POI, 26-29 a road, anything lower a whole town, county or postcode area.
+   The city-centroid fallback below returns rank ~16, which can sit miles from
+   the real site -- Cenex Zip Trip #54's street address isn't in OSM at all, so
+   it lands on downtown Billings, ~5 mi from its I-90 exit. A pin that coarse
+   still routes, so it isn't an error, but it must not read as an exact match
+   either. */
+const GEO_STREET_RANK=26;
+function geoPrecision(r){ return (+r.place_rank||0)>=GEO_STREET_RANK?'street':'approx' }
 function geocode(addrObj){
   const key=(addrObj.q||`${addrObj.street}|${addrObj.city}|${addrObj.state}|${addrObj.zip}`).toLowerCase();
   if(geoCache[key]) return Promise.resolve(geoCache[key]);
@@ -898,7 +908,7 @@ function geocode(addrObj){
       const out={lat:+res[0].lat,lng:+res[0].lon,
         street, city:a.city||a.town||a.village||a.hamlet||a.county||'',
         stateAbbr:ST_ABBR[a.state]||a.state||'', zip:a.postcode||'',
-        display:res[0].display_name||''};
+        display:res[0].display_name||'', prec:geoPrecision(res[0])};
       geoCache[key]=out; pruneGeoCache();
       try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){pruneGeoCache(true)}
       return out;
@@ -928,7 +938,7 @@ function renderStops(){
   const box=$('stopList'); box.innerHTML='';
   state.stops.forEach((s,i)=>{
     const row=document.createElement('div');
-    row.className='stopRow geo-'+(s.geo==='ok'?'ok':s.geo==='pending'?'pending':s.geo==='fail'?'fail':'none');
+    row.className='stopRow geo-'+(s.geo==='ok'?(s.geoPrec==='approx'?'approx':'ok'):s.geo==='pending'?'pending':s.geo==='fail'?'fail':'none');
     row.innerHTML=`
       <div class="stopTop">
         <div class="stopIdx">${i+1}</div>
@@ -942,7 +952,7 @@ function renderStops(){
           <button class="icoB del" title="Remove">✕</button>
         </div>
       </div>
-      ${s.name?`<div class="stopMeta"><b>${esc(s.id||(s.source==='airport'?'Airport':'Address'))}</b> · ${esc(addrLine(s))}${s.exit?` · <b>${esc(s.exit)}</b>`:''}${s.phone?` · ☎ ${esc(s.phone)}`:''}${s.geo==='fail'?' · <span style="color:var(--warn)">⚠ couldn\'t pin on map</span>':''}${s.geo==='pending'?' · locating…':''}</div>
+      ${s.name?`<div class="stopMeta"><b>${esc(s.id||(s.source==='airport'?'Airport':'Address'))}</b> · ${esc(addrLine(s))}${s.exit?` · <b>${esc(s.exit)}</b>`:''}${s.phone?` · ☎ ${esc(s.phone)}`:''}${s.geo==='fail'?' · <span style="color:var(--warn)">⚠ couldn\'t pin on map</span>':''}${s.geo==='ok'&&s.geoPrec==='approx'?` · <span style="color:var(--approx)">⚠ approximate — pinned to the centre of ${esc(s.city||'town')}, not this street address</span>`:''}${s.geo==='pending'?' · locating…':''}</div>
       <button class="moreT">${s.contact||s.notes||s.visitOv?'Edit details ▾':'＋ Meeting with / notes'}</button>
       <div class="stopMore">
         <div class="grid2" style="margin-top:6px">
@@ -985,7 +995,7 @@ function renderStops(){
 async function geoStop(s){
   const r=await geocode(s.source==='roadys'?{street:s.street,city:s.city,state:s.stateAbbr,zip:s.zip}:{q:s.query||s.name});
   if(r){
-    s.lat=r.lat; s.lng=r.lng; s.geo='ok';
+    s.lat=r.lat; s.lng=r.lng; s.geo='ok'; s.geoPrec=r.prec||'street';
     // For typed addresses, fill in the real city/state/zip so the itinerary
     // and printed packet read like a proper address.
     if(s.source!=='roadys'){
@@ -995,7 +1005,9 @@ async function geoStop(s){
       if(r.zip)       s.zip=r.zip;
       if(!s.name || s.name===s.query) s.name=s.label||s.name||[r.street,r.city].filter(Boolean).join(', ')||s.query;
     }
-  } else { s.geo='fail' }
+  } else if(s.lat==null||s.lng==null){ s.geo='fail' }
+  // A stop that already holds a pin keeps it: a transient miss on a background
+  // re-resolve must not turn a working stop into an unroutable one.
   renderStops(); markDirty();
 }
 
@@ -1182,8 +1194,14 @@ async function buildRoute(){
     renderAll(ordered,dest);
     const td=legs.reduce((a,l)=>a+l.dur,0), tm=legs.reduce((a,l)=>a+l.dist,0);
     const nAlt=legs.reduce((a,l)=>a+(l.alts.length>1?1:0),0);
+    const approx=ordered.filter(s=>s.geoPrec==='approx');
+    const approxNote=approx.length
+      ? ` ⚠ ${approx.length} stop${approx.length>1?'s':''} (${approx.slice(0,3).map(s=>s.name).join(', ')}${approx.length>3?`, +${approx.length-3} more`:''}) `
+        + `${approx.length>1?'are':'is'} pinned to a town centre rather than a street address, so drive times there are approximate.`
+      : '';
     status(`✓ Route built — ${fmtMi(tm)}, ${fmtDur(td)} driving, ${state.schedule.days.length} day(s).`
-      + (nAlt?` Picked the ${state.routePref==='short'?'shortest':'fastest'} option on ${nAlt} leg${nAlt>1?'s':''}.`:''));
+      + (nAlt?` Picked the ${state.routePref==='short'?'shortest':'fastest'} option on ${nAlt} leg${nAlt>1?'s':''}.`:'')
+      + approxNote);
     saveTrip(true);
   }catch(e){
     console.error(e);
@@ -1827,10 +1845,15 @@ function openTrips(){
    retry every unpinned stop whenever a trip is restored. */
 function regeocodeUnpinned(){
   const stuck=state.stops.filter(s=>s.name&&s.geo!=='ok');
-  if(!stuck.length) return;
+  // Trips saved before pin precision was recorded carry coordinates but no
+  // geoPrec, so a centroid guess would stay invisible on reopen. Re-resolve
+  // those quietly in the background; they keep their existing pin throughout,
+  // and the autosave in geoStop() means it only has to happen once per trip.
+  const unlabelled=state.stops.filter(s=>s.name&&s.geo==='ok'&&!s.geoPrec);
+  if(!stuck.length&&!unlabelled.length) return;
   stuck.forEach(s=>{s.geo='pending'});
-  renderStops();
-  stuck.forEach(s=>geoStop(s));
+  if(stuck.length) renderStops();
+  stuck.concat(unlabelled).forEach(s=>geoStop(s));
 }
 function loadTrip(k){
   try{
