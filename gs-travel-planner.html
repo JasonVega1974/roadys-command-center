@@ -1636,41 +1636,82 @@ async function tpVaultLoad(){
 // last-wrap guard does); a throw aborts before any write.
 // Returns {ok, conflict, reason, message, wraps}.
 async function tpVaultMutateWraps(mutate){
+  let seenWraps=null, intended=null, attempted=false;
   try{
     await tpEnsureLib();
-    const sb=tpClient(); if(!sb) return {ok:false, conflict:false, reason:'offline'};
+    const sb=tpClient(); if(!sb) return {ok:false, conflict:false, reason:'offline', reread:false};
     const {data:row, error:selErr}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
-    if(selErr){ console.warn('tpVaultMutateWraps: '+selErr.message); return {ok:false, conflict:false, reason:'read', message:selErr.message}; }
-    if(!row) return {ok:false, conflict:false, reason:'missing'};
+    if(selErr){ console.warn('tpVaultMutateWraps: '+selErr.message); return {ok:false, conflict:false, reason:'read', message:selErr.message, reread:false}; }
+    if(!row) return {ok:false, conflict:false, reason:'missing', reread:false};
     // No version token means no way to write safely. Refuse rather than
     // fall back to an unconditional update — that is exactly the write
     // this function exists to make impossible.
-    if(!row.updated_at) return {ok:false, conflict:false, reason:'noversion'};
+    if(!row.updated_at) return {ok:false, conflict:false, reason:'noversion', reread:false};
+    seenWraps = row.wraps||[];
     let next;
-    try{ next = await mutate(row.wraps||[], row); }
-    catch(e){ return {ok:false, conflict:false, reason:'mutate', message:(e&&e.message)||String(e)}; }
+    try{ next = await mutate(seenWraps, row); }
+    catch(e){ return {ok:false, conflict:false, reason:'mutate', message:(e&&e.message)||String(e), reread:false}; }
+    intended = next;
+    // Past this line the write may have landed even if we never hear back.
+    attempted = true;
     const {data, error}=await sb.from('gs_travel_vault')
       .update({wraps:next}).eq('id','v1').eq('updated_at', row.updated_at).select();
-    if(error){ console.warn('tpVaultMutateWraps: '+error.message); return {ok:false, conflict:false, reason:'write', message:error.message}; }
+    if(error){
+      console.warn('tpVaultMutateWraps: '+error.message);
+      return await _tpVaultConfirmOutcome(intended, seenWraps, 'write', error.message);
+    }
     if(!data || !data.length){
       console.warn('tpVaultMutateWraps: gs_travel_vault changed since the read — aborting without writing');
-      await tpVaultLoad();   // re-read so the bar and the next attempt see the truth
-      return {ok:false, conflict:true, reason:'conflict'};
+      const check = await tpVaultLoad();   // re-read so the bar and the next attempt see the truth
+      return {ok:false, conflict:true, reason:'conflict', reread:check.ok};
     }
     tpVaultRow = data[0];
     tpVaultLoadState = 'ok';
-    return {ok:true, conflict:false, wraps:tpVaultRow.wraps};
-  }catch(e){ console.warn('tpVaultMutateWraps: '+e.message); return {ok:false, conflict:false, reason:'exception', message:e.message}; }
+    return {ok:true, conflict:false, wraps:tpVaultRow.wraps, reread:false};
+  }catch(e){
+    console.warn('tpVaultMutateWraps: '+e.message);
+    // A throw AFTER the update went out is indistinguishable from one before
+    // it unless we go and look — so look.
+    if(attempted) return await _tpVaultConfirmOutcome(intended, seenWraps, 'exception', e.message);
+    return {ok:false, conflict:false, reason:'exception', message:e.message, reread:false};
+  }
 }
-// One place to turn a non-conflict tpVaultMutateWraps() failure into words.
-// Every one of these means nothing was written — the conditional update
-// either never ran or matched the row and failed outright.
+// An UPDATE that errors or throws has NOT necessarily failed: a dropped
+// connection, a timeout or a proxy hiccup loses the acknowledgement, not the
+// write. Task 3 fixed this for setup (the re-read in _tpVaultRunSetup); this
+// is the same fix on the mutation paths. Never assert "nothing was changed"
+// without looking, and never assert it at all when the look itself fails —
+// a holder told their old passphrase still works, when it no longer does,
+// concludes the vault is broken.
+async function _tpVaultConfirmOutcome(intended, seenWraps, reason, message){
+  const check = await tpVaultLoad();
+  if(!check.ok || !check.row)
+    return {ok:false, conflict:false, reason:'unknown', message, reread:false};
+  if(_tpVaultWrapsEq(check.row.wraps, intended)){
+    // It landed; only the response was lost. Report the success it actually
+    // is rather than sending the holder off to redo it.
+    tpVaultLoadState = 'ok';
+    return {ok:true, conflict:false, wraps:check.row.wraps, recovered:true, reread:true};
+  }
+  if(_tpVaultWrapsEq(check.row.wraps, seenWraps))
+    return {ok:false, conflict:false, reason, message, confirmedNoop:true, reread:true};
+  // Neither what we sent nor what we read: someone else's change is in force.
+  // Ours is not — but the old state cannot be claimed to have survived either.
+  return {ok:false, conflict:true, reason:'other', message, reread:true};
+}
+// One place to turn a tpVaultMutateWraps() failure into words. Only the
+// branches that actually know nothing was written are allowed to say so.
 function _tpVaultMutateMsg(res){
-  if(res.conflict) return '⚠ Someone else changed vault access first — nothing was changed here. The vault has been re-read; check who holds access, then try again.';
+  if(res.reason==='other')   return '⚠ Your change did not take effect, and the vault now holds a different set of holders — someone else changed access. Reload this page and check who holds access before trying again.';
+  if(res.conflict)           return '⚠ Someone else changed vault access first — nothing was changed here.'
+    + (res.reread ? ' The vault has been re-read; check who holds access, then try again.'
+                  : ' The vault could not be re-read afterwards, so reload this page to see who holds access before trying again.');
+  if(res.reason==='unknown') return '⚠ Could not confirm what happened — the change may or may not have been saved, and re-reading the vault failed too. Reload this page and check who holds access before trying again. Do NOT assume nothing was written.';
   if(res.reason==='offline')    return "⚠ Can't reach the vault — nothing was changed.";
   if(res.reason==='missing')    return '⚠ There is no vault row to change — nothing was changed.';
   if(res.reason==='noversion')  return '⚠ The vault row has no version stamp, so it cannot be changed safely — nothing was changed. Get an admin to check the gs_travel_vault row.';
   if(res.reason==='mutate')     return '⚠ '+(res.message||'Nothing was changed');
+  if(res.confirmedNoop)         return '⚠ Could not save — a re-read confirms nothing was written'+(res.message ? ' ('+res.message+')' : '')+'.';
   return '⚠ Could not save — nothing was changed'+(res.message ? ' ('+res.message+')' : '');
 }
 const _tpVaultWrapsEq = (a,b)=> JSON.stringify(a)===JSON.stringify(b);
@@ -1980,13 +2021,30 @@ async function tpVaultRotate(){
   if(String(p1).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
   if(prompt('Type it again to confirm.')!==p1){ toast('Those did not match — nothing was changed'); return; }
   _tpVaultBusy('⏳ Rotating the passphrase…');
-  let res;
-  try{ res = await tpVaultMutateWraps(wraps=>vaultAddHolder('passphrase', p1, wraps)); }
+  let res, oldWrap=null;
+  try{
+    res = await tpVaultMutateWraps(wraps=>{
+      // Captured from the SERVER snapshot, so the claim below is about the
+      // row that was really there rather than a stale local copy.
+      oldWrap = wraps.find(w=>w.label==='passphrase') || null;
+      return vaultAddHolder('passphrase', p1, wraps);
+    });
+  }
   finally{ _tpVaultIdle(); }
-  toast(res.ok
-    ? '🔑 Passphrase rotated — profiles were not re-encrypted, only the key wrap changed. Update the company password manager now.'
-    : _tpVaultMutateMsg(res)+' The old passphrase is still in force.',
-    res.ok ? 9000 : 12000);
+  if(res.ok){
+    toast(res.recovered
+      ? '🔑 Passphrase rotated — the confirmation was lost in transit, but a re-read shows the change did land. The OLD passphrase no longer works. Update the company password manager now.'
+      : '🔑 Passphrase rotated — profiles were not re-encrypted, only the key wrap changed. Update the company password manager now.',
+      res.recovered ? 14000 : 9000);
+    return;
+  }
+  // Only say the old passphrase still works when a re-read actually shows its
+  // wrap still sitting in the row. Saying it wrongly sends someone off to use
+  // a passphrase that no longer opens the vault, and they conclude the vault
+  // is broken.
+  const oldIntact = !!(res.reread && oldWrap
+    && (((tpVaultRow||{}).wraps)||[]).some(w=>_tpVaultWrapsEq(w, oldWrap)));
+  toast(_tpVaultMutateMsg(res) + (oldIntact ? ' The old passphrase is still in force.' : ''), 12000);
 }
 async function tpVaultAddHolder(){
   if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
@@ -1994,6 +2052,13 @@ async function tpVaultAddHolder(){
   const label=(prompt('Name for the second holder (e.g. "ops-manager"):\n\nCurrent: '+previewed.map(w=>w.label).join(', '))||'').trim();
   if(!label) return;
   if(label==='recovery-code'){ toast('That name is reserved'); return; }
+  // Task 5 is the only path that can grow this list. Past VAULT_MAX_WRAPS,
+  // vaultUnlock() truncates and reports the list as tampered with, so a 33rd
+  // holder would get no access AND make the vault look attacked. Refuse here.
+  if(!previewed.some(w=>w.label===label) && previewed.length >= VAULT_MAX_WRAPS){
+    toast(`⚠ This vault already holds the maximum of ${VAULT_MAX_WRAPS} holders — nothing was changed. Remove a holder who no longer needs access before adding another.`, 12000);
+    return;
+  }
   const p=prompt(`Passphrase for ${label} (at least ${VAULT_MIN_PASSPHRASE} characters).`);
   if(p===null) return;
   if(String(p).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }

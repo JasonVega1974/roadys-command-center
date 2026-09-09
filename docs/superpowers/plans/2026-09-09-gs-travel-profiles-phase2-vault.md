@@ -377,6 +377,18 @@ git commit -m "feat(travel-planner): add VAULT_CRYPTO envelope-encryption core"
 - Consumes: `vaultAvailable`, `vaultCreate`, `vaultUnlock`, `vaultIsUnlocked`, `vaultLock`, `VAULT_MIN_PASSPHRASE` (Task 2); `tpEnsureLib`, `tpClient` (Phase 1).
 - Produces: `async tpVaultLoad() -> {wraps,kdf}|null`, `async tpVaultSaveWraps(wraps) -> boolean`, `tpVaultRenderBar()`, `async tpVaultDoSetup()`, `async tpVaultDoUnlock()`, module state `tpVaultRow`.
 
+> **Superseded 2026-09-09 (Task 5).** `tpVaultSaveWraps()` no longer exists.
+> It wrote the row unconditionally (an upsert), which was safe only while
+> setup was the sole writer. Task 5's rotate / add-holder / remove-holder
+> paths are a second writer, so it was replaced by
+> `async tpVaultMutateWraps(mutate)` — read the row, compute the new wraps
+> from that snapshot, then
+> `.update({wraps}).eq('id','v1').eq('updated_at', seen).select()`. An empty
+> returned array means another holder changed access first and the write is
+> abandoned, never retried. `tpVaultReplaceJustCreated()` was retrofitted
+> onto it too, so `tpVaultInsertNew()` is the only remaining write without a
+> version predicate — its primary key is its precondition.
+
 - [ ] **Step 1: Add the vault bar markup** at the top of `#viewProfiles`, above the person selector:
 
 ```html
@@ -401,6 +413,10 @@ async function tpVaultLoad(){
     return tpVaultRow;
   }catch(e){ console.warn('tpVaultLoad: '+e.message); return null; }
 }
+// SUPERSEDED 2026-09-09 by Task 5 — removed in favour of the conditional
+// tpVaultMutateWraps(). This unconditional upsert would silently drop a
+// concurrent holder's wrap, and there is no escrow. Kept here only to show
+// what the plan originally called for.
 async function tpVaultSaveWraps(wraps){
   try{
     await tpEnsureLib();
