@@ -457,6 +457,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <div class="stopSearchWrap"><input id="originIn" placeholder="Type airport (e.g. Boise, MKE, Denver) or any address…" autocomplete="off"><div class="sugg" id="originSugg"></div></div>
       <div class="small" id="originMeta" style="margin-top:4px"></div>
       <button class="hbtn" id="tpChip" type="button" style="display:none"></button>
+      <div id="tpCard" class="small" style="display:none;margin-top:8px"></div>
       <label class="f" style="margin-top:12px">End Point</label>
       <label class="tog" style="margin-bottom:6px"><input type="checkbox" id="sameEnd" checked> Return to start point</label>
       <div id="destWrap" style="display:none">
@@ -1063,6 +1064,7 @@ function tpRenderGSDropdown(roster){
   sel.innerHTML = names.map(n=>`<option>${esc(n)}</option>`).join('')
                 + '<option value="__other">Other…</option>';
   if(keep){ sel.value=keep; document.getElementById('gsNameOther').style.display='none'; }
+  tpRenderCard(curGS());
 }
 async function tpPopulateGSDropdown(){
   // (a) Local roster, synchronous -- tpFetchAll() can take ~10s to resolve
@@ -1100,6 +1102,25 @@ function tpApplyProfileToTrip(name){
       chip.style.display='none'; markDirty();
     };
   }
+}
+// Screen-only summary card for the currently-selected #gsName, shown in the
+// planner sidebar next to the Start/End card. Deliberately lives inside
+// .wrap, which the print CSS (@media print, line ~170) hides along with the
+// rest of the planner UI, so none of this reaches buildPrint()'s #printRoot.
+function tpRenderCard(name){
+  const el=document.getElementById('tpCard'); if(!el) return;
+  const p=tpReadMirror(name)||(tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name));
+  if(!p){ el.style.display='none'; el.innerHTML=''; return; }
+  const bits=[];
+  if(p.home_airport) bits.push(`🛫 <b>${esc(p.home_airport)}</b>`);
+  if(p.hotel_brand)  bits.push(`🏨 ${esc(p.hotel_brand)}${p.hotel_notes?' — '+esc(p.hotel_notes):''}`);
+  if(p.airline)      bits.push(`✈ ${esc(p.airline)}${p.airline_tier?' ('+esc(p.airline_tier)+')':''}`);
+  const clear=[p.has_precheck?'PreCheck':null,p.has_globalentry?'Global Entry':null].filter(Boolean);
+  if(clear.length)   bits.push('🪪 '+clear.join(' · '));
+  if(p.notes)        bits.push(esc(p.notes));
+  if(!bits.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.innerHTML=bits.join('<br>');
+  el.style.display='block';
 }
 // ── /TRAVEL_PROFILES_TAB ─────────────────────────────────────────
 
@@ -2201,7 +2222,7 @@ function init(){
   wireEndpoint('originIn','originSugg','originMeta','origin');
   wireEndpoint('destIn','destSugg','destMeta','dest');
   $('sameEnd').onchange=e=>{$('destWrap').style.display=e.target.checked?'none':'block';markDirty()};
-  $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty();tpApplyProfileToTrip(curGS())};
+  $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty();tpApplyProfileToTrip(curGS());tpRenderCard(curGS())};
   ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode','driveTil'].forEach(id=>$(id).addEventListener('input',markDirty));
   $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
   $('btnAddStop').onclick=()=>addStopRow();
