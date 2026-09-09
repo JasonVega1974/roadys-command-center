@@ -105,7 +105,14 @@ Per the CLAUDE.md new-table checklist, the same migration **must** include:
 - `grant select, insert, update, delete ... to anon, authenticated;`
 - an `updated_at` trigger function with `set search_path = public, pg_temp`
 
-A DELETE policy **is** included: removing a departed GS is a real requirement.
+**A DELETE policy is NOT included** (revised 2026-09-09,
+`sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql`). It shipped in the
+original migration on the reasoning that removing a departed person is a real
+requirement, but that requirement is rare and the anon key is public, so the
+policy let anyone on the internet delete every profile with one PostgREST call.
+Removals are now done by a human in the SQL Editor. TRUNCATE is revoked
+alongside it, since RLS does not gate TRUNCATE and it would otherwise remain a
+deletion primitive. SELECT / INSERT / UPDATE are untouched.
 
 Migration file: `sql/2026-09-08-gs-travel-profiles.sql`, wrapped in
 `begin; … commit;` with a commented verification query at the bottom.
