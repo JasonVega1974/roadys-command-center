@@ -1227,6 +1227,23 @@ async function vaultDecrypt(env, aad){
 
 // ── TRAVEL_PROFILES_TAB ──────────────────────────────────────────
 let tpRoster=[], tpProfiles=[];
+// ── Provenance of whatever is CURRENTLY sitting in tpProfiles ──
+// gs_travel_vault got tpVaultLoadState so "couldn't reach it" could never be
+// read as "it isn't there". gs_travel_profiles needs exactly the same
+// distinction, and for a much worse reason: `sec` holds the only copy of
+// people's account numbers, and a save that mistakes an absent object for an
+// absent ciphertext writes `sec = null` over it. There is no escrow and the
+// browser cannot even delete the row to prove it happened.
+//   'pending' — nothing has been loaded yet this session.
+//   'mirror'  — tpProfiles holds localStorage mirrors only. A mirror is
+//               written by tpSave() BEFORE the cloud call and is never
+//               refreshed by anyone else's save, so it may predate a cloud
+//               write and it may be missing `sec` entirely. NOT authoritative.
+//   'cloud'   — tpProfiles is the array tpFetchAll() actually returned. Only
+//               in this state may an empty `sec` be believed.
+// A failed tpFetchAll() leaves this at 'mirror' (or 'pending'), which is the
+// whole point: the fallback is never mistaken for an answer.
+let tpProfilesSource='pending';
 // Set by the tp_* field listeners whenever the user edits the form, and
 // cleared by tpLoadInto (fields now match a known-saved state) and by a
 // completed save. Used to keep an in-flight cloud refresh from silently
@@ -1277,6 +1294,23 @@ const tpSecAAD   = name => tpKey(name);
 // A's verdict can never authorise a write to person B.
 let tpSecReady = false;
 let tpSecFor   = '';
+// tpSecReady alone is not enough, because it answers "may the inputs be
+// written back?" and the two directions of that write carry wildly different
+// risk. Writing CIPHERTEXT can only ever add or replace numbers the user just
+// typed. Writing `null` DESTROYS the only copy of numbers that may still be on
+// the server. So the destructive direction gets its own, strictly narrower
+// permission:
+//   tpSecMayNull — true only when we have positively OBSERVED this person's
+//   row in a successful cloud read. "The row wasn't in the set we got back" is
+//   good enough to create a row (there is nothing there to lose) but NOT good
+//   enough to null a column, because a truncated or filtered read looks exactly
+//   the same from here.
+let tpSecMayNull = false;
+// Did the successful decrypt actually yield something? Drives the FIX 2
+// confirmation: clearing a form that was populated from real ciphertext is a
+// permanent delete and has to be said out loud. Clearing a form that was empty
+// to begin with is not, and must not nag.
+let tpSecHadValues = false;
 // tpSecIntoForm() is fired without await (a decrypt must never block the
 // plain fields), so two loads can be in flight at once. Only the newest may
 // touch the DOM, or a slow decrypt of person A lands in person B's inputs.
@@ -1297,13 +1331,25 @@ function tpSecClearForm(){ TP_SEC_IDS.forEach(id=>{ const el=$(id); if(el) el.va
 // the point — a locked tab must not leave plaintext sitting in an input.
 function tpSecLockForm(msg){
   const locked=$('tpSecLocked'), fields=$('tpSecFields');
-  tpSecReady=false; tpSecFor='';
+  tpSecReady=false; tpSecFor=''; tpSecMayNull=false; tpSecHadValues=false;
   tpSecClearForm();
   if(locked){ locked.innerHTML = msg || '🔒 Unlock the vault to view or edit account numbers.'; locked.style.display=''; }
   if(fields) fields.style.display='none';
 }
 
-async function tpSecIntoForm(profile, name){
+// `authority` describes how much we actually KNOW about this person's stored
+// ciphertext, and it is supplied by the caller because only the caller knows
+// where `profile` came from:
+//   'row'    — this object is a row from a successful tpFetchAll(). An absent
+//              `sec` on it is a fact.
+//   'norow'  — tpFetchAll() succeeded and this person had no row in it. There
+//              is nothing stored, so a save may CREATE `sec`, but it may not
+//              null a column we never saw.
+//   'unknown'— anything else: a localStorage mirror, the `{}` fallback, or a
+//              cloud read that failed. NEVER treat an absent `sec` here as
+//              "this person has no ciphertext" — that is the exact inference
+//              that nulls a live column.
+async function tpSecIntoForm(profile, name, authority){
   const seq = ++tpSecSeq;
   const who = tpNorm((name!==undefined && name!==null && name!=='') ? name : (profile && profile.gs_name) || '');
   const aad = tpSecAAD(who);
@@ -1311,14 +1357,18 @@ async function tpSecIntoForm(profile, name){
   if(!locked || !fields) return;
   if(!aad){ tpSecLockForm('🔒 Pick a person before entering account numbers.'); return; }
   if(!vaultIsUnlocked()){ tpSecLockForm(); return; }
-  tpSecReady=false; tpSecFor='';
+  tpSecReady=false; tpSecFor=''; tpSecMayNull=false; tpSecHadValues=false;
   tpSecClearForm();
   locked.style.display='none'; fields.style.display='';
   const env = profile && profile.sec;
   if(!env || !env.ct){
-    // No ciphertext on this row at all, observed with the vault open — an
-    // empty form genuinely is this person's state, so a save may write `sec`.
-    tpSecReady=true; tpSecFor=aad; return;
+    // No ciphertext VISIBLE on this object — which is only meaningful if the
+    // object itself is trustworthy. With 'unknown' provenance the form stays
+    // non-authoritative: `sec` is then omitted from the save payload entirely
+    // and PostgREST preserves whatever is stored.
+    if(authority==='row'){ tpSecReady=true; tpSecMayNull=true; tpSecFor=aad; }
+    else if(authority==='norow'){ tpSecReady=true; tpSecMayNull=false; tpSecFor=aad; }
+    return;
   }
   const s = await vaultDecrypt(env, aad);
   if(seq!==tpSecSeq) return;                 // a newer load owns the form now
@@ -1332,7 +1382,13 @@ async function tpSecIntoForm(profile, name){
   $('tp_sec_ktn').value = s.ktn||'';
   $('tp_sec_ge').value  = s.globalEntry||'';
   $('tp_sec_loyalty').value = (s.loyalty||[]).map(x=>`${x.program?x.program+': ':''}${x.number}`).join('\n');
-  tpSecReady=true; tpSecFor=aad;
+  // A decrypt that SUCCEEDED is authority in its own right, whatever the
+  // provenance of the object that carried the envelope: we are holding this
+  // person's plaintext. Overwriting or clearing it is now a decision the user
+  // can actually make, so both directions are permitted — with the clearing
+  // one gated behind the confirmation in tpSaveFromForm().
+  tpSecReady=true; tpSecMayNull=true; tpSecFor=aad;
+  tpSecHadValues = !!(s.ktn || s.globalEntry || (s.loyalty||[]).length);
 }
 
 function tpRenderRoster(prev){
@@ -1364,6 +1420,7 @@ async function tpRenderTab(){
   // person just added/saved on this device isn't dropped from the list.
   tpRoster   = tpBuildRoster(tpMirrorNames());
   tpProfiles = tpRoster.map(n=>tpReadMirror(n)).filter(Boolean);
+  tpProfilesSource='mirror';               // mirrors are a fallback, not an answer
   tpRenderRoster(prev);
 
   // Vault bar: fired here (after the sync render above) but deliberately
@@ -1379,12 +1436,23 @@ async function tpRenderTab(){
   if(cloud){
     const keep=sel.value;
     tpProfiles = cloud;
+    tpProfilesSource='cloud';              // and ONLY here
     tpRoster   = tpBuildRoster(cloud.map(p=>p.gs_name));
     tpRenderRoster(keep);
   }
 }
 function tpLoadInto(name){
-  const p=(tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name)) || tpReadMirror(name) || {};
+  // Split the lookup so the sensitive path can tell WHICH source answered.
+  // The plain fields do not care — a mirror is a fine stand-in for a hotel
+  // brand — but `sec` cares enormously, and the old single-expression
+  // `find() || mirror || {}` erased the difference before anyone could ask.
+  const cloudRow = tpProfilesSource==='cloud'
+    ? (tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name))
+    : null;
+  const authority = tpProfilesSource!=='cloud' ? 'unknown' : (cloudRow ? 'row' : 'norow');
+  const p = cloudRow
+         || (tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name))
+         || tpReadMirror(name) || {};
   TP_FIELDS.forEach(f=>{
     const el=document.getElementById('tp_'+f); if(!el) return;
     if(el.type==='checkbox') el.checked=!!p[f]; else el.value=p[f]||'';
@@ -1395,7 +1463,10 @@ function tpLoadInto(name){
   // Async on purpose: never block the plain fields on a decrypt. `name` is
   // passed explicitly because `p` falls back to {} for a person with no saved
   // profile, and the AAD has to come from the selected identity either way.
-  tpSecIntoForm(p, name);
+  // `authority` is passed for the reason above it: without it tpSecIntoForm()
+  // cannot tell "the server says there is no ciphertext" from "we never got an
+  // answer", and only the first of those may authorise nulling `sec`.
+  tpSecIntoForm(p, name, authority);
 }
 async function tpSaveFromForm(){
   const name=document.getElementById('tpPerson').value;
@@ -1409,17 +1480,53 @@ async function tpSaveFromForm(){
 
   // `sec` is touched ONLY when the vault is open AND the sensitive inputs
   // were actually populated for THIS person from a successful decrypt (or
-  // from a row confirmed to hold no ciphertext). Every other state — vault
-  // locked, decrypt failed, AAD mismatch, a load still in flight — leaves
-  // `sec` out of the payload entirely, and PostgREST then preserves the
-  // stored ciphertext untouched (verified against the live table). That is
-  // what stops editing someone's hotel preference without the passphrase
-  // from destroying their account numbers.
+  // from a row a SUCCESSFUL CLOUD READ confirmed holds no ciphertext). Every
+  // other state — vault locked, decrypt failed, AAD mismatch, a load still in
+  // flight, a cloud read that failed, a localStorage mirror standing in for a
+  // row nobody fetched — leaves `sec` out of the payload entirely, and
+  // PostgREST then preserves the stored ciphertext untouched (verified against
+  // the live table). That is what stops editing someone's hotel preference
+  // from destroying their account numbers, whether the vault was locked or the
+  // network merely blinked.
   const aad = tpSecAAD(name);
   if(vaultIsUnlocked() && tpSecReady && aad && tpSecFor===aad){
     const s = tpSecFromForm();
     const empty = !s.ktn && !s.globalEntry && !s.loyalty.length;
-    row.sec = empty ? null : await vaultEncrypt(s, aad);
+    if(!empty){
+      row.sec = await vaultEncrypt(s, aad);
+    } else if(tpSecMayNull){
+      // Emptying a form that was populated from real, decrypted ciphertext is
+      // a permanent delete: `gs_travel_profiles.sec` is the only copy and
+      // there is no escrow. Say so, and only here — a form that was empty when
+      // it loaded has nothing to lose and must not nag.
+      if(tpSecHadValues && !confirm(
+        `Permanently delete ${name}'s saved account numbers?\n\n`+
+        `The Known Traveler / Global Entry / loyalty numbers stored for `+
+        `${name} will be ERASED from the encrypted vault. There is no backup `+
+        `and no undo — they cannot be recovered, only re-typed from the `+
+        `original documents.\n\n`+
+        `Cancel to keep them exactly as they are.`)){
+        toast(`Account numbers kept — nothing was deleted`, 6000);
+        // `sec` stays out of the payload, so the stored ciphertext survives
+        // the save of the ordinary fields below untouched.
+      } else {
+        row.sec = null;
+      }
+    }
+    // else: tpSecMayNull is false — the inputs are empty and we have never
+    // actually seen this person's row come back from the cloud. Creating
+    // ciphertext would have been fine; nulling a column we never observed is
+    // not, so `sec` is simply left out.
+  }
+  // A typed-but-unsaveable secret must never vanish quietly. If the vault is
+  // open and there is text in those inputs that did NOT make it into the
+  // payload, the load was non-authoritative (or belongs to someone else) and
+  // the user has to be told, or they will believe numbers are stored that are
+  // not.
+  if(vaultIsUnlocked() && !('sec' in row)){
+    const typed = tpSecFromForm();
+    if(typed.ktn || typed.globalEntry || typed.loyalty.length)
+      toast(`⚠ Account numbers were NOT saved — ${name}'s stored numbers could not be confirmed yet. Reopen this tab and try again.`, 9000);
   }
   // When `sec` is absent above the cloud keeps its ciphertext — but tpSave()
   // mirrors the whole row to localStorage, and a mirror written without `sec`

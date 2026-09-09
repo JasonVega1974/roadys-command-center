@@ -218,7 +218,7 @@ failure.** This mirrors the fallback discipline in `gs-command-center.html`.
 
 ## 5. Phase 2 — encrypted vault
 
-> **Amended 2026-09-09 (as built).** Three things in this section were changed
+> **Amended 2026-09-09 (as built).** Four things in this section were changed
 > during implementation and the sections below have been corrected in place, so
 > §5 now matches the shipped code. The amendments:
 >
@@ -237,7 +237,15 @@ failure.** This mirrors the fallback discipline in `gs-command-center.html`.
 >    holder changes re-wrap the DEK only; the `gs_travel_profiles.sec`
 >    ciphertext is byte-identical before and after, and still decrypts. Saving
 >    a profile with the vault locked leaves any existing `sec` untouched
->    instead of nulling it.
+>    instead of nulling it. Extended 2026-09-09: it is also left untouched when
+>    the vault is *unlocked* but the profile read was not authoritative — a
+>    failed `tpFetchAll()`, a `localStorage` mirror, or cleared storage. Only a
+>    successful cloud read of that specific row may be believed when it shows
+>    no ciphertext, and clearing numbers that really were there now requires an
+>    explicit confirmation.
+> 4. **The DEK is `extractable: true`, not `false`** (§5.2), and the `kdf`
+>    column is vestigial (§5.2). Both are corrected in place below, with the
+>    XSS tradeoff the extractable key carries stated rather than waved away.
 
 ### 5.1 Threat model, stated plainly
 
@@ -295,9 +303,44 @@ Per-profile secrets are stored in `gs_travel_profiles.sec` as
 `{v:1, iv, ct}` — AES-GCM with a fresh 12-byte IV per save. Plaintext shape:
 `{ktn, globalEntry, loyalty:[{program, number}]}`.
 
+`kdf` is **vestigial — nothing reads it.** Amendment 1 moved the iteration count
+onto each wrap (`iter`) so that raising the constant for new wraps cannot break
+wraps already written, and the column was left in place rather than dropped from
+a migration that was about to be run. It is not the source of truth for KDF
+parameters and must not be treated as one.
+
 The passphrase and the derived keys live in module-scoped variables only. Never
-`localStorage`, never `sessionStorage`, gone on reload. The AES key is created
-with `extractable: false`.
+`localStorage`, never `sessionStorage`, gone on reload.
+
+*Corrected 2026-09-09 (as built):* the DEK is created with
+**`extractable: true`**, in both `vaultCreate` and `vaultUnlock`. This is not an
+oversight and `false` is not achievable here: WebCrypto's `wrapKey` throws
+`InvalidAccessError` on a non-extractable key, and wrapping the DEK under each
+holder's passphrase-derived key is the entire mechanism — setup, unlock,
+rotation, add-holder and remove-holder all re-wrap it. A non-extractable DEK
+would mean a vault that can never gain a second holder and whose passphrase can
+never be rotated.
+
+**The tradeoff, stated rather than hidden.** `extractable: true` widens the blast
+radius of a successful XSS on this page from "whatever the session can currently
+see" to "the long-lived data key itself". An attacker who runs script in an
+unlocked tab can call `crypto.subtle.exportKey` on the DEK and exfiltrate raw key
+bytes that decrypt **every** profile's `sec`, past and future, and keep working
+after the tab closes, after a reload, and after the passphrase is rotated —
+rotation only re-wraps the DEK, it does not replace it. `extractable: false`
+would have limited the same attacker to decrypting whatever they could reach
+while the tab stayed open. That is a real reduction and we are not getting it.
+
+What makes the tradeoff acceptable rather than merely necessary: the DEK is only
+ever extractable *material* while the vault is unlocked (it exists in no form at
+all otherwise — it is unwrapped into a module-scoped variable and dropped by
+`vaultLock()` and by every reload), the page is a static single file with no
+user-generated HTML rendered as markup, and an attacker with script execution in
+an unlocked tab could in any case read the decrypted account numbers straight out
+of the form inputs. The delta is persistence and reach, not access. Recovery if
+the DEK is ever believed compromised is a genuine re-encryption of every profile
+under a fresh DEK, not a passphrase rotation — that distinction is the reason
+this paragraph exists.
 
 ### 5.3 Why envelope encryption (the flaw it fixes)
 

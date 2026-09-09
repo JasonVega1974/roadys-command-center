@@ -668,6 +668,15 @@ git commit -m "feat(travel-planner): encrypted account-number fields on the prof
 - Consumes: `vaultAddHolder`, `vaultRemoveHolder`, `vaultIsUnlocked`, `VAULT_MIN_PASSPHRASE` (Task 2); `tpVaultRow`, `tpVaultSaveWraps`, `tpVaultRenderBar` (Task 3).
 - Produces: `async tpVaultRotate()`, `async tpVaultAddHolder()`, `async tpVaultRemoveHolder()`.
 
+> **Superseded 2026-09-09 (Task 5).** `tpVaultSaveWraps()` no longer exists —
+> see the note under Task 3's Produces line. All three actions below consume
+> `tpVaultMutateWraps(mutate)` instead, which reads the row, computes the new
+> wraps from *that* snapshot and writes with
+> `.eq('updated_at', seen).select()`. An empty returned array means another
+> holder changed access first; the write is abandoned and reported, never
+> retried. The unconditional upsert shown here would silently drop that
+> holder's wrap, and there is no escrow.
+
 - [ ] **Step 1: Add a manage button** to `#tpVaultBar`, shown only when unlocked:
 
 ```html
@@ -679,6 +688,10 @@ Show it alongside `#tpVaultLockBtn` in the unlocked branch of `tpVaultRenderBar(
 - [ ] **Step 2: Add the three actions**
 
 ```js
+// SUPERSEDED 2026-09-09 by Task 5 — every `tpVaultSaveWraps(wraps)` below was
+// replaced by a `tpVaultMutateWraps(...)` call with a version predicate, and
+// the toasts were rewritten to stop claiming "nothing changed" without first
+// confirming it. Kept here only to show what the plan originally called for.
 async function tpVaultRotate(){
   if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
   const p1=prompt(`New passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).`);
@@ -686,6 +699,7 @@ async function tpVaultRotate(){
   if(String(p1).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
   if(prompt('Type it again to confirm.')!==p1){ toast('Those did not match — nothing was changed'); return; }
   const wraps = await vaultAddHolder('passphrase', p1, (tpVaultRow||{}).wraps);
+  // SUPERSEDED — now tpVaultMutateWraps(seen => vaultAddHolder('passphrase', p1, seen))
   toast(await tpVaultSaveWraps(wraps)
     ? '🔑 Passphrase rotated — profiles were not re-encrypted, only the key wrap changed'
     : '⚠ Could not save — the old passphrase is still in force');
@@ -699,6 +713,7 @@ async function tpVaultAddHolder(){
   if(p===null) return;
   if(String(p).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
   const wraps = await vaultAddHolder(label, p, (tpVaultRow||{}).wraps);
+  // SUPERSEDED — now tpVaultMutateWraps(seen => vaultAddHolder(label, p, seen))
   toast(await tpVaultSaveWraps(wraps) ? `🔑 ${label} can now unlock the vault` : '⚠ Could not save — nothing changed');
 }
 async function tpVaultRemoveHolder(){
@@ -709,6 +724,7 @@ async function tpVaultRemoveHolder(){
   let wraps;
   try{ wraps = vaultRemoveHolder(label, (tpVaultRow||{}).wraps); }
   catch(e){ toast('⚠ '+e.message, 7000); return; }
+  // SUPERSEDED — now tpVaultMutateWraps(seen => vaultRemoveHolder(label, seen))
   toast(await tpVaultSaveWraps(wraps) ? `🔑 ${label} can no longer unlock the vault` : '⚠ Could not save — nothing changed');
 }
 ```
