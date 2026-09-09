@@ -116,8 +116,8 @@ A third `.viewTab` (`data-view="profiles"`, container `#viewProfiles`) beside
 Route Planner and Site Visit, reusing `svSetView()`. It must be added to the
 print-hide rule at line 170 so it never appears in a printed packet.
 
-Contents: a GS selector (the same six names plus free text), the non-sensitive
-fields above, a Save button, and a "last updated" line. Phase 2 adds a locked
+Contents: a person selector driven by the roster in §4.4 (never free text), the
+non-sensitive fields above, a Save button, and a "last updated" line. Phase 2 adds a locked
 sensitive block below these; Phase 1 leaves that space empty.
 
 ### 4.3 Planner integration
@@ -129,11 +129,58 @@ On `#gsName` change in Route Planner:
    overwrite it — render a one-click chip ("Use Burt's home airport (BOI)")
    instead. Silently replacing an origin would destroy planned work.
 2. **Profile card.** Read-only summary panel: hotel, airline + tier, PreCheck /
-   Global Entry, notes.
+   Global Entry, notes. **Screen-only — it must not appear in the printed trip
+   packet.** `buildPrint()` does not read the profile, and the card's container
+   is added to the print-hide rule at line 170. A packet is handed to third
+   parties at truck stops; it should not carry a person's PreCheck status or
+   travel preferences.
 3. **Hotel bias.** Extend the existing Best Western branch in `findHotels()` to
    flag the selected GS's `hotel_brand` at each overnight stop.
 
-### 4.4 Failure behaviour
+### 4.4 Roster and identity
+
+The roster is **not** the hardcoded six. The people who need travel profiles are
+broader than the official GS titles — nine at time of writing — and only six
+appear anywhere in this codebase (`REGIONS` and `GS_PINS` in
+`gs-command-center.html`). The remaining names are **not** hardcoded anywhere and
+must not be invented here; they are added through the UI.
+
+**Source of truth:** the distinct `gs_name` values in `gs_travel_profiles`.
+
+**Bootstrap.** That table is empty on day one, so the roster is the union of:
+
+1. distinct `gs_name` from the cloud table (authoritative once populated),
+2. the six names currently in `#gsName`, as a starting convenience only,
+3. any GS names found in local `gsp2:trip:<gs>:…` keys, so an existing planner
+   user never loses their own name from the list.
+
+Entries from 2 and 3 are display-only until a profile is saved for them.
+
+**Adding a person is an explicit action, never free text.** The `__other`
+free-text path is removed. In its place, a `+ Add person…` item opens a small
+confirm step that:
+
+- trims and collapses whitespace, and rejects an empty or 1-character name;
+- compares case-insensitively and ignoring punctuation against the existing
+  roster, and on a near-match offers the existing entry instead of creating a
+  second row ("Did you mean **Steph Leslie**?");
+- only then creates the profile row.
+
+This closes the orphan-row hole: a typo can no longer silently create
+`gs_travel_profiles` rows or divergent trip keys.
+
+**Storage and matching.** `gs_name` stores the canonical display name with its
+original casing; all comparison and de-duplication is case-insensitive. Existing
+trip keys already lowercase the name (`tripKey()`), so this stays compatible.
+
+**Offline safety — this is a regression risk, not a nicety.** `#gsName` also
+determines trip ownership, and trips are local. If the roster were purely
+cloud-derived and Supabase were unreachable, the dropdown could render empty and
+block trip saving, which works offline today. The dropdown therefore **must never
+be empty**: on any cloud failure it falls back to sources 2 and 3 above. A
+profile failure must not cost a user the ability to save a trip.
+
+### 4.5 Failure behaviour
 
 Every cloud call falls back to a `gsp2:profile:<gs>` localStorage mirror, written
 on each successful fetch. If Supabase is unreachable, the CDN is blocked, or RLS
@@ -141,7 +188,7 @@ rejects the call, the planner degrades to exactly today's behaviour — an empty
 profile and no prefill. **Route planning must never be blocked by a profile
 failure.** This mirrors the fallback discipline in `gs-command-center.html`.
 
-### 4.5 Phase 1 testing
+### 4.6 Phase 1 testing
 
 - Save → reload → values persist (cloud), and a second browser sees them.
 - With Supabase blocked, the planner still builds a route; the profile card is
@@ -151,6 +198,14 @@ failure.** This mirrors the fallback discipline in `gs-command-center.html`.
 - Hotel bias flags the configured brand at an overnight stop.
 - **Anon read/write verified against real RLS + grants**, not just locally — the
   403 trap documented in CLAUDE.md is the specific failure this catches.
+- Roster derives from cloud `gs_name` values once populated, and a newly added
+  person appears without a code change.
+- **With Supabase blocked, the GS dropdown is still populated and a trip still
+  saves.** This is the regression guard for §4.4.
+- Adding a near-duplicate name ("steph leslie") offers the existing entry rather
+  than creating a second row.
+- The profile card is absent from the printed packet (print preview / `buildPrint`
+  output contains no profile fields).
 
 ---
 
@@ -294,14 +349,16 @@ during the 2026-09-08 pin investigation.
    later.
 3. **Single-editor model.** Only the master maintains profiles, so a stale
    profile is invisible to the GS it describes.
-4. **Free-text GS names.** The `__other` path allows arbitrary names, so a typo
-   creates an orphan profile row. The editor should offer existing rows for
-   selection rather than only free text.
+4. **Roster bootstrap.** Three of the nine people are not recorded anywhere in
+   this codebase and must be entered through the UI before they can be selected.
+   No code change is needed, but the feature is not fully usable until the master
+   adds them. (The `__other` free-text hole itself is closed by §4.4.)
 
 ---
 
-## 8. Open questions for review
+## 8. Resolved during review (2026-09-08)
 
-- Should the profile card print into the trip packet, or stay screen-only?
-- Is the six-name hardcoded roster still correct, or should the editor read the
-  distinct `gs_name` values already in the cloud?
+- **Profile card printing** — screen-only; excluded from the trip packet. See §4.3.
+- **Roster** — derived from distinct cloud `gs_name` values, not the hardcoded
+  six; the real list is broader than the official GS titles. Free-text `__other`
+  is replaced by an explicit, validated add action. See §4.4.
