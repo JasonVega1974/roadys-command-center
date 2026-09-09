@@ -768,9 +768,10 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
   <div class="card">
     <h2>Travel Profiles</h2>
     <p class="small">Preferences used when planning a trip for someone.
-      <b>This is shared, not private storage.</b> Do not enter loyalty account
-      numbers, Known Traveler / PreCheck numbers, or passport or card numbers —
-      names and preferences only.</p>
+      <b>The fields below are shared and stored unencrypted</b> — names and
+      preferences only. Account numbers belong in the encrypted block at the
+      bottom of this card, which is readable only while the vault is unlocked.
+      Passport and card numbers do not belong here at all.</p>
   </div>
 
   <div id="tpVaultBar" class="card" style="margin-bottom:10px">
@@ -794,6 +795,18 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <label class="f"><input type="checkbox" id="tp_has_globalentry"> Global Entry</label>
     <label class="f">Notes</label>
     <textarea id="tp_notes" rows="3" placeholder="Seat preference, dietary needs, scheduling notes"></textarea>
+    <div id="tpSecBox" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+      <label class="f">Account numbers <span class="small">(encrypted — only readable with the vault unlocked)</span></label>
+      <div id="tpSecLocked" class="small">🔒 Unlock the vault to view or edit account numbers.</div>
+      <div id="tpSecFields" style="display:none">
+        <div class="grid2">
+          <div><label class="f">Known Traveler / PreCheck number</label><input id="tp_sec_ktn" autocomplete="off"></div>
+          <div><label class="f">Global Entry number</label><input id="tp_sec_ge" autocomplete="off"></div>
+        </div>
+        <label class="f">Loyalty accounts — one per line, as <code>Program: number</code></label>
+        <textarea id="tp_sec_loyalty" rows="3" autocomplete="off" placeholder="Delta SkyMiles: 1234567890"></textarea>
+      </div>
+    </div>
     <button class="hbtn green" id="tpSave" type="button">Save profile</button>
     <span class="small" id="tpStamp"></span>
   </div>
@@ -1230,6 +1243,97 @@ function tpMirrorNames(){
   }
   return out;
 }
+// ── Sensitive (vault-encrypted) profile fields — Phase 2, Task 4 ──
+// TP_FIELDS live in gs_travel_profiles as readable columns. These three live
+// only inside that row's `sec` jsonb, as an AES-GCM envelope the vault DEK
+// opens. Plaintext exists in exactly two places and nowhere else: these
+// inputs, and the object handed to vaultEncrypt(). It is never mirrored to
+// localStorage, never written into a trip, and never reaches #printRoot.
+//
+// AAD — tpKey(gs_name), the same normalised identity key the localStorage
+// mirrors and the roster de-duplication already use. gs_travel_profiles is
+// writable under `using (true)`, so without a per-row binding anyone holding
+// the public anon key could lift person A's `sec` blob onto person B's row
+// and it would decrypt cleanly, silently attributing A's account numbers to
+// B. The binding therefore has to come from the row's identity and nothing
+// else: the display name's casing varies (tpKey normalises that away, so
+// "Jane Doe" and "jane doe" stay one person, as everywhere else in this
+// file), and a per-session or random value would not survive a reload.
+const TP_SEC_IDS = ['tp_sec_ktn','tp_sec_ge','tp_sec_loyalty'];
+const tpSecAAD   = name => tpKey(name);
+
+// Whether the sensitive inputs currently ARE the truth for the selected
+// person. THE SAVE PATH DEPENDS ON THIS.
+//
+// vaultDecrypt() returns null for three different situations — the vault is
+// locked, the ciphertext is corrupt, the AAD does not match — and the caller
+// cannot tell them apart from the return value. Reading any of them as "this
+// person has no secrets" and then writing an empty or absent `sec` back would
+// permanently destroy real account numbers. So the form may only ever
+// overwrite `sec` when it was actually populated by a decrypt that SUCCEEDED,
+// or when the row provably carried no ciphertext at all and the vault was
+// open while we looked. tpSecFor pins that verdict to one person, so person
+// A's verdict can never authorise a write to person B.
+let tpSecReady = false;
+let tpSecFor   = '';
+// tpSecIntoForm() is fired without await (a decrypt must never block the
+// plain fields), so two loads can be in flight at once. Only the newest may
+// touch the DOM, or a slow decrypt of person A lands in person B's inputs.
+let tpSecSeq   = 0;
+
+function tpSecFromForm(){
+  const loyalty = $('tp_sec_loyalty').value.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+    const i=line.indexOf(':');
+    return i<0 ? {program:'', number:line} : {program:line.slice(0,i).trim(), number:line.slice(i+1).trim()};
+  });
+  return { ktn:$('tp_sec_ktn').value.trim(), globalEntry:$('tp_sec_ge').value.trim(), loyalty };
+}
+function tpSecClearForm(){ TP_SEC_IDS.forEach(id=>{ const el=$(id); if(el) el.value=''; }); }
+
+// Wipe the inputs, hide them, and record that the form is NOT authoritative.
+// Used for a locked vault and for an unreadable ciphertext alike: in both
+// cases the stored `sec` has to be left exactly as it is. Clearing the DOM is
+// the point — a locked tab must not leave plaintext sitting in an input.
+function tpSecLockForm(msg){
+  const locked=$('tpSecLocked'), fields=$('tpSecFields');
+  tpSecReady=false; tpSecFor='';
+  tpSecClearForm();
+  if(locked){ locked.innerHTML = msg || '🔒 Unlock the vault to view or edit account numbers.'; locked.style.display=''; }
+  if(fields) fields.style.display='none';
+}
+
+async function tpSecIntoForm(profile, name){
+  const seq = ++tpSecSeq;
+  const who = tpNorm((name!==undefined && name!==null && name!=='') ? name : (profile && profile.gs_name) || '');
+  const aad = tpSecAAD(who);
+  const locked=$('tpSecLocked'), fields=$('tpSecFields');
+  if(!locked || !fields) return;
+  if(!aad){ tpSecLockForm('🔒 Pick a person before entering account numbers.'); return; }
+  if(!vaultIsUnlocked()){ tpSecLockForm(); return; }
+  tpSecReady=false; tpSecFor='';
+  tpSecClearForm();
+  locked.style.display='none'; fields.style.display='';
+  const env = profile && profile.sec;
+  if(!env || !env.ct){
+    // No ciphertext on this row at all, observed with the vault open — an
+    // empty form genuinely is this person's state, so a save may write `sec`.
+    tpSecReady=true; tpSecFor=aad; return;
+  }
+  const s = await vaultDecrypt(env, aad);
+  if(seq!==tpSecSeq) return;                 // a newer load owns the form now
+  if(!s){
+    // Unlocked, and it still would not open: corrupt, or written under a
+    // different identity. That is NOT "no secrets". Refuse to offer inputs
+    // whose save would drop what is stored, and say why.
+    tpSecLockForm('⚠ These account numbers could not be decrypted, so they are left untouched. Do not re-enter them here — get an admin to check this row in gs_travel_profiles first.');
+    return;
+  }
+  $('tp_sec_ktn').value = s.ktn||'';
+  $('tp_sec_ge').value  = s.globalEntry||'';
+  $('tp_sec_loyalty').value = (s.loyalty||[]).map(x=>`${x.program?x.program+': ':''}${x.number}`).join('\n');
+  tpSecReady=true; tpSecFor=aad;
+}
+
 function tpRenderRoster(prev){
   const sel=document.getElementById('tpPerson');
   sel.innerHTML=tpRoster.map(n=>`<option>${esc(n)}</option>`).join('');
@@ -1243,6 +1347,11 @@ function tpRenderRoster(prev){
   // Never overwrite fields the user is mid-edit on — a cloud refresh that
   // lands while someone is typing must not discard their unsaved text.
   if(!tpDirty) tpLoadInto(sel.value);
+  // ...but the sensitive inputs are the one exception. The Lock button calls
+  // tpRenderTab(), and with tpDirty set the tpLoadInto() above is skipped, so
+  // without this a typed account number would stay sitting in the DOM of a
+  // tab that is now locked. Locking always outranks an unsaved edit.
+  else if(!vaultIsUnlocked()) tpSecLockForm();
 }
 async function tpRenderTab(){
   const sel=document.getElementById('tpPerson'), prev=sel.value;
@@ -1282,6 +1391,10 @@ function tpLoadInto(name){
   document.getElementById('tpStamp').textContent =
     p.updated_at ? 'Last updated '+new Date(p.updated_at).toLocaleString() : 'No profile saved yet';
   tpDirty=false; // fields now reflect a known-saved (or known-mirrored) state
+  // Async on purpose: never block the plain fields on a decrypt. `name` is
+  // passed explicitly because `p` falls back to {} for a person with no saved
+  // profile, and the AAD has to come from the selected identity either way.
+  tpSecIntoForm(p, name);
 }
 async function tpSaveFromForm(){
   const name=document.getElementById('tpPerson').value;
@@ -1292,7 +1405,35 @@ async function tpSaveFromForm(){
     row[f] = el.type==='checkbox' ? el.checked : el.value.trim();
   });
   row.home_airport=(row.home_airport||'').toUpperCase();
+
+  // `sec` is touched ONLY when the vault is open AND the sensitive inputs
+  // were actually populated for THIS person from a successful decrypt (or
+  // from a row confirmed to hold no ciphertext). Every other state — vault
+  // locked, decrypt failed, AAD mismatch, a load still in flight — leaves
+  // `sec` out of the payload entirely, and PostgREST then preserves the
+  // stored ciphertext untouched (verified against the live table). That is
+  // what stops editing someone's hotel preference without the passphrase
+  // from destroying their account numbers.
+  const aad = tpSecAAD(name);
+  if(vaultIsUnlocked() && tpSecReady && aad && tpSecFor===aad){
+    const s = tpSecFromForm();
+    const empty = !s.ktn && !s.globalEntry && !s.loyalty.length;
+    row.sec = empty ? null : await vaultEncrypt(s, aad);
+  }
+  // When `sec` is absent above the cloud keeps its ciphertext — but tpSave()
+  // mirrors the whole row to localStorage, and a mirror written without `sec`
+  // looks like "this person has no secrets" to the next load. Offline, that
+  // mirror is what tpLoadInto() reads, so a later unlocked save would then
+  // null the cloud column out. Carry the ciphertext we already knew about
+  // back into the mirror. Ciphertext in localStorage is fine; the plaintext
+  // never goes near it.
+  const prevSec = (((tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name)) || tpReadMirror(name) || {}).sec) || null;
+
   const ok=await tpSave(row);
+  if(!('sec' in row) && prevSec){
+    const m=tpReadMirror(name);
+    if(m && !m.sec){ m.sec=prevSec; tpWriteMirror(m); }
+  }
   tpDirty=false; // tpSave mirrors locally even on a cloud failure, so the form is in sync either way
   toast(ok?`💾 Saved ${name}'s travel profile`
           :`⚠ Saved on this device only — cloud unavailable`);
@@ -1318,9 +1459,13 @@ function tpAddPerson(){
 }
 // Wired once, during boot, to every tp_* field so tpRenderRoster() can
 // tell an in-progress edit apart from a stale render.
+// TP_SEC_IDS are wired here for the same reason the plain fields are:
+// without it, the async cloud refresh in tpRenderTab() would clobber a
+// half-typed account number exactly as it once clobbered a half-typed
+// hotel note.
 function tpWireDirtyTracking(){
-  TP_FIELDS.forEach(f=>{
-    const el=document.getElementById('tp_'+f);
+  TP_FIELDS.map(f=>'tp_'+f).concat(TP_SEC_IDS).forEach(id=>{
+    const el=document.getElementById(id);
     if(el) el.addEventListener('input', ()=>{ tpDirty=true; });
   });
 }
