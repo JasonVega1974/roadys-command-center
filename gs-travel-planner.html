@@ -768,9 +768,20 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
   <div class="card">
     <h2>Travel Profiles</h2>
     <p class="small">Preferences used when planning a trip for someone.
-      <b>This is shared, not private storage.</b> Do not enter loyalty account
-      numbers, Known Traveler / PreCheck numbers, or passport or card numbers —
-      names and preferences only.</p>
+      <b>The fields below are shared and stored unencrypted</b> — names and
+      preferences only. Account numbers belong in the encrypted block at the
+      bottom of this card, which is readable only while the vault is unlocked.
+      Passport and card numbers do not belong here at all.</p>
+  </div>
+
+  <div id="tpVaultBar" class="card" style="margin-bottom:10px">
+    <span id="tpVaultState" class="small">Checking vault…</span>
+    <button class="hbtn" id="tpVaultBtn" type="button" style="display:none"></button>
+    <button class="hbtn" id="tpVaultManageBtn" type="button" style="display:none">Manage access</button>
+    <button class="hbtn" id="tpVaultLockBtn" type="button" style="display:none">🔒 Lock</button>
+  </div>
+
+  <div class="card">
     <label class="f">Person</label>
     <select id="tpPerson"></select>
     <button class="hbtn" id="tpAdd" type="button">+ Add person…</button>
@@ -785,6 +796,18 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     <label class="f"><input type="checkbox" id="tp_has_globalentry"> Global Entry</label>
     <label class="f">Notes</label>
     <textarea id="tp_notes" rows="3" placeholder="Seat preference, dietary needs, scheduling notes"></textarea>
+    <div id="tpSecBox" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+      <label class="f">Account numbers <span class="small">(encrypted — only readable with the vault unlocked)</span></label>
+      <div id="tpSecLocked" class="small">🔒 Unlock the vault to view or edit account numbers.</div>
+      <div id="tpSecFields" style="display:none">
+        <div class="grid2">
+          <div><label class="f">Known Traveler / PreCheck number</label><input id="tp_sec_ktn" autocomplete="off"></div>
+          <div><label class="f">Global Entry number</label><input id="tp_sec_ge" autocomplete="off"></div>
+        </div>
+        <label class="f">Loyalty accounts — one per line, as <code>Program: number</code></label>
+        <textarea id="tp_sec_loyalty" rows="3" autocomplete="off" placeholder="Delta SkyMiles: 1234567890"></textarea>
+      </div>
+    </div>
     <button class="hbtn green" id="tpSave" type="button">Save profile</button>
     <span class="small" id="tpStamp"></span>
   </div>
@@ -954,8 +977,273 @@ function tpNearMatch(name,roster){
 }
 // ── /TRAVEL_PROFILES ─────────────────────────────────────────────
 
+// ── VAULT_CRYPTO ──────────────────────────────────────────────────
+// Envelope encryption for travel-profile secrets. DOM-free and page-state-free
+// on purpose: this block can be copied into a scratch harness and driven
+// directly, which is the only unit-testing this repo has.
+//
+// A random AES-GCM data key (DEK) encrypts every profile's secrets. The DEK is
+// wrapped once per holder under an AES-KW key derived from that holder's
+// passphrase, plus once under a printed recovery code. Rotating a passphrase
+// re-wraps one entry; it never re-encrypts a profile.
+//
+// 600k PBKDF2 iterations, not the 310k first specced: measured 310k=44ms and
+// 600k=86ms in this app, so the original cost assumption was an order of
+// magnitude out, and iteration count is the only defence against offline
+// brute force of ciphertext that is public by construction.
+//
+// Each wrap records the iteration count it was built with (`iter`). PBKDF2 with
+// a different count derives a DIFFERENT key from the same passphrase, so a
+// hardcoded constant would lock everyone out the day it is raised. Unwrapping
+// uses the count stored on the wrap (falling back to the current constant for
+// wraps written before this field existed); wrapping always stamps the current
+// constant. vaultAddHolder therefore upgrades one holder at a time, which makes
+// raising VAULT_KDF_ITER an incremental migration instead of a flag day.
+//
+// That stored count is attacker-controlled — the vault row is world-writable
+// under `using (true)`, so anyone holding the public anon key can plant
+// `iter: 1e12` and wedge a legitimate holder's tab forever. It is clamped to
+// [VAULT_KDF_ITER_MIN, VAULT_KDF_ITER_MAX] before it can reach PBKDF2: the
+// ceiling bounds that denial of service, and the floor stops a hostile *low*
+// value from making a future unwrap cheap to grind offline.
+const VAULT_KDF_ITER     = 600000;
+// ⚠ THESE TWO BOUNDS ARE PART OF THE KEY DERIVATION, NOT MERE VALIDATION.
+// Every stored `iter` passes through them before it reaches PBKDF2, so they
+// may only ever be WIDENED — lower the floor, raise the ceiling. NARROWING
+// either one (a floor above, or a ceiling below, an already-stored count)
+// silently derives a different KEK from the same passphrase and locks every
+// existing holder out of their own secrets, permanently: there is no escrow.
+// Raising VAULT_KDF_ITER above the ceiling is not a lockout — wrap and unwrap
+// both clamp identically — but it is a silent no-op that buys no extra work
+// factor, so raise the ceiling in the same edit.
+const VAULT_KDF_ITER_MIN = 100000;
+const VAULT_KDF_ITER_MAX = 2000000;
+const VAULT_KDF_HASH     = 'SHA-256';
+const VAULT_MIN_PASSPHRASE = 12;
+// AES-KW of a 256-bit DEK is always 32 bytes + an 8-byte integrity check.
+const VAULT_WRAPPED_BYTES = 40;
+// `wraps` is as attacker-writable as `iter` is, and the unlock loop derives one
+// KEK per entry. Without a cap, 5000 planted wraps rebuild the very tab-lock the
+// per-wrap clamp exists to prevent. 32 is far beyond any real holder count.
+const VAULT_MAX_WRAPS = 32;
+
+let _vaultDEK = null;   // CryptoKey, memory only — never persisted, gone on reload
+
+const vB64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const vBuf = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+// Raised by vaultUnlock when the vault DATA is unusable, as opposed to the
+// secret being wrong. Task 3 keys its "do not re-create the vault" warning off
+// this. `.faults` is [{label, name, message}] — one entry per unusable wrap.
+class VaultDataError extends Error {
+  constructor(message, faults){ super(message); this.name = 'VaultDataError'; this.faults = faults || []; }
+}
+
+function vaultAvailable(){ return !!(window.crypto && window.crypto.subtle && window.isSecureContext) }
+function vaultIsUnlocked(){ return !!_vaultDEK }
+function vaultLock(){ _vaultDEK = null }
+
+// Crockford-ish alphabet: no I, O, 0 or 1, so a printed code cannot be misread.
+function vaultNewRecoveryCode(){
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const b=crypto.getRandomValues(new Uint8Array(20));
+  return [...b].map(x=>A[x%32]).join('').replace(/(.{5})(?=.)/g,'$1-');
+}
+
+// Every return path is clamped, including the fallback — a bare VAULT_KDF_ITER
+// here would escape the bounds the moment the constant outgrows the ceiling.
+function _vaultClampIter(iter){
+  const clamp = v => Math.min(Math.max(v, VAULT_KDF_ITER_MIN), VAULT_KDF_ITER_MAX);
+  const n = Math.floor(Number(iter));
+  if(!Number.isFinite(n) || n <= 0) return clamp(VAULT_KDF_ITER);
+  return clamp(n);
+}
+
+// Structural validation, run BEFORE any crypto. Everything rejected here is
+// corrupt data, never a wrong passphrase, so it must not be swallowed as
+// "try the next wrap" — see the vaultUnlock contract.
+function _vaultDecodeWrap(w){
+  if(!w || typeof w !== 'object') throw new VaultDataError('wrap is not an object');
+  const label = typeof w.label === 'string' && w.label ? w.label : '(unlabelled)';
+  if(typeof w.salt !== 'string' || !w.salt)       throw new VaultDataError('wrap "'+label+'" has no salt');
+  if(typeof w.wrapped !== 'string' || !w.wrapped) throw new VaultDataError('wrap "'+label+'" has no wrapped key');
+  let salt, wrapped;
+  try{ salt = vBuf(w.salt); }
+  catch(e){ throw new VaultDataError('wrap "'+label+'" has an undecodable salt'); }
+  try{ wrapped = vBuf(w.wrapped); }
+  catch(e){ throw new VaultDataError('wrap "'+label+'" has undecodable wrapped-key base64'); }
+  if(!salt.length) throw new VaultDataError('wrap "'+label+'" has an empty salt');
+  // The wrapped length is fixed, so check it here. Left to AES-KW, a truncated
+  // wrap reports the same OperationError a wrong secret does, and corruption
+  // would masquerade as a forgotten passphrase.
+  if(wrapped.length !== VAULT_WRAPPED_BYTES)
+    throw new VaultDataError('wrap "'+label+'" is '+wrapped.length+' bytes, expected '+VAULT_WRAPPED_BYTES+' — truncated or corrupt');
+  let iter = VAULT_KDF_ITER;   // absent means "written before iter was recorded"
+  if(w.iter !== undefined && w.iter !== null){
+    const n = Number(w.iter);
+    if(!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n)
+      throw new VaultDataError('wrap "'+label+'" has a non-integer iteration count');
+    iter = n;
+  }
+  return { label, saltB64: w.salt, wrapped, storedIter: iter, iter: _vaultClampIter(iter) };
+}
+
+async function _vaultKEK(secret, saltB64, iter){
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:vBuf(saltB64), iterations:_vaultClampIter(iter || VAULT_KDF_ITER), hash:VAULT_KDF_HASH},
+    km, {name:'AES-KW', length:256}, false, ['wrapKey','unwrapKey']);
+}
+
+// The DEK is created and unwrapped as extractable because rotation and
+// add-holder must re-wrap it. That is not a weakening: any script that could
+// read it already holds it in memory.
+async function _vaultWrap(dek, secret){
+  const salt = vB64(crypto.getRandomValues(new Uint8Array(16)));
+  // Stamp what was ACTUALLY used to derive, not the raw constant: _vaultKEK
+  // clamps, so recording the unclamped value would let the metadata drift out
+  // of step with the key the moment VAULT_KDF_ITER left the bounds.
+  const iter = _vaultClampIter(VAULT_KDF_ITER);
+  const kek  = await _vaultKEK(secret, salt, iter);
+  return { salt, iter, wrapped: vB64(await crypto.subtle.wrapKey('raw', dek, kek, 'AES-KW')) };
+}
+
+async function vaultCreate(passphrase){
+  if(String(passphrase||'').length < VAULT_MIN_PASSPHRASE) throw new Error('passphrase too short');
+  const dek = await crypto.subtle.generateKey({name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+  const recoveryCode = vaultNewRecoveryCode();
+  const wraps = [
+    Object.assign({label:'passphrase'},    await _vaultWrap(dek, passphrase)),
+    Object.assign({label:'recovery-code'}, await _vaultWrap(dek, recoveryCode))
+  ];
+  _vaultDEK = dek;
+  return { wraps, recoveryCode };
+}
+
+// Tries every wrap. AES-KW is authenticated, so a wrong secret throws rather
+// than yielding a bogus key — which is why no separate verifier is stored.
+//
+// CONTRACT — three outcomes, and Task 3 depends on all three staying distinct:
+//   returns <label>       one wrap opened; _vaultDEK is now that vault's DEK.
+//   returns null          at least one structurally-valid wrap REJECTED this
+//                         secret. This, and only this, means "wrong passphrase".
+//   throws VaultDataError nothing ever got as far as rejecting: every candidate
+//                         was corrupt/undecodable, WebCrypto itself failed,
+//                         there were no wraps at all, or the list ran past
+//                         VAULT_MAX_WRAPS. `.faults` says which.
+// The split exists because there is no escrow. A data fault that reads as a
+// forgotten passphrase invites the holder to "start over", which permanently
+// orphans every existing ciphertext. Task 3 must say "this vault's data looks
+// corrupt — do NOT re-create it" on the throw, never "wrong passphrase".
+//
+// A failed attempt also leaves an already-unlocked session intact: one mistyped
+// passphrase at a re-auth prompt must not silently end the session.
+async function vaultUnlock(secret, wraps){
+  const prior  = _vaultDEK;
+  const all    = Array.isArray(wraps) ? wraps : [];
+  const list   = all.slice(0, VAULT_MAX_WRAPS);
+  const truncated = all.length > VAULT_MAX_WRAPS;
+  const faults = [];
+  let rejected = false;
+  // Surfaced as a fault rather than silently ignored: an over-long list is
+  // evidence the row was tampered with, and the holder needs to see that.
+  if(truncated) faults.push({label:null, name:'VaultDataError',
+    message:'wrap list holds '+all.length+' entries; only the first '+VAULT_MAX_WRAPS+' were tried — the vault row looks tampered with'});
+  for(const w of list){
+    let d;
+    try{ d = _vaultDecodeWrap(w); }
+    catch(e){ faults.push({label:(w && w.label) || null, name:e.name, message:e.message}); continue; }
+    try{
+      const kek = await _vaultKEK(secret, d.saltB64, d.iter);
+      _vaultDEK = await crypto.subtle.unwrapKey('raw', d.wrapped, kek, 'AES-KW',
+        {name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+      return d.label;
+    }catch(e){
+      // OperationError is WebCrypto's "the authenticated unwrap did not verify"
+      // — this secret is simply not this wrap's secret. Any other class
+      // (WebCrypto absent, DataError, TypeError) is a fault, not a rejection.
+      if(e && e.name === 'OperationError') rejected = true;
+      else faults.push({label:d.label, name:(e && e.name) || 'Error', message:(e && e.message) || String(e)});
+    }
+  }
+  _vaultDEK = prior;   // never downgrade an already-unlocked session
+  // Truncation outranks a rejection. An untried wrap might have opened this
+  // vault, so reporting "wrong passphrase" from a partial sweep would be the
+  // same lie the fault/rejection split exists to prevent.
+  if(rejected && !truncated) return null;
+  throw new VaultDataError(
+    truncated     ? 'wrap list exceeds the '+VAULT_MAX_WRAPS+'-entry cap — refusing to call this a wrong passphrase after a partial attempt'
+    : list.length ? 'no usable wrap: every entry was corrupt or unreadable'
+                  : 'no wraps to try',
+    faults);
+}
+
+async function vaultAddHolder(label, secret, wraps){
+  if(!_vaultDEK) throw new Error('vault is locked');
+  if(String(secret||'').length < VAULT_MIN_PASSPHRASE) throw new Error('passphrase too short');
+  const next = (wraps||[]).filter(w => w.label !== label);
+  next.push(Object.assign({label}, await _vaultWrap(_vaultDEK, secret)));
+  return next;
+}
+
+function vaultRemoveHolder(label, wraps){
+  const next = (wraps||[]).filter(w => w.label !== label);
+  if(!next.length) throw new Error('refusing to remove the last wrap — the data would be unrecoverable');
+  return next;
+}
+
+// `aad` is REQUIRED on both encrypt and decrypt, deliberately with no fallback.
+// It binds a ciphertext to the record it belongs to. The vault tables are
+// writable under `using (true)`, so without it an attacker can lift profile A's
+// blob onto profile B's row and it decrypts cleanly, silently attributing one
+// person's account numbers to another. Task 4 passes the profile's identity
+// key. Nothing is deployed yet, so there is no legacy no-AAD path to downgrade
+// to — a missing aad is a programming error and throws, checked before the
+// lock state so it cannot hide behind a locked vault.
+function _vaultAAD(aad){
+  if(typeof aad !== 'string' || !aad)
+    throw new Error('aad is required — pass the record identity this ciphertext belongs to');
+  return new TextEncoder().encode(aad);
+}
+
+async function vaultEncrypt(obj, aad){
+  const additionalData = _vaultAAD(aad);
+  if(!_vaultDEK) throw new Error('vault is locked');
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv, additionalData}, _vaultDEK,
+    new TextEncoder().encode(JSON.stringify(obj)));
+  return { v:1, iv:vB64(iv), ct:vB64(ct) };
+}
+
+async function vaultDecrypt(env, aad){
+  const additionalData = _vaultAAD(aad);
+  if(!_vaultDEK || !env || !env.ct) return null;
+  try{
+    const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:vBuf(env.iv), additionalData}, _vaultDEK, vBuf(env.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }catch(e){ console.warn('vaultDecrypt: '+e.message); return null; }
+}
+// ── /VAULT_CRYPTO ─────────────────────────────────────────────────
+
 // ── TRAVEL_PROFILES_TAB ──────────────────────────────────────────
 let tpRoster=[], tpProfiles=[];
+// ── Provenance of whatever is CURRENTLY sitting in tpProfiles ──
+// gs_travel_vault got tpVaultLoadState so "couldn't reach it" could never be
+// read as "it isn't there". gs_travel_profiles needs exactly the same
+// distinction, and for a much worse reason: `sec` holds the only copy of
+// people's account numbers, and a save that mistakes an absent object for an
+// absent ciphertext writes `sec = null` over it. There is no escrow and the
+// browser cannot even delete the row to prove it happened.
+//   'pending' — nothing has been loaded yet this session.
+//   'mirror'  — tpProfiles holds localStorage mirrors only. A mirror is
+//               written by tpSave() BEFORE the cloud call and is never
+//               refreshed by anyone else's save, so it may predate a cloud
+//               write and it may be missing `sec` entirely. NOT authoritative.
+//   'cloud'   — tpProfiles is the array tpFetchAll() actually returned. Only
+//               in this state may an empty `sec` be believed.
+// A failed tpFetchAll() leaves this at 'mirror' (or 'pending'), which is the
+// whole point: the fallback is never mistaken for an answer.
+let tpProfilesSource='pending';
 // Set by the tp_* field listeners whenever the user edits the form, and
 // cleared by tpLoadInto (fields now match a known-saved state) and by a
 // completed save. Used to keep an in-flight cloud refresh from silently
@@ -973,6 +1261,136 @@ function tpMirrorNames(){
   }
   return out;
 }
+// ── Sensitive (vault-encrypted) profile fields — Phase 2, Task 4 ──
+// TP_FIELDS live in gs_travel_profiles as readable columns. These three live
+// only inside that row's `sec` jsonb, as an AES-GCM envelope the vault DEK
+// opens. Plaintext exists in exactly two places and nowhere else: these
+// inputs, and the object handed to vaultEncrypt(). It is never mirrored to
+// localStorage, never written into a trip, and never reaches #printRoot.
+//
+// AAD — tpKey(gs_name), the same normalised identity key the localStorage
+// mirrors and the roster de-duplication already use. gs_travel_profiles is
+// writable under `using (true)`, so without a per-row binding anyone holding
+// the public anon key could lift person A's `sec` blob onto person B's row
+// and it would decrypt cleanly, silently attributing A's account numbers to
+// B. The binding therefore has to come from the row's identity and nothing
+// else: the display name's casing varies (tpKey normalises that away, so
+// "Jane Doe" and "jane doe" stay one person, as everywhere else in this
+// file), and a per-session or random value would not survive a reload.
+const TP_SEC_IDS = ['tp_sec_ktn','tp_sec_ge','tp_sec_loyalty'];
+const tpSecAAD   = name => tpKey(name);
+
+// Whether the sensitive inputs currently ARE the truth for the selected
+// person. THE SAVE PATH DEPENDS ON THIS.
+//
+// vaultDecrypt() returns null for three different situations — the vault is
+// locked, the ciphertext is corrupt, the AAD does not match — and the caller
+// cannot tell them apart from the return value. Reading any of them as "this
+// person has no secrets" and then writing an empty or absent `sec` back would
+// permanently destroy real account numbers. So the form may only ever
+// overwrite `sec` when it was actually populated by a decrypt that SUCCEEDED,
+// or when the row provably carried no ciphertext at all and the vault was
+// open while we looked. tpSecFor pins that verdict to one person, so person
+// A's verdict can never authorise a write to person B.
+let tpSecReady = false;
+let tpSecFor   = '';
+// tpSecReady alone is not enough, because it answers "may the inputs be
+// written back?" and the two directions of that write carry wildly different
+// risk. Writing CIPHERTEXT can only ever add or replace numbers the user just
+// typed. Writing `null` DESTROYS the only copy of numbers that may still be on
+// the server. So the destructive direction gets its own, strictly narrower
+// permission:
+//   tpSecMayNull — true only when we have positively OBSERVED this person's
+//   row in a successful cloud read. "The row wasn't in the set we got back" is
+//   good enough to create a row (there is nothing there to lose) but NOT good
+//   enough to null a column, because a truncated or filtered read looks exactly
+//   the same from here.
+let tpSecMayNull = false;
+// Did the successful decrypt actually yield something? Drives the FIX 2
+// confirmation: clearing a form that was populated from real ciphertext is a
+// permanent delete and has to be said out loud. Clearing a form that was empty
+// to begin with is not, and must not nag.
+let tpSecHadValues = false;
+// tpSecIntoForm() is fired without await (a decrypt must never block the
+// plain fields), so two loads can be in flight at once. Only the newest may
+// touch the DOM, or a slow decrypt of person A lands in person B's inputs.
+let tpSecSeq   = 0;
+
+function tpSecFromForm(){
+  const loyalty = $('tp_sec_loyalty').value.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+    const i=line.indexOf(':');
+    return i<0 ? {program:'', number:line} : {program:line.slice(0,i).trim(), number:line.slice(i+1).trim()};
+  });
+  return { ktn:$('tp_sec_ktn').value.trim(), globalEntry:$('tp_sec_ge').value.trim(), loyalty };
+}
+function tpSecClearForm(){ TP_SEC_IDS.forEach(id=>{ const el=$(id); if(el) el.value=''; }); }
+
+// Wipe the inputs, hide them, and record that the form is NOT authoritative.
+// Used for a locked vault and for an unreadable ciphertext alike: in both
+// cases the stored `sec` has to be left exactly as it is. Clearing the DOM is
+// the point — a locked tab must not leave plaintext sitting in an input.
+function tpSecLockForm(msg){
+  const locked=$('tpSecLocked'), fields=$('tpSecFields');
+  tpSecReady=false; tpSecFor=''; tpSecMayNull=false; tpSecHadValues=false;
+  tpSecClearForm();
+  if(locked){ locked.innerHTML = msg || '🔒 Unlock the vault to view or edit account numbers.'; locked.style.display=''; }
+  if(fields) fields.style.display='none';
+}
+
+// `authority` describes how much we actually KNOW about this person's stored
+// ciphertext, and it is supplied by the caller because only the caller knows
+// where `profile` came from:
+//   'row'    — this object is a row from a successful tpFetchAll(). An absent
+//              `sec` on it is a fact.
+//   'norow'  — tpFetchAll() succeeded and this person had no row in it. There
+//              is nothing stored, so a save may CREATE `sec`, but it may not
+//              null a column we never saw.
+//   'unknown'— anything else: a localStorage mirror, the `{}` fallback, or a
+//              cloud read that failed. NEVER treat an absent `sec` here as
+//              "this person has no ciphertext" — that is the exact inference
+//              that nulls a live column.
+async function tpSecIntoForm(profile, name, authority){
+  const seq = ++tpSecSeq;
+  const who = tpNorm((name!==undefined && name!==null && name!=='') ? name : (profile && profile.gs_name) || '');
+  const aad = tpSecAAD(who);
+  const locked=$('tpSecLocked'), fields=$('tpSecFields');
+  if(!locked || !fields) return;
+  if(!aad){ tpSecLockForm('🔒 Pick a person before entering account numbers.'); return; }
+  if(!vaultIsUnlocked()){ tpSecLockForm(); return; }
+  tpSecReady=false; tpSecFor=''; tpSecMayNull=false; tpSecHadValues=false;
+  tpSecClearForm();
+  locked.style.display='none'; fields.style.display='';
+  const env = profile && profile.sec;
+  if(!env || !env.ct){
+    // No ciphertext VISIBLE on this object — which is only meaningful if the
+    // object itself is trustworthy. With 'unknown' provenance the form stays
+    // non-authoritative: `sec` is then omitted from the save payload entirely
+    // and PostgREST preserves whatever is stored.
+    if(authority==='row'){ tpSecReady=true; tpSecMayNull=true; tpSecFor=aad; }
+    else if(authority==='norow'){ tpSecReady=true; tpSecMayNull=false; tpSecFor=aad; }
+    return;
+  }
+  const s = await vaultDecrypt(env, aad);
+  if(seq!==tpSecSeq) return;                 // a newer load owns the form now
+  if(!s){
+    // Unlocked, and it still would not open: corrupt, or written under a
+    // different identity. That is NOT "no secrets". Refuse to offer inputs
+    // whose save would drop what is stored, and say why.
+    tpSecLockForm('⚠ These account numbers could not be decrypted, so they are left untouched. Do not re-enter them here — get an admin to check this row in gs_travel_profiles first.');
+    return;
+  }
+  $('tp_sec_ktn').value = s.ktn||'';
+  $('tp_sec_ge').value  = s.globalEntry||'';
+  $('tp_sec_loyalty').value = (s.loyalty||[]).map(x=>`${x.program?x.program+': ':''}${x.number}`).join('\n');
+  // A decrypt that SUCCEEDED is authority in its own right, whatever the
+  // provenance of the object that carried the envelope: we are holding this
+  // person's plaintext. Overwriting or clearing it is now a decision the user
+  // can actually make, so both directions are permitted — with the clearing
+  // one gated behind the confirmation in tpSaveFromForm().
+  tpSecReady=true; tpSecMayNull=true; tpSecFor=aad;
+  tpSecHadValues = !!(s.ktn || s.globalEntry || (s.loyalty||[]).length);
+}
+
 function tpRenderRoster(prev){
   const sel=document.getElementById('tpPerson');
   sel.innerHTML=tpRoster.map(n=>`<option>${esc(n)}</option>`).join('');
@@ -986,6 +1404,11 @@ function tpRenderRoster(prev){
   // Never overwrite fields the user is mid-edit on — a cloud refresh that
   // lands while someone is typing must not discard their unsaved text.
   if(!tpDirty) tpLoadInto(sel.value);
+  // ...but the sensitive inputs are the one exception. The Lock button calls
+  // tpRenderTab(), and with tpDirty set the tpLoadInto() above is skipped, so
+  // without this a typed account number would stay sitting in the DOM of a
+  // tab that is now locked. Locking always outranks an unsaved edit.
+  else if(!vaultIsUnlocked()) tpSecLockForm();
 }
 async function tpRenderTab(){
   const sel=document.getElementById('tpPerson'), prev=sel.value;
@@ -997,19 +1420,39 @@ async function tpRenderTab(){
   // person just added/saved on this device isn't dropped from the list.
   tpRoster   = tpBuildRoster(tpMirrorNames());
   tpProfiles = tpRoster.map(n=>tpReadMirror(n)).filter(Boolean);
+  tpProfilesSource='mirror';               // mirrors are a fallback, not an answer
   tpRenderRoster(prev);
+
+  // Vault bar: fired here (after the sync render above) but deliberately
+  // never awaited — tpVaultLoad() is its own Supabase round trip that can
+  // take just as long to fail offline as tpFetchAll() does, and the person
+  // list must not wait on it. #tpVaultState keeps showing whatever it
+  // already shows (its static "Checking vault…" default on first render, or
+  // the last known state on a re-render) until this settles on its own.
+  tpVaultLoad().then(tpVaultRenderBar, tpVaultRenderBar);
 
   // (b) Cloud is authoritative when it answers; keep the selection stable.
   const cloud=await tpFetchAll();
   if(cloud){
     const keep=sel.value;
     tpProfiles = cloud;
+    tpProfilesSource='cloud';              // and ONLY here
     tpRoster   = tpBuildRoster(cloud.map(p=>p.gs_name));
     tpRenderRoster(keep);
   }
 }
 function tpLoadInto(name){
-  const p=(tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name)) || tpReadMirror(name) || {};
+  // Split the lookup so the sensitive path can tell WHICH source answered.
+  // The plain fields do not care — a mirror is a fine stand-in for a hotel
+  // brand — but `sec` cares enormously, and the old single-expression
+  // `find() || mirror || {}` erased the difference before anyone could ask.
+  const cloudRow = tpProfilesSource==='cloud'
+    ? (tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name))
+    : null;
+  const authority = tpProfilesSource!=='cloud' ? 'unknown' : (cloudRow ? 'row' : 'norow');
+  const p = cloudRow
+         || (tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name))
+         || tpReadMirror(name) || {};
   TP_FIELDS.forEach(f=>{
     const el=document.getElementById('tp_'+f); if(!el) return;
     if(el.type==='checkbox') el.checked=!!p[f]; else el.value=p[f]||'';
@@ -1017,6 +1460,13 @@ function tpLoadInto(name){
   document.getElementById('tpStamp').textContent =
     p.updated_at ? 'Last updated '+new Date(p.updated_at).toLocaleString() : 'No profile saved yet';
   tpDirty=false; // fields now reflect a known-saved (or known-mirrored) state
+  // Async on purpose: never block the plain fields on a decrypt. `name` is
+  // passed explicitly because `p` falls back to {} for a person with no saved
+  // profile, and the AAD has to come from the selected identity either way.
+  // `authority` is passed for the reason above it: without it tpSecIntoForm()
+  // cannot tell "the server says there is no ciphertext" from "we never got an
+  // answer", and only the first of those may authorise nulling `sec`.
+  tpSecIntoForm(p, name, authority);
 }
 async function tpSaveFromForm(){
   const name=document.getElementById('tpPerson').value;
@@ -1027,7 +1477,71 @@ async function tpSaveFromForm(){
     row[f] = el.type==='checkbox' ? el.checked : el.value.trim();
   });
   row.home_airport=(row.home_airport||'').toUpperCase();
+
+  // `sec` is touched ONLY when the vault is open AND the sensitive inputs
+  // were actually populated for THIS person from a successful decrypt (or
+  // from a row a SUCCESSFUL CLOUD READ confirmed holds no ciphertext). Every
+  // other state — vault locked, decrypt failed, AAD mismatch, a load still in
+  // flight, a cloud read that failed, a localStorage mirror standing in for a
+  // row nobody fetched — leaves `sec` out of the payload entirely, and
+  // PostgREST then preserves the stored ciphertext untouched (verified against
+  // the live table). That is what stops editing someone's hotel preference
+  // from destroying their account numbers, whether the vault was locked or the
+  // network merely blinked.
+  const aad = tpSecAAD(name);
+  if(vaultIsUnlocked() && tpSecReady && aad && tpSecFor===aad){
+    const s = tpSecFromForm();
+    const empty = !s.ktn && !s.globalEntry && !s.loyalty.length;
+    if(!empty){
+      row.sec = await vaultEncrypt(s, aad);
+    } else if(tpSecMayNull){
+      // Emptying a form that was populated from real, decrypted ciphertext is
+      // a permanent delete: `gs_travel_profiles.sec` is the only copy and
+      // there is no escrow. Say so, and only here — a form that was empty when
+      // it loaded has nothing to lose and must not nag.
+      if(tpSecHadValues && !confirm(
+        `Permanently delete ${name}'s saved account numbers?\n\n`+
+        `The Known Traveler / Global Entry / loyalty numbers stored for `+
+        `${name} will be ERASED from the encrypted vault. There is no backup `+
+        `and no undo — they cannot be recovered, only re-typed from the `+
+        `original documents.\n\n`+
+        `Cancel to keep them exactly as they are.`)){
+        toast(`Account numbers kept — nothing was deleted`, 6000);
+        // `sec` stays out of the payload, so the stored ciphertext survives
+        // the save of the ordinary fields below untouched.
+      } else {
+        row.sec = null;
+      }
+    }
+    // else: tpSecMayNull is false — the inputs are empty and we have never
+    // actually seen this person's row come back from the cloud. Creating
+    // ciphertext would have been fine; nulling a column we never observed is
+    // not, so `sec` is simply left out.
+  }
+  // A typed-but-unsaveable secret must never vanish quietly. If the vault is
+  // open and there is text in those inputs that did NOT make it into the
+  // payload, the load was non-authoritative (or belongs to someone else) and
+  // the user has to be told, or they will believe numbers are stored that are
+  // not.
+  if(vaultIsUnlocked() && !('sec' in row)){
+    const typed = tpSecFromForm();
+    if(typed.ktn || typed.globalEntry || typed.loyalty.length)
+      toast(`⚠ Account numbers were NOT saved — ${name}'s stored numbers could not be confirmed yet. Reopen this tab and try again.`, 9000);
+  }
+  // When `sec` is absent above the cloud keeps its ciphertext — but tpSave()
+  // mirrors the whole row to localStorage, and a mirror written without `sec`
+  // looks like "this person has no secrets" to the next load. Offline, that
+  // mirror is what tpLoadInto() reads, so a later unlocked save would then
+  // null the cloud column out. Carry the ciphertext we already knew about
+  // back into the mirror. Ciphertext in localStorage is fine; the plaintext
+  // never goes near it.
+  const prevSec = (((tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name)) || tpReadMirror(name) || {}).sec) || null;
+
   const ok=await tpSave(row);
+  if(!('sec' in row) && prevSec){
+    const m=tpReadMirror(name);
+    if(m && !m.sec){ m.sec=prevSec; tpWriteMirror(m); }
+  }
   tpDirty=false; // tpSave mirrors locally even on a cloud failure, so the form is in sync either way
   toast(ok?`💾 Saved ${name}'s travel profile`
           :`⚠ Saved on this device only — cloud unavailable`);
@@ -1053,9 +1567,13 @@ function tpAddPerson(){
 }
 // Wired once, during boot, to every tp_* field so tpRenderRoster() can
 // tell an in-progress edit apart from a stale render.
+// TP_SEC_IDS are wired here for the same reason the plain fields are:
+// without it, the async cloud refresh in tpRenderTab() would clobber a
+// half-typed account number exactly as it once clobbered a half-typed
+// hotel note.
 function tpWireDirtyTracking(){
-  TP_FIELDS.forEach(f=>{
-    const el=document.getElementById('tp_'+f);
+  TP_FIELDS.map(f=>'tp_'+f).concat(TP_SEC_IDS).forEach(id=>{
+    const el=document.getElementById(id);
     if(el) el.addEventListener('input', ()=>{ tpDirty=true; });
   });
 }
@@ -1163,6 +1681,568 @@ function tpRenderCard(name){
 // list on a cloud round trip.
 function tpPreferredBrand(){
   const p=tpReadMirror(curGS()); return (p&&p.hotel_brand)?p.hotel_brand:'';
+}
+
+// ── Vault setup / unlock UI (Phase 2, Task 3) ──
+// Module state: the single vault row ({id,wraps,kdf}) or null when no vault
+// is confirmed to exist yet. Loaded by tpVaultLoad(), never written except
+// through tpVaultInsertNew() (first-time setup, an INSERT) or
+// tpVaultMutateWraps() (every change to an existing row: the immediate-redo
+// path, rotate, add-holder, remove-holder). Those are the only two writers,
+// and only tpVaultInsertNew() writes without a version predicate — it can,
+// because the primary key IS its precondition.
+let tpVaultRow = null;
+// 'pending'  — no load has completed yet (page just opened).
+// 'ok'       — the most recent load actually reached the table: tpVaultRow
+//              is the truth, INCLUDING when it's null (confirmed no vault).
+// 'failed'   — the most recent load could not get an authoritative answer
+//              (tpEnsureLib()/tpClient() unavailable, a PostgREST error, an
+//              exception). tpVaultRow is whatever it was before — stale, not
+//              wrong, but NOT proof a vault is absent.
+// This is the fix for the review's Finding 1: tpVaultRenderBar() must never
+// read "tpVaultRow is null" as "no vault exists" unless the load that
+// produced that null actually succeeded. A failed load offering "Set up
+// vault" invites the holder to insert a vault whose absence was never
+// confirmed — see tpVaultInsertNew()'s 23505 guard for the second half of
+// that fix.
+let tpVaultLoadState = 'pending';
+async function tpVaultLoad(){
+  try{
+    await tpEnsureLib();
+    const sb=tpClient();
+    if(!sb){ tpVaultLoadState='failed'; return {ok:false, row:null}; }
+    const {data,error}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
+    if(error){ console.warn('tpVaultLoad: '+error.message); tpVaultLoadState='failed'; return {ok:false, row:null}; }
+    tpVaultRow = data || null;
+    tpVaultLoadState = 'ok';
+    return {ok:true, row:tpVaultRow};
+  }catch(e){ console.warn('tpVaultLoad: '+e.message); tpVaultLoadState='failed'; return {ok:false, row:null}; }
+}
+// ── The one and only way to change an EXISTING vault row's wraps ──
+// (Task 5 replaces Task 3's unconditional tpVaultSaveWraps() upsert.)
+//
+// Rotation, add-holder and remove-holder are all second writers to a row
+// that setup already writes, so read-then-write is no longer safe. For key
+// material a lost write is not a merge conflict: a holder's wrap silently
+// disappears and they can never unlock again. There is no escrow.
+//
+// gs_travel_vault.updated_at is bumped by a BEFORE UPDATE trigger on every
+// write (sql/2026-09-09-gs-travel-vault.sql), so it is a free version token
+// — no schema change needed. The protocol is:
+//   1. read the row, keeping its updated_at,
+//   2. compute the new wraps from THAT snapshot (never from tpVaultRow,
+//      which may be stale),
+//   3. write with .eq('updated_at', seen) and .select().
+// PostgREST returns the rows it actually updated, so an EMPTY array means
+// the predicate matched nothing — someone else changed the key material
+// between our read and our write. That aborts. It never retries blindly:
+// a retry would recompute against whatever landed and could still drop the
+// other writer's holder, and the holder deserves to be told.
+//
+// `mutate(wraps, row)` may be async and may throw (vaultRemoveHolder's
+// last-wrap guard does); a throw aborts before any write.
+// Returns {ok, conflict, reason, message, wraps}.
+async function tpVaultMutateWraps(mutate){
+  let seenWraps=null, intended=null, attempted=false;
+  try{
+    await tpEnsureLib();
+    const sb=tpClient(); if(!sb) return {ok:false, conflict:false, reason:'offline', reread:false};
+    const {data:row, error:selErr}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
+    if(selErr){ console.warn('tpVaultMutateWraps: '+selErr.message); return {ok:false, conflict:false, reason:'read', message:selErr.message, reread:false}; }
+    if(!row) return {ok:false, conflict:false, reason:'missing', reread:false};
+    // No version token means no way to write safely. Refuse rather than
+    // fall back to an unconditional update — that is exactly the write
+    // this function exists to make impossible.
+    if(!row.updated_at) return {ok:false, conflict:false, reason:'noversion', reread:false};
+    seenWraps = row.wraps||[];
+    let next;
+    try{ next = await mutate(seenWraps, row); }
+    catch(e){ return {ok:false, conflict:false, reason:'mutate', message:(e&&e.message)||String(e), reread:false}; }
+    intended = next;
+    // Past this line the write may have landed even if we never hear back.
+    attempted = true;
+    const {data, error}=await sb.from('gs_travel_vault')
+      .update({wraps:next}).eq('id','v1').eq('updated_at', row.updated_at).select();
+    if(error){
+      console.warn('tpVaultMutateWraps: '+error.message);
+      return await _tpVaultConfirmOutcome(intended, seenWraps, 'write', error.message);
+    }
+    if(!data || !data.length){
+      console.warn('tpVaultMutateWraps: gs_travel_vault changed since the read — aborting without writing');
+      const check = await tpVaultLoad();   // re-read so the bar and the next attempt see the truth
+      return {ok:false, conflict:true, reason:'conflict', reread:check.ok};
+    }
+    tpVaultRow = data[0];
+    tpVaultLoadState = 'ok';
+    return {ok:true, conflict:false, wraps:tpVaultRow.wraps, reread:false};
+  }catch(e){
+    console.warn('tpVaultMutateWraps: '+e.message);
+    // A throw AFTER the update went out is indistinguishable from one before
+    // it unless we go and look — so look.
+    if(attempted) return await _tpVaultConfirmOutcome(intended, seenWraps, 'exception', e.message);
+    return {ok:false, conflict:false, reason:'exception', message:e.message, reread:false};
+  }
+}
+// An UPDATE that errors or throws has NOT necessarily failed: a dropped
+// connection, a timeout or a proxy hiccup loses the acknowledgement, not the
+// write. Task 3 fixed this for setup (the re-read in _tpVaultRunSetup); this
+// is the same fix on the mutation paths. Never assert "nothing was changed"
+// without looking, and never assert it at all when the look itself fails —
+// a holder told their old passphrase still works, when it no longer does,
+// concludes the vault is broken.
+async function _tpVaultConfirmOutcome(intended, seenWraps, reason, message){
+  const check = await tpVaultLoad();
+  if(!check.ok || !check.row)
+    return {ok:false, conflict:false, reason:'unknown', message, reread:false};
+  if(_tpVaultWrapsEq(check.row.wraps, intended)){
+    // It landed; only the response was lost. Report the success it actually
+    // is rather than sending the holder off to redo it.
+    tpVaultLoadState = 'ok';
+    return {ok:true, conflict:false, wraps:check.row.wraps, recovered:true, reread:true};
+  }
+  if(_tpVaultWrapsEq(check.row.wraps, seenWraps))
+    return {ok:false, conflict:false, reason, message, confirmedNoop:true, reread:true};
+  // Neither what we sent nor what we read: someone else's change is in force.
+  // Ours is not — but the old state cannot be claimed to have survived either.
+  return {ok:false, conflict:true, reason:'other', message, reread:true};
+}
+// One place to turn a tpVaultMutateWraps() failure into words. Only the
+// branches that actually know nothing was written are allowed to say so.
+function _tpVaultMutateMsg(res){
+  if(res.reason==='other')   return '⚠ Your change did not take effect, and the vault now holds a different set of holders — someone else changed access. Reload this page and check who holds access before trying again.';
+  if(res.conflict)           return '⚠ Someone else changed vault access first — nothing was changed here.'
+    + (res.reread ? ' The vault has been re-read; check who holds access, then try again.'
+                  : ' The vault could not be re-read afterwards, so reload this page to see who holds access before trying again.');
+  if(res.reason==='unknown') return '⚠ Could not confirm what happened — the change may or may not have been saved, and re-reading the vault failed too. Reload this page and check who holds access before trying again. Do NOT assume nothing was written.';
+  if(res.reason==='offline')    return "⚠ Can't reach the vault — nothing was changed.";
+  if(res.reason==='missing')    return '⚠ There is no vault row to change — nothing was changed.';
+  if(res.reason==='noversion')  return '⚠ The vault row has no version stamp, so it cannot be changed safely — nothing was changed. Get an admin to check the gs_travel_vault row.';
+  if(res.reason==='mutate')     return '⚠ '+(res.message||'Nothing was changed');
+  if(res.confirmedNoop)         return '⚠ Could not save — a re-read confirms nothing was written'+(res.message ? ' ('+res.message+')' : '')+'.';
+  return '⚠ Could not save — nothing was changed'+(res.message ? ' ('+res.message+')' : '');
+}
+// Wrap-list equality, order-insensitive on OBJECT KEYS and strict on ARRAY ORDER.
+//
+// Postgres normalises jsonb key order, so a wrap this page writes as
+// {label, salt, iter, wrapped} can come back from PostgREST in a different
+// key order — the same way a `sec` envelope written {v, iv, ct} returns as
+// {v, ct, iv}. A plain JSON.stringify comparison therefore NEVER matches a
+// locally-built array against a server-returned one, which silently disabled
+// the lost-acknowledgement recovery in _tpVaultConfirmOutcome() and
+// tpVaultReplaceJustCreated()'s row-unchanged guard. Neither failed unsafely
+// — both just always took the pessimistic branch — but neither worked.
+//
+// Every stub in this task's tests echoed back exactly what it was handed, so
+// key order round-tripped perfectly and the bug stayed invisible until it was
+// checked against real Postgres.
+//
+// Array order is NOT normalised: wrap order is meaningful, so two lists
+// holding the same wraps in a different order must still compare unequal.
+function _tpVaultCanon(v){
+  if(Array.isArray(v)) return v.map(_tpVaultCanon);
+  if(v && typeof v==='object'){
+    const o={};
+    for(const k of Object.keys(v).sort()) o[k]=_tpVaultCanon(v[k]);
+    return o;
+  }
+  return v;
+}
+const _tpVaultWrapsEq = (a,b)=> JSON.stringify(_tpVaultCanon(a))===JSON.stringify(_tpVaultCanon(b));
+// First-time-setup save. INSERT, not upsert: the primary key (id='v1') makes
+// "no vault exists yet" an atomic, race-free precondition instead of a
+// belief this device might be wrong about. A unique-violation (Postgres
+// 23505) means a real vault is already there — that is reported as a
+// conflict, never silently overwritten.
+async function tpVaultInsertNew(wraps){
+  try{
+    await tpEnsureLib();
+    const sb=tpClient(); if(!sb) return {ok:false, conflict:false};
+    const {error}=await sb.from('gs_travel_vault').insert({id:'v1', wraps});
+    if(error){
+      if(error.code==='23505'){
+        console.warn('tpVaultInsertNew: a vault row already exists');
+        return {ok:false, conflict:true};
+      }
+      console.warn('tpVaultInsertNew: '+error.message);
+      return {ok:false, conflict:false};
+    }
+    tpVaultRow = {id:'v1', wraps};
+    tpVaultLoadState = 'ok';
+    return {ok:true, conflict:false};
+  }catch(e){ console.warn('tpVaultInsertNew: '+e.message); return {ok:false, conflict:false}; }
+}
+// The ONLY path allowed to replace a row it did not just insert-and-verify
+// itself. Reachable from exactly one place: the "recovery code wasn't
+// confirmed stored" branch of _tpVaultRunSetup(), in the same call chain
+// that just created `previousWraps` a moment ago — never from a stored flag,
+// a lingering button, or anything a reload or a later visit could reach.
+// Before writing, it re-reads the row and requires it still hold exactly
+// `previousWraps`; if anything else is there now (a real vault landed in
+// the interim), it refuses and reports a conflict instead of clobbering it.
+//
+// Task 5: that content check was a TOCTOU *narrowing*, not a close — safe
+// only while nothing else wrote the row. Rotation and holder management are
+// now that second writer, so the write itself goes through
+// tpVaultMutateWraps()'s conditional update. Both guards are kept: the
+// updated_at predicate closes the window, and the content check still
+// refuses a row that never held `previousWraps` in the first place.
+async function tpVaultReplaceJustCreated(newWraps, previousWraps){
+  const res = await tpVaultMutateWraps(wraps=>{
+    if(!_tpVaultWrapsEq(wraps, previousWraps))
+      throw new Error('the vault row changed since it was created — refusing to replace it');
+    return newWraps;
+  });
+  if(res.ok) return {ok:true, conflict:false};
+  // 'mutate' = the row holds something other than what we just inserted;
+  // 'conflict' = it moved between our read and our write; 'missing' = it is
+  // gone. All three mean "a row we must not clobber is (or was) there."
+  const conflict = res.conflict || res.reason==='mutate' || res.reason==='missing';
+  if(conflict) console.warn('tpVaultReplaceJustCreated: row changed since insert — refusing to replace');
+  return {ok:false, conflict};
+}
+function tpVaultRenderBar(){
+  const s=$('tpVaultState'), b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), m=$('tpVaultManageBtn');
+  if(!s || !b || !l) return;
+  // Managing access needs an unlocked vault (every path re-wraps the DEK),
+  // so the button only exists in the unlocked branch at the bottom.
+  if(m) m.style.display='none';
+  if(!vaultAvailable()){
+    s.innerHTML='🔒 Encrypted fields need a secure page — open this over https, not as a local file.';
+    b.style.display='none'; l.style.display='none'; return;
+  }
+  if(!tpVaultRow){
+    if(tpVaultLoadState!=='ok'){
+      // Neither "still loading" nor "the last check failed" is proof no
+      // vault exists — only a load that actually succeeded and came back
+      // empty is. The setup button must not appear here (Finding 1c): that
+      // would let someone insert a vault without ever confirming one isn't
+      // already sitting in gs_travel_vault.
+      if(tpVaultLoadState==='failed'){
+        s.innerHTML="⚠ Can't reach the vault — try again.";
+        b.textContent='Retry'; b.dataset.mode='retry'; b.style.display='';
+      }else{
+        s.innerHTML='Checking vault…';
+        b.style.display='none';
+      }
+      l.style.display='none';
+      return;
+    }
+    s.innerHTML='No vault yet. Account numbers stay hidden until one is set up.';
+    b.textContent='Set up vault'; b.dataset.mode='setup'; b.style.display=''; l.style.display='none';
+  } else if(!vaultIsUnlocked()){
+    s.innerHTML='🔒 Vault locked — account numbers are hidden.';
+    b.textContent='Unlock'; b.dataset.mode='unlock'; b.style.display=''; l.style.display='none';
+  } else {
+    s.innerHTML='🔓 Vault unlocked for this tab. It re-locks when you reload.';
+    b.style.display='none'; l.style.display='';
+    if(m) m.style.display='';
+  }
+}
+// Both setup and unlock can take real, user-visible time (unlock especially —
+// up to ~8.7s at the 32-wrap / 2M-iteration ceiling, vs. ~90ms normally), so
+// both buttons are disabled and #tpVaultState shows a working state for the
+// duration, always restored in a finally so a throw can't strand the UI.
+function _tpVaultBusy(msg){
+  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), m=$('tpVaultManageBtn'), s=$('tpVaultState');
+  if(b) b.disabled=true; if(l) l.disabled=true; if(m) m.disabled=true;
+  if(s) s.innerHTML=msg;
+}
+function _tpVaultIdle(){
+  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), m=$('tpVaultManageBtn');
+  if(b) b.disabled=false; if(l) l.disabled=false; if(m) m.disabled=false;
+  tpVaultRenderBar();
+}
+// Re-check gs_travel_vault on demand. This is the "Retry" button's action
+// when the last load failed (see tpVaultRenderBar()) — it must never fall
+// back to offering setup itself; that decision belongs to the render, which
+// re-runs at the end via _tpVaultIdle().
+async function tpVaultRetryLoad(){
+  _tpVaultBusy('⏳ Checking the vault…');
+  try{ await tpVaultLoad(); }
+  finally{ _tpVaultIdle(); }
+}
+async function tpVaultDoSetup(){
+  const p1=prompt(`Choose a vault passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).\n\nIt is never sent anywhere and cannot be recovered — store it in the company password manager.`);
+  if(p1===null) return;
+  if(String(p1).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
+  const p2=prompt('Type the same passphrase again to confirm.');
+  if(p2===null) return;
+  if(p1!==p2){ toast('Those did not match — nothing was set up'); return; }
+  await _tpVaultRunSetup(p1);
+}
+// "A vault is already there" is the right message for first-time setup, but
+// NOT on the redo path. There, `previousWraps` is the vault this session just
+// created, and the whole reason we're redoing setup is that its recovery code
+// was lost. If that same vault is still the row, "unlock with the existing
+// passphrase or recovery code" points at a code that no longer exists
+// anywhere. Say what is actually true instead, and name the fix that now
+// exists (Manage access → add another holder). Any OTHER wraps mean a real
+// second vault, and the original wording is correct for it.
+function _tpVaultExistsMsg(previousWraps, rowWraps){
+  if(previousWraps && rowWraps && _tpVaultWrapsEq(rowWraps, previousWraps))
+    return '⚠ Nothing was replaced — the vault you just created is still the one in force. Its passphrase still works, but its recovery code is the one that was just lost, so it is currently the only way in. Unlock with that passphrase, then use Manage access → add another holder to restore a second way in.';
+  return '⚠ A vault already exists — nothing was changed. Unlock with the existing passphrase or recovery code, or get an admin to check the gs_travel_vault row.';
+}
+// Does the actual create-and-save, for both first-time setup and the
+// one-time "I didn't confirm the recovery code, redo it now" path below.
+// `previousWraps`, when passed, means this is that redo: use the narrow
+// tpVaultReplaceJustCreated() guard instead of a plain insert.
+async function _tpVaultRunSetup(passphrase, previousWraps){
+  let wraps, recoveryCode;
+  _tpVaultBusy(previousWraps ? '⏳ Replacing the vault…' : '⏳ Setting up the vault…');
+  try{
+    ({wraps, recoveryCode} = await vaultCreate(passphrase));
+    const res = previousWraps
+      ? await tpVaultReplaceJustCreated(wraps, previousWraps)
+      : await tpVaultInsertNew(wraps);
+    if(!res.ok){
+      if(res.conflict){
+        // Unambiguous: a real row is (or now is) sitting there. Never
+        // overwrite it — refresh so the bar reflects the truth instead of
+        // "No vault yet", and send the holder to Unlock instead.
+        vaultLock();
+        await tpVaultLoad();
+        toast(_tpVaultExistsMsg(previousWraps, (tpVaultRow||{}).wraps), 12000);
+        return;
+      }
+      // Ambiguous failure (offline, RLS, a dropped response, ...): the error
+      // alone doesn't say whether the write actually landed. Re-read once
+      // and report what's really there instead of asserting "nothing was
+      // changed" (Finding 3) — a lost acknowledgement on a write that DID
+      // land must not be told to the holder as a no-op.
+      const check = await tpVaultLoad();
+      if(!check.ok){
+        vaultLock();
+        toast("⚠ Could not save the vault, and couldn't confirm whether it landed anyway — check the connection, then reopen this tab before trying again.", 12000);
+        return;
+      }
+      if(!check.row){
+        vaultLock();
+        toast('⚠ Could not save the vault — confirmed nothing was written. Try again once the connection is back.', 9000);
+        return;
+      }
+      if(!_tpVaultWrapsEq(check.row.wraps, wraps)){
+        vaultLock();
+        toast(_tpVaultExistsMsg(previousWraps, check.row.wraps), 12000);
+        return;
+      }
+      // It actually landed; the error response was just lost. Fall through
+      // and treat this exactly like a normal success.
+    }
+  }catch(e){
+    vaultLock();
+    toast('⚠ Vault setup failed: '+((e&&e.message)||e), 9000);
+    return;
+  }finally{
+    _tpVaultIdle();
+  }
+
+  // The recovery code is shown exactly once, right now — it is never stored
+  // anywhere and vaultCreate() never returns it again. The explicit STORED
+  // confirmation is deliberate friction: without one of {passphrase, this
+  // code}, nothing wrapped under this vault can ever be recovered.
+  const ack = prompt(
+    'RECOVERY CODE — this is shown ONE TIME ONLY and will never be shown again:\n\n' + recoveryCode +
+    '\n\nStore this in the company password manager alongside the passphrase, with at least two people able to reach it. Without one of them, everything in this vault is permanently unrecoverable.\n\n' +
+    'Type STORED to confirm you have saved it.');
+  if(ack==='STORED'){
+    toast('🔓 Vault ready');
+  }else{
+    // Finding 2: the code really is gone — vaultCreate() never re-emits it —
+    // so "save it now" would be advice no one can follow. What's actually
+    // true right now, and only right now, is that nothing has been
+    // encrypted with this vault yet, so redoing setup from scratch is
+    // harmless. Offer that explicitly instead of a dead end, and say
+    // plainly that the offer expires the moment real data exists.
+    const startOver = confirm(
+      "That recovery code cannot be shown again — it's gone for good.\n\n" +
+      "Nothing has been encrypted with this vault yet, so it is still safe to replace it: OK creates a brand-new passphrase and recovery code right now, replacing the one you just made.\n\n" +
+      "This offer only exists at this exact moment, before anything real is stored — once any account number is saved to this vault, redoing setup would permanently orphan it, and this will not be offered again."
+    );
+    if(startOver){
+      const p1b=prompt(`Choose a new vault passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).`);
+      if(p1b===null){ toast('⚠ Not replaced — the vault with the lost recovery code is still the one in place.', 9000); await tpRenderTab(); return; }
+      if(String(p1b).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters — not replaced`); await tpRenderTab(); return; }
+      const p2b=prompt('Type the same passphrase again to confirm.');
+      if(p2b===null || p1b!==p2b){ toast('Those did not match — not replaced'); await tpRenderTab(); return; }
+      await _tpVaultRunSetup(p1b, wraps);   // wraps = what this session just inserted, proving it's safe to replace
+      return;
+    }
+    toast('⚠ Vault created, but the recovery code was not confirmed stored — it cannot be shown again.', 12000);
+  }
+  await tpRenderTab();
+}
+async function tpVaultDoUnlock(){
+  const s=prompt('Enter the vault passphrase, or the recovery code.');
+  if(s===null) return;
+
+  let unlocked=false;
+  _tpVaultBusy('⏳ Checking… this can take several seconds if this vault has many holders.');
+  try{
+    const label = await vaultUnlock(s, (tpVaultRow||{}).wraps);
+    // vaultUnlock's three-outcome contract (return label / return null /
+    // throw VaultDataError) is load-bearing: only a returned null means the
+    // secret was structurally checked and rejected. Anything else — corrupt
+    // wraps, a truncated-then-untrustworthy list, WebCrypto failing — throws,
+    // and must never be reported to the holder as "wrong passphrase". There
+    // is no escrow: telling someone to "just set it up again" after a data
+    // fault permanently orphans every existing ciphertext.
+    if(label===null){
+      toast('That passphrase or code did not open the vault — try again');
+    }else{
+      unlocked=true;
+      toast(label==='recovery-code' ? '🔓 Unlocked with the recovery code — consider rotating the passphrase' : '🔓 Vault unlocked');
+    }
+  }catch(e){
+    if(e instanceof VaultDataError){
+      // Truncation is checked structurally against the array we passed in —
+      // never by parsing e.message/e.faults — because that's the one signal
+      // that wasn't already run through the "reject vs. fault" split inside
+      // vaultUnlock itself.
+      const truncated = ((tpVaultRow||{}).wraps||[]).length > VAULT_MAX_WRAPS;
+      toast(truncated
+        ? '⚠ This vault\'s wrap list is longer than expected and looks tampered with — this is NOT a wrong passphrase. Do NOT set up a new vault; that would permanently orphan the existing encrypted data. Get an admin to check the gs_travel_vault row first.'
+        : '⚠ This vault\'s data looks corrupted — this is NOT a wrong passphrase. Do NOT set up a new vault; that would permanently orphan the existing encrypted data. Get an admin to check the gs_travel_vault row first.',
+        12000);
+    }else{
+      toast('⚠ Unlock failed: '+((e&&e.message)||e), 9000);
+    }
+  }finally{
+    _tpVaultIdle();
+  }
+  if(unlocked) await tpRenderTab();
+}
+
+// ── Manage access: rotate / add holder / remove holder (Phase 2, Task 5) ──
+// All three re-wrap the SAME data key, so nothing stored is re-encrypted —
+// only gs_travel_vault.wraps changes. All three therefore need the vault
+// unlocked (that is where the DEK lives), and all three write through
+// tpVaultMutateWraps() so a concurrent change aborts instead of silently
+// dropping someone's wrap.
+//
+// Rotation is add-holder under an EXISTING label: vaultAddHolder() drops any
+// wrap already carrying that label before pushing the new one, so re-adding
+// 'passphrase' replaces it. There is no separate rotate primitive.
+//
+// Add and remove both show the holder a consequence before they commit ("2
+// holders will remain", "this replaces their passphrase"), so that preview
+// has to be computed from a FRESH read — tpVaultRow can be minutes old. A
+// stale preview can say "2 will remain" when the truth is 1, and the
+// updated_at predicate cannot catch it: that guards only the window between
+// our own read and our own write, not the window between the preview and the
+// read. So re-read first, preview from that, and make the mutation require
+// exactly the wraps that were previewed.
+async function _tpVaultFreshWraps(){
+  _tpVaultBusy('⏳ Checking who holds access…');
+  let ld;
+  try{ ld = await tpVaultLoad(); }
+  finally{ _tpVaultIdle(); }
+  if(!ld.ok){ toast("⚠ Can't reach the vault — nothing was changed.", 7000); return null; }
+  if(!ld.row){ toast('⚠ There is no vault row to change — nothing was changed.', 7000); return null; }
+  return ld.row.wraps||[];
+}
+function _tpVaultRequirePreviewed(previewed){
+  return wraps=>{
+    if(!_tpVaultWrapsEq(wraps, previewed))
+      throw new Error('Vault access changed while you were confirming — nothing was changed. Check who holds access, then try again.');
+  };
+}
+async function tpVaultRotate(){
+  if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
+  const p1=prompt(`New passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).\n\nThis re-wraps the key, it does not re-encrypt anything. Every other holder — including the recovery code — keeps working.`);
+  if(p1===null) return;
+  if(String(p1).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
+  if(prompt('Type it again to confirm.')!==p1){ toast('Those did not match — nothing was changed'); return; }
+  _tpVaultBusy('⏳ Rotating the passphrase…');
+  let res, oldWrap=null;
+  try{
+    res = await tpVaultMutateWraps(wraps=>{
+      // Captured from the SERVER snapshot, so the claim below is about the
+      // row that was really there rather than a stale local copy.
+      oldWrap = wraps.find(w=>w.label==='passphrase') || null;
+      return vaultAddHolder('passphrase', p1, wraps);
+    });
+  }
+  finally{ _tpVaultIdle(); }
+  if(res.ok){
+    toast(res.recovered
+      ? '🔑 Passphrase rotated — the confirmation was lost in transit, but a re-read shows the change did land. The OLD passphrase no longer works. Update the company password manager now.'
+      : '🔑 Passphrase rotated — profiles were not re-encrypted, only the key wrap changed. Update the company password manager now.',
+      res.recovered ? 14000 : 9000);
+    return;
+  }
+  // Only say the old passphrase still works when a re-read actually shows its
+  // wrap still sitting in the row. Saying it wrongly sends someone off to use
+  // a passphrase that no longer opens the vault, and they conclude the vault
+  // is broken.
+  const oldIntact = !!(res.reread && oldWrap
+    && (((tpVaultRow||{}).wraps)||[]).some(w=>_tpVaultWrapsEq(w, oldWrap)));
+  toast(_tpVaultMutateMsg(res) + (oldIntact ? ' The old passphrase is still in force.' : ''), 12000);
+}
+async function tpVaultAddHolder(){
+  if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
+  const previewed = await _tpVaultFreshWraps(); if(!previewed) return;
+  const label=(prompt('Name for the second holder (e.g. "ops-manager"):\n\nCurrent: '+previewed.map(w=>w.label).join(', '))||'').trim();
+  if(!label) return;
+  if(label==='recovery-code'){ toast('That name is reserved'); return; }
+  // Task 5 is the only path that can grow this list. Past VAULT_MAX_WRAPS,
+  // vaultUnlock() truncates and reports the list as tampered with, so a 33rd
+  // holder would get no access AND make the vault look attacked. Refuse here.
+  if(!previewed.some(w=>w.label===label) && previewed.length >= VAULT_MAX_WRAPS){
+    toast(`⚠ This vault already holds the maximum of ${VAULT_MAX_WRAPS} holders — nothing was changed. Remove a holder who no longer needs access before adding another.`, 12000);
+    return;
+  }
+  const p=prompt(`Passphrase for ${label} (at least ${VAULT_MIN_PASSPHRASE} characters).`);
+  if(p===null) return;
+  if(String(p).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
+  // Re-using an existing label silently replaces that holder's wrap, which is
+  // exactly what rotation wants but almost never what "add" wants — so ask.
+  if(previewed.some(w=>w.label===label)
+     && !confirm(`"${label}" already holds access.\n\nOK replaces their passphrase with this new one — their old passphrase stops working. Cancel leaves it alone.`)){
+    toast('Nothing was changed'); return;
+  }
+  _tpVaultBusy('⏳ Adding a holder…');
+  let res;
+  const stillPreviewed = _tpVaultRequirePreviewed(previewed);
+  try{ res = await tpVaultMutateWraps(wraps=>{ stillPreviewed(wraps); return vaultAddHolder(label, p, wraps); }); }
+  finally{ _tpVaultIdle(); }
+  toast(res.ok ? `🔑 ${label} can now unlock the vault` : _tpVaultMutateMsg(res), res.ok ? 6000 : 12000);
+}
+async function tpVaultRemoveHolder(){
+  if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
+  const previewed = await _tpVaultFreshWraps(); if(!previewed) return;
+  const labels=previewed.map(w=>w.label);
+  const label=(prompt('Remove which holder?\n\nCurrent: '+labels.join(', '))||'').trim();
+  if(!label) return;
+  if(!labels.includes(label)){ toast(`No holder named "${label}" — nothing was changed`, 7000); return; }
+  // Ruling 3: vaultRemoveHolder() only refuses the LAST wrap. Nothing stops a
+  // typo removing the wrong person, and nothing stops dropping to a single
+  // point of failure — the exact state the envelope design exists to avoid.
+  // So show what will happen and require an explicit yes BEFORE any write.
+  const remaining = labels.filter(l=>l!==label);
+  if(!remaining.length){
+    // vaultRemoveHolder() would throw here too; catching it earlier means the
+    // holder is told why instead of being shown a pointless confirmation.
+    toast(`⚠ "${label}" is the only way into this vault — removing them would make every encrypted account number permanently unrecoverable. Nothing was changed. Add another holder first.`, 12000);
+    return;
+  }
+  const warn = remaining.length===1
+    ? '\n\n⚠⚠ THIS LEAVES EXACTLY ONE WAY IN — only "'+remaining[0]+'".\nIf that one secret is lost, every encrypted account number is gone permanently. There is no escrow and no reset. Add a second holder first unless you are certain.'
+    : '';
+  if(!confirm('Remove "'+label+'" from the vault?\n\nThey will no longer be able to unlock it. Nothing is re-encrypted; their key wrap is deleted.\n\n'
+      + remaining.length+' holder'+(remaining.length===1?'':'s')+' will remain: '+remaining.join(', ')
+      + warn + '\n\nOK removes them. Cancel changes nothing.')){
+    toast('Nothing was changed'); return;
+  }
+  _tpVaultBusy('⏳ Removing a holder…');
+  let res;
+  // Two guards inside the mutation, both against the SERVER's wraps: the row
+  // must still be exactly what the confirmation described, and the last-wrap
+  // refusal runs again on the real list rather than on the preview.
+  const stillPreviewed = _tpVaultRequirePreviewed(previewed);
+  try{ res = await tpVaultMutateWraps(wraps=>{ stillPreviewed(wraps); return vaultRemoveHolder(label, wraps); }); }
+  finally{ _tpVaultIdle(); }
+  toast(res.ok ? `🔑 ${label} can no longer unlock the vault` : _tpVaultMutateMsg(res), res.ok ? 6000 : 12000);
 }
 // ── /TRAVEL_PROFILES_TAB ─────────────────────────────────────────
 
@@ -3473,6 +4553,22 @@ function initSiteVisit(){
   document.getElementById('tpAdd').onclick    = tpAddPerson;
   document.getElementById('tpPerson').onchange= e=>tpLoadInto(e.target.value);
   tpWireDirtyTracking();
+
+  // tpVaultRenderBar() stamps data-mode on #tpVaultBtn so this one handler
+  // covers all three of its jobs (setup / unlock / retry-a-failed-load)
+  // without re-deriving which one applies from tpVaultRow/tpVaultLoadState
+  // here too — that logic has exactly one place to live.
+  $('tpVaultBtn').onclick = ()=>{
+    const mode = $('tpVaultBtn').dataset.mode;
+    if(mode==='retry')  return tpVaultRetryLoad();
+    if(mode==='unlock') return tpVaultDoUnlock();
+    return tpVaultDoSetup();
+  };
+  $('tpVaultManageBtn').onclick = ()=>{
+    const c=(prompt('Manage vault access:\n\n1 — rotate the passphrase\n2 — add another holder\n3 — remove a holder\n\nType 1, 2 or 3.')||'').trim();
+    if(c==='1') tpVaultRotate(); else if(c==='2') tpVaultAddHolder(); else if(c==='3') tpVaultRemoveHolder();
+  };
+  $('tpVaultLockBtn').onclick = ()=>{ vaultLock(); tpVaultRenderBar(); tpRenderTab(); toast('🔒 Vault locked'); };
 
   // Trips autosave; a visit carrying photos is too heavy for that, so guard the exit instead.
   window.addEventListener('beforeunload', e=>{

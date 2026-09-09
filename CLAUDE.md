@@ -95,6 +95,19 @@ The anon DELETE policy was revoked by
 `sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql`, so removing a
 person is a SQL Editor job — the page can no longer delete cloud rows.
 
+Travel Profiles Phase 2 (from `gs-travel-planner.html`): `gs_travel_vault`
+(`sql/2026-09-09-gs-travel-vault.sql`), one row, `id='v1'`. Holds **wrapped
+key material only** — each `wraps` entry is the shared data key encrypted
+under one holder's passphrase (or the printed recovery code). No key and no
+plaintext ever land in it. Like `gs_travel_profiles` it has no DELETE policy
+and no DELETE grant; removing a holder is an UPDATE that rewrites `wraps`.
+Every change to the row goes through `tpVaultMutateWraps()`, which reads the
+row, computes the new wraps from that snapshot, and writes with
+`.eq('updated_at', seen).select()` — `updated_at` is bumped by a trigger, so
+it is the version token. An empty returned array means another holder
+changed access first: abort, never retry. A lost write here silently deletes
+someone's only way in, and there is no escrow.
+
 ## Project structure quick reference
 
 - `index.html` — Roady's Network Command Center (admin/master dashboard).
@@ -117,8 +130,18 @@ person is a SQL Editor job — the page can no longer delete cloud rows.
   buttons toggle `#viewPlanner` / `#viewVisit` / `#viewProfiles`, and swap
   the header button group). Trips and visits stay in `localStorage`; only
   **Travel Profiles** touches the cloud — it reads and writes
-  `gs_travel_profiles` via the Supabase SDK, mirrored locally under
-  `gsp2:profile:<tpKey>` so the page still works offline. `#gsName` decides
+  `gs_travel_profiles` and `gs_travel_vault` via the Supabase SDK, mirrored
+  locally under `gsp2:profile:<tpKey>` so the page still works offline.
+  Account numbers on a profile are **client-side encrypted** (AES-GCM under
+  a data key wrapped in `gs_travel_vault`) and are readable only while the
+  vault is unlocked for the tab; the passphrase, the recovery code and the
+  key itself are never persisted anywhere and are gone on reload. **The
+  passphrase and recovery code belong in the company password manager, with
+  at least two people able to reach it** — that operational step is the only
+  thing standing between the company and permanent data loss, since losing
+  every wrap is unrecoverable by design. "Manage access" (unlocked vaults
+  only) rotates the passphrase, adds a holder, or removes one; all three
+  re-wrap the same key and re-encrypt nothing. `#gsName` decides
   trip ownership (`tripKey(curGS(),…)`), so nothing in the async roster
   render may change the selection — see the sentinel handling in
   `tpRenderGSDropdown()`. **Route Planner**: OSRM routing, trips under
