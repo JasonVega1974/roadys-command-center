@@ -954,6 +954,123 @@ function tpNearMatch(name,roster){
 }
 // ── /TRAVEL_PROFILES ─────────────────────────────────────────────
 
+// ── VAULT_CRYPTO ──────────────────────────────────────────────────
+// Envelope encryption for travel-profile secrets. DOM-free and page-state-free
+// on purpose: this block can be copied into a scratch harness and driven
+// directly, which is the only unit-testing this repo has.
+//
+// A random AES-GCM data key (DEK) encrypts every profile's secrets. The DEK is
+// wrapped once per holder under an AES-KW key derived from that holder's
+// passphrase, plus once under a printed recovery code. Rotating a passphrase
+// re-wraps one entry; it never re-encrypts a profile.
+//
+// 600k PBKDF2 iterations, not the 310k first specced: measured 310k=44ms and
+// 600k=86ms in this app, so the original cost assumption was an order of
+// magnitude out, and iteration count is the only defence against offline
+// brute force of ciphertext that is public by construction.
+//
+// Each wrap records the iteration count it was built with (`iter`). PBKDF2 with
+// a different count derives a DIFFERENT key from the same passphrase, so a
+// hardcoded constant would lock everyone out the day it is raised. Unwrapping
+// uses the count stored on the wrap (falling back to the current constant for
+// wraps written before this field existed); wrapping always stamps the current
+// constant. vaultAddHolder therefore upgrades one holder at a time, which makes
+// raising VAULT_KDF_ITER an incremental migration instead of a flag day.
+const VAULT_KDF_ITER   = 600000;
+const VAULT_KDF_HASH   = 'SHA-256';
+const VAULT_MIN_PASSPHRASE = 12;
+
+let _vaultDEK = null;   // CryptoKey, memory only — never persisted, gone on reload
+
+const vB64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const vBuf = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+function vaultAvailable(){ return !!(window.crypto && window.crypto.subtle && window.isSecureContext) }
+function vaultIsUnlocked(){ return !!_vaultDEK }
+function vaultLock(){ _vaultDEK = null }
+
+// Crockford-ish alphabet: no I, O, 0 or 1, so a printed code cannot be misread.
+function vaultNewRecoveryCode(){
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const b=crypto.getRandomValues(new Uint8Array(20));
+  return [...b].map(x=>A[x%32]).join('').replace(/(.{5})(?=.)/g,'$1-');
+}
+
+async function _vaultKEK(secret, saltB64, iter){
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:vBuf(saltB64), iterations:(iter||VAULT_KDF_ITER), hash:VAULT_KDF_HASH},
+    km, {name:'AES-KW', length:256}, false, ['wrapKey','unwrapKey']);
+}
+
+// The DEK is created and unwrapped as extractable because rotation and
+// add-holder must re-wrap it. That is not a weakening: any script that could
+// read it already holds it in memory.
+async function _vaultWrap(dek, secret){
+  const salt = vB64(crypto.getRandomValues(new Uint8Array(16)));
+  const iter = VAULT_KDF_ITER;
+  const kek  = await _vaultKEK(secret, salt, iter);
+  return { salt, iter, wrapped: vB64(await crypto.subtle.wrapKey('raw', dek, kek, 'AES-KW')) };
+}
+
+async function vaultCreate(passphrase){
+  if(String(passphrase||'').length < VAULT_MIN_PASSPHRASE) throw new Error('passphrase too short');
+  const dek = await crypto.subtle.generateKey({name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+  const recoveryCode = vaultNewRecoveryCode();
+  const wraps = [
+    Object.assign({label:'passphrase'},    await _vaultWrap(dek, passphrase)),
+    Object.assign({label:'recovery-code'}, await _vaultWrap(dek, recoveryCode))
+  ];
+  _vaultDEK = dek;
+  return { wraps, recoveryCode };
+}
+
+// Tries every wrap. AES-KW is authenticated, so a wrong secret throws rather
+// than yielding a bogus key — which is why no separate verifier is stored.
+async function vaultUnlock(secret, wraps){
+  for(const w of (wraps||[])){
+    try{
+      const kek = await _vaultKEK(secret, w.salt, w.iter || VAULT_KDF_ITER);
+      _vaultDEK = await crypto.subtle.unwrapKey('raw', vBuf(w.wrapped), kek, 'AES-KW',
+        {name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+      return w.label;
+    }catch(e){ /* wrong secret for this wrap — try the next */ }
+  }
+  _vaultDEK = null;
+  return null;
+}
+
+async function vaultAddHolder(label, secret, wraps){
+  if(!_vaultDEK) throw new Error('vault is locked');
+  if(String(secret||'').length < VAULT_MIN_PASSPHRASE) throw new Error('passphrase too short');
+  const next = (wraps||[]).filter(w => w.label !== label);
+  next.push(Object.assign({label}, await _vaultWrap(_vaultDEK, secret)));
+  return next;
+}
+
+function vaultRemoveHolder(label, wraps){
+  const next = (wraps||[]).filter(w => w.label !== label);
+  if(!next.length) throw new Error('refusing to remove the last wrap — the data would be unrecoverable');
+  return next;
+}
+
+async function vaultEncrypt(obj){
+  if(!_vaultDEK) throw new Error('vault is locked');
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, _vaultDEK,
+    new TextEncoder().encode(JSON.stringify(obj)));
+  return { v:1, iv:vB64(iv), ct:vB64(ct) };
+}
+
+async function vaultDecrypt(env){
+  if(!_vaultDEK || !env || !env.ct) return null;
+  try{
+    const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:vBuf(env.iv)}, _vaultDEK, vBuf(env.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }catch(e){ console.warn('vaultDecrypt: '+e.message); return null; }
+}
+// ── /VAULT_CRYPTO ─────────────────────────────────────────────────
+
 // ── TRAVEL_PROFILES_TAB ──────────────────────────────────────────
 let tpRoster=[], tpProfiles=[];
 // Set by the tp_* field listeners whenever the user edits the form, and
