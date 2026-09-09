@@ -151,7 +151,7 @@ git commit -m "feat(travel-planner): add gs_travel_profiles table with RLS and g
   - `async tpSave(profile) -> boolean`
   - `tpReadMirror(name) -> profile | null`
   - `tpWriteMirror(profile) -> void`
-  - `TP_FIELDS` — array of the nine editable column names
+  - `TP_FIELDS` — array of the eight editable column names (`gs_name` is the key, not an editable field)
 
 - [ ] **Step 1: Copy the Supabase constants.** Open `gs-command-center.html`, find `ROADYS_SB_URL` and `ROADYS_SB_ANON`, and copy **both lines verbatim** into `gs-travel-planner.html` near the top of the main script. Do not retype the key by hand.
 
@@ -461,10 +461,15 @@ document.getElementById('tpPerson').onchange= e=>tpLoadInto(e.target.value);
 - [ ] **Step 7: Verify in the browser.** Click **Travel Profiles**. Then:
 
 ```js
-console.log('roster populated:', document.getElementById('tpPerson').options.length>0);
-document.getElementById('tpPerson').value='__plan_test__';   // may not exist yet
-tpAddPerson;  // exists
+const sel=document.getElementById('tpPerson');
+console.log('roster populated:', sel.options.length>0);
+console.log('handlers wired:', typeof tpAddPerson==='function'
+  && typeof document.getElementById('tpAdd').onclick==='function'
+  && typeof document.getElementById('tpSave').onclick==='function');
+console.log('form fields present:', TP_FIELDS.every(f=>!!document.getElementById('tp_'+f)));
 ```
+
+Expected: `roster populated: true`, `handlers wired: true`, `form fields present: true`
 
 Then by hand: click **+ Add person…**, enter `__plan_test__`, fill Home airport `BOI` and hotel brand `Best Western`, click **Save profile**. Expected: a toast confirming the save, and the stamp changes to "Last updated …".
 
@@ -664,9 +669,15 @@ Expected: `true`, `true`, `true`
 
 - [ ] **Step 4: Verify it stays out of the printed packet**
 
+`buildPrint()` reads `state.schedule` (`gs-travel-planner.html:1712`) and throws
+when it is null, so **build a real route first** — set a start airport, add two
+stops, and click **Build My Route**. Only then run:
+
 ```js
 tpRenderCard('__plan_test__');
-buildPrint(state.stops.filter(s=>s.name), state.origin||{lat:0,lng:0,label:'x'});
+const dest=state.sameEnd?state.origin:state.dest;
+const ordered=state.route.ordered.map(u=>state.stops.find(s=>s.uid===u)).filter(Boolean);
+buildPrint(ordered,dest);
 const printed=document.getElementById('printRoot').innerHTML;
 console.log('no profile data in packet:',
   !/Best Western/.test(printed) && !/PreCheck/.test(printed) && !/Aisle seat/.test(printed));
