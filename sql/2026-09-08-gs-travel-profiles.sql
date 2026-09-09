@@ -27,6 +27,9 @@ create policy gs_travel_profiles_insert
 create policy gs_travel_profiles_update
   on public.gs_travel_profiles for update using (true) with check (true);
 -- DELETE is a real requirement: removing a departed person from the roster.
+-- SUPERSEDED: this policy was dropped by
+-- sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql -- removals are now
+-- done in the SQL Editor, not from the browser's anon key.
 create policy gs_travel_profiles_delete
   on public.gs_travel_profiles for delete using (true);
 

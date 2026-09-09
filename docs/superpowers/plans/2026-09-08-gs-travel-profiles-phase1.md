@@ -233,6 +233,10 @@ Expected: `true true true true`
 
 - [ ] **Step 4: Verify a real anon round trip, then clean up**
 
+  > **Stale since 2026-09-09:** the anon DELETE policy was revoked by
+  > `sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql`, so the `.delete()`
+  > below no longer removes anything. Delete the test row in the Supabase SQL Editor.
+
 ```js
 const t={gs_name:'__plan_test__',home_airport:'BOI',hotel_brand:'Best Western',
          airline:'Delta',airline_tier:'Gold',has_precheck:true,has_globalentry:false,
@@ -478,6 +482,10 @@ Reload the page, open the tab, select `__plan_test__`. Expected: `BOI` and `Best
 - [ ] **Step 8: Verify the duplicate guard.** Click **+ Add person…** and enter `__PLAN_TEST__` (different case). Expected: toast says it is already on the list and opens the existing profile — **no second entry appears** in the dropdown.
 
 - [ ] **Step 9: Clean up the test row**
+
+  > **Stale since 2026-09-09:** anon DELETE was revoked
+  > (`sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql`). This `.delete()`
+  > no longer works — remove the row in the Supabase SQL Editor instead.
 
 ```js
 await tpClient().from('gs_travel_profiles').delete().eq('gs_name','__plan_test__');
@@ -768,6 +776,10 @@ curl -s "https://jasonvega1974.github.io/roadys-command-center/gs-travel-planner
 Expected: a non-zero count. GitHub Pages takes ~40s plus a `max-age=600` CDN cache; hard-reload before judging.
 
 - [ ] No `__plan_test__` rows remain:
+
+  > **Stale since 2026-09-09:** anon DELETE was revoked
+  > (`sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql`), so this check can
+  > only *report* leftovers — clearing them is now a SQL Editor job.
 
 ```js
 console.log('table clean:', !((await tpFetchAll())||[]).some(r=>/^__plan_test__$/.test(r.gs_name)));

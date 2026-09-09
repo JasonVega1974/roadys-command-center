@@ -767,8 +767,10 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
 <div id="viewProfiles" class="svWrap" style="display:none">
   <div class="card">
     <h2>Travel Profiles</h2>
-    <p class="small">Preferences used when planning a trip for someone. Loyalty
-      account numbers are not stored here yet.</p>
+    <p class="small">Preferences used when planning a trip for someone.
+      <b>This is shared, not private storage.</b> Do not enter loyalty account
+      numbers, Known Traveler / PreCheck numbers, or passport or card numbers —
+      names and preferences only.</p>
     <label class="f">Person</label>
     <select id="tpPerson"></select>
     <button class="hbtn" id="tpAdd" type="button">+ Add person…</button>
@@ -778,11 +780,11 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <div><label class="f">Airline</label><input id="tp_airline" placeholder="Delta"></div>
       <div><label class="f">Airline tier</label><input id="tp_airline_tier" placeholder="Gold"></div>
     </div>
-    <label class="f">Hotel notes</label><input id="tp_hotel_notes" placeholder="King room, ground floor">
+    <label class="f">Hotel notes (room preferences — no account numbers)</label><input id="tp_hotel_notes" placeholder="King room, ground floor">
     <label class="f"><input type="checkbox" id="tp_has_precheck"> TSA PreCheck</label>
     <label class="f"><input type="checkbox" id="tp_has_globalentry"> Global Entry</label>
     <label class="f">Notes</label>
-    <textarea id="tp_notes" rows="3" placeholder="Anything else that helps when booking"></textarea>
+    <textarea id="tp_notes" rows="3" placeholder="Seat preference, dietary needs, scheduling notes"></textarea>
     <button class="hbtn green" id="tpSave" type="button">Save profile</button>
     <span class="small" id="tpStamp"></span>
   </div>
@@ -916,11 +918,19 @@ function tpWriteMirror(p){
 // ── Roster derivation: union of cloud (authoritative), the hardcoded
 // #gsName seed list, and names already used in local trips — so the
 // dropdown is never empty even with no cloud and no saved profiles.
-function tpSeedNames(){
-  const sel=document.getElementById('gsName'); if(!sel) return [];
-  return [...sel.options].map(o=>o.value||o.text)
-    .filter(v=>v && v!=='__other').map(tpNorm);
-}
+// Captured ONCE, at script load, from the static markup -- before
+// tpRenderGSDropdown() has ever rewritten #gsName. Reading the LIVE options
+// here would feed every rendered name straight back into the next
+// tpBuildRoster(), so a profile deleted in the SQL Editor could never leave
+// the dropdown for the rest of the session. Since the anon DELETE policy was
+// revoked, the SQL Editor is the only removal mechanism, so that has to work.
+const TP_SEED_NAMES = Object.freeze(
+  [...(document.getElementById('gsName')?.options||[])]
+    .map(o=>o.value||o.text)
+    .filter(v=>v && v!=='__other')
+    .map(tpNorm)
+);
+function tpSeedNames(){ return TP_SEED_NAMES; }
 function tpLocalTripNames(){
   const out=[];
   for(let i=0;i<localStorage.length;i++){
@@ -966,7 +976,13 @@ function tpMirrorNames(){
 function tpRenderRoster(prev){
   const sel=document.getElementById('tpPerson');
   sel.innerHTML=tpRoster.map(n=>`<option>${esc(n)}</option>`).join('');
-  if(prev && tpRoster.includes(prev)) sel.value=prev;
+  // Identity is tpKey-based everywhere else in this file. An exact-string
+  // compare here silently drops the selection onto roster[0] whenever a
+  // mirror's casing diverges from the cloud's canonical casing -- and with
+  // tpDirty set, tpLoadInto() is skipped below, so person A's typed values
+  // would then sit under person B's name and Save would upsert them onto B.
+  const canon = tpNearMatch(prev, tpRoster);
+  if(canon) sel.value=canon;                 // select the canonical entry, not the raw string
   // Never overwrite fields the user is mid-edit on — a cloud refresh that
   // lands while someone is typing must not discard their unsaved text.
   if(!tpDirty) tpLoadInto(sel.value);
@@ -1050,20 +1066,39 @@ function tpWireDirtyTracking(){
 // curGS() via tripKey()), so the async cloud phase must NEVER change the
 // live selection out from under someone mid-edit. tpRenderGSDropdown() always
 // re-reads curGS() at call time (never a value captured before an await),
-// re-selects it by exact string, and -- if the freshly computed roster
-// somehow doesn't contain it -- appends it rather than dropping it, so the
-// string curGS() returns is identical before and after every call. It also
+// re-selects it by tpKey identity (or restores the "Other…" sentinel), and
+// -- if the freshly computed roster somehow doesn't contain it -- appends it
+// rather than dropping it, so the string curGS() returns is identical before
+// and after every call, "Other…" with an empty box included. It also
 // never blanks the control: an empty roster is a no-op, leaving whatever
 // options are already there untouched.
 const tpAirport = code => AIRPORTS.find(a=>a[0]===String(code||'').toUpperCase());
 function tpRenderGSDropdown(roster){
   const sel=document.getElementById('gsName'); if(!sel) return;
   if(!roster.length) return;                      // never blank the control
-  const keep=curGS();                              // read now, not a pre-await snapshot
-  const names = (keep && !roster.includes(keep)) ? [...roster,keep].sort((a,b)=>a.localeCompare(b)) : roster;
+  const other=document.getElementById('gsNameOther');
+  // "Other…" is a live UI state, not merely an unmatched name: the textbox is
+  // empty (curGS()==='') from the moment it is picked until a name is keyed,
+  // and half-typed for a while after. Rebuilding innerHTML makes the browser
+  // auto-select option 0, which silently moves trip ownership to the first
+  // roster name while the "Enter name" box stays open -- the next keystroke
+  // then autosaves the trip under the wrong person. So the sentinel is
+  // restored explicitly and the textbox is never touched or hidden.
+  const wasOther = sel.value==='__other';
+  const keep = wasOther ? '' : curGS();            // read now, not a pre-await snapshot
+  // tpKey identity, matching the rest of the roster machinery, so a casing
+  // difference can't bounce the selection to roster[0].
+  const canon = keep ? tpNearMatch(keep,roster) : null;
+  const names = (keep && !canon) ? [...roster,keep].sort((a,b)=>a.localeCompare(b)) : roster;
   sel.innerHTML = names.map(n=>`<option>${esc(n)}</option>`).join('')
                 + '<option value="__other">Other…</option>';
-  if(keep){ sel.value=keep; document.getElementById('gsNameOther').style.display='none'; }
+  if(wasOther){
+    sel.value='__other';
+    if(other) other.style.display='block';         // stays visible; its value is left alone
+  } else if(keep){
+    sel.value = canon || keep;                     // canonical roster entry when there is one
+    if(other) other.style.display='none';
+  }
   tpRenderCard(curGS());
 }
 async function tpPopulateGSDropdown(){
@@ -2207,6 +2242,12 @@ function hydrateUI(){
   $('destIn').value=state.dest?state.dest.label:'';
   $('destMeta').textContent=state.dest?`✓ Pinned at ${state.dest.lat.toFixed(4)}, ${state.dest.lng.toFixed(4)}`:'';
   renderStops();
+  // Setting #gsName above is programmatic, so its change handler never fires
+  // and the profile card would keep showing the previous person's airport and
+  // hotel next to the trip you just opened. Card only -- deliberately NOT
+  // tpApplyProfileToTrip(), which can fill state.origin and calls markDirty(),
+  // i.e. it would mutate and autosave a trip the user has only just opened.
+  tpRenderCard(curGS());
 }
 
 /* ---------------- export / import ---------------- */
