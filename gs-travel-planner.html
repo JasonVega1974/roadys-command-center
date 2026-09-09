@@ -456,6 +456,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <label class="f">Start Point</label>
       <div class="stopSearchWrap"><input id="originIn" placeholder="Type airport (e.g. Boise, MKE, Denver) or any address…" autocomplete="off"><div class="sugg" id="originSugg"></div></div>
       <div class="small" id="originMeta" style="margin-top:4px"></div>
+      <button class="hbtn" id="tpChip" type="button" style="display:none"></button>
       <label class="f" style="margin-top:12px">End Point</label>
       <label class="tog" style="margin-bottom:6px"><input type="checkbox" id="sameEnd" checked> Return to start point</label>
       <div id="destWrap" style="display:none">
@@ -1040,6 +1041,65 @@ function tpWireDirtyTracking(){
     const el=document.getElementById('tp_'+f);
     if(el) el.addEventListener('input', ()=>{ tpDirty=true; });
   });
+}
+
+// ── #gsName roster + home-airport prefill (Task 5) ──
+// Same render-local-first / cloud-upgrades-it shape as tpRenderTab() above,
+// with one extra constraint: #gsName decides trip ownership (trips key off
+// curGS() via tripKey()), so the async cloud phase must NEVER change the
+// live selection out from under someone mid-edit. tpRenderGSDropdown() always
+// re-reads curGS() at call time (never a value captured before an await),
+// re-selects it by exact string, and -- if the freshly computed roster
+// somehow doesn't contain it -- appends it rather than dropping it, so the
+// string curGS() returns is identical before and after every call. It also
+// never blanks the control: an empty roster is a no-op, leaving whatever
+// options are already there untouched.
+const tpAirport = code => AIRPORTS.find(a=>a[0]===String(code||'').toUpperCase());
+function tpRenderGSDropdown(roster){
+  const sel=document.getElementById('gsName'); if(!sel) return;
+  if(!roster.length) return;                      // never blank the control
+  const keep=curGS();                              // read now, not a pre-await snapshot
+  const names = (keep && !roster.includes(keep)) ? [...roster,keep].sort((a,b)=>a.localeCompare(b)) : roster;
+  sel.innerHTML = names.map(n=>`<option>${esc(n)}</option>`).join('')
+                + '<option value="__other">Other…</option>';
+  if(keep){ sel.value=keep; document.getElementById('gsNameOther').style.display='none'; }
+}
+async function tpPopulateGSDropdown(){
+  // (a) Local roster, synchronous -- tpFetchAll() can take ~10s to resolve
+  // null on a cloud outage (supabase-js retries internally), and #gsName
+  // must be usable long before that, offline included.
+  tpRenderGSDropdown(tpBuildRoster(tpMirrorNames()));
+  // (b) Cloud upgrade, if it answers. Selection is re-read and preserved
+  // inside tpRenderGSDropdown() itself -- never assume it's still what it
+  // was before this await.
+  const cloud=await tpFetchAll();
+  if(cloud) tpRenderGSDropdown(tpBuildRoster(cloud.map(p=>p.gs_name)));
+}
+// Fills the start point only when it is empty. If a trip already has an
+// origin, offer a chip instead -- silently replacing it would destroy
+// planned work.
+function tpApplyProfileToTrip(name){
+  const p=tpReadMirror(name)||(tpProfiles||[]).find(x=>tpKey(x.gs_name)===tpKey(name));
+  const chip=document.getElementById('tpChip');
+  if(chip) chip.style.display='none';
+  if(!p || !p.home_airport) return;
+  const a=tpAirport(p.home_airport); if(!a) return;
+  const origin={label:`${a[0]} — ${a[1]}`, lat:a[2], lng:a[3]};
+  if(!state.origin){
+    state.origin=origin;
+    document.getElementById('originIn').value=origin.label;
+    document.getElementById('originMeta').textContent=`✓ Pinned at ${a[2].toFixed(4)}, ${a[3].toFixed(4)}`;
+    markDirty();
+  } else if(chip && state.origin.label!==origin.label){
+    chip.textContent=`Use ${name.split(' ')[0]}'s home airport (${a[0]})`;
+    chip.style.display='inline-block';
+    chip.onclick=()=>{
+      state.origin=origin;
+      document.getElementById('originIn').value=origin.label;
+      document.getElementById('originMeta').textContent=`✓ Pinned at ${a[2].toFixed(4)}, ${a[3].toFixed(4)}`;
+      chip.style.display='none'; markDirty();
+    };
+  }
 }
 // ── /TRAVEL_PROFILES_TAB ─────────────────────────────────────────
 
@@ -2141,7 +2201,7 @@ function init(){
   wireEndpoint('originIn','originSugg','originMeta','origin');
   wireEndpoint('destIn','destSugg','destMeta','dest');
   $('sameEnd').onchange=e=>{$('destWrap').style.display=e.target.checked?'none':'block';markDirty()};
-  $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty()};
+  $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty();tpApplyProfileToTrip(curGS())};
   ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode','driveTil'].forEach(id=>$(id).addEventListener('input',markDirty));
   $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
   $('btnAddStop').onclick=()=>addStopRow();
@@ -2162,6 +2222,11 @@ function init(){
   const last=localStorage.getItem('gsp2:last');
   if(last&&localStorage.getItem(last)){loadTrip(last)}
   else{addStopRow();addStopRow();addStopRow()}
+  // Roster-driven dropdown + home-airport prefill (Task 5). Called last so
+  // it can't interfere with resuming a trip above; renders synchronously
+  // from local data first, then upgrades from the cloud without touching
+  // whatever the user has since selected (see tpRenderGSDropdown()).
+  tpPopulateGSDropdown();
 }
 function saveHotelPick(hid){
   const inp=document.querySelector(`.hotelPick[data-hid="${hid}"]`);
