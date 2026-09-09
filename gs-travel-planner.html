@@ -1714,7 +1714,33 @@ function _tpVaultMutateMsg(res){
   if(res.confirmedNoop)         return '⚠ Could not save — a re-read confirms nothing was written'+(res.message ? ' ('+res.message+')' : '')+'.';
   return '⚠ Could not save — nothing was changed'+(res.message ? ' ('+res.message+')' : '');
 }
-const _tpVaultWrapsEq = (a,b)=> JSON.stringify(a)===JSON.stringify(b);
+// Wrap-list equality, order-insensitive on OBJECT KEYS and strict on ARRAY ORDER.
+//
+// Postgres normalises jsonb key order, so a wrap this page writes as
+// {label, salt, iter, wrapped} can come back from PostgREST in a different
+// key order — the same way a `sec` envelope written {v, iv, ct} returns as
+// {v, ct, iv}. A plain JSON.stringify comparison therefore NEVER matches a
+// locally-built array against a server-returned one, which silently disabled
+// the lost-acknowledgement recovery in _tpVaultConfirmOutcome() and
+// tpVaultReplaceJustCreated()'s row-unchanged guard. Neither failed unsafely
+// — both just always took the pessimistic branch — but neither worked.
+//
+// Every stub in this task's tests echoed back exactly what it was handed, so
+// key order round-tripped perfectly and the bug stayed invisible until it was
+// checked against real Postgres.
+//
+// Array order is NOT normalised: wrap order is meaningful, so two lists
+// holding the same wraps in a different order must still compare unequal.
+function _tpVaultCanon(v){
+  if(Array.isArray(v)) return v.map(_tpVaultCanon);
+  if(v && typeof v==='object'){
+    const o={};
+    for(const k of Object.keys(v).sort()) o[k]=_tpVaultCanon(v[k]);
+    return o;
+  }
+  return v;
+}
+const _tpVaultWrapsEq = (a,b)=> JSON.stringify(_tpVaultCanon(a))===JSON.stringify(_tpVaultCanon(b));
 // First-time-setup save. INSERT, not upsert: the primary key (id='v1') makes
 // "no vault exists yet" an atomic, race-free precondition instead of a
 // belief this device might be wrong about. A unique-violation (Postgres
