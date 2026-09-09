@@ -86,6 +86,15 @@ and `crm_email_templates` (`sql/2026-07-15-crm-email-templates.sql`) — the
 Email Templates tab's canned-outreach library, synced so edits are shared
 between owners instead of living per-browser in `localStorage`.
 
+Travel Profiles Phase 1 (from `gs-travel-planner.html`):
+`gs_travel_profiles` (`sql/2026-09-08-gs-travel-profiles.sql`), keyed on
+`gs_name` (text PK). Per-person travel preferences — home airport, hotel
+brand, airline/tier, PreCheck/Global Entry, notes. **No account, KTN, or
+passport numbers**: the anon key is public, so every row is world-readable.
+The anon DELETE policy was revoked by
+`sql/2026-09-09-drop-gs-travel-profiles-delete-policy.sql`, so removing a
+person is a SQL Editor job — the page can no longer delete cloud rows.
+
 ## Project structure quick reference
 
 - `index.html` — Roady's Network Command Center (admin/master dashboard).
@@ -104,9 +113,15 @@ between owners instead of living per-browser in `localStorage`.
 - `implementation.html` — Onboarding tracker. Mirrors `impl_sites`,
   `sd_tickets`, `crm_leads` from `index.html`.
 - `vendors.html` — Vendor master + program details.
-- `gs-travel-planner.html` — Two tabs behind one header (`.viewTab`
-  buttons toggle `#viewPlanner` / `#viewVisit`, and swap the header
-  button group). **Route Planner**: OSRM routing, trips under
+- `gs-travel-planner.html` — Three tabs behind one header (`.viewTab`
+  buttons toggle `#viewPlanner` / `#viewVisit` / `#viewProfiles`, and swap
+  the header button group). Trips and visits stay in `localStorage`; only
+  **Travel Profiles** touches the cloud — it reads and writes
+  `gs_travel_profiles` via the Supabase SDK, mirrored locally under
+  `gsp2:profile:<tpKey>` so the page still works offline. `#gsName` decides
+  trip ownership (`tripKey(curGS(),…)`), so nothing in the async roster
+  render may change the selection — see the sentinel handling in
+  `tpRenderGSDropdown()`. **Route Planner**: OSRM routing, trips under
   `gsp2:trip:<gs>:<name>`. **Site Visit**: the `site-visit.html` form
   ported to this app's theme, with photo/video attachments stored as
   base64 inside the record. Visits save one key per visit under
