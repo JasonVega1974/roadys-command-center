@@ -982,15 +982,27 @@ function tpNearMatch(name,roster){
 // `iter: 1e12` and wedge a legitimate holder's tab forever. It is clamped to
 // [VAULT_KDF_ITER_MIN, VAULT_KDF_ITER_MAX] before it can reach PBKDF2: the
 // ceiling bounds that denial of service, and the floor stops a hostile *low*
-// value from making a future unwrap cheap to grind offline. Raising
-// VAULT_KDF_ITER past the ceiling means raising the ceiling with it.
+// value from making a future unwrap cheap to grind offline.
 const VAULT_KDF_ITER     = 600000;
+// ⚠ THESE TWO BOUNDS ARE PART OF THE KEY DERIVATION, NOT MERE VALIDATION.
+// Every stored `iter` passes through them before it reaches PBKDF2, so they
+// may only ever be WIDENED — lower the floor, raise the ceiling. NARROWING
+// either one (a floor above, or a ceiling below, an already-stored count)
+// silently derives a different KEK from the same passphrase and locks every
+// existing holder out of their own secrets, permanently: there is no escrow.
+// Raising VAULT_KDF_ITER above the ceiling is not a lockout — wrap and unwrap
+// both clamp identically — but it is a silent no-op that buys no extra work
+// factor, so raise the ceiling in the same edit.
 const VAULT_KDF_ITER_MIN = 100000;
 const VAULT_KDF_ITER_MAX = 2000000;
 const VAULT_KDF_HASH     = 'SHA-256';
 const VAULT_MIN_PASSPHRASE = 12;
 // AES-KW of a 256-bit DEK is always 32 bytes + an 8-byte integrity check.
 const VAULT_WRAPPED_BYTES = 40;
+// `wraps` is as attacker-writable as `iter` is, and the unlock loop derives one
+// KEK per entry. Without a cap, 5000 planted wraps rebuild the very tab-lock the
+// per-wrap clamp exists to prevent. 32 is far beyond any real holder count.
+const VAULT_MAX_WRAPS = 32;
 
 let _vaultDEK = null;   // CryptoKey, memory only — never persisted, gone on reload
 
@@ -1015,10 +1027,13 @@ function vaultNewRecoveryCode(){
   return [...b].map(x=>A[x%32]).join('').replace(/(.{5})(?=.)/g,'$1-');
 }
 
+// Every return path is clamped, including the fallback — a bare VAULT_KDF_ITER
+// here would escape the bounds the moment the constant outgrows the ceiling.
 function _vaultClampIter(iter){
+  const clamp = v => Math.min(Math.max(v, VAULT_KDF_ITER_MIN), VAULT_KDF_ITER_MAX);
   const n = Math.floor(Number(iter));
-  if(!Number.isFinite(n) || n <= 0) return VAULT_KDF_ITER;
-  return Math.min(Math.max(n, VAULT_KDF_ITER_MIN), VAULT_KDF_ITER_MAX);
+  if(!Number.isFinite(n) || n <= 0) return clamp(VAULT_KDF_ITER);
+  return clamp(n);
 }
 
 // Structural validation, run BEFORE any crypto. Everything rejected here is
@@ -1062,7 +1077,10 @@ async function _vaultKEK(secret, saltB64, iter){
 // read it already holds it in memory.
 async function _vaultWrap(dek, secret){
   const salt = vB64(crypto.getRandomValues(new Uint8Array(16)));
-  const iter = VAULT_KDF_ITER;
+  // Stamp what was ACTUALLY used to derive, not the raw constant: _vaultKEK
+  // clamps, so recording the unclamped value would let the metadata drift out
+  // of step with the key the moment VAULT_KDF_ITER left the bounds.
+  const iter = _vaultClampIter(VAULT_KDF_ITER);
   const kek  = await _vaultKEK(secret, salt, iter);
   return { salt, iter, wrapped: vB64(await crypto.subtle.wrapKey('raw', dek, kek, 'AES-KW')) };
 }
@@ -1087,8 +1105,9 @@ async function vaultCreate(passphrase){
 //   returns null          at least one structurally-valid wrap REJECTED this
 //                         secret. This, and only this, means "wrong passphrase".
 //   throws VaultDataError nothing ever got as far as rejecting: every candidate
-//                         was corrupt/undecodable, WebCrypto itself failed, or
-//                         there were no wraps at all. `.faults` says which.
+//                         was corrupt/undecodable, WebCrypto itself failed,
+//                         there were no wraps at all, or the list ran past
+//                         VAULT_MAX_WRAPS. `.faults` says which.
 // The split exists because there is no escrow. A data fault that reads as a
 // forgotten passphrase invites the holder to "start over", which permanently
 // orphans every existing ciphertext. Task 3 must say "this vault's data looks
@@ -1098,9 +1117,15 @@ async function vaultCreate(passphrase){
 // passphrase at a re-auth prompt must not silently end the session.
 async function vaultUnlock(secret, wraps){
   const prior  = _vaultDEK;
-  const list   = Array.isArray(wraps) ? wraps : [];
+  const all    = Array.isArray(wraps) ? wraps : [];
+  const list   = all.slice(0, VAULT_MAX_WRAPS);
+  const truncated = all.length > VAULT_MAX_WRAPS;
   const faults = [];
   let rejected = false;
+  // Surfaced as a fault rather than silently ignored: an over-long list is
+  // evidence the row was tampered with, and the holder needs to see that.
+  if(truncated) faults.push({label:null, name:'VaultDataError',
+    message:'wrap list holds '+all.length+' entries; only the first '+VAULT_MAX_WRAPS+' were tried — the vault row looks tampered with'});
   for(const w of list){
     let d;
     try{ d = _vaultDecodeWrap(w); }
@@ -1119,9 +1144,14 @@ async function vaultUnlock(secret, wraps){
     }
   }
   _vaultDEK = prior;   // never downgrade an already-unlocked session
-  if(rejected) return null;
+  // Truncation outranks a rejection. An untried wrap might have opened this
+  // vault, so reporting "wrong passphrase" from a partial sweep would be the
+  // same lie the fault/rejection split exists to prevent.
+  if(rejected && !truncated) return null;
   throw new VaultDataError(
-    list.length ? 'no usable wrap: every entry was corrupt or unreadable' : 'no wraps to try',
+    truncated     ? 'wrap list exceeds the '+VAULT_MAX_WRAPS+'-entry cap — refusing to call this a wrong passphrase after a partial attempt'
+    : list.length ? 'no usable wrap: every entry was corrupt or unreadable'
+                  : 'no wraps to try',
     faults);
 }
 
