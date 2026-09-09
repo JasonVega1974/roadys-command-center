@@ -771,6 +771,15 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <b>This is shared, not private storage.</b> Do not enter loyalty account
       numbers, Known Traveler / PreCheck numbers, or passport or card numbers —
       names and preferences only.</p>
+  </div>
+
+  <div id="tpVaultBar" class="card" style="margin-bottom:10px">
+    <span id="tpVaultState" class="small">Checking vault…</span>
+    <button class="hbtn" id="tpVaultBtn" type="button" style="display:none"></button>
+    <button class="hbtn" id="tpVaultLockBtn" type="button" style="display:none">🔒 Lock</button>
+  </div>
+
+  <div class="card">
     <label class="f">Person</label>
     <select id="tpPerson"></select>
     <button class="hbtn" id="tpAdd" type="button">+ Add person…</button>
@@ -1247,6 +1256,14 @@ async function tpRenderTab(){
   tpProfiles = tpRoster.map(n=>tpReadMirror(n)).filter(Boolean);
   tpRenderRoster(prev);
 
+  // Vault bar: fired here (after the sync render above) but deliberately
+  // never awaited — tpVaultLoad() is its own Supabase round trip that can
+  // take just as long to fail offline as tpFetchAll() does, and the person
+  // list must not wait on it. #tpVaultState keeps showing whatever it
+  // already shows (its static "Checking vault…" default on first render, or
+  // the last known state on a re-render) until this settles on its own.
+  tpVaultLoad().then(tpVaultRenderBar, tpVaultRenderBar);
+
   // (b) Cloud is authoritative when it answers; keep the selection stable.
   const cloud=await tpFetchAll();
   if(cloud){
@@ -1411,6 +1428,139 @@ function tpRenderCard(name){
 // list on a cloud round trip.
 function tpPreferredBrand(){
   const p=tpReadMirror(curGS()); return (p&&p.hotel_brand)?p.hotel_brand:'';
+}
+
+// ── Vault setup / unlock UI (Phase 2, Task 3) ──
+// Module state: the single vault row ({id,wraps,kdf}) or null when no vault
+// has been created yet. Loaded by tpVaultLoad(), never written except through
+// tpVaultSaveWraps()/vaultAddHolder callers in a later task.
+let tpVaultRow = null;
+async function tpVaultLoad(){
+  try{
+    await tpEnsureLib();
+    const sb=tpClient(); if(!sb) return null;
+    const {data,error}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
+    if(error){ console.warn('tpVaultLoad: '+error.message); return null; }
+    tpVaultRow = data || null;
+    return tpVaultRow;
+  }catch(e){ console.warn('tpVaultLoad: '+e.message); return null; }
+}
+async function tpVaultSaveWraps(wraps){
+  try{
+    await tpEnsureLib();
+    const sb=tpClient(); if(!sb) return false;
+    const {error}=await sb.from('gs_travel_vault')
+      .upsert({id:'v1', wraps}, {onConflict:'id'});
+    if(error){ console.warn('tpVaultSaveWraps: '+error.message); return false; }
+    tpVaultRow = Object.assign({}, tpVaultRow||{id:'v1'}, {wraps});
+    return true;
+  }catch(e){ console.warn('tpVaultSaveWraps: '+e.message); return false; }
+}
+function tpVaultRenderBar(){
+  const s=$('tpVaultState'), b=$('tpVaultBtn'), l=$('tpVaultLockBtn');
+  if(!s || !b || !l) return;
+  if(!vaultAvailable()){
+    s.innerHTML='🔒 Encrypted fields need a secure page — open this over https, not as a local file.';
+    b.style.display='none'; l.style.display='none'; return;
+  }
+  if(!tpVaultRow){
+    s.innerHTML='No vault yet. Account numbers stay hidden until one is set up.';
+    b.textContent='Set up vault'; b.style.display=''; l.style.display='none';
+  } else if(!vaultIsUnlocked()){
+    s.innerHTML='🔒 Vault locked — account numbers are hidden.';
+    b.textContent='Unlock'; b.style.display=''; l.style.display='none';
+  } else {
+    s.innerHTML='🔓 Vault unlocked for this tab. It re-locks when you reload.';
+    b.style.display='none'; l.style.display='';
+  }
+}
+// Both setup and unlock can take real, user-visible time (unlock especially —
+// up to ~8.7s at the 32-wrap / 2M-iteration ceiling, vs. ~90ms normally), so
+// both buttons are disabled and #tpVaultState shows a working state for the
+// duration, always restored in a finally so a throw can't strand the UI.
+function _tpVaultBusy(msg){
+  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), s=$('tpVaultState');
+  if(b) b.disabled=true; if(l) l.disabled=true;
+  if(s) s.innerHTML=msg;
+}
+function _tpVaultIdle(){
+  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn');
+  if(b) b.disabled=false; if(l) l.disabled=false;
+  tpVaultRenderBar();
+}
+async function tpVaultDoSetup(){
+  const p1=prompt(`Choose a vault passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).\n\nIt is never sent anywhere and cannot be recovered — store it in the company password manager.`);
+  if(p1===null) return;
+  if(String(p1).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
+  const p2=prompt('Type the same passphrase again to confirm.');
+  if(p2===null) return;
+  if(p1!==p2){ toast('Those did not match — nothing was set up'); return; }
+
+  let wraps, recoveryCode;
+  _tpVaultBusy('⏳ Setting up the vault…');
+  try{
+    ({wraps, recoveryCode} = await vaultCreate(p1));
+    const ok = await tpVaultSaveWraps(wraps);
+    if(!ok){ vaultLock(); toast('⚠ Could not save the vault — nothing was changed'); return; }
+  }catch(e){
+    vaultLock();
+    toast('⚠ Vault setup failed: '+((e&&e.message)||e), 9000);
+    return;
+  }finally{
+    _tpVaultIdle();
+  }
+
+  // The recovery code is shown exactly once, right now — it is never stored
+  // anywhere and vaultCreate() never returns it again. The explicit STORED
+  // confirmation is deliberate friction: without one of {passphrase, this
+  // code}, nothing wrapped under this vault can ever be recovered.
+  const ack = prompt(
+    'RECOVERY CODE — this is shown ONE TIME ONLY and will never be shown again:\n\n' + recoveryCode +
+    '\n\nStore this in the company password manager alongside the passphrase, with at least two people able to reach it. Without one of them, everything in this vault is permanently unrecoverable.\n\n' +
+    'Type STORED to confirm you have saved it.');
+  if(ack!=='STORED') toast('⚠ Vault created, but you did not confirm storing the recovery code — save it now, it will not be shown again', 9000);
+  else toast('🔓 Vault ready');
+  await tpRenderTab();
+}
+async function tpVaultDoUnlock(){
+  const s=prompt('Enter the vault passphrase, or the recovery code.');
+  if(s===null) return;
+
+  let unlocked=false;
+  _tpVaultBusy('⏳ Checking… this can take several seconds if this vault has many holders.');
+  try{
+    const label = await vaultUnlock(s, (tpVaultRow||{}).wraps);
+    // vaultUnlock's three-outcome contract (return label / return null /
+    // throw VaultDataError) is load-bearing: only a returned null means the
+    // secret was structurally checked and rejected. Anything else — corrupt
+    // wraps, a truncated-then-untrustworthy list, WebCrypto failing — throws,
+    // and must never be reported to the holder as "wrong passphrase". There
+    // is no escrow: telling someone to "just set it up again" after a data
+    // fault permanently orphans every existing ciphertext.
+    if(label===null){
+      toast('That passphrase or code did not open the vault — try again');
+    }else{
+      unlocked=true;
+      toast(label==='recovery-code' ? '🔓 Unlocked with the recovery code — consider rotating the passphrase' : '🔓 Vault unlocked');
+    }
+  }catch(e){
+    if(e instanceof VaultDataError){
+      // Truncation is checked structurally against the array we passed in —
+      // never by parsing e.message/e.faults — because that's the one signal
+      // that wasn't already run through the "reject vs. fault" split inside
+      // vaultUnlock itself.
+      const truncated = ((tpVaultRow||{}).wraps||[]).length > VAULT_MAX_WRAPS;
+      toast(truncated
+        ? '⚠ This vault\'s wrap list is longer than expected and looks tampered with — this is NOT a wrong passphrase. Do NOT set up a new vault; that would permanently orphan the existing encrypted data. Get an admin to check the gs_travel_vault row first.'
+        : '⚠ This vault\'s data looks corrupted — this is NOT a wrong passphrase. Do NOT set up a new vault; that would permanently orphan the existing encrypted data. Get an admin to check the gs_travel_vault row first.',
+        12000);
+    }else{
+      toast('⚠ Unlock failed: '+((e&&e.message)||e), 9000);
+    }
+  }finally{
+    _tpVaultIdle();
+  }
+  if(unlocked) await tpRenderTab();
 }
 // ── /TRAVEL_PROFILES_TAB ─────────────────────────────────────────
 
@@ -3721,6 +3871,9 @@ function initSiteVisit(){
   document.getElementById('tpAdd').onclick    = tpAddPerson;
   document.getElementById('tpPerson').onchange= e=>tpLoadInto(e.target.value);
   tpWireDirtyTracking();
+
+  $('tpVaultBtn').onclick     = ()=> tpVaultRow ? tpVaultDoUnlock() : tpVaultDoSetup();
+  $('tpVaultLockBtn').onclick = ()=>{ vaultLock(); tpVaultRenderBar(); tpRenderTab(); toast('🔒 Vault locked'); };
 
   // Trips autosave; a visit carrying photos is too heavy for that, so guard the exit instead.
   window.addEventListener('beforeunload', e=>{
