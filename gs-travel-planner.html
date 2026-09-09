@@ -976,14 +976,33 @@ function tpNearMatch(name,roster){
 // wraps written before this field existed); wrapping always stamps the current
 // constant. vaultAddHolder therefore upgrades one holder at a time, which makes
 // raising VAULT_KDF_ITER an incremental migration instead of a flag day.
-const VAULT_KDF_ITER   = 600000;
-const VAULT_KDF_HASH   = 'SHA-256';
+//
+// That stored count is attacker-controlled — the vault row is world-writable
+// under `using (true)`, so anyone holding the public anon key can plant
+// `iter: 1e12` and wedge a legitimate holder's tab forever. It is clamped to
+// [VAULT_KDF_ITER_MIN, VAULT_KDF_ITER_MAX] before it can reach PBKDF2: the
+// ceiling bounds that denial of service, and the floor stops a hostile *low*
+// value from making a future unwrap cheap to grind offline. Raising
+// VAULT_KDF_ITER past the ceiling means raising the ceiling with it.
+const VAULT_KDF_ITER     = 600000;
+const VAULT_KDF_ITER_MIN = 100000;
+const VAULT_KDF_ITER_MAX = 2000000;
+const VAULT_KDF_HASH     = 'SHA-256';
 const VAULT_MIN_PASSPHRASE = 12;
+// AES-KW of a 256-bit DEK is always 32 bytes + an 8-byte integrity check.
+const VAULT_WRAPPED_BYTES = 40;
 
 let _vaultDEK = null;   // CryptoKey, memory only — never persisted, gone on reload
 
 const vB64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const vBuf = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+// Raised by vaultUnlock when the vault DATA is unusable, as opposed to the
+// secret being wrong. Task 3 keys its "do not re-create the vault" warning off
+// this. `.faults` is [{label, name, message}] — one entry per unusable wrap.
+class VaultDataError extends Error {
+  constructor(message, faults){ super(message); this.name = 'VaultDataError'; this.faults = faults || []; }
+}
 
 function vaultAvailable(){ return !!(window.crypto && window.crypto.subtle && window.isSecureContext) }
 function vaultIsUnlocked(){ return !!_vaultDEK }
@@ -996,10 +1015,45 @@ function vaultNewRecoveryCode(){
   return [...b].map(x=>A[x%32]).join('').replace(/(.{5})(?=.)/g,'$1-');
 }
 
+function _vaultClampIter(iter){
+  const n = Math.floor(Number(iter));
+  if(!Number.isFinite(n) || n <= 0) return VAULT_KDF_ITER;
+  return Math.min(Math.max(n, VAULT_KDF_ITER_MIN), VAULT_KDF_ITER_MAX);
+}
+
+// Structural validation, run BEFORE any crypto. Everything rejected here is
+// corrupt data, never a wrong passphrase, so it must not be swallowed as
+// "try the next wrap" — see the vaultUnlock contract.
+function _vaultDecodeWrap(w){
+  if(!w || typeof w !== 'object') throw new VaultDataError('wrap is not an object');
+  const label = typeof w.label === 'string' && w.label ? w.label : '(unlabelled)';
+  if(typeof w.salt !== 'string' || !w.salt)       throw new VaultDataError('wrap "'+label+'" has no salt');
+  if(typeof w.wrapped !== 'string' || !w.wrapped) throw new VaultDataError('wrap "'+label+'" has no wrapped key');
+  let salt, wrapped;
+  try{ salt = vBuf(w.salt); }
+  catch(e){ throw new VaultDataError('wrap "'+label+'" has an undecodable salt'); }
+  try{ wrapped = vBuf(w.wrapped); }
+  catch(e){ throw new VaultDataError('wrap "'+label+'" has undecodable wrapped-key base64'); }
+  if(!salt.length) throw new VaultDataError('wrap "'+label+'" has an empty salt');
+  // The wrapped length is fixed, so check it here. Left to AES-KW, a truncated
+  // wrap reports the same OperationError a wrong secret does, and corruption
+  // would masquerade as a forgotten passphrase.
+  if(wrapped.length !== VAULT_WRAPPED_BYTES)
+    throw new VaultDataError('wrap "'+label+'" is '+wrapped.length+' bytes, expected '+VAULT_WRAPPED_BYTES+' — truncated or corrupt');
+  let iter = VAULT_KDF_ITER;   // absent means "written before iter was recorded"
+  if(w.iter !== undefined && w.iter !== null){
+    const n = Number(w.iter);
+    if(!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n)
+      throw new VaultDataError('wrap "'+label+'" has a non-integer iteration count');
+    iter = n;
+  }
+  return { label, saltB64: w.salt, wrapped, storedIter: iter, iter: _vaultClampIter(iter) };
+}
+
 async function _vaultKEK(secret, saltB64, iter){
   const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    {name:'PBKDF2', salt:vBuf(saltB64), iterations:(iter||VAULT_KDF_ITER), hash:VAULT_KDF_HASH},
+    {name:'PBKDF2', salt:vBuf(saltB64), iterations:_vaultClampIter(iter || VAULT_KDF_ITER), hash:VAULT_KDF_HASH},
     km, {name:'AES-KW', length:256}, false, ['wrapKey','unwrapKey']);
 }
 
@@ -1027,17 +1081,48 @@ async function vaultCreate(passphrase){
 
 // Tries every wrap. AES-KW is authenticated, so a wrong secret throws rather
 // than yielding a bogus key — which is why no separate verifier is stored.
+//
+// CONTRACT — three outcomes, and Task 3 depends on all three staying distinct:
+//   returns <label>       one wrap opened; _vaultDEK is now that vault's DEK.
+//   returns null          at least one structurally-valid wrap REJECTED this
+//                         secret. This, and only this, means "wrong passphrase".
+//   throws VaultDataError nothing ever got as far as rejecting: every candidate
+//                         was corrupt/undecodable, WebCrypto itself failed, or
+//                         there were no wraps at all. `.faults` says which.
+// The split exists because there is no escrow. A data fault that reads as a
+// forgotten passphrase invites the holder to "start over", which permanently
+// orphans every existing ciphertext. Task 3 must say "this vault's data looks
+// corrupt — do NOT re-create it" on the throw, never "wrong passphrase".
+//
+// A failed attempt also leaves an already-unlocked session intact: one mistyped
+// passphrase at a re-auth prompt must not silently end the session.
 async function vaultUnlock(secret, wraps){
-  for(const w of (wraps||[])){
+  const prior  = _vaultDEK;
+  const list   = Array.isArray(wraps) ? wraps : [];
+  const faults = [];
+  let rejected = false;
+  for(const w of list){
+    let d;
+    try{ d = _vaultDecodeWrap(w); }
+    catch(e){ faults.push({label:(w && w.label) || null, name:e.name, message:e.message}); continue; }
     try{
-      const kek = await _vaultKEK(secret, w.salt, w.iter || VAULT_KDF_ITER);
-      _vaultDEK = await crypto.subtle.unwrapKey('raw', vBuf(w.wrapped), kek, 'AES-KW',
+      const kek = await _vaultKEK(secret, d.saltB64, d.iter);
+      _vaultDEK = await crypto.subtle.unwrapKey('raw', d.wrapped, kek, 'AES-KW',
         {name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
-      return w.label;
-    }catch(e){ /* wrong secret for this wrap — try the next */ }
+      return d.label;
+    }catch(e){
+      // OperationError is WebCrypto's "the authenticated unwrap did not verify"
+      // — this secret is simply not this wrap's secret. Any other class
+      // (WebCrypto absent, DataError, TypeError) is a fault, not a rejection.
+      if(e && e.name === 'OperationError') rejected = true;
+      else faults.push({label:d.label, name:(e && e.name) || 'Error', message:(e && e.message) || String(e)});
+    }
   }
-  _vaultDEK = null;
-  return null;
+  _vaultDEK = prior;   // never downgrade an already-unlocked session
+  if(rejected) return null;
+  throw new VaultDataError(
+    list.length ? 'no usable wrap: every entry was corrupt or unreadable' : 'no wraps to try',
+    faults);
 }
 
 async function vaultAddHolder(label, secret, wraps){
@@ -1054,18 +1139,34 @@ function vaultRemoveHolder(label, wraps){
   return next;
 }
 
-async function vaultEncrypt(obj){
+// `aad` is REQUIRED on both encrypt and decrypt, deliberately with no fallback.
+// It binds a ciphertext to the record it belongs to. The vault tables are
+// writable under `using (true)`, so without it an attacker can lift profile A's
+// blob onto profile B's row and it decrypts cleanly, silently attributing one
+// person's account numbers to another. Task 4 passes the profile's identity
+// key. Nothing is deployed yet, so there is no legacy no-AAD path to downgrade
+// to — a missing aad is a programming error and throws, checked before the
+// lock state so it cannot hide behind a locked vault.
+function _vaultAAD(aad){
+  if(typeof aad !== 'string' || !aad)
+    throw new Error('aad is required — pass the record identity this ciphertext belongs to');
+  return new TextEncoder().encode(aad);
+}
+
+async function vaultEncrypt(obj, aad){
+  const additionalData = _vaultAAD(aad);
   if(!_vaultDEK) throw new Error('vault is locked');
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, _vaultDEK,
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv, additionalData}, _vaultDEK,
     new TextEncoder().encode(JSON.stringify(obj)));
   return { v:1, iv:vB64(iv), ct:vB64(ct) };
 }
 
-async function vaultDecrypt(env){
+async function vaultDecrypt(env, aad){
+  const additionalData = _vaultAAD(aad);
   if(!_vaultDEK || !env || !env.ct) return null;
   try{
-    const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:vBuf(env.iv)}, _vaultDEK, vBuf(env.ct));
+    const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:vBuf(env.iv), additionalData}, _vaultDEK, vBuf(env.ct));
     return JSON.parse(new TextDecoder().decode(pt));
   }catch(e){ console.warn('vaultDecrypt: '+e.message); return null; }
 }
