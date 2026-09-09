@@ -1432,19 +1432,45 @@ function tpPreferredBrand(){
 
 // ── Vault setup / unlock UI (Phase 2, Task 3) ──
 // Module state: the single vault row ({id,wraps,kdf}) or null when no vault
-// has been created yet. Loaded by tpVaultLoad(), never written except through
-// tpVaultSaveWraps()/vaultAddHolder callers in a later task.
+// is confirmed to exist yet. Loaded by tpVaultLoad(), never written except
+// through tpVaultInsertNew() (first-time setup), tpVaultReplaceJustCreated()
+// (the narrow immediate-redo path below), or tpVaultSaveWraps()/
+// vaultAddHolder callers in a later task (rotate/add-holder — an existing
+// row, legitimately replaced).
 let tpVaultRow = null;
+// 'pending'  — no load has completed yet (page just opened).
+// 'ok'       — the most recent load actually reached the table: tpVaultRow
+//              is the truth, INCLUDING when it's null (confirmed no vault).
+// 'failed'   — the most recent load could not get an authoritative answer
+//              (tpEnsureLib()/tpClient() unavailable, a PostgREST error, an
+//              exception). tpVaultRow is whatever it was before — stale, not
+//              wrong, but NOT proof a vault is absent.
+// This is the fix for the review's Finding 1: tpVaultRenderBar() must never
+// read "tpVaultRow is null" as "no vault exists" unless the load that
+// produced that null actually succeeded. A failed load offering "Set up
+// vault" invites the holder to insert a vault whose absence was never
+// confirmed — see tpVaultInsertNew()'s 23505 guard for the second half of
+// that fix.
+let tpVaultLoadState = 'pending';
 async function tpVaultLoad(){
   try{
     await tpEnsureLib();
-    const sb=tpClient(); if(!sb) return null;
+    const sb=tpClient();
+    if(!sb){ tpVaultLoadState='failed'; return {ok:false, row:null}; }
     const {data,error}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
-    if(error){ console.warn('tpVaultLoad: '+error.message); return null; }
+    if(error){ console.warn('tpVaultLoad: '+error.message); tpVaultLoadState='failed'; return {ok:false, row:null}; }
     tpVaultRow = data || null;
-    return tpVaultRow;
-  }catch(e){ console.warn('tpVaultLoad: '+e.message); return null; }
+    tpVaultLoadState = 'ok';
+    return {ok:true, row:tpVaultRow};
+  }catch(e){ console.warn('tpVaultLoad: '+e.message); tpVaultLoadState='failed'; return {ok:false, row:null}; }
 }
+// Upsert-semantics save. Reserved for Task 5 (rotate a passphrase, add/
+// remove a holder) — those legitimately replace an EXISTING row's wraps.
+// Setup must never call this: an upsert can't distinguish "no vault yet"
+// from "a real vault is already here," so it would silently overwrite real
+// wraps the instant two people raced to set one up, or the instant this
+// device's failed load wrongly believed there was nothing to protect.
+// tpVaultInsertNew()/tpVaultReplaceJustCreated() below are what Setup uses.
 async function tpVaultSaveWraps(wraps){
   try{
     await tpEnsureLib();
@@ -1453,8 +1479,58 @@ async function tpVaultSaveWraps(wraps){
       .upsert({id:'v1', wraps}, {onConflict:'id'});
     if(error){ console.warn('tpVaultSaveWraps: '+error.message); return false; }
     tpVaultRow = Object.assign({}, tpVaultRow||{id:'v1'}, {wraps});
+    tpVaultLoadState = 'ok';
     return true;
   }catch(e){ console.warn('tpVaultSaveWraps: '+e.message); return false; }
+}
+const _tpVaultWrapsEq = (a,b)=> JSON.stringify(a)===JSON.stringify(b);
+// First-time-setup save. INSERT, not upsert: the primary key (id='v1') makes
+// "no vault exists yet" an atomic, race-free precondition instead of a
+// belief this device might be wrong about. A unique-violation (Postgres
+// 23505) means a real vault is already there — that is reported as a
+// conflict, never silently overwritten.
+async function tpVaultInsertNew(wraps){
+  try{
+    await tpEnsureLib();
+    const sb=tpClient(); if(!sb) return {ok:false, conflict:false};
+    const {error}=await sb.from('gs_travel_vault').insert({id:'v1', wraps});
+    if(error){
+      if(error.code==='23505'){
+        console.warn('tpVaultInsertNew: a vault row already exists');
+        return {ok:false, conflict:true};
+      }
+      console.warn('tpVaultInsertNew: '+error.message);
+      return {ok:false, conflict:false};
+    }
+    tpVaultRow = {id:'v1', wraps};
+    tpVaultLoadState = 'ok';
+    return {ok:true, conflict:false};
+  }catch(e){ console.warn('tpVaultInsertNew: '+e.message); return {ok:false, conflict:false}; }
+}
+// The ONLY path allowed to replace a row it did not just insert-and-verify
+// itself. Reachable from exactly one place: the "recovery code wasn't
+// confirmed stored" branch of _tpVaultRunSetup(), in the same call chain
+// that just created `previousWraps` a moment ago — never from a stored flag,
+// a lingering button, or anything a reload or a later visit could reach.
+// Before writing, it re-reads the row and requires it still hold exactly
+// `previousWraps`; if anything else is there now (a real vault landed in
+// the interim), it refuses and reports a conflict instead of clobbering it.
+async function tpVaultReplaceJustCreated(newWraps, previousWraps){
+  try{
+    await tpEnsureLib();
+    const sb=tpClient(); if(!sb) return {ok:false, conflict:false};
+    const {data,error:selErr}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
+    if(selErr){ console.warn('tpVaultReplaceJustCreated: '+selErr.message); return {ok:false, conflict:false}; }
+    if(!data || !_tpVaultWrapsEq(data.wraps, previousWraps)){
+      console.warn('tpVaultReplaceJustCreated: row changed since insert — refusing to replace');
+      return {ok:false, conflict:true};
+    }
+    const {error}=await sb.from('gs_travel_vault').update({wraps:newWraps}).eq('id','v1');
+    if(error){ console.warn('tpVaultReplaceJustCreated: '+error.message); return {ok:false, conflict:false}; }
+    tpVaultRow = {id:'v1', wraps:newWraps};
+    tpVaultLoadState = 'ok';
+    return {ok:true, conflict:false};
+  }catch(e){ console.warn('tpVaultReplaceJustCreated: '+e.message); return {ok:false, conflict:false}; }
 }
 function tpVaultRenderBar(){
   const s=$('tpVaultState'), b=$('tpVaultBtn'), l=$('tpVaultLockBtn');
@@ -1464,11 +1540,27 @@ function tpVaultRenderBar(){
     b.style.display='none'; l.style.display='none'; return;
   }
   if(!tpVaultRow){
+    if(tpVaultLoadState!=='ok'){
+      // Neither "still loading" nor "the last check failed" is proof no
+      // vault exists — only a load that actually succeeded and came back
+      // empty is. The setup button must not appear here (Finding 1c): that
+      // would let someone insert a vault without ever confirming one isn't
+      // already sitting in gs_travel_vault.
+      if(tpVaultLoadState==='failed'){
+        s.innerHTML="⚠ Can't reach the vault — try again.";
+        b.textContent='Retry'; b.dataset.mode='retry'; b.style.display='';
+      }else{
+        s.innerHTML='Checking vault…';
+        b.style.display='none';
+      }
+      l.style.display='none';
+      return;
+    }
     s.innerHTML='No vault yet. Account numbers stay hidden until one is set up.';
-    b.textContent='Set up vault'; b.style.display=''; l.style.display='none';
+    b.textContent='Set up vault'; b.dataset.mode='setup'; b.style.display=''; l.style.display='none';
   } else if(!vaultIsUnlocked()){
     s.innerHTML='🔒 Vault locked — account numbers are hidden.';
-    b.textContent='Unlock'; b.style.display=''; l.style.display='none';
+    b.textContent='Unlock'; b.dataset.mode='unlock'; b.style.display=''; l.style.display='none';
   } else {
     s.innerHTML='🔓 Vault unlocked for this tab. It re-locks when you reload.';
     b.style.display='none'; l.style.display='';
@@ -1488,6 +1580,15 @@ function _tpVaultIdle(){
   if(b) b.disabled=false; if(l) l.disabled=false;
   tpVaultRenderBar();
 }
+// Re-check gs_travel_vault on demand. This is the "Retry" button's action
+// when the last load failed (see tpVaultRenderBar()) — it must never fall
+// back to offering setup itself; that decision belongs to the render, which
+// re-runs at the end via _tpVaultIdle().
+async function tpVaultRetryLoad(){
+  _tpVaultBusy('⏳ Checking the vault…');
+  try{ await tpVaultLoad(); }
+  finally{ _tpVaultIdle(); }
+}
 async function tpVaultDoSetup(){
   const p1=prompt(`Choose a vault passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).\n\nIt is never sent anywhere and cannot be recovered — store it in the company password manager.`);
   if(p1===null) return;
@@ -1495,13 +1596,54 @@ async function tpVaultDoSetup(){
   const p2=prompt('Type the same passphrase again to confirm.');
   if(p2===null) return;
   if(p1!==p2){ toast('Those did not match — nothing was set up'); return; }
-
+  await _tpVaultRunSetup(p1);
+}
+// Does the actual create-and-save, for both first-time setup and the
+// one-time "I didn't confirm the recovery code, redo it now" path below.
+// `previousWraps`, when passed, means this is that redo: use the narrow
+// tpVaultReplaceJustCreated() guard instead of a plain insert.
+async function _tpVaultRunSetup(passphrase, previousWraps){
   let wraps, recoveryCode;
-  _tpVaultBusy('⏳ Setting up the vault…');
+  _tpVaultBusy(previousWraps ? '⏳ Replacing the vault…' : '⏳ Setting up the vault…');
   try{
-    ({wraps, recoveryCode} = await vaultCreate(p1));
-    const ok = await tpVaultSaveWraps(wraps);
-    if(!ok){ vaultLock(); toast('⚠ Could not save the vault — nothing was changed'); return; }
+    ({wraps, recoveryCode} = await vaultCreate(passphrase));
+    const res = previousWraps
+      ? await tpVaultReplaceJustCreated(wraps, previousWraps)
+      : await tpVaultInsertNew(wraps);
+    if(!res.ok){
+      if(res.conflict){
+        // Unambiguous: a real row is (or now is) sitting there. Never
+        // overwrite it — refresh so the bar reflects the truth instead of
+        // "No vault yet", and send the holder to Unlock instead.
+        vaultLock();
+        await tpVaultLoad();
+        toast('⚠ A vault already exists — nothing was changed. Unlock with the existing passphrase or recovery code, or get an admin to check the gs_travel_vault row.', 12000);
+        return;
+      }
+      // Ambiguous failure (offline, RLS, a dropped response, ...): the error
+      // alone doesn't say whether the write actually landed. Re-read once
+      // and report what's really there instead of asserting "nothing was
+      // changed" (Finding 3) — a lost acknowledgement on a write that DID
+      // land must not be told to the holder as a no-op.
+      const check = await tpVaultLoad();
+      if(!check.ok){
+        vaultLock();
+        toast("⚠ Could not save the vault, and couldn't confirm whether it landed anyway — check the connection, then reopen this tab before trying again.", 12000);
+        return;
+      }
+      if(!check.row){
+        vaultLock();
+        toast('⚠ Could not save the vault — confirmed nothing was written. Try again once the connection is back.', 9000);
+        return;
+      }
+      if(!_tpVaultWrapsEq(check.row.wraps, wraps)){
+        vaultLock();
+        toast('⚠ A vault already exists — nothing was changed. Unlock with the existing passphrase or recovery code, or get an admin to check the gs_travel_vault row.', 12000);
+        return;
+      }
+      // It actually landed; the error response was just lost. Fall through
+      // and treat this exactly like a normal success.
+    }
   }catch(e){
     vaultLock();
     toast('⚠ Vault setup failed: '+((e&&e.message)||e), 9000);
@@ -1518,8 +1660,31 @@ async function tpVaultDoSetup(){
     'RECOVERY CODE — this is shown ONE TIME ONLY and will never be shown again:\n\n' + recoveryCode +
     '\n\nStore this in the company password manager alongside the passphrase, with at least two people able to reach it. Without one of them, everything in this vault is permanently unrecoverable.\n\n' +
     'Type STORED to confirm you have saved it.');
-  if(ack!=='STORED') toast('⚠ Vault created, but you did not confirm storing the recovery code — save it now, it will not be shown again', 9000);
-  else toast('🔓 Vault ready');
+  if(ack==='STORED'){
+    toast('🔓 Vault ready');
+  }else{
+    // Finding 2: the code really is gone — vaultCreate() never re-emits it —
+    // so "save it now" would be advice no one can follow. What's actually
+    // true right now, and only right now, is that nothing has been
+    // encrypted with this vault yet, so redoing setup from scratch is
+    // harmless. Offer that explicitly instead of a dead end, and say
+    // plainly that the offer expires the moment real data exists.
+    const startOver = confirm(
+      "That recovery code cannot be shown again — it's gone for good.\n\n" +
+      "Nothing has been encrypted with this vault yet, so it is still safe to replace it: OK creates a brand-new passphrase and recovery code right now, replacing the one you just made.\n\n" +
+      "This offer only exists at this exact moment, before anything real is stored — once any account number is saved to this vault, redoing setup would permanently orphan it, and this will not be offered again."
+    );
+    if(startOver){
+      const p1b=prompt(`Choose a new vault passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).`);
+      if(p1b===null){ toast('⚠ Not replaced — the vault with the lost recovery code is still the one in place.', 9000); await tpRenderTab(); return; }
+      if(String(p1b).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters — not replaced`); await tpRenderTab(); return; }
+      const p2b=prompt('Type the same passphrase again to confirm.');
+      if(p2b===null || p1b!==p2b){ toast('Those did not match — not replaced'); await tpRenderTab(); return; }
+      await _tpVaultRunSetup(p1b, wraps);   // wraps = what this session just inserted, proving it's safe to replace
+      return;
+    }
+    toast('⚠ Vault created, but the recovery code was not confirmed stored — it cannot be shown again.', 12000);
+  }
   await tpRenderTab();
 }
 async function tpVaultDoUnlock(){
@@ -3872,7 +4037,16 @@ function initSiteVisit(){
   document.getElementById('tpPerson').onchange= e=>tpLoadInto(e.target.value);
   tpWireDirtyTracking();
 
-  $('tpVaultBtn').onclick     = ()=> tpVaultRow ? tpVaultDoUnlock() : tpVaultDoSetup();
+  // tpVaultRenderBar() stamps data-mode on #tpVaultBtn so this one handler
+  // covers all three of its jobs (setup / unlock / retry-a-failed-load)
+  // without re-deriving which one applies from tpVaultRow/tpVaultLoadState
+  // here too — that logic has exactly one place to live.
+  $('tpVaultBtn').onclick = ()=>{
+    const mode = $('tpVaultBtn').dataset.mode;
+    if(mode==='retry')  return tpVaultRetryLoad();
+    if(mode==='unlock') return tpVaultDoUnlock();
+    return tpVaultDoSetup();
+  };
   $('tpVaultLockBtn').onclick = ()=>{ vaultLock(); tpVaultRenderBar(); tpRenderTab(); toast('🔒 Vault locked'); };
 
   // Trips autosave; a visit carrying photos is too heavy for that, so guard the exit instead.
