@@ -218,6 +218,27 @@ failure.** This mirrors the fallback discipline in `gs-command-center.html`.
 
 ## 5. Phase 2 — encrypted vault
 
+> **Amended 2026-09-09 (as built).** Three things in this section were changed
+> during implementation and the sections below have been corrected in place, so
+> §5 now matches the shipped code. The amendments:
+>
+> 1. **PBKDF2 iterations are 600,000, not 310,000** (§5.2), and the count
+>    travels *per wrap* rather than being a global constant, so old wraps keep
+>    working when the constant is raised. Measured on the target hardware: an
+>    honest unlock costs **~87 ms**; a wrong secret against a 2-wrap vault
+>    rejects in a few hundred ms; the hostile worst case (a poisoned array at
+>    the clamped 2M ceiling) measured **364 ms**. `VAULT_KDF_ITER_MIN`/`_MAX`
+>    (100k / 2M) clamp whatever a wrap claims, and may only ever be widened.
+> 2. **No `verifier` field** (§5.2). AES-KW is authenticated, so a wrong secret
+>    makes `unwrapKey` throw rather than yield a bogus key. A stored verifier
+>    would add an oracle and buy nothing, so `wraps` entries are
+>    `{label, salt, iter, wrapped}` — no `iv`, no `ct`, no verifier.
+> 3. **`sec`-preservation is verified, not assumed** (§5.6). Rotation and
+>    holder changes re-wrap the DEK only; the `gs_travel_profiles.sec`
+>    ciphertext is byte-identical before and after, and still decrypts. Saving
+>    a profile with the vault locked leaves any existing `sec` untouched
+>    instead of nulling it.
+
 ### 5.1 Threat model, stated plainly
 
 The ciphertext **is publicly readable**, because the anon key is public and there
@@ -237,14 +258,22 @@ revisited if this data ever grows beyond a handful of staff.
 - A random 256-bit AES-GCM **data key (DEK)** is generated once at vault setup.
   All profile secrets are encrypted under the DEK.
 - The DEK is **wrapped** separately under each holder's key-encryption key (KEK),
-  derived by PBKDF2-SHA256 at 310,000 iterations from that holder's passphrase,
-  and additionally under a generated **recovery code**.
+  derived by PBKDF2-SHA256 at 600,000 iterations *(revised 2026-09-09 from
+  310,000)* from that holder's passphrase, and additionally under a generated
+  **recovery code**. The count is recorded on each wrap, so raising the
+  constant never orphans an existing holder; it is clamped to
+  100,000–2,000,000 on both wrap and unwrap.
+- Wrapping is **AES-KW**, which is authenticated: a wrong secret makes
+  `unwrapKey` throw instead of returning a bogus key. *(Revised 2026-09-09:
+  this is why no `verifier` is stored — one would add a brute-force oracle
+  and buy nothing.)*
 - The wraps live in a single-row table:
 
 ```sql
 create table public.gs_travel_vault (
   id         text primary key default 'v1',
-  wraps      jsonb not null default '[]'::jsonb,  -- [{label, kdf, iter, salt, iv, ct}]
+  wraps      jsonb not null default '[]'::jsonb,  -- [{label, salt, iter, wrapped}]
+  kdf        jsonb not null default '{"name":"PBKDF2","hash":"SHA-256","iterations":600000}'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -252,6 +281,15 @@ create table public.gs_travel_vault (
 
 Same RLS + grants + pinned-`search_path` trigger requirements as above. No DELETE
 policy: the vault row is never deleted from the browser.
+
+*Revised 2026-09-09:* `updated_at` is load-bearing, not decoration. Rotation,
+add-holder and remove-holder are all second writers to this one row, so every
+change goes through a conditional update — read the row, compute the new wraps
+from *that* snapshot, then
+`.update({wraps}).eq('id','v1').eq('updated_at', seen).select()`. An empty
+returned array means another holder changed access first; that aborts and is
+reported, never retried. A lost write here would silently delete a holder's
+only way in.
 
 Per-profile secrets are stored in `gs_travel_profiles.sec` as
 `{v:1, iv, ct}` — AES-GCM with a fresh 12-byte IV per save. Plaintext shape:
@@ -306,14 +344,26 @@ The crypto lives in its own `<script>` block, delimited by
 existing seed-block convention. It exposes a DOM-free API and touches no page
 state:
 
+*Revised 2026-09-09 — as shipped.* The block is DOM-free and storage-free, so
+the caller passes `wraps` in and gets `wraps` back; persisting them is the
+page's job, not the crypto's. There is no `vaultRotate`: rotation is
+`vaultAddHolder` under an existing label, which drops that label's old wrap
+before pushing the new one.
+
 ```
-vaultSetup(passphrase) -> {recoveryCode}
-vaultUnlock(secret)                       // passphrase or recovery code
-vaultAddHolder(label, passphrase)
-vaultRotate(oldSecret, newPassphrase)
-vaultEncrypt(obj) -> envelope
-vaultDecrypt(envelope) -> obj
+vaultAvailable() -> bool                  // secure context + WebCrypto
+vaultCreate(passphrase) -> {wraps, recoveryCode}
+vaultUnlock(secret, wraps) -> label|null  // throws VaultDataError on corrupt data
+vaultIsUnlocked() / vaultLock()
+vaultAddHolder(label, secret, wraps) -> wraps   // same label == rotate
+vaultRemoveHolder(label, wraps) -> wraps        // throws on the last wrap
+vaultEncrypt(obj, aad) -> envelope
+vaultDecrypt(envelope, aad) -> obj
 ```
+
+`aad` is required with no fallback: it binds a ciphertext to the record it
+belongs to, so a world-writable table cannot be used to lift one person's
+account numbers onto another person's row.
 
 Because it is dependency-free and DOM-free, the block can be copy-pasted into a
 standalone harness for testing, the same technique used to isolate `geocode()`
@@ -326,7 +376,17 @@ during the 2026-09-08 pin investigation.
   overwrite** stored ciphertext.
 - Recovery code unwraps the DEK after the passphrase is discarded.
 - Rotation: old passphrase stops working, new one works, **profile rows are
-  untouched** (compare `sec` values before and after).
+  untouched** (compare `sec` values before and after). *Verified 2026-09-09:
+  `ciphertextUntouched` and `stillDecrypts` both true after a rotation, and the
+  recovery code still unwraps — that pair is the proof rotation re-wraps rather
+  than re-encrypts. Saving a profile while the vault is locked also leaves an
+  existing `sec` byte-identical rather than nulling it.*
+- *Added 2026-09-09:* a concurrent change to `gs_travel_vault` (the conditional
+  update matching zero rows) aborts without writing, says plainly that someone
+  else changed vault access, and leaves the local wraps unchanged.
+- *Added 2026-09-09:* removing a holder requires an explicit confirmation that
+  names the holder and the number of wraps that will remain, warns prominently
+  when exactly one would remain, and writes nothing if declined.
 - Second holder: two different passphrases both unwrap the same DEK.
 - **Server-side assertion: the row stored in Supabase contains ciphertext, not a
   readable KTN.** Fetch it back raw and confirm. This is the test that proves the

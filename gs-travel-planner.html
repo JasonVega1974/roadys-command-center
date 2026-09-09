@@ -777,6 +777,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
   <div id="tpVaultBar" class="card" style="margin-bottom:10px">
     <span id="tpVaultState" class="small">Checking vault…</span>
     <button class="hbtn" id="tpVaultBtn" type="button" style="display:none"></button>
+    <button class="hbtn" id="tpVaultManageBtn" type="button" style="display:none">Manage access</button>
     <button class="hbtn" id="tpVaultLockBtn" type="button" style="display:none">🔒 Lock</button>
   </div>
 
@@ -1578,10 +1579,11 @@ function tpPreferredBrand(){
 // ── Vault setup / unlock UI (Phase 2, Task 3) ──
 // Module state: the single vault row ({id,wraps,kdf}) or null when no vault
 // is confirmed to exist yet. Loaded by tpVaultLoad(), never written except
-// through tpVaultInsertNew() (first-time setup), tpVaultReplaceJustCreated()
-// (the narrow immediate-redo path below), or tpVaultSaveWraps()/
-// vaultAddHolder callers in a later task (rotate/add-holder — an existing
-// row, legitimately replaced).
+// through tpVaultInsertNew() (first-time setup, an INSERT) or
+// tpVaultMutateWraps() (every change to an existing row: the immediate-redo
+// path, rotate, add-holder, remove-holder). Those are the only two writers,
+// and only tpVaultInsertNew() writes without a version predicate — it can,
+// because the primary key IS its precondition.
 let tpVaultRow = null;
 // 'pending'  — no load has completed yet (page just opened).
 // 'ok'       — the most recent load actually reached the table: tpVaultRow
@@ -1609,24 +1611,67 @@ async function tpVaultLoad(){
     return {ok:true, row:tpVaultRow};
   }catch(e){ console.warn('tpVaultLoad: '+e.message); tpVaultLoadState='failed'; return {ok:false, row:null}; }
 }
-// Upsert-semantics save. Reserved for Task 5 (rotate a passphrase, add/
-// remove a holder) — those legitimately replace an EXISTING row's wraps.
-// Setup must never call this: an upsert can't distinguish "no vault yet"
-// from "a real vault is already here," so it would silently overwrite real
-// wraps the instant two people raced to set one up, or the instant this
-// device's failed load wrongly believed there was nothing to protect.
-// tpVaultInsertNew()/tpVaultReplaceJustCreated() below are what Setup uses.
-async function tpVaultSaveWraps(wraps){
+// ── The one and only way to change an EXISTING vault row's wraps ──
+// (Task 5 replaces Task 3's unconditional tpVaultSaveWraps() upsert.)
+//
+// Rotation, add-holder and remove-holder are all second writers to a row
+// that setup already writes, so read-then-write is no longer safe. For key
+// material a lost write is not a merge conflict: a holder's wrap silently
+// disappears and they can never unlock again. There is no escrow.
+//
+// gs_travel_vault.updated_at is bumped by a BEFORE UPDATE trigger on every
+// write (sql/2026-09-09-gs-travel-vault.sql), so it is a free version token
+// — no schema change needed. The protocol is:
+//   1. read the row, keeping its updated_at,
+//   2. compute the new wraps from THAT snapshot (never from tpVaultRow,
+//      which may be stale),
+//   3. write with .eq('updated_at', seen) and .select().
+// PostgREST returns the rows it actually updated, so an EMPTY array means
+// the predicate matched nothing — someone else changed the key material
+// between our read and our write. That aborts. It never retries blindly:
+// a retry would recompute against whatever landed and could still drop the
+// other writer's holder, and the holder deserves to be told.
+//
+// `mutate(wraps, row)` may be async and may throw (vaultRemoveHolder's
+// last-wrap guard does); a throw aborts before any write.
+// Returns {ok, conflict, reason, message, wraps}.
+async function tpVaultMutateWraps(mutate){
   try{
     await tpEnsureLib();
-    const sb=tpClient(); if(!sb) return false;
-    const {error}=await sb.from('gs_travel_vault')
-      .upsert({id:'v1', wraps}, {onConflict:'id'});
-    if(error){ console.warn('tpVaultSaveWraps: '+error.message); return false; }
-    tpVaultRow = Object.assign({}, tpVaultRow||{id:'v1'}, {wraps});
+    const sb=tpClient(); if(!sb) return {ok:false, conflict:false, reason:'offline'};
+    const {data:row, error:selErr}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
+    if(selErr){ console.warn('tpVaultMutateWraps: '+selErr.message); return {ok:false, conflict:false, reason:'read', message:selErr.message}; }
+    if(!row) return {ok:false, conflict:false, reason:'missing'};
+    // No version token means no way to write safely. Refuse rather than
+    // fall back to an unconditional update — that is exactly the write
+    // this function exists to make impossible.
+    if(!row.updated_at) return {ok:false, conflict:false, reason:'noversion'};
+    let next;
+    try{ next = await mutate(row.wraps||[], row); }
+    catch(e){ return {ok:false, conflict:false, reason:'mutate', message:(e&&e.message)||String(e)}; }
+    const {data, error}=await sb.from('gs_travel_vault')
+      .update({wraps:next}).eq('id','v1').eq('updated_at', row.updated_at).select();
+    if(error){ console.warn('tpVaultMutateWraps: '+error.message); return {ok:false, conflict:false, reason:'write', message:error.message}; }
+    if(!data || !data.length){
+      console.warn('tpVaultMutateWraps: gs_travel_vault changed since the read — aborting without writing');
+      await tpVaultLoad();   // re-read so the bar and the next attempt see the truth
+      return {ok:false, conflict:true, reason:'conflict'};
+    }
+    tpVaultRow = data[0];
     tpVaultLoadState = 'ok';
-    return true;
-  }catch(e){ console.warn('tpVaultSaveWraps: '+e.message); return false; }
+    return {ok:true, conflict:false, wraps:tpVaultRow.wraps};
+  }catch(e){ console.warn('tpVaultMutateWraps: '+e.message); return {ok:false, conflict:false, reason:'exception', message:e.message}; }
+}
+// One place to turn a non-conflict tpVaultMutateWraps() failure into words.
+// Every one of these means nothing was written — the conditional update
+// either never ran or matched the row and failed outright.
+function _tpVaultMutateMsg(res){
+  if(res.conflict) return '⚠ Someone else changed vault access first — nothing was changed here. The vault has been re-read; check who holds access, then try again.';
+  if(res.reason==='offline')    return "⚠ Can't reach the vault — nothing was changed.";
+  if(res.reason==='missing')    return '⚠ There is no vault row to change — nothing was changed.';
+  if(res.reason==='noversion')  return '⚠ The vault row has no version stamp, so it cannot be changed safely — nothing was changed. Get an admin to check the gs_travel_vault row.';
+  if(res.reason==='mutate')     return '⚠ '+(res.message||'Nothing was changed');
+  return '⚠ Could not save — nothing was changed'+(res.message ? ' ('+res.message+')' : '');
 }
 const _tpVaultWrapsEq = (a,b)=> JSON.stringify(a)===JSON.stringify(b);
 // First-time-setup save. INSERT, not upsert: the primary key (id='v1') makes
@@ -1660,26 +1705,33 @@ async function tpVaultInsertNew(wraps){
 // Before writing, it re-reads the row and requires it still hold exactly
 // `previousWraps`; if anything else is there now (a real vault landed in
 // the interim), it refuses and reports a conflict instead of clobbering it.
+//
+// Task 5: that content check was a TOCTOU *narrowing*, not a close — safe
+// only while nothing else wrote the row. Rotation and holder management are
+// now that second writer, so the write itself goes through
+// tpVaultMutateWraps()'s conditional update. Both guards are kept: the
+// updated_at predicate closes the window, and the content check still
+// refuses a row that never held `previousWraps` in the first place.
 async function tpVaultReplaceJustCreated(newWraps, previousWraps){
-  try{
-    await tpEnsureLib();
-    const sb=tpClient(); if(!sb) return {ok:false, conflict:false};
-    const {data,error:selErr}=await sb.from('gs_travel_vault').select('*').eq('id','v1').maybeSingle();
-    if(selErr){ console.warn('tpVaultReplaceJustCreated: '+selErr.message); return {ok:false, conflict:false}; }
-    if(!data || !_tpVaultWrapsEq(data.wraps, previousWraps)){
-      console.warn('tpVaultReplaceJustCreated: row changed since insert — refusing to replace');
-      return {ok:false, conflict:true};
-    }
-    const {error}=await sb.from('gs_travel_vault').update({wraps:newWraps}).eq('id','v1');
-    if(error){ console.warn('tpVaultReplaceJustCreated: '+error.message); return {ok:false, conflict:false}; }
-    tpVaultRow = {id:'v1', wraps:newWraps};
-    tpVaultLoadState = 'ok';
-    return {ok:true, conflict:false};
-  }catch(e){ console.warn('tpVaultReplaceJustCreated: '+e.message); return {ok:false, conflict:false}; }
+  const res = await tpVaultMutateWraps(wraps=>{
+    if(!_tpVaultWrapsEq(wraps, previousWraps))
+      throw new Error('the vault row changed since it was created — refusing to replace it');
+    return newWraps;
+  });
+  if(res.ok) return {ok:true, conflict:false};
+  // 'mutate' = the row holds something other than what we just inserted;
+  // 'conflict' = it moved between our read and our write; 'missing' = it is
+  // gone. All three mean "a row we must not clobber is (or was) there."
+  const conflict = res.conflict || res.reason==='mutate' || res.reason==='missing';
+  if(conflict) console.warn('tpVaultReplaceJustCreated: row changed since insert — refusing to replace');
+  return {ok:false, conflict};
 }
 function tpVaultRenderBar(){
-  const s=$('tpVaultState'), b=$('tpVaultBtn'), l=$('tpVaultLockBtn');
+  const s=$('tpVaultState'), b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), m=$('tpVaultManageBtn');
   if(!s || !b || !l) return;
+  // Managing access needs an unlocked vault (every path re-wraps the DEK),
+  // so the button only exists in the unlocked branch at the bottom.
+  if(m) m.style.display='none';
   if(!vaultAvailable()){
     s.innerHTML='🔒 Encrypted fields need a secure page — open this over https, not as a local file.';
     b.style.display='none'; l.style.display='none'; return;
@@ -1709,6 +1761,7 @@ function tpVaultRenderBar(){
   } else {
     s.innerHTML='🔓 Vault unlocked for this tab. It re-locks when you reload.';
     b.style.display='none'; l.style.display='';
+    if(m) m.style.display='';
   }
 }
 // Both setup and unlock can take real, user-visible time (unlock especially —
@@ -1716,13 +1769,13 @@ function tpVaultRenderBar(){
 // both buttons are disabled and #tpVaultState shows a working state for the
 // duration, always restored in a finally so a throw can't strand the UI.
 function _tpVaultBusy(msg){
-  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), s=$('tpVaultState');
-  if(b) b.disabled=true; if(l) l.disabled=true;
+  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), m=$('tpVaultManageBtn'), s=$('tpVaultState');
+  if(b) b.disabled=true; if(l) l.disabled=true; if(m) m.disabled=true;
   if(s) s.innerHTML=msg;
 }
 function _tpVaultIdle(){
-  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn');
-  if(b) b.disabled=false; if(l) l.disabled=false;
+  const b=$('tpVaultBtn'), l=$('tpVaultLockBtn'), m=$('tpVaultManageBtn');
+  if(b) b.disabled=false; if(l) l.disabled=false; if(m) m.disabled=false;
   tpVaultRenderBar();
 }
 // Re-check gs_travel_vault on demand. This is the "Retry" button's action
@@ -1743,6 +1796,19 @@ async function tpVaultDoSetup(){
   if(p1!==p2){ toast('Those did not match — nothing was set up'); return; }
   await _tpVaultRunSetup(p1);
 }
+// "A vault is already there" is the right message for first-time setup, but
+// NOT on the redo path. There, `previousWraps` is the vault this session just
+// created, and the whole reason we're redoing setup is that its recovery code
+// was lost. If that same vault is still the row, "unlock with the existing
+// passphrase or recovery code" points at a code that no longer exists
+// anywhere. Say what is actually true instead, and name the fix that now
+// exists (Manage access → add another holder). Any OTHER wraps mean a real
+// second vault, and the original wording is correct for it.
+function _tpVaultExistsMsg(previousWraps, rowWraps){
+  if(previousWraps && rowWraps && _tpVaultWrapsEq(rowWraps, previousWraps))
+    return '⚠ Nothing was replaced — the vault you just created is still the one in force. Its passphrase still works, but its recovery code is the one that was just lost, so it is currently the only way in. Unlock with that passphrase, then use Manage access → add another holder to restore a second way in.';
+  return '⚠ A vault already exists — nothing was changed. Unlock with the existing passphrase or recovery code, or get an admin to check the gs_travel_vault row.';
+}
 // Does the actual create-and-save, for both first-time setup and the
 // one-time "I didn't confirm the recovery code, redo it now" path below.
 // `previousWraps`, when passed, means this is that redo: use the narrow
@@ -1762,7 +1828,7 @@ async function _tpVaultRunSetup(passphrase, previousWraps){
         // "No vault yet", and send the holder to Unlock instead.
         vaultLock();
         await tpVaultLoad();
-        toast('⚠ A vault already exists — nothing was changed. Unlock with the existing passphrase or recovery code, or get an admin to check the gs_travel_vault row.', 12000);
+        toast(_tpVaultExistsMsg(previousWraps, (tpVaultRow||{}).wraps), 12000);
         return;
       }
       // Ambiguous failure (offline, RLS, a dropped response, ...): the error
@@ -1783,7 +1849,7 @@ async function _tpVaultRunSetup(passphrase, previousWraps){
       }
       if(!_tpVaultWrapsEq(check.row.wraps, wraps)){
         vaultLock();
-        toast('⚠ A vault already exists — nothing was changed. Unlock with the existing passphrase or recovery code, or get an admin to check the gs_travel_vault row.', 12000);
+        toast(_tpVaultExistsMsg(previousWraps, check.row.wraps), 12000);
         return;
       }
       // It actually landed; the error response was just lost. Fall through
@@ -1871,6 +1937,114 @@ async function tpVaultDoUnlock(){
     _tpVaultIdle();
   }
   if(unlocked) await tpRenderTab();
+}
+
+// ── Manage access: rotate / add holder / remove holder (Phase 2, Task 5) ──
+// All three re-wrap the SAME data key, so nothing stored is re-encrypted —
+// only gs_travel_vault.wraps changes. All three therefore need the vault
+// unlocked (that is where the DEK lives), and all three write through
+// tpVaultMutateWraps() so a concurrent change aborts instead of silently
+// dropping someone's wrap.
+//
+// Rotation is add-holder under an EXISTING label: vaultAddHolder() drops any
+// wrap already carrying that label before pushing the new one, so re-adding
+// 'passphrase' replaces it. There is no separate rotate primitive.
+//
+// Add and remove both show the holder a consequence before they commit ("2
+// holders will remain", "this replaces their passphrase"), so that preview
+// has to be computed from a FRESH read — tpVaultRow can be minutes old. A
+// stale preview can say "2 will remain" when the truth is 1, and the
+// updated_at predicate cannot catch it: that guards only the window between
+// our own read and our own write, not the window between the preview and the
+// read. So re-read first, preview from that, and make the mutation require
+// exactly the wraps that were previewed.
+async function _tpVaultFreshWraps(){
+  _tpVaultBusy('⏳ Checking who holds access…');
+  let ld;
+  try{ ld = await tpVaultLoad(); }
+  finally{ _tpVaultIdle(); }
+  if(!ld.ok){ toast("⚠ Can't reach the vault — nothing was changed.", 7000); return null; }
+  if(!ld.row){ toast('⚠ There is no vault row to change — nothing was changed.', 7000); return null; }
+  return ld.row.wraps||[];
+}
+function _tpVaultRequirePreviewed(previewed){
+  return wraps=>{
+    if(!_tpVaultWrapsEq(wraps, previewed))
+      throw new Error('Vault access changed while you were confirming — nothing was changed. Check who holds access, then try again.');
+  };
+}
+async function tpVaultRotate(){
+  if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
+  const p1=prompt(`New passphrase (at least ${VAULT_MIN_PASSPHRASE} characters).\n\nThis re-wraps the key, it does not re-encrypt anything. Every other holder — including the recovery code — keeps working.`);
+  if(p1===null) return;
+  if(String(p1).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
+  if(prompt('Type it again to confirm.')!==p1){ toast('Those did not match — nothing was changed'); return; }
+  _tpVaultBusy('⏳ Rotating the passphrase…');
+  let res;
+  try{ res = await tpVaultMutateWraps(wraps=>vaultAddHolder('passphrase', p1, wraps)); }
+  finally{ _tpVaultIdle(); }
+  toast(res.ok
+    ? '🔑 Passphrase rotated — profiles were not re-encrypted, only the key wrap changed. Update the company password manager now.'
+    : _tpVaultMutateMsg(res)+' The old passphrase is still in force.',
+    res.ok ? 9000 : 12000);
+}
+async function tpVaultAddHolder(){
+  if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
+  const previewed = await _tpVaultFreshWraps(); if(!previewed) return;
+  const label=(prompt('Name for the second holder (e.g. "ops-manager"):\n\nCurrent: '+previewed.map(w=>w.label).join(', '))||'').trim();
+  if(!label) return;
+  if(label==='recovery-code'){ toast('That name is reserved'); return; }
+  const p=prompt(`Passphrase for ${label} (at least ${VAULT_MIN_PASSPHRASE} characters).`);
+  if(p===null) return;
+  if(String(p).length < VAULT_MIN_PASSPHRASE){ toast(`Passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`); return; }
+  // Re-using an existing label silently replaces that holder's wrap, which is
+  // exactly what rotation wants but almost never what "add" wants — so ask.
+  if(previewed.some(w=>w.label===label)
+     && !confirm(`"${label}" already holds access.\n\nOK replaces their passphrase with this new one — their old passphrase stops working. Cancel leaves it alone.`)){
+    toast('Nothing was changed'); return;
+  }
+  _tpVaultBusy('⏳ Adding a holder…');
+  let res;
+  const stillPreviewed = _tpVaultRequirePreviewed(previewed);
+  try{ res = await tpVaultMutateWraps(wraps=>{ stillPreviewed(wraps); return vaultAddHolder(label, p, wraps); }); }
+  finally{ _tpVaultIdle(); }
+  toast(res.ok ? `🔑 ${label} can now unlock the vault` : _tpVaultMutateMsg(res), res.ok ? 6000 : 12000);
+}
+async function tpVaultRemoveHolder(){
+  if(!vaultIsUnlocked()){ toast('Unlock the vault first'); return; }
+  const previewed = await _tpVaultFreshWraps(); if(!previewed) return;
+  const labels=previewed.map(w=>w.label);
+  const label=(prompt('Remove which holder?\n\nCurrent: '+labels.join(', '))||'').trim();
+  if(!label) return;
+  if(!labels.includes(label)){ toast(`No holder named "${label}" — nothing was changed`, 7000); return; }
+  // Ruling 3: vaultRemoveHolder() only refuses the LAST wrap. Nothing stops a
+  // typo removing the wrong person, and nothing stops dropping to a single
+  // point of failure — the exact state the envelope design exists to avoid.
+  // So show what will happen and require an explicit yes BEFORE any write.
+  const remaining = labels.filter(l=>l!==label);
+  if(!remaining.length){
+    // vaultRemoveHolder() would throw here too; catching it earlier means the
+    // holder is told why instead of being shown a pointless confirmation.
+    toast(`⚠ "${label}" is the only way into this vault — removing them would make every encrypted account number permanently unrecoverable. Nothing was changed. Add another holder first.`, 12000);
+    return;
+  }
+  const warn = remaining.length===1
+    ? '\n\n⚠⚠ THIS LEAVES EXACTLY ONE WAY IN — only "'+remaining[0]+'".\nIf that one secret is lost, every encrypted account number is gone permanently. There is no escrow and no reset. Add a second holder first unless you are certain.'
+    : '';
+  if(!confirm('Remove "'+label+'" from the vault?\n\nThey will no longer be able to unlock it. Nothing is re-encrypted; their key wrap is deleted.\n\n'
+      + remaining.length+' holder'+(remaining.length===1?'':'s')+' will remain: '+remaining.join(', ')
+      + warn + '\n\nOK removes them. Cancel changes nothing.')){
+    toast('Nothing was changed'); return;
+  }
+  _tpVaultBusy('⏳ Removing a holder…');
+  let res;
+  // Two guards inside the mutation, both against the SERVER's wraps: the row
+  // must still be exactly what the confirmation described, and the last-wrap
+  // refusal runs again on the real list rather than on the preview.
+  const stillPreviewed = _tpVaultRequirePreviewed(previewed);
+  try{ res = await tpVaultMutateWraps(wraps=>{ stillPreviewed(wraps); return vaultRemoveHolder(label, wraps); }); }
+  finally{ _tpVaultIdle(); }
+  toast(res.ok ? `🔑 ${label} can no longer unlock the vault` : _tpVaultMutateMsg(res), res.ok ? 6000 : 12000);
 }
 // ── /TRAVEL_PROFILES_TAB ─────────────────────────────────────────
 
@@ -4191,6 +4365,10 @@ function initSiteVisit(){
     if(mode==='retry')  return tpVaultRetryLoad();
     if(mode==='unlock') return tpVaultDoUnlock();
     return tpVaultDoSetup();
+  };
+  $('tpVaultManageBtn').onclick = ()=>{
+    const c=(prompt('Manage vault access:\n\n1 — rotate the passphrase\n2 — add another holder\n3 — remove a holder\n\nType 1, 2 or 3.')||'').trim();
+    if(c==='1') tpVaultRotate(); else if(c==='2') tpVaultAddHolder(); else if(c==='3') tpVaultRemoveHolder();
   };
   $('tpVaultLockBtn').onclick = ()=>{ vaultLock(); tpVaultRenderBar(); tpRenderTab(); toast('🔒 Vault locked'); };
 
