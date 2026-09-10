@@ -2296,6 +2296,9 @@ function pruneGeoCache(hard){
    still routes, so it isn't an error, but it must not read as an exact match
    either. */
 const GEO_STREET_RANK=26;
+/* Retries for a throttled or overloaded Nominatim: two extra tries, backing
+   off 2.5s then 5s, unless it sends a longer Retry-After. */
+const GEO_RETRY_MAX=2, GEO_RETRY_MS=2500;
 function geoPrecision(r,viaCentroid){
   // A centroid lookup is approximate by construction, whatever it landed on:
   // "Pawley's Island, SC" returns a Montessori school at rank 30, which would
@@ -2308,27 +2311,46 @@ function geocode(addrObj){
   if(geoCache[key]) return Promise.resolve(geoCache[key]);
   geoQueue = geoQueue.then(async ()=>{
     if(geoCache[key]) return geoCache[key];
-    const wait=Math.max(0,1150-(Date.now()-lastGeo));
-    if(wait) await new Promise(r=>setTimeout(r,wait));
-    lastGeo=Date.now();
     const base='https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&';
+    /* Nominatim answers a burst with 429, and a spell of 503s when it is
+       overloaded. Both mean "ask again shortly", not "no such place", so pace
+       every request from in here and retry those two instead of letting a
+       throttle surface as a permanent miss. */
     const tryFetch=async p=>{
-      const r=await fetch(base+p,{headers:{'Accept':'application/json'}});
-      if(!r.ok) throw new Error('geocode http '+r.status);
-      return r.json();
+      for(let attempt=0;;attempt++){
+        const wait=Math.max(0,1150-(Date.now()-lastGeo));
+        if(wait) await new Promise(r=>setTimeout(r,wait));
+        lastGeo=Date.now();
+        const r=await fetch(base+p,{headers:{'Accept':'application/json'}});
+        if(r.ok) return r.json();
+        if((r.status===429||r.status===503)&&attempt<GEO_RETRY_MAX){
+          const ra=+((r.headers&&r.headers.get('retry-after'))||0);
+          await new Promise(res=>setTimeout(res,Math.max(ra*1000,GEO_RETRY_MS*(attempt+1))));
+          lastGeo=Date.now();
+          continue;
+        }
+        throw new Error('geocode http '+r.status);
+      }
+    };
+    /* A query that threw and a query that matched nothing say the same thing:
+       no pin from that lookup. They have to stay separate steps -- the
+       centroid fallback used to sit inside the street query's try{}, so one
+       429 skipped the fallback outright and turned an approximate stop
+       (Cenex Zip Trip #54 and #50) into a hard "couldn't pin on map" that no
+       amount of reloading cleared. */
+    const attempt=async p=>{
+      try{ return (await tryFetch(p))||[] }
+      catch(e){ console.warn('geocode fail',p,e); return [] }
     };
     let res=[], viaCentroid=false;
-    try{
-      if(addrObj.q){ res=await tryFetch('q='+encodeURIComponent(addrObj.q)); }
-      else{
-        res=await tryFetch(`street=${encodeURIComponent(addrObj.street||'')}&city=${encodeURIComponent(addrObj.city||'')}&state=${encodeURIComponent(addrObj.state||'')}&postalcode=${encodeURIComponent(addrObj.zip||'')}`);
-        if(!res.length){ // fallback: city + state centroid
-          await new Promise(r=>setTimeout(r,1150)); lastGeo=Date.now();
-          viaCentroid=true;
-          res=await tryFetch('q='+encodeURIComponent(`${addrObj.city}, ${addrObj.state}`));
-        }
+    if(addrObj.q){ res=await attempt('q='+encodeURIComponent(addrObj.q)); }
+    else{
+      res=await attempt(`street=${encodeURIComponent(addrObj.street||'')}&city=${encodeURIComponent(addrObj.city||'')}&state=${encodeURIComponent(addrObj.state||'')}&postalcode=${encodeURIComponent(addrObj.zip||'')}`);
+      if(!res.length){ // fallback: city + state centroid
+        viaCentroid=true;
+        res=await attempt('q='+encodeURIComponent(`${addrObj.city}, ${addrObj.state}`));
       }
-    }catch(e){ console.warn('geocode fail',e); }
+    }
     if(res && res.length){
       const a=res[0].address||{};
       const street=[a.house_number,a.road].filter(Boolean).join(' ')
