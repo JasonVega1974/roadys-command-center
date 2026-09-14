@@ -369,6 +369,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
   </div>
   <div class="grow"></div>
   <span id="hdrPlannerBtns" style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="hbtn" id="btnNewTrip">🆕 New Trip</button>
     <button class="hbtn" id="btnSaveTrip">💾 Save Trip</button>
     <button class="hbtn" id="btnLoadTrip">📂 My Trips</button>
     <button class="hbtn blue" id="btnExport">⬇ Export</button>
@@ -2269,6 +2270,9 @@ let state = {
   origin:null, dest:null, sameEnd:true,
   stops:[], pins:[], route:null, schedule:null
 };
+/* dirty = the working trip has edits that are not in localStorage yet.
+   Set by markDirty(), cleared only by a save that actually landed and by the
+   three things that replace the working trip wholesale (open, import, new). */
 let dirty=false;
 
 const $=id=>document.getElementById(id);
@@ -3311,12 +3315,14 @@ function saveTrip(silent){
   try{
     localStorage.setItem(tripKey(state.gs,tr),JSON.stringify(payload));
     localStorage.setItem('gsp2:last',tripKey(state.gs,tr));
+    dirty=false;
     if(!silent)toast(`💾 Saved "${tr}" for ${state.gs}`);
   }catch(e){
     // Never fail quietly — an autosave that silently drops work is worse than a nag.
     pruneGeoCache(true);
     try{
       localStorage.setItem(tripKey(state.gs,tr),JSON.stringify(payload));
+      dirty=false;
       if(!silent)toast(`💾 Saved "${tr}"`);
     }catch(e2){
       toast('⚠ Browser storage is full — this trip is NOT saved. Open My Trips and delete an old one, then hit Save Trip.',7000);
@@ -3378,6 +3384,7 @@ function loadTrip(k){
   try{
     const d=JSON.parse(localStorage.getItem(k)); if(!d)return;
     state=Object.assign(newStateDefaults(),d);
+    dirty=false;
     hydrateUI();
     regeocodeUnpinned();
     $('tripsModal').style.display='none';
@@ -3396,6 +3403,56 @@ function loadTrip(k){
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
 function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,sameEnd:true,stops:[],pins:[],route:null,schedule:null}}
+/* Is there anything on this trip worth warning about before it's wiped? */
+function tripHasContent(){
+  return !!(state.trip || state.origin || state.dest ||
+            (state.stops||[]).some(s=>s.name||(s.query||'').trim()) ||
+            (state.route&&state.route.legs&&state.route.legs.length));
+}
+/* "New Trip" — resets the working trip only. Nothing under a gsp2:trip:* key
+   is touched, so every saved trip (this GS's and everyone else's) survives
+   untouched and stays reachable from My Trips. The one key that changes is
+   gsp2:last, the resume pointer: it's dropped so a reload comes back to the
+   blank slate instead of re-opening the trip we just walked away from.
+   Never a silent wipe — if there's anything on the trip you get a confirm
+   first, worded by whether the work is already safely saved. */
+function newTrip(){
+  collect();
+  if(tripHasContent()){
+    const nm=state.trip||'Untitled trip';
+    const msg = dirty
+      ? `"${nm}" has changes that aren't saved yet.
+
+Starting a new trip will discard them. Continue?`
+      : `Start a new blank trip?
+
+"${nm}" is saved — reopen it any time from 📂 My Trips.`;
+    if(!confirm(msg)) return;
+  }
+  // The pending autosave/redraw belong to the trip being left behind.
+  clearTimeout(markDirty._t); clearTimeout(markDirty._m);
+  state=newStateDefaults();
+  mapSig=null;
+  localStorage.removeItem('gsp2:last');
+  // No blank option on #gsName (tpRenderGSDropdown() rebuilds the list and
+  // would drop one anyway), so -1 is how the control shows "nobody picked".
+  // curGS() then returns '', which keeps autosave off until a name is chosen.
+  const sel=$('gsName'); if(sel) sel.selectedIndex=-1;
+  $('gsNameOther').value=''; $('gsNameOther').style.display='none';
+  const chip=$('tpChip'); if(chip) chip.style.display='none';
+  hydrateUI();                       // blank inputs, today's date, empty stop list
+  addStopRow(); addStopRow(); addStopRow();   // same three empty rows as a fresh page
+  // addStopRow() marks dirty and queues an autosave; a blank slate is neither.
+  clearTimeout(markDirty._t); clearTimeout(markDirty._m); dirty=false;
+  $('itin').innerHTML='<div class="emptyIt">Add your truck stops on the left, then hit <b>Build My Route</b>.</div>';
+  $('totRow').style.display='none';
+  const tabs=$('dayTabs'); if(tabs){tabs.style.display='none';tabs.innerHTML=''}
+  const hint=$('mapHint');
+  if(hint) hint.innerHTML='Add stops and hit <b style="color:var(--ink)">Build My Route</b> to plot the full trip here.';
+  status('');
+  showBaseMap();
+  toast('🆕 Blank trip — your saved trips are untouched');
+}
 function hydrateUI(){
   const gsSel=$('gsName');
   if([...gsSel.options].some(o=>o.value===state.gs||o.text===state.gs)){gsSel.value=state.gs;$('gsNameOther').style.display='none'}
@@ -3428,7 +3485,7 @@ function exportTrip(){
 }
 function importTrip(file){
   const rd=new FileReader();
-  rd.onload=()=>{try{const d=JSON.parse(rd.result);state=Object.assign(newStateDefaults(),d);hydrateUI();regeocodeUnpinned();saveTrip(true);toast('⬆ Trip imported');
+  rd.onload=()=>{try{const d=JSON.parse(rd.result);state=Object.assign(newStateDefaults(),d);dirty=false;hydrateUI();regeocodeUnpinned();saveTrip(true);toast('⬆ Trip imported');
     if(state.route&&state.schedule){const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);const dest=state.sameEnd?state.origin:state.dest;if(ordered.length&&dest)renderAll(ordered,dest)}
   }catch(e){toast('⚠ Not a valid trip file')}};
   rd.readAsText(file);
@@ -3447,6 +3504,7 @@ function init(){
   $('btnAddStop').onclick=()=>addStopRow();
   $('btnBuild').onclick=buildRoute;
   $('btnClear').onclick=()=>{if(confirm('Remove all stops from this trip?')){state.stops=[];state.route=null;state.schedule=null;renderStops();$('itin').innerHTML='<div class="emptyIt">Stops cleared.</div>';$('totRow').style.display='none';markDirty()}};
+  $('btnNewTrip').onclick=newTrip;
   $('btnSaveTrip').onclick=()=>saveTrip(false);
   $('btnLoadTrip').onclick=openTrips;
   $('btnExport').onclick=exportTrip;
@@ -3593,6 +3651,7 @@ const TOUR_STEPS = [
     t:'Step 8 — Save, reopen, share',
     sel:'#btnSaveTrip',
     h:`Your work saves automatically as you go, but here's the manual control:<br><br>
+       • <b>🆕 New Trip</b> — clears the screen and starts over. It only wipes what's on the screen; every trip you've saved stays in My Trips, and it asks first if you'd lose anything.<br>
        • <b>💾 Save Trip</b> — saves it under your name right now.<br>
        • <b>📂 My Trips</b> — reopen any trip you've built before.<br>
        • <b>⬇ Export</b> — downloads the trip as a file.<br>
