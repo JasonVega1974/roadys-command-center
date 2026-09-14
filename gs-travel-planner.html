@@ -2308,6 +2308,27 @@ const GEO_STREET_RANK=26;
 /* Retries for a throttled or overloaded Nominatim: two extra tries, backing
    off 2.5s then 5s, unless it sends a longer Retry-After. */
 const GEO_RETRY_MAX=2, GEO_RETRY_MS=2500;
+/* Six seed rows name a town that shares its name with a county -- Lee FL,
+   Franklin VA, Caldwell TX, Marion SC, Calhoun GA, Franklin KY -- and for every
+   one of them Nominatim answers the county, not the town: addresstype 'county',
+   place_rank 12, coordinates at the centre of the whole polygon. Jimmies
+   Auto/Truck Plaza is in Lee, Madison County; the pin landed on Lee County,
+   275 mi south. That is not an approximate pin, it is the wrong place, and no
+   warning text makes it usable. Refuse it outright so the stop reads
+   "couldn't pin on map" -- which is true -- and buildRoute() stops the trip
+   with a fixable message instead of routing through the wrong half of a state.
+
+   Note how this differs from the throttle handling above, which exists so a 429
+   cannot turn an approximate stop into a false "couldn't pin on map". Both
+   behaviours are wanted and they must stay distinct: a throttle is "ask again",
+   a county centroid is "never ask again, the answer is wrong". That is why the
+   rejection is cached rather than retried -- without caching, every reopen of a
+   saved trip re-runs two throttled lookups per affected stop to reach the same
+   no. */
+const GEO_REJECT=' rejected';
+function geoRejected(r){
+  return (r.addresstype||'')==='county';
+}
 function geoPrecision(r,viaCentroid){
   // A centroid lookup is approximate by construction, whatever it landed on:
   // "Pawley's Island, SC" returns a Montessori school at rank 30, which would
@@ -2315,11 +2336,19 @@ function geoPrecision(r,viaCentroid){
   if(viaCentroid) return 'approx';
   return (+r.place_rank||0)>=GEO_STREET_RANK?'street':'approx';
 }
+const geoKeyFor=a=>(a.q||`${a.street}|${a.city}|${a.state}|${a.zip}`).toLowerCase();
+/* geocode() answers null for both "nothing found" and "found, but refused".
+   Callers that must tell them apart ask here rather than having the return
+   contract widened -- a truthy sentinel would break the origin/dest lookup,
+   which reads r.lat straight off the result. */
+const geoWasRejected=a=>geoCache[geoKeyFor(a)]===GEO_REJECT;
 function geocode(addrObj){
-  const key=(addrObj.q||`${addrObj.street}|${addrObj.city}|${addrObj.state}|${addrObj.zip}`).toLowerCase();
-  if(geoCache[key]) return Promise.resolve(geoCache[key]);
+  const key=geoKeyFor(addrObj);
+  // `in`, not truthiness: a cached rejection is a real answer and must not be
+  // mistaken for a cache miss.
+  if(key in geoCache) return Promise.resolve(geoCache[key]===GEO_REJECT?null:geoCache[key]);
   geoQueue = geoQueue.then(async ()=>{
-    if(geoCache[key]) return geoCache[key];
+    if(key in geoCache) return geoCache[key]===GEO_REJECT?null:geoCache[key];
     const base='https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&';
     /* Nominatim answers a burst with 429, and a spell of 503s when it is
        overloaded. Both mean "ask again shortly", not "no such place", so pace
@@ -2359,6 +2388,11 @@ function geocode(addrObj){
         viaCentroid=true;
         res=await attempt('q='+encodeURIComponent(`${addrObj.city}, ${addrObj.state}`));
       }
+    }
+    if(res && res.length && geoRejected(res[0])){
+      geoCache[key]=GEO_REJECT; pruneGeoCache();
+      try{localStorage.setItem(GEO_KEY,JSON.stringify(geoCache))}catch(e){pruneGeoCache(true)}
+      return null;
     }
     if(res && res.length){
       const a=res[0].address||{};
@@ -2459,7 +2493,8 @@ async function geoStop(s){
     s.lat=pin.lat; s.lng=pin.lng; s.geo='ok'; s.geoPrec='street';
     renderStops(); markDirty(); return;
   }
-  const r=await geocode(s.source==='roadys'?{street:s.street,city:s.city,state:s.stateAbbr,zip:s.zip}:{q:s.query||s.name});
+  const addr=s.source==='roadys'?{street:s.street,city:s.city,state:s.stateAbbr,zip:s.zip}:{q:s.query||s.name};
+  const r=await geocode(addr);
   if(r){
     s.lat=r.lat; s.lng=r.lng; s.geo='ok'; s.geoPrec=r.prec||'street';
     // For typed addresses, fill in the real city/state/zip so the itinerary
@@ -2471,6 +2506,10 @@ async function geoStop(s){
       if(r.zip)       s.zip=r.zip;
       if(!s.name || s.name===s.query) s.name=s.label||s.name||[r.street,r.city].filter(Boolean).join(', ')||s.query;
     }
+  } else if(geoWasRejected(addr)){
+    // Not a miss -- a refusal. The old pin, if any, is the wrong place, so it
+    // has to go; keeping it is the exact thing the guard exists to stop.
+    s.lat=null; s.lng=null; s.geo='fail';
   } else if(s.lat==null||s.lng==null){ s.geo='fail' }
   // A stop that already holds a pin keeps it: a transient miss on a background
   // re-resolve must not turn a working stop into an unroutable one.
@@ -3324,10 +3363,16 @@ function regeocodeUnpinned(){
   // is labelled. Upgrade those in place -- geoStop() resolves a pin without a
   // request, so this costs nothing.
   const outdated=state.stops.filter(s=>s.name&&s.geo==='ok'&&s.geoPrec==='approx'&&s.id&&SEED_PIN[s.id]);
-  if(!stuck.length&&!unlabelled.length&&!outdated.length) return;
+  // The county-centroid guard only gets to reject a pin it is asked about, and
+  // a trip saved before the guard shipped holds its wrong pin at geo 'ok' --
+  // which none of the three filters above revisit. Re-resolve the approximate
+  // stops that have no seed pin so the guard gets its say. geocode() caches,
+  // rejections included, so this is one pass per browser and free after that.
+  const unguarded=state.stops.filter(s=>s.name&&s.geo==='ok'&&s.geoPrec==='approx'&&!(s.id&&SEED_PIN[s.id]));
+  if(!stuck.length&&!unlabelled.length&&!outdated.length&&!unguarded.length) return;
   stuck.forEach(s=>{s.geo='pending'});
   if(stuck.length) renderStops();
-  stuck.concat(unlabelled,outdated).forEach(s=>geoStop(s));
+  stuck.concat(unlabelled,outdated,unguarded).forEach(s=>geoStop(s));
 }
 function loadTrip(k){
   try{
