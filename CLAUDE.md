@@ -196,6 +196,23 @@ the literal geometry OSRM returned for the chosen leg, so the map and the
 printed directions are provably the same route, and there's no waypoint cap
 to hit at any stop count up to `MAX_STOPS`.
 
+Three marker kinds, visually distinct on purpose: numbered gold-ringed
+circles for truck stops (`stopIcon()`), blue circles for the Depart/Return
+airports (`airportIcon()`), and a blue **teardrop pin** — not another
+circle — for each hotel night (`hotelIcon()`, `.rmHotelPin`), so lodging
+reads at a glance against the round stop/airport markers. `hotelIcon()`'s
+`iconAnchor` is hand-derived from the CSS rotation math (a 24×24 box,
+`border-radius:50% 50% 50% 0`, `rotate(-45deg)`) so the pin's drawn tip —
+not its bounding-box center — lands on the actual coordinate; if the pin
+size or rotation ever changes, that anchor has to be re-derived, not
+nudged by eye. `mapPointsFor()`'s full-trip branch (`dayIdx===null`)
+walks every `state.schedule.days[*].items` once a build exists — it used
+to stop at origin/stops/dest only, so no hotel marker ever appeared on
+the default "Full trip" tab, only inside a specific Day tab. That walk
+skips `'resume'` items (`skipResume:true`) because `'resume'` is always
+the same coordinate as the previous day's `'hotel'` item — leaving it in
+would draw two overlapping markers per night.
+
 `ensureMap()`/`clearMap()` hold one persistent `L.map` + `L.layerGroup`,
 rebuilt on every redraw rather than an iframe `src` being thrown away —
 `drawMapFor(dayIdx, ordered, dest, useReal)` is the single entry point for

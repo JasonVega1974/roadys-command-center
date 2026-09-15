@@ -113,7 +113,13 @@ label.f{display:block;font-size:12px;color:var(--dim);text-transform:uppercase;l
 .rmMarker{width:26px;height:26px;border-radius:50%;background:var(--panel2);border:2px solid var(--paint);color:var(--ink);display:flex;align-items:center;justify-content:center;font:700 12px Oswald,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.55)}
 .rmMarker.approx{border-color:var(--approx);box-shadow:0 0 0 2px rgba(232,163,61,.35),0 1px 5px rgba(0,0,0,.55)}
 .rmAirport{width:28px;height:28px;border-radius:50%;background:var(--svc);border:2px solid #6fa8e8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 5px rgba(0,0,0,.55)}
-.rmHotel{width:23px;height:23px;border-radius:50%;background:var(--sign);border:2px solid var(--signhi);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 5px rgba(0,0,0,.55)}
+/* Hotel nights get a pin SHAPE, not just another circle -- at a glance the
+   silhouette (teardrop vs. round) has to read before color does, and the
+   airport marker already owns blue circles. Built from one rotated square
+   (border-radius 50% 50% 50% 0, -45deg) rather than an image asset, same as
+   every other marker on this map. */
+.rmHotelPin{position:relative;width:24px;height:24px;background:#3B9EF5;border:2px solid #cfe6ff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.55)}
+.rmHotelPin b{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;transform:rotate(45deg);font-size:11px;line-height:1}
 .mapBar{display:flex;gap:8px;align-items:center;padding:10px 12px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .tog{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:5px 12px;cursor:pointer;user-select:none}
 .tog input{width:14px;height:14px;accent-color:var(--paint)}
@@ -3049,7 +3055,10 @@ function clearMap(){
 // CDN's marker-icon.png living at a guessable relative path.
 const stopIcon=(n,approx)=>L.divIcon({className:'',html:`<div class="rmMarker${approx?' approx':''}">${n}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
 const airportIcon=()=>L.divIcon({className:'',html:'<div class="rmAirport">&#9992;</div>',iconSize:[28,28],iconAnchor:[14,14]});
-const hotelIcon=()=>L.divIcon({className:'',html:'<div class="rmHotel">&#128717;</div>',iconSize:[23,23],iconAnchor:[11,11]});
+// Anchored at the pin's drawn tip (bottom-left of the box, which the -45deg
+// rotation swings straight down), not the icon's center -- a pin's point is
+// what marks the coordinate, the same convention as a classic map pin.
+const hotelIcon=()=>L.divIcon({className:'',html:'<div class="rmHotelPin"><b>&#128717;</b></div>',iconSize:[24,24],iconAnchor:[12,29]});
 
 function showBaseMap(lat,lng,zoom){
   clearMap().setView(lat!=null?[lat,lng]:[39.5,-98.35], zoom||(lat!=null?9:4));
@@ -3058,26 +3067,43 @@ function showBaseMap(lat,lng,zoom){
 /* Build the point list for one day of the schedule, or the whole trip. Every
    point carries a `kind` (airport/stop/hotel) so drawMapFor() can pick the
    right marker without sniffing label text. */
+/* `skipResume` drops the 'resume' item's point: it's always the SAME
+   coordinate as the previous day's 'hotel' item (leaving the hotel you just
+   slept at), so concatenating every day for the full-trip view would draw
+   two overlapping markers per night. The per-day view keeps it -- 'resume'
+   is that day's own starting point, and the 'hotel' item that produced the
+   same coordinate belongs to the PREVIOUS day's item list, out of view. */
+function pushItemPoint(pts,it,ordered,skipResume){
+  const P=(lat,lng,label,kind,num,approx)=>({lat,lng,label,kind,num,approx});
+  if(it.k==='depart')            pts.push(P(it.lat,it.lng,it.label,'airport'));
+  else if(it.k==='resume'){ if(!skipResume) pts.push(P(it.lat,it.lng,it.label,'hotel')); }
+  else if(it.k==='visit'){
+    const idx=ordered.findIndex(o=>o.uid===it.stop.uid)+1;
+    pts.push(P(it.lat,it.lng,it.label,'stop',idx||undefined,it.stop&&it.stop.geoPrec==='approx'));
+  }
+  else if(it.k==='hotel')        pts.push(P(it.lat,it.lng,'Overnight — '+it.near,'hotel'));
+  else if(it.k==='arrive')       pts.push(P(it.lat,it.lng,it.label,'airport'));
+}
 function mapPointsFor(dayIdx,ordered,dest){
   const P=(lat,lng,label,kind,num,approx)=>({lat,lng,label,kind,num,approx});
   if(dayIdx===null){
-    const pts=[P(state.origin.lat,state.origin.lng,state.origin.label,'airport')];
-    ordered.forEach((s,i)=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name,'stop',i+1,s.geoPrec==='approx')));
-    pts.push(P(dest.lat,dest.lng,dest.label,'airport'));
+    if(!state.schedule){
+      // Preview, no build yet -- no schedule means no hotel nights exist.
+      const pts=[P(state.origin.lat,state.origin.lng,state.origin.label,'airport')];
+      ordered.forEach((s,i)=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name,'stop',i+1,s.geoPrec==='approx')));
+      pts.push(P(dest.lat,dest.lng,dest.label,'airport'));
+      return pts;
+    }
+    // Built: walk every day's items in schedule order so hotel nights are
+    // included -- this used to stop at origin/stops/dest only, so no hotel
+    // ever appeared on the default "Full trip" view, only inside a Day tab.
+    const pts=[];
+    state.schedule.days.forEach(d=>d.items.forEach(it=>pushItemPoint(pts,it,ordered,true)));
     return pts;
   }
   const d=state.schedule.days[dayIdx]; if(!d) return [];
   const pts=[];
-  d.items.forEach(it=>{
-    if(it.k==='depart')       pts.push(P(it.lat,it.lng,it.label,'airport'));
-    else if(it.k==='resume')  pts.push(P(it.lat,it.lng,it.label,'hotel'));      // always leaving last night's hotel
-    else if(it.k==='visit'){
-      const idx=ordered.findIndex(o=>o.uid===it.stop.uid)+1;
-      pts.push(P(it.lat,it.lng,it.label,'stop',idx||undefined,it.stop&&it.stop.geoPrec==='approx'));
-    }
-    else if(it.k==='hotel')   pts.push(P(it.lat,it.lng,'Overnight — '+it.near,'hotel'));
-    else if(it.k==='arrive')  pts.push(P(it.lat,it.lng,it.label,'airport'));
-  });
+  d.items.forEach(it=>pushItemPoint(pts,it,ordered,false));
   return pts;
 }
 
