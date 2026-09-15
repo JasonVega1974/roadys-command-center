@@ -442,7 +442,9 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <h2><span class="n">2</span> Trip Settings</h2>
       <div class="grid2">
         <div><label class="f">Start Date (Day 1)</label><input type="date" id="startDate"></div>
-        <div><label class="f">Day 1 Start Time</label><input type="time" id="day1Start" value="08:00"></div>
+        <div><label class="f">Day 1 Start Time</label><input type="time" id="day1Start" value="08:00">
+          <div class="small" id="day1FlightNote" style="margin-top:4px"></div>
+        </div>
         <div><label class="f">Work Day</label>
           <div style="display:flex;gap:6px;align-items:center">
             <input type="time" id="dayStart" value="08:00"><span class="small">to</span><input type="time" id="dayEnd" value="17:00">
@@ -482,9 +484,31 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
       <div class="small" id="originMeta" style="margin-top:4px"></div>
       <button class="hbtn" id="tpChip" type="button" style="display:none"></button>
       <div id="tpCard" class="small" style="display:none;margin-top:8px"></div>
+      <div class="grid2" style="margin-top:10px">
+        <div><label class="f">Flight Departs (your home airport)</label>
+          <div style="display:flex;gap:6px"><input type="date" id="outDepDate" style="flex:1"><input type="time" id="outDepTime" style="flex:1"></div>
+        </div>
+        <div><label class="f">Flight Arrives (lands here)</label>
+          <div style="display:flex;gap:6px"><input type="date" id="outArrDate" style="flex:1"><input type="time" id="outArrTime" style="flex:1"></div>
+        </div>
+        <div><label class="f">Flight #</label><input id="outFlightNo" placeholder="e.g. WN 1234"></div>
+        <div><label class="f">Airline</label><input id="outAirline" placeholder="e.g. Southwest"></div>
+      </div>
+      <div class="small" id="outFlightNote" style="margin-top:4px"></div>
       <label class="f" style="margin-top:12px">Return Airport — you fly out here</label>
       <div class="stopSearchWrap"><input id="destIn" placeholder="Type airport or address…" autocomplete="off"><div class="sugg" id="destSugg"></div></div>
       <div class="small" id="destMeta" style="margin-top:4px"></div>
+      <div class="grid2" style="margin-top:10px">
+        <div><label class="f">Flight Departs (from here)</label>
+          <div style="display:flex;gap:6px"><input type="date" id="retDepDate" style="flex:1"><input type="time" id="retDepTime" style="flex:1"></div>
+        </div>
+        <div><label class="f">Flight Arrives (your home airport)</label>
+          <div style="display:flex;gap:6px"><input type="date" id="retArrDate" style="flex:1"><input type="time" id="retArrTime" style="flex:1"></div>
+        </div>
+        <div><label class="f">Flight #</label><input id="retFlightNo" placeholder="e.g. WN 5678"></div>
+        <div><label class="f">Airline</label><input id="retAirline" placeholder="e.g. Southwest"></div>
+      </div>
+      <div class="small" id="retFlightNote" style="margin-top:4px"></div>
       <button class="hbtn" id="btnSameAir" type="button" style="margin-top:8px">↩ Same as depart</button>
       <p class="small" style="margin:8px 0 0">The drive runs <b>Depart Airport → first site … last site → Return Airport</b>. They are two separate airports on purpose — fly into one city and out of another and the legs still come out right. Flying home from where you landed? Hit <b>Same as depart</b>.</p>
     </div>
@@ -2293,6 +2317,11 @@ let state = {
   // dest   = Return Airport (flown out of, end of the routing).
   // Two independent points: never infer one from the other.
   origin:null, dest:null,
+  // flights.out is the leg landing at the Depart Airport; flights.ret is the
+  // leg leaving the Return Airport. Only out.arrTime and ret.depTime feed the
+  // schedule (see syncDay1FromFlight()/checkReturnFlight()) -- the rest is
+  // plain data entry for the print packet, never touched by any calculation.
+  flights:{out:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}, ret:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}},
   stops:[], pins:[], route:null, schedule:null
 };
 /* dirty = the working trip has edits that are not in localStorage yet.
@@ -2306,7 +2335,11 @@ const toast=(m,ms=2600)=>{const t=$('toast');t.textContent=m;t.style.display='bl
 const status=(m,err)=>{const s=$('status');s.textContent=m||'';s.className='statusLine'+(err?' err':'')};
 const mi=m=>(m*0.000621371);
 const fmtMi=m=>mi(m).toFixed(mi(m)>=100?0:1)+' mi';
-const fmtDur=s=>{const h=Math.floor(s/3600),m2=Math.round((s%3600)/60);return h?`${h} hr ${m2} min`:`${m2} min`};
+// Math.round((s%3600)/60) can round a near-hour remainder up to 60 itself
+// (e.g. 3599s -> 59.98 -> 60), printing "3 hr 60 min" instead of "4 hr 0
+// min" -- pre-existing, surfaced by the flight-margin message below, which
+// is the first caller to regularly pass a multi-day duration through this.
+const fmtDur=s=>{let h=Math.floor(s/3600),m2=Math.round((s%3600)/60); if(m2===60){h+=1;m2=0} return h?`${h} hr ${m2} min`:`${m2} min`};
 const fmtT=min=>{let h=Math.floor(min/60)%24,m2=Math.round(min%60);const ap=h>=12?'PM':'AM';h=h%12||12;return `${h}:${String(m2).padStart(2,'0')} ${ap}`};
 const tToMin=t=>{const[a,b]=(t||'08:00').split(':');return +a*60+ +b};
 const addDays=(iso,n)=>{const d=new Date((iso||new Date().toISOString().slice(0,10))+'T12:00:00');d.setDate(d.getDate()+n);return d};
@@ -3007,6 +3040,99 @@ function renderAll(ordered,dest){
   renderMap(ordered,dest);
   renderItinerary(ordered,dest);
   buildPrint(ordered,dest);
+  // Every path that rebuilds the schedule (a real Build, re-picking a leg,
+  // reopening a saved trip) funnels through here, so this is the one place
+  // the return-flight margin needs re-checking against the fresh numbers.
+  checkReturnFlight();
+}
+
+/* ---------------- flight info (data entry + two schedule ties) ----------------
+   Twelve plain fields, ten of them pure data entry for the print packet.
+   Two are wired into the schedule itself:
+     - flights.out.arrTime ANCHORS Day 1 Start Time. Not "checked against" --
+       set from it, one-way, for as long as the field holds a value. The
+       Day 1 Start Time input locks (disabled) while that's true so the two
+       can never quietly disagree; clearing the flight time hands control
+       back.
+     - flights.ret.depTime is CHECKED against the schedule's own predicted
+       arrival at the Return Airport (the 'arrive' item's time), not the
+       other way around -- the route is the source of truth on drive time,
+       the flight time is just compared against it, with a button to accept
+       a suggested (arrival + 2h) departure instead of typing one blind. */
+function syncDay1FromFlight(){
+  const arrT=state.flights.out.arrTime;
+  const el=$('day1Start'), note=$('day1FlightNote');
+  if(arrT){
+    state.day1Start=arrT; el.value=arrT; el.disabled=true;
+    if(note) note.innerHTML=`Set from the outbound flight's arrival time — clear that field under Airports to set this by hand.`;
+  } else {
+    el.disabled=false;
+    if(note) note.innerHTML='';
+  }
+}
+function checkOutboundFlight(){
+  const el=$('outFlightNote'); if(!el) return;
+  const o=state.flights.out;
+  el.innerHTML = (o.arrDate && state.startDate && o.arrDate!==state.startDate)
+    ? `<span style="color:var(--approx)">Note: this flight lands ${esc(o.arrDate)}, but Day 1 is set to ${esc(state.startDate)}.</span>`
+    : '';
+}
+/* A schedule day's 'arrive' time is minutes-of-day but never clamped back
+   under 1440 -- a very late final leg can already read past midnight (see
+   buildSchedule()'s final-leg block) -- so both of these convert through a
+   single "minutes since this trip's Day 1 midnight" axis rather than
+   juggling calendar dates directly, and stay correct across that rollover
+   without extra case-work. */
+function dateTimeToTripMinutes(dateStr,timeStr){
+  if(!dateStr||!timeStr) return null;
+  const base=addDays(state.startDate,0), d=new Date(dateStr+'T12:00:00');
+  const dayIdx=Math.round((d-base)/86400000);
+  return dayIdx*1440+tToMin(timeStr);
+}
+function tripMinutesToDateTime(tripMin){
+  const dayIdx=Math.floor(tripMin/1440), minOfDay=((tripMin%1440)+1440)%1440;
+  const date=addDays(state.startDate,dayIdx).toISOString().slice(0,10);
+  const hh=String(Math.floor(minOfDay/60)).padStart(2,'0'), mm=String(Math.round(minOfDay%60)).padStart(2,'0');
+  return {date, time:`${hh}:${mm}`};
+}
+function lastArriveItem(){
+  const sc=state.schedule; if(!sc) return null;
+  const lastDay=sc.days[sc.days.length-1], it=lastDay.items[lastDay.items.length-1];
+  return (it&&it.k==='arrive') ? {item:it, dayIdx:sc.days.length-1} : null;
+}
+function checkReturnFlight(){
+  const el=$('retFlightNote'); if(!el) return;
+  const r=state.flights.ret;
+  if(!r.depDate||!r.depTime){ el.innerHTML=''; return; }
+  if(!state.schedule){
+    el.innerHTML=`<span style="color:var(--dim)">Build your route to check this against your actual drive-back timing.</span>`;
+    return;
+  }
+  const arr=lastArriveItem();
+  if(!arr){ el.innerHTML=''; return; }
+  const arriveTripMin=arr.dayIdx*1440+arr.item.time;
+  const flightTripMin=dateTimeToTripMinutes(r.depDate,r.depTime);
+  const marginMin=flightTripMin-arriveTripMin;
+  const marginTxt=fmtDur(Math.abs(marginMin)*60);
+  if(marginMin<0)
+    el.innerHTML=`<span style="color:var(--warn)">⚠ Your route has you reaching ${esc(state.dest.label)} ${marginTxt} <b>after</b> this flight departs — you'd miss it.</span> <button type="button" class="hbtn" id="btnSuggestRetDep" style="font-size:11.5px;padding:3px 8px;margin-left:6px">Suggest a safer time</button>`;
+  else if(marginMin<90)
+    el.innerHTML=`<span style="color:var(--approx)">⚠ Only ${marginTxt} between reaching the airport and this departure — cutting it close.</span> <button type="button" class="hbtn" id="btnSuggestRetDep" style="font-size:11.5px;padding:3px 8px;margin-left:6px">Suggest a safer time</button>`;
+  else
+    el.innerHTML=`<span style="color:var(--ok)">✓ About ${marginTxt} of slack after reaching the airport.</span>`;
+  const btn=$('btnSuggestRetDep'); if(btn) btn.onclick=suggestReturnDeparture;
+}
+// Fills in arrival-at-airport + a 2h buffer (security/rental return) as a
+// starting point, not a verdict -- it's a normal domestic-flight cushion,
+// not this trip's actual margin requirement, so it's left editable same as
+// any hand-typed time and re-checked like one.
+function suggestReturnDeparture(){
+  const arr=lastArriveItem(); if(!arr) return;
+  const {date,time}=tripMinutesToDateTime(arr.dayIdx*1440+arr.item.time+120);
+  $('retDepDate').value=date; $('retDepTime').value=time;
+  state.flights.ret.depDate=date; state.flights.ret.depTime=time;
+  markDirty(); checkReturnFlight();
+  toast('Suggested 2h after your predicted airport arrival — adjust for your airline/TSA wait');
 }
 /* ---------------- map (Leaflet + OSRM geometry) ----------------
    Google's Maps Embed API capped the on-screen route at a fixed number of
@@ -3406,8 +3532,10 @@ function buildPrint(ordered,dest){
       <div><b>Trip:</b> ${esc(state.trip||'____________________')}</div>
       <div><b>Departs:</b> ${esc(fmtDate(addDays(state.startDate,0)))} · ${fmtT(tToMin(state.day1Start))}</div>
       <div><b>Depart airport:</b> ${esc(state.origin.label)}</div>
+      ${(state.flights.out.airline||state.flights.out.flightNo)?`<div><b>Outbound flight:</b> ${esc([state.flights.out.airline,state.flights.out.flightNo].filter(Boolean).join(' '))}${state.flights.out.arrTime?' — lands '+fmtT(tToMin(state.flights.out.arrTime)):''}</div>`:''}
       <div><b>Returns:</b> ${esc(fmtDate(addDays(state.startDate,sc.days.length-1)))}</div>
       <div><b>Return airport:</b> ${esc(dest.label)}</div>
+      ${(state.flights.ret.airline||state.flights.ret.flightNo)?`<div><b>Return flight:</b> ${esc([state.flights.ret.airline,state.flights.ret.flightNo].filter(Boolean).join(' '))}${state.flights.ret.depTime?' — departs '+fmtT(tToMin(state.flights.ret.depTime)):''}</div>`:''}
     </div>
     <div class="pTotals">
       <div class="pTot"><div class="v">${Math.round(mi(sc.totalDist)).toLocaleString()}</div><div class="k">Miles</div></div>
@@ -3501,6 +3629,12 @@ function collect(){
   state.dayStart=$('dayStart').value; state.dayEnd=$('dayEnd').value; state.driveTil=$('driveTil').value;
   state.visitMin=+$('visitMin').value; state.lunchMin=+$('lunchMin').value;
   state.optMode=$('optMode').value; state.routePref=$('routePref').value;
+  state.flights.out={depDate:$('outDepDate').value,depTime:$('outDepTime').value,
+    arrDate:$('outArrDate').value,arrTime:$('outArrTime').value,
+    flightNo:$('outFlightNo').value.trim(),airline:$('outAirline').value.trim()};
+  state.flights.ret={depDate:$('retDepDate').value,depTime:$('retDepTime').value,
+    arrDate:$('retArrDate').value,arrTime:$('retArrTime').value,
+    flightNo:$('retFlightNo').value.trim(),airline:$('retAirline').value.trim()};
 }
 function markDirty(){
   dirty=true;collect();
@@ -3628,7 +3762,7 @@ function loadTrip(k){
   }catch(e){toast('⚠ Could not load that trip')}
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
-function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,stops:[],pins:[],route:null,schedule:null,nightHotels:{}}}
+function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,flights:{out:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''},ret:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}},stops:[],pins:[],route:null,schedule:null,nightHotels:{}}}
 /* Trips saved before the Depart/Return split carry sameEnd:true with a null
    dest -- the old "Return to start point" checkbox. Materialize that into a
    real Return Airport on open, so nothing downstream has to infer one. */
@@ -3699,6 +3833,14 @@ function hydrateUI(){
   $('originMeta').textContent=state.origin?`✓ Pinned at ${state.origin.lat.toFixed(4)}, ${state.origin.lng.toFixed(4)}`:'';
   $('destIn').value=state.dest?state.dest.label:'';
   $('destMeta').textContent=state.dest?`✓ Pinned at ${state.dest.lat.toFixed(4)}, ${state.dest.lng.toFixed(4)}`:'';
+  const fo=state.flights.out, fr=state.flights.ret;
+  $('outDepDate').value=fo.depDate; $('outDepTime').value=fo.depTime;
+  $('outArrDate').value=fo.arrDate; $('outArrTime').value=fo.arrTime;
+  $('outFlightNo').value=fo.flightNo; $('outAirline').value=fo.airline;
+  $('retDepDate').value=fr.depDate; $('retDepTime').value=fr.depTime;
+  $('retArrDate').value=fr.arrDate; $('retArrTime').value=fr.arrTime;
+  $('retFlightNo').value=fr.flightNo; $('retAirline').value=fr.airline;
+  syncDay1FromFlight(); checkOutboundFlight(); checkReturnFlight();
   renderStops();
   // Setting #gsName above is programmatic, so its change handler never fires
   // and the profile card would keep showing the previous person's airport and
@@ -3741,6 +3883,9 @@ function init(){
   };
   $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty();tpApplyProfileToTrip(curGS());tpRenderCard(curGS())};
   ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode','driveTil'].forEach(id=>$(id).addEventListener('input',markDirty));
+  ['outDepDate','outDepTime','outFlightNo','outAirline','retArrDate','retArrTime','retFlightNo','retAirline'].forEach(id=>$(id).addEventListener('input',markDirty));
+  ['outArrDate','outArrTime'].forEach(id=>$(id).addEventListener('input',()=>{markDirty();syncDay1FromFlight();checkOutboundFlight();}));
+  ['retDepDate','retDepTime'].forEach(id=>$(id).addEventListener('input',()=>{markDirty();checkReturnFlight();}));
   $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
   $('btnAddStop').onclick=()=>addStopRow();
   $('btnBuild').onclick=buildRoute;

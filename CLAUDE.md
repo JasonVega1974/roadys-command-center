@@ -237,6 +237,40 @@ hotel→site hop from the night-hotel rule (below): `routeLinesFor()` draws
 that as its own dashed segment, matched up via a `pendingHop` flag set on a
 `part:'morning'` drive item and consumed by the next visit/arrive item.
 
+### Route Planner: flight info
+
+`state.flights = {out, ret}`, twelve plain fields (dep/arr date, dep/arr
+time, flight #, airline, per leg). Ten of them are pure data entry for the
+print packet only — nothing reads them back. Two are wired into the
+schedule, and the direction of each tie matters:
+
+- `flights.out.arrTime` **sets** `state.day1Start`, one-way, for as long as
+  it holds a value — not "checked against" it. `syncDay1FromFlight()` locks
+  the Day 1 Start Time input (`disabled`) whenever an outbound arrival time
+  is present, so the two can never be independently edited into disagreeing;
+  clearing the flight field is the only way back to manual control. Called
+  from every place that can change either value: the field's own `input`
+  listener, and `hydrateUI()` (so a reopened/imported/blanked trip re-derives
+  the lock state instead of trusting whatever `day1Start` happened to be
+  serialized as).
+- `flights.ret.depTime` is **checked against** the schedule's own predicted
+  arrival at the Return Airport — the last day's `arrive` item — never the
+  other way around; the route is the authority on drive time, the flight
+  time is just compared against it. `checkReturnFlight()` runs from
+  `renderAll()`, so it re-evaluates after every real schedule change (a
+  Build, `setLegAlt()`, `repickAllLegs()`, reopening a trip) without needing
+  its own hook at each call site. `suggestReturnDeparture()` offers arrival +
+  2h as a starting point, not a verdict — a normal domestic-flight cushion,
+  not this trip's actual margin requirement — and leaves it editable and
+  re-checked like any hand-typed time.
+
+Both checks convert through `dateTimeToTripMinutes()`/`tripMinutesToDateTime()`
+— minutes since this trip's own Day 1 midnight — rather than juggling
+calendar dates directly, because a schedule's `arrive`/`hotel` item times are
+never clamped back under 1440: a very late final leg can already read past
+midnight (see the night-hotel rule below), and this axis stays correct
+through that rollover for free.
+
 ### Route Planner: the night hotel rule
 
 **Every overnight is the hotel nearest the NEXT day's first scheduled site —
