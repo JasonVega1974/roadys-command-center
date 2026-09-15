@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 
 <style>
 :root{
@@ -97,6 +98,22 @@ label.f{display:block;font-size:12px;color:var(--dim);text-transform:uppercase;l
 /* ===== Map ===== */
 #mapCard{padding:0;overflow:hidden}
 #map{min-height:280px;width:100%;background:#0d1013}
+#mapEmbed{height:420px;background:#0d1013}
+.leaflet-container{background:#0d1013;font-family:Inter,system-ui,sans-serif}
+.leaflet-control-attribution{background:rgba(13,16,19,.78)!important;color:var(--faint)!important;font-size:10px!important;padding:1px 6px!important}
+.leaflet-control-attribution a{color:var(--dim)!important}
+.leaflet-control-zoom a{background:var(--panel2)!important;color:var(--ink)!important;border-color:var(--line)!important}
+.leaflet-control-zoom a:hover{background:var(--panel)!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel2);color:var(--ink)}
+.leaflet-tooltip{background:var(--panel2)!important;color:var(--ink)!important;border:1px solid var(--line)!important;font-size:12px!important;box-shadow:0 2px 8px rgba(0,0,0,.4)!important}
+.leaflet-tooltip-top:before{border-top-color:var(--panel2)!important}
+/* Numbered stop / airport / hotel pins -- plain divs, not Leaflet's default
+   marker images, so nothing depends on the CDN's marker-icon.png being at a
+   guessable relative path. */
+.rmMarker{width:26px;height:26px;border-radius:50%;background:var(--panel2);border:2px solid var(--paint);color:var(--ink);display:flex;align-items:center;justify-content:center;font:700 12px Oswald,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.rmMarker.approx{border-color:var(--approx);box-shadow:0 0 0 2px rgba(232,163,61,.35),0 1px 5px rgba(0,0,0,.55)}
+.rmAirport{width:28px;height:28px;border-radius:50%;background:var(--svc);border:2px solid #6fa8e8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.rmHotel{width:23px;height:23px;border-radius:50%;background:var(--sign);border:2px solid var(--signhi);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 5px rgba(0,0,0,.55)}
 .mapBar{display:flex;gap:8px;align-items:center;padding:10px 12px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .tog{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:5px 12px;cursor:pointer;user-select:none}
 .tog input{width:14px;height:14px;accent-color:var(--paint)}
@@ -846,7 +863,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
 <div id="printRoot"></div>
 <input type="file" id="importFile" accept=".json" style="display:none">
 
-
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
    GS TRAVEL PLANNER — Roady's Command Center
@@ -2985,74 +3002,174 @@ function renderAll(ordered,dest){
   renderItinerary(ordered,dest);
   buildPrint(ordered,dest);
 }
-const GKEY='AIzaSyBZsOxCFwhVeU7sNL9aAH-RBmOwWCw2U28';
-function mapFrame(path){
-  return `<iframe width="100%" height="420" style="border:0;display:block" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed/v1/${path}&key=${GKEY}"></iframe>`;
-}
-// Loads a plain map immediately on page open, and re-centers once a start point is picked.
-function showBaseMap(lat,lng,zoom){
-  const embed=$('mapEmbed'); if(!embed) return;
-  const c = (lat!=null&&lng!=null) ? `${lat},${lng}` : '39.5,-98.35';
-  embed.innerHTML = mapFrame(`view?center=${c}&zoom=${zoom||(lat!=null?9:4)}&maptype=roadmap`);
-}
-/* Google's Maps Embed API takes "up to 20 waypoints" between origin and
-   destination, so all 20 truck stops of a full trip draw. This used to be 9,
-   which silently dropped everything past the ninth stop from the map. */
-const EMBED_WP_MAX=20;  // origin + destination + this many waypoints
+/* ---------------- map (Leaflet + OSRM geometry) ----------------
+   Google's Maps Embed API capped the on-screen route at a fixed number of
+   waypoints, and drew ITS OWN route choice between them -- independent of
+   whichever OSRM route the app actually calculated and is describing in the
+   itinerary and print packet below. The two could silently disagree (e.g.
+   after picking a "shortest distance" alternate on a leg). Leaflet draws
+   straight from state.route.legs[i].geom, the literal geometry OSRM
+   returned for the leg the app chose, so the map and the printed directions
+   are provably the same route -- and there is no waypoint cap to hit, ever,
+   at up to MAX_STOPS.
 
-/* Build the point list for one day of the schedule, or the whole trip. */
+   Tile source: Stadia Maps' "Alidade Smooth Dark" basemap -- matches the
+   app's dark theme (Google's Embed API has no dark mode). No API key is
+   embedded here: Stadia authenticates by domain instead (see their
+   "Authentication Configuration" dashboard) -- register whatever domain
+   this page ends up served from (their free tier covers this app's volume
+   many times over) and tiles start working there with zero code changes.
+   Until then, and for localhost/file:// testing, Stadia serves keyless
+   requests too, just under a stricter rate limit. If that tier is ever not
+   enough, swap TILE_URL/TILE_ATTR for another provider (MapTiler, CARTO --
+   both now require a key of their own); everything else reads through
+   these two constants alone. */
+const TILE_URL='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png';
+const TILE_ATTR='&copy; <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+const ROUTE_COLOR='#F5B80C';   // var(--paint) -- Leaflet style options want a literal color, not a CSS var()
+
+let leafletMap=null, mapLayerGroup=null;
+function ensureMap(){
+  if(leafletMap) return leafletMap;
+  leafletMap=L.map('mapEmbed',{attributionControl:true,zoomControl:true}).setView([39.5,-98.35],4);
+  L.tileLayer(TILE_URL,{maxZoom:19,attribution:TILE_ATTR}).addTo(leafletMap);
+  mapLayerGroup=L.layerGroup().addTo(leafletMap);
+  // Belt-and-suspenders against the classic Leaflet-inits-before-layout-settles
+  // gray-tile glitch; #mapEmbed's height is a plain unconditional CSS rule so
+  // this should never be needed, but it's nearly free insurance.
+  setTimeout(()=>leafletMap&&leafletMap.invalidateSize(),60);
+  return leafletMap;
+}
+function clearMap(){
+  ensureMap();
+  mapLayerGroup.clearLayers();
+  return leafletMap;
+}
+// Plain divs, not Leaflet's default marker images -- nothing depends on the
+// CDN's marker-icon.png living at a guessable relative path.
+const stopIcon=(n,approx)=>L.divIcon({className:'',html:`<div class="rmMarker${approx?' approx':''}">${n}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
+const airportIcon=()=>L.divIcon({className:'',html:'<div class="rmAirport">&#9992;</div>',iconSize:[28,28],iconAnchor:[14,14]});
+const hotelIcon=()=>L.divIcon({className:'',html:'<div class="rmHotel">&#128717;</div>',iconSize:[23,23],iconAnchor:[11,11]});
+
+function showBaseMap(lat,lng,zoom){
+  clearMap().setView(lat!=null?[lat,lng]:[39.5,-98.35], zoom||(lat!=null?9:4));
+}
+
+/* Build the point list for one day of the schedule, or the whole trip. Every
+   point carries a `kind` (airport/stop/hotel) so drawMapFor() can pick the
+   right marker without sniffing label text. */
 function mapPointsFor(dayIdx,ordered,dest){
-  const P=(lat,lng,label)=>({lat,lng,label});
+  const P=(lat,lng,label,kind,num,approx)=>({lat,lng,label,kind,num,approx});
   if(dayIdx===null){
-    const pts=[P(state.origin.lat,state.origin.lng,state.origin.label)];
-    ordered.forEach(s=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name)));
-    pts.push(P(dest.lat,dest.lng,dest.label));
+    const pts=[P(state.origin.lat,state.origin.lng,state.origin.label,'airport')];
+    ordered.forEach((s,i)=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name,'stop',i+1,s.geoPrec==='approx')));
+    pts.push(P(dest.lat,dest.lng,dest.label,'airport'));
     return pts;
   }
   const d=state.schedule.days[dayIdx]; if(!d) return [];
   const pts=[];
   d.items.forEach(it=>{
-    if(it.k==='depart'||it.k==='resume') pts.push(P(it.lat,it.lng,it.label));
-    else if(it.k==='visit')              pts.push(P(it.lat,it.lng,it.label));
-    else if(it.k==='hotel')              pts.push(P(it.lat,it.lng,'Overnight — '+it.near));
-    else if(it.k==='arrive')             pts.push(P(it.lat,it.lng,it.label));
+    if(it.k==='depart')       pts.push(P(it.lat,it.lng,it.label,'airport'));
+    else if(it.k==='resume')  pts.push(P(it.lat,it.lng,it.label,'hotel'));      // always leaving last night's hotel
+    else if(it.k==='visit'){
+      const idx=ordered.findIndex(o=>o.uid===it.stop.uid)+1;
+      pts.push(P(it.lat,it.lng,it.label,'stop',idx||undefined,it.stop&&it.stop.geoPrec==='approx'));
+    }
+    else if(it.k==='hotel')   pts.push(P(it.lat,it.lng,'Overnight — '+it.near,'hotel'));
+    else if(it.k==='arrive')  pts.push(P(it.lat,it.lng,it.label,'airport'));
   });
   return pts;
 }
 
-function drawMapFor(dayIdx,ordered,dest){
+/* GeoJSON coordinates are [lng,lat]; Leaflet wants [lat,lng]. */
+const flipGeom=g=>(g||[]).map(([lng,lat])=>[lat,lng]);
+
+/* `solid` is OSRM's own leg geometry -- the exact route the itinerary and
+   print packet describe. `dashed` is the one thing OSRM never routed: the
+   morning hop from a resolved hotel back to the site (see the NIGHT HOTEL
+   RULE note above buildSchedule) -- short, so a straight line costs nothing
+   in accuracy. Every 'drive' item except part==='morning' corresponds 1:1
+   to a real leg -- the night-hotel rule always drives the WHOLE original leg
+   that evening, arriving at the site itself before peeling off to a hotel
+   nearby, so there is never a fractional leg left to reconstruct. */
+function routeLinesFor(dayIdx){
+  const legs=state.route&&state.route.legs;
+  if(!legs) return {solid:[],dashed:[]};
+  if(dayIdx===null){
+    const solid=legs.map(l=>flipGeom(l.geom)).filter(g=>g.length>1);
+    const dashed=[];
+    (state.schedule?state.schedule.days:[]).forEach(d=>d.items.forEach(it=>{
+      if(it.k==='hotel'&&it.anchorLat!=null) dashed.push([[it.lat,it.lng],[it.anchorLat,it.anchorLng]]);
+    }));
+    return {solid,dashed};
+  }
+  const day=state.schedule&&state.schedule.days[dayIdx];
+  if(!day) return {solid:[],dashed:[]};
+  const solid=[], dashed=[];
+  let hotelPt=null, pendingHop=false;
+  day.items.forEach(it=>{
+    if(it.k==='resume') hotelPt=[it.lat,it.lng];
+    else if(it.k==='drive'){
+      if(it.part==='morning') pendingHop=true;
+      else { const leg=legs[it.legIdx]; const g=leg&&flipGeom(leg.geom); if(g&&g.length>1) solid.push(g); }
+    } else if((it.k==='visit'||it.k==='arrive') && pendingHop && hotelPt){
+      dashed.push([hotelPt,[it.lat,it.lng]]);
+      pendingHop=false;
+    }
+  });
+  return {solid,dashed};
+}
+
+/* useReal=true draws OSRM's actual geometry (post-Build, and only when the
+   caller has confirmed state.route still matches the current stop set --
+   see refreshMapPreview() below for why that check can't be skipped).
+   useReal=false, or any day/leg missing geometry (a slim-reopened trip:
+   slimForSave() strips geom to keep saved trips small), falls back to a
+   straight line through the points in order -- honest about being a
+   preview, never silently wrong about which stops are even on the map. */
+function drawMapFor(dayIdx,ordered,dest,useReal){
   const pts=mapPointsFor(dayIdx,ordered,dest);
   const hint=$('mapHint');
   if(pts.length<2){
     if(hint) hint.textContent='Not enough points to draw this day.';
     return;
   }
-  // Exact coordinates — never city names, so two stops in one town stay distinct.
-  const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
-  const o=pts[0], dst=pts[pts.length-1];
-  let mid=pts.slice(1,-1), truncated=0;
-  if(mid.length>EMBED_WP_MAX){ truncated=mid.length-EMBED_WP_MAX; mid=mid.slice(0,EMBED_WP_MAX) }
-  const wp=mid.map(c).join('|');
-  $('mapEmbed').innerHTML=mapFrame(`directions?origin=${c(o)}&destination=${c(dst)}${wp?`&waypoints=${wp}`:''}&mode=driving`);
+  clearMap();
+  const {solid,dashed} = useReal ? routeLinesFor(dayIdx) : {solid:[],dashed:[]};
+  const bounds=[];
+  if(solid.length){
+    L.polyline(solid,{color:ROUTE_COLOR,weight:4,opacity:.85}).addTo(mapLayerGroup);
+    solid.forEach(line=>line.forEach(p=>bounds.push(p)));
+    dashed.forEach(seg=>{ L.polyline(seg,{color:ROUTE_COLOR,weight:3,opacity:.7,dashArray:'6 6'}).addTo(mapLayerGroup); bounds.push(...seg); });
+  } else {
+    const straight=pts.map(p=>[p.lat,p.lng]);
+    L.polyline(straight,{color:ROUTE_COLOR,weight:3,opacity:.7,dashArray:'2 9'}).addTo(mapLayerGroup);
+    bounds.push(...straight);
+  }
+  pts.forEach(p=>{
+    const icon = p.kind==='airport' ? airportIcon() : p.kind==='hotel' ? hotelIcon() : stopIcon(p.num,p.approx);
+    L.marker([p.lat,p.lng],{icon}).bindTooltip(esc(p.label||''),{direction:'top',offset:[0,-12]}).addTo(mapLayerGroup);
+    bounds.push([p.lat,p.lng]);
+  });
+  if(bounds.length) leafletMap.fitBounds(bounds,{padding:[26,26],maxZoom:12});
 
   if(hint){
-    const label = dayIdx===null ? 'the full trip' : `Day ${dayIdx+1}`;
-    hint.innerHTML = truncated
-      ? `Showing ${label} — Google's embed caps at ${EMBED_WP_MAX} stops, so <b style="color:var(--warn)">${truncated} more aren't drawn</b>. Use the <b style="color:var(--ink)">Day</b> tabs above to see every stop, or open the full route in Google Maps.`
-      : `Showing <b style="color:var(--ink)">${label}</b> — ${pts.length} points, exactly as listed in your itinerary below.`;
+    const label=dayIdx===null?'the full trip':`Day ${dayIdx+1}`;
+    hint.innerHTML = solid.length
+      ? `Showing <b style="color:var(--ink)">${label}</b> — the exact route OSRM calculated, ${pts.length} points.`
+      : `Showing <b style="color:var(--ink)">${label}</b> — ${pts.length} points, in the order listed. Hit <b style="color:var(--ink)">Build My Route</b> to draw the real road-following route.`;
   }
   [...document.querySelectorAll('.dayTab')].forEach(b=>
     b.classList.toggle('on', (b.dataset.day==='all'? dayIdx===null : +b.dataset.day===dayIdx)));
-  return truncated;   // caller owns the hint in preview mode -- see refreshMapPreview()
 }
 
 /* ---------------- live map preview ----------------
    Adding, removing or reordering a stop used to leave the map showing the
    previously built route with nothing to say so — the only thing that ever
-   redrew it was Build My Route. The embed URL is built from coordinates
-   alone (no routing call), so the map can follow edits immediately and for
-   free. Drive times, the day split and turn-by-turn still need a real
-   build, so the hint says so and the day tabs hide until one happens. */
+   redrew it was Build My Route. drawMapFor() is cheap (no network call), so
+   the map can follow edits immediately and for free. Drive times, the day
+   split and turn-by-turn still need a real build, so the hint says so and
+   the day tabs hide until one happens. */
 let mapSig=null;   // geometry already drawn, so typing in a notes field doesn't redraw
 
 function tripGeometrySig(){
@@ -3077,26 +3194,26 @@ function refreshMapPreview(){
     if(h) h.innerHTML='No stops on this trip yet. Add truck stops on the left and they\'ll appear here as you go.';
     return;
   }
-  const cut=drawMapFor(null,ready,dest); // always the full trip: any day split is now stale
+  // useReal is always false here: this branch only runs when the stop set has
+  // drifted from the last build (the signature check above just failed), so
+  // any state.route.legs describe a DIFFERENT set or order of stops and must
+  // never be drawn as if it were the current plan.
+  drawMapFor(null,ready,dest,false);     // always the full trip: any day split is now stale
   if(tabs) tabs.style.display='none';
   const hint=$('mapHint'), n=ready.length, s=n>1?'s':'';
-  // drawMapFor() writes its own hint, including the over-the-cap warning; this
-  // used to overwrite it wholesale, so a trip past the embed limit lost every
-  // trace of the stops it had quietly dropped. Carry the warning through.
-  const cutNote = cut>0
-    ? ` <b style="color:var(--warn)">${cut} stop${cut>1?'s':''} past Google's ${EMBED_WP_MAX}-waypoint embed limit ${cut>1?'are':'is'} not drawn</b> — use the Day tabs after a build, or open the full route in Google Maps.`
-    : '';
-  if(hint) hint.innerHTML = (state.route
+  if(hint) hint.innerHTML = state.route
     ? `Map updated for your ${n} stop${s}, in the order listed on the left. Drive times, the day split and directions are still from the last build — hit <b style="color:var(--ink)">Build My Route</b> to bring them up to date.`
-    : `Showing your ${n} stop${s} in the order listed on the left. Hit <b style="color:var(--ink)">Build My Route</b> to put them in the smartest order, add drive times and split the trip into days.`) + cutNote;
+    : `Showing your ${n} stop${s} in the order listed on the left. Hit <b style="color:var(--ink)">Build My Route</b> to put them in the smartest order, add drive times and split the trip into days.`;
 }
 
 function renderMap(ordered,dest){
-  // Full-route links (these open real Google Maps, which handles more stops than the embed)
+  // Full-route links (Google's real, public web app -- no key, no waypoint cap)
   const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
   const gmUrl=`https://www.google.com/maps/dir/${c(state.origin)}/${ordered.map(c).join('/')}/${c(dest)}`;
+  // Google's Directions URL scheme accepts up to 25 waypoints -- matches this
+  // app's own MAX_STOPS, so nothing here needs truncating either.
   const gmDirUrl=`https://www.google.com/maps/dir/?api=1&origin=${c(state.origin)}&destination=${c(dest)}`
-    +`&waypoints=${ordered.slice(0,9).map(c).join('|')}&travelmode=driving`;
+    +`&waypoints=${ordered.map(c).join('|')}&travelmode=driving`;
   $('btnGMaps').onclick=()=>window.open(gmUrl,'_blank');
   $('btnGMapsDir').onclick=()=>window.open(gmDirUrl,'_blank');
   $('btnGasSearch') && ($('btnGasSearch').onclick=()=>{
@@ -3112,11 +3229,11 @@ function renderMap(ordered,dest){
       + Array.from({length:nd},(_,i)=>`<button class="dayTab" data-day="${i}">Day ${i+1}</button>`).join('');
     [...tabs.children].forEach(b=>b.onclick=()=>{
       const v=b.dataset.day;
-      drawMapFor(v==='all'?null:+v,ordered,dest);
+      drawMapFor(v==='all'?null:+v,ordered,dest,true);
     });
     tabs.style.display='flex';
   }
-  drawMapFor(null,ordered,dest);
+  drawMapFor(null,ordered,dest,true);
   // A real build settles the signature, so the next markDirty() (a keystroke in
   // a notes field, say) doesn't redraw over the built route with a preview.
   mapSig=tripGeometrySig();
