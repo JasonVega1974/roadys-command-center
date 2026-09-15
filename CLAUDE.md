@@ -145,7 +145,14 @@ someone's only way in, and there is no escrow.
   trip ownership (`tripKey(curGS(),…)`), so nothing in the async roster
   render may change the selection — see the sentinel handling in
   `tpRenderGSDropdown()`. **Route Planner**: OSRM routing, trips under
-  `gsp2:trip:<gs>:<name>`. **Site Visit**: the `site-visit.html` form
+  `gsp2:trip:<gs>:<name>`. Two independent airports — `state.origin` is the
+  **Depart Airport** (flown into, start of the routing) and `state.dest` the
+  **Return Airport** (flown out of, end of it). Neither is ever inferred from
+  the other; the old `sameEnd` "Return to start point" checkbox is gone, and
+  `migrateAirports()` materializes it into a real `dest` when an old trip is
+  opened. "Same as depart" is a button that *writes* the value, not an
+  assumption. Up to `MAX_STOPS` (25) stops per trip — the on-screen map has
+  no cap at all (see "Route Planner: the map" below). **Site Visit**: the `site-visit.html` form
   ported to this app's theme, with photo/video attachments stored as
   base64 inside the record. Visits save one key per visit under
   `gsp2:visit:<gs>:<id>`; `svSave()` warns past `SV_WARN_CHARS` and, if
@@ -176,6 +183,67 @@ someone's only way in, and there is no escrow.
   enabled and this page's origin authorized; `drive.file` scope only).
   Both show a "not configured yet" dialog until then.
 
+### Route Planner: the map (Leaflet + OSRM geometry, not Google Embed)
+
+The on-screen map is Leaflet, tiled from Stadia Maps' dark basemap
+(`TILE_URL`/`TILE_ATTR`), not Google's Maps Embed API. That switch happened
+because the Embed API drew **its own** route choice between waypoints,
+independent of whichever OSRM route the app actually calculated and
+describes in the itinerary/print packet — the two could silently disagree —
+and because its embed mode caps at a fixed waypoint count, which a 20-stop
+trip would blow past. Leaflet draws straight from `state.route.legs[i].geom`,
+the literal geometry OSRM returned for the chosen leg, so the map and the
+printed directions are provably the same route, and there's no waypoint cap
+to hit at any stop count up to `MAX_STOPS`.
+
+`ensureMap()`/`clearMap()` hold one persistent `L.map` + `L.layerGroup`,
+rebuilt on every redraw rather than an iframe `src` being thrown away —
+`drawMapFor(dayIdx, ordered, dest, useReal)` is the single entry point for
+both the full-trip and per-day views. **`useReal` must never be inferred
+from whether `state.route` exists** — it has to mean "the current stop set
+still matches what `state.route` was built from." `refreshMapPreview()`
+always passes `false`: it only ever runs when `tripGeometrySig()` has
+already proven the stops diverged from the last build (that's the whole
+reason it's redrawing), so `state.route.legs`, if present, describe a
+*different* set or order of stops and would draw a route that no longer
+matches the markers. `renderMap()` (called right after a successful Build,
+and by `loadTrip()`/`setLegAlt()`/`repickAllLegs()`, all of which keep
+`state.route` synchronized with the current stops first) always passes
+`true`.
+
+Even with `useReal:true`, `routeLinesFor()` falls back to a straight line
+per missing leg — a **slim-reopened trip has no `leg.geom` at all**
+(`slimForSave()` strips it to keep saved trips small), so every "solid"
+segment silently degrades to the dashed straight-line style rather than
+throwing or drawing nothing. The one thing OSRM never routes is the morning
+hotel→site hop from the night-hotel rule (below): `routeLinesFor()` draws
+that as its own dashed segment, matched up via a `pendingHop` flag set on a
+`part:'morning'` drive item and consumed by the next visit/arrive item.
+
+### Route Planner: the night hotel rule
+
+**Every overnight is the hotel nearest the NEXT day's first scheduled site —
+the Return Airport on the last night. Nothing overrides it:** not elapsed
+drive time, not mileage, not the "Stop Driving By" time. The whole remaining
+drive happens that evening, so the morning is a short hop from the hotel door
+(`HOP_MPH`) instead of hours of highway. If you are tempted to add a
+"but if it's after X o'clock…" branch to `buildSchedule()`, that is the exact
+fallback this rule exists to forbid.
+
+`state.driveTil` is advisory: when the evening drive runs past it the drive
+and hotel items carry `late:true` and the itinerary card says so — the hotel
+does not move. The one thing it still decides is *whether* a night before the
+flight home is needed at all, which is a question about sleeping, not placing.
+
+`buildSchedule()` is synchronous (several sync callers), so it reads
+`nightHotelFor()` out of the `state.nightHotels` cache and falls back to the
+site itself — right place, missing name. `resolveNightHotels()` fills that
+cache from Overpass afterwards, retries three times because Overpass answers
+429/504 under load, re-renders once, and on failure says so on the card rather
+than leaving "Looking up…" forever. The lookup takes the **strictly nearest**
+lodging; the GS's preferred brand is a display hint only and must never move
+the pin.
+
 ### Route Planner: the map follows stop edits
 
 The Google embed URL is built from coordinates alone — no routing call —
@@ -190,7 +258,8 @@ build so the optimized order isn't immediately overdrawn.
 **Manual test — the map must update on every one of these, with no
 Build My Route in between:**
 
-1. Pick a start airport, add 2–3 Roady's stops, hit **Build My Route**.
+1. Pick a Depart Airport *and* a Return Airport (different ones — that is the
+   point), add 2–3 Roady's stops, hit **Build My Route**.
    Map draws the route; day tabs appear.
 2. **Add** a stop → its pin joins the map, day tabs hide, hint switches
    to "Drive times… still from the last build".

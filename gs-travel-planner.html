@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 
 <style>
 :root{
@@ -97,6 +98,22 @@ label.f{display:block;font-size:12px;color:var(--dim);text-transform:uppercase;l
 /* ===== Map ===== */
 #mapCard{padding:0;overflow:hidden}
 #map{min-height:280px;width:100%;background:#0d1013}
+#mapEmbed{height:420px;background:#0d1013}
+.leaflet-container{background:#0d1013;font-family:Inter,system-ui,sans-serif}
+.leaflet-control-attribution{background:rgba(13,16,19,.78)!important;color:var(--faint)!important;font-size:10px!important;padding:1px 6px!important}
+.leaflet-control-attribution a{color:var(--dim)!important}
+.leaflet-control-zoom a{background:var(--panel2)!important;color:var(--ink)!important;border-color:var(--line)!important}
+.leaflet-control-zoom a:hover{background:var(--panel)!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel2);color:var(--ink)}
+.leaflet-tooltip{background:var(--panel2)!important;color:var(--ink)!important;border:1px solid var(--line)!important;font-size:12px!important;box-shadow:0 2px 8px rgba(0,0,0,.4)!important}
+.leaflet-tooltip-top:before{border-top-color:var(--panel2)!important}
+/* Numbered stop / airport / hotel pins -- plain divs, not Leaflet's default
+   marker images, so nothing depends on the CDN's marker-icon.png being at a
+   guessable relative path. */
+.rmMarker{width:26px;height:26px;border-radius:50%;background:var(--panel2);border:2px solid var(--paint);color:var(--ink);display:flex;align-items:center;justify-content:center;font:700 12px Oswald,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.rmMarker.approx{border-color:var(--approx);box-shadow:0 0 0 2px rgba(232,163,61,.35),0 1px 5px rgba(0,0,0,.55)}
+.rmAirport{width:28px;height:28px;border-radius:50%;background:var(--svc);border:2px solid #6fa8e8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.rmHotel{width:23px;height:23px;border-radius:50%;background:var(--sign);border:2px solid var(--signhi);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 5px rgba(0,0,0,.55)}
 .mapBar{display:flex;gap:8px;align-items:center;padding:10px 12px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .tog{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:5px 12px;cursor:pointer;user-select:none}
 .tog input{width:14px;height:14px;accent-color:var(--paint)}
@@ -453,18 +470,17 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
     </div>
 
     <div class="card">
-      <h2><span class="n">3</span> Start &amp; End (Airport)</h2>
-      <label class="f">Start Point</label>
+      <h2><span class="n">3</span> Airports</h2>
+      <label class="f">Depart Airport — you fly in here</label>
       <div class="stopSearchWrap"><input id="originIn" placeholder="Type airport (e.g. Boise, MKE, Denver) or any address…" autocomplete="off"><div class="sugg" id="originSugg"></div></div>
       <div class="small" id="originMeta" style="margin-top:4px"></div>
       <button class="hbtn" id="tpChip" type="button" style="display:none"></button>
       <div id="tpCard" class="small" style="display:none;margin-top:8px"></div>
-      <label class="f" style="margin-top:12px">End Point</label>
-      <label class="tog" style="margin-bottom:6px"><input type="checkbox" id="sameEnd" checked> Return to start point</label>
-      <div id="destWrap" style="display:none">
-        <div class="stopSearchWrap"><input id="destIn" placeholder="Type airport or address…" autocomplete="off"><div class="sugg" id="destSugg"></div></div>
-        <div class="small" id="destMeta" style="margin-top:4px"></div>
-      </div>
+      <label class="f" style="margin-top:12px">Return Airport — you fly out here</label>
+      <div class="stopSearchWrap"><input id="destIn" placeholder="Type airport or address…" autocomplete="off"><div class="sugg" id="destSugg"></div></div>
+      <div class="small" id="destMeta" style="margin-top:4px"></div>
+      <button class="hbtn" id="btnSameAir" type="button" style="margin-top:8px">↩ Same as depart</button>
+      <p class="small" style="margin:8px 0 0">The drive runs <b>Depart Airport → first site … last site → Return Airport</b>. They are two separate airports on purpose — fly into one city and out of another and the legs still come out right. Flying home from where you landed? Hit <b>Same as depart</b>.</p>
     </div>
 
     <div class="card">
@@ -847,7 +863,7 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
 <div id="printRoot"></div>
 <input type="file" id="importFile" accept=".json" style="display:none">
 
-
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
    GS TRAVEL PLANNER — Roady's Command Center
@@ -2267,7 +2283,10 @@ const MAX_STOPS = 25;
 let state = {
   gs:'', trip:'', startDate:'', day1Start:'08:00', dayStart:'08:00', dayEnd:'17:00',
   visitMin:90, lunchMin:45, optMode:'auto', routePref:'fast', driveTil:'19:00',
-  origin:null, dest:null, sameEnd:true,
+  // origin = Depart Airport (flown into, start of the routing).
+  // dest   = Return Airport (flown out of, end of the routing).
+  // Two independent points: never infer one from the other.
+  origin:null, dest:null,
   stops:[], pins:[], route:null, schedule:null
 };
 /* dirty = the working trip has edits that are not in localStorage yet.
@@ -2659,7 +2678,7 @@ function setLegAlt(legIdx,altIdx){
   if(!L||!L.alts[altIdx]) return;
   Object.assign(L, legFrom(L.alts,altIdx));
   const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
-  const dest=state.sameEnd?state.origin:state.dest;
+  const dest=state.dest;
   if(!ordered.length||!dest) return;
   state.schedule=buildSchedule(ordered,dest);
   renderAll(ordered,dest);
@@ -2672,22 +2691,22 @@ function repickAllLegs(){
   const pref=state.routePref||'fast';
   state.route.legs.forEach(L=>Object.assign(L, legFrom(L.alts,pickAlt(L.alts,pref))));
   const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
-  const dest=state.sameEnd?state.origin:state.dest;
+  const dest=state.dest;
   if(!ordered.length||!dest) return;
   state.schedule=buildSchedule(ordered,dest);
   renderAll(ordered,dest); markDirty();
 }
 async function buildRoute(){
   // validate
-  if(!state.origin){status('Set your start point (airport) first.',1);return}
+  if(!state.origin){status('Set your Depart Airport first.',1);return}
   const stops=state.stops.filter(s=>s.name);
   if(!stops.length){status('Add at least one truck stop.',1);return}
   const pend=stops.filter(s=>s.geo==='pending');
   if(pend.length){status(`Still locating ${pend.length} stop(s)… try again in a few seconds.`,1);return}
   const fails=stops.filter(s=>s.geo!=='ok');
   if(fails.length){status(`⚠ Can't map: ${fails.map(f=>f.name).join(', ')}. Fix or remove those stops.`,1);return}
-  const dest = state.sameEnd ? state.origin : state.dest;
-  if(!dest){status('Set your end point, or check "Return to start point".',1);return}
+  const dest = state.dest;
+  if(!dest){status('Set your Return Airport — or hit "Same as depart" if you fly home from where you landed.',1);return}
 
   $('btnBuild').disabled=true; status('Optimizing route order…');
   try{
@@ -2712,6 +2731,7 @@ async function buildRoute(){
       + (nAlt?` Picked the ${state.routePref==='short'?'shortest':'fastest'} option on ${nAlt} leg${nAlt>1?'s':''}.`:'')
       + approxNote);
     saveTrip(true);
+    resolveNightHotels();
   }catch(e){
     console.error(e);
     const m = e.message==='NOROUTE'
@@ -2820,23 +2840,88 @@ function instr(st){
 /* ---------------- scheduler: 8–5 days, visits, lunch, hotels ---------------- */
 /* Where along a leg are we after driving `frac` of its duration?
    Uses the real road geometry when available, straight-line as a fallback. */
-function pointAlong(geom,frac,a,b){
-  frac=Math.max(0,Math.min(1,frac));
-  if(!geom||geom.length<2){
-    return {lat:a.lat+(b.lat-a.lat)*frac, lng:a.lng+(b.lng-a.lng)*frac};
+/* ---------------- NIGHT HOTEL RULE ----------------
+   Hard rule, no exceptions: every overnight is the hotel NEAREST the next
+   day's first scheduled site -- the Return Airport on the last night. Elapsed
+   drive time, mileage and "stop driving by" get no vote in where you sleep.
+   The whole drive to tomorrow's first site happens tonight, so the morning is
+   a short hop from the hotel door instead of hours of highway.
+
+   state.driveTil is advisory only: when the evening drive runs past it the leg
+   and the hotel are flagged late:true so the itinerary can warn, and the hotel
+   still does not move. The one thing it still decides is whether a night
+   before the flight home is needed at all -- a question about whether you
+   sleep, not about where.
+
+   Lookups cache on the trip (state.nightHotels, keyed by the anchor
+   coordinate), so reopening a trip never re-queries. buildSchedule has several
+   synchronous callers, so it reads the cache and falls back to the site
+   itself; resolveNightHotels() fills the cache afterwards and re-renders. */
+const HOP_MPH=40;                     // hotel -> site next morning, surface streets
+const nightKey=p=>`${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
+function nightHotelFor(anchor){
+  const hit=(state.nightHotels||{})[nightKey(anchor)];
+  if(hit&&hit.lat!=null){
+    const d=haversine({lat:hit.lat,lng:hit.lng},anchor);
+    return {lat:hit.lat,lng:hit.lng,name:hit.name,d:hit.d,pending:false,
+            near:`${hit.name} — nearest hotel to ${anchor.label}`,
+            hopDist:d*1609.34, hopMin:Math.max(0,Math.round(d/HOP_MPH*60))};
   }
-  const pts=geom.map(c=>({lat:c[1],lng:c[0]}));
-  let total=0; const cum=[0];
-  for(let i=1;i<pts.length;i++){ total+=haversine(pts[i-1],pts[i]); cum.push(total) }
-  if(total<=0) return pts[0];
-  const target=total*frac;
-  for(let i=1;i<pts.length;i++){
-    if(cum[i]>=target){
-      const seg=cum[i]-cum[i-1]||1, r=(target-cum[i-1])/seg;
-      return {lat:pts[i-1].lat+(pts[i].lat-pts[i-1].lat)*r, lng:pts[i-1].lng+(pts[i].lng-pts[i-1].lng)*r};
+  // Not looked up yet, or OSM maps no lodging here. Still the right PLACE for
+  // the night -- only the hotel's name is missing.
+  return {lat:anchor.lat,lng:anchor.lng,name:'',d:null,pending:!hit,
+          near:`${anchor.label} — your first stop tomorrow`,hopDist:0,hopMin:0};
+}
+/* '' while the names are simply still loading; otherwise why they are missing.
+   Not persisted -- a busy Overpass is a right-now problem, not a trip fact. */
+let nightLookupNote='';
+async function resolveNightHotels(){
+  const sc=state.schedule; if(!sc) return;
+  state.nightHotels=state.nightHotels||{};
+  const want=[];
+  sc.days.forEach(d=>d.items.forEach(it=>{
+    if(it.k==='hotel'&&it.pending&&it.anchorLat!=null){
+      const k=nightKey({lat:it.anchorLat,lng:it.anchorLng});
+      if(!state.nightHotels[k]&&!want.some(w=>w.k===k)) want.push({k,lat:it.anchorLat,lng:it.anchorLng});
     }
+  }));
+  if(!want.length) return;
+  let got=0, failed=0;
+  for(const w of want){
+    let done=false;
+    // Overpass answers 429/504 under load often enough that one shot is not a
+    // fair test. Three tries, backing off, then admit it on the card.
+    for(let a=0;a<3&&!done;a++){
+      try{
+        const q=`[out:json][timeout:25];(node["tourism"~"hotel|motel"](around:24000,${w.lat},${w.lng});way["tourism"~"hotel|motel"](around:24000,${w.lat},${w.lng}););out center 60;`;
+        const j=await overpass(q);
+        const hs=(j.elements||[]).map(e=>{
+          const la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon;
+          return {name:e.tags?.name||'',lat:la,lng:lo,d:haversine({lat:w.lat,lng:w.lng},{lat:la,lng:lo})};
+        }).filter(h=>h.name&&h.lat!=null);
+        // Strictly nearest. The GS's preferred brand is a display hint on the
+        // card -- it must never move the pin, or the rule stops being a rule.
+        hs.sort((a,b)=>a.d-b.d);
+        state.nightHotels[w.k]=hs.length
+          ? {name:hs[0].name,lat:hs[0].lat,lng:hs[0].lng,d:+hs[0].d.toFixed(2)}
+          : {name:'',lat:null,lng:null,d:null,none:true};
+        got++; done=true;
+      }catch(e){
+        if(a<2) await new Promise(r=>setTimeout(r,2500*(a+1)));
+      }
+    }
+    if(!done) failed++;
   }
-  return pts[pts.length-1];
+  nightLookupNote = failed
+    ? "OpenStreetMap's hotel lookup is busy — the night is still parked on tomorrow's first stop. Use the buttons below, or rebuild in a minute."
+    : '';
+  if(!state.route||!state.dest) return;
+  if(!got){ renderItinerary(state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean),state.dest); return }
+  const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
+  if(!ordered.length) return;
+  state.schedule=buildSchedule(ordered,state.dest);
+  renderAll(ordered,state.dest);
+  markDirty();
 }
 function buildSchedule(ordered,dest){
   const legs=state.route.legs;
@@ -2847,65 +2932,60 @@ function buildSchedule(ordered,dest){
   const days=[{items:[],date:0}];
   const push=it=>days[days.length-1].items.push(it);
 
-  let prev={lat:state.origin.lat,lng:state.origin.lng,label:state.origin.label};
-  push({k:'depart',label:state.origin.label,time:t,lat:prev.lat,lng:prev.lng});
+  push({k:'depart',label:state.origin.label,time:t,lat:state.origin.lat,lng:state.origin.lng});
 
   for(let i=0;i<ordered.length;i++){
     const leg=legs[i], drv=leg.dur/60, s=ordered[i];
     const vis=+(s.visitOv||state.visitMin);
-    const nextPt={lat:s.lat,lng:s.lng,label:placeLabel(s)};
     let arr=t+drv, end=arr+vis;
 
-    // Can't finish this visit inside the work day? Close the day out —
-    // but drive as far toward tomorrow's first stop as we reasonably can tonight.
+    // Can't finish this visit inside the work day? Close the day out and go
+    // sleep beside tomorrow's first stop. NIGHT HOTEL RULE: the whole drive
+    // happens tonight, however late it runs -- driveTil only flags the leg.
     if(end>dayEnd+grace && days[days.length-1].items.some(x=>x.k==='visit'||x.k==='depart')){
-      const evening=Math.max(0,Math.min(drv, driveTil-t));       // minutes we can drive tonight
-      const frac=drv>0?evening/drv:1;
-      const hp = frac>=1 ? nextPt : pointAlong(leg.geom,frac,prev,nextPt);
-      const pl=placeLabel(s);
-      const nearLabel = frac>=1
-        ? `${pl} — your first stop tomorrow`
-        : `${Math.round(frac*100)}% of the way to ${pl}`;
+      const pl=placeLabel(s)||s.name;
+      const night=nightHotelFor({lat:s.lat,lng:s.lng,label:pl});
+      const arriveMin=t+drv, late=arriveMin>driveTil;
 
-      if(evening>1){
-        push({k:'drive',legIdx:i,dist:leg.dist*frac,dur:evening*60,part:(t>=15*60?'evening':'long'),startMin:t,toward:pl});
-      }
-      push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
-            toStop:`${s.name}${pl?' — '+pl:''}`, remainMin:Math.round(drv-evening)});
+      if(drv>1) push({k:'drive',legIdx:i,dist:leg.dist,dur:leg.dur,
+                      part:(t>=15*60?'evening':'long'),startMin:t,toward:pl,late});
+      push({k:'hotel',lat:night.lat,lng:night.lng,near:night.near,time:arriveMin,late,
+            hotelName:night.name,hotelDist:night.d,pending:night.pending,
+            anchorLat:s.lat,anchorLng:s.lng,
+            toStop:`${s.name}${pl?' — '+pl:''}`, remainMin:night.hopMin});
 
       day++; days.push({items:[],date:day}); t=dayStart; lunch=false;
-      push({k:'resume',label:`Hotel — ${nearLabel}`,time:t,lat:hp.lat,lng:hp.lng});
+      push({k:'resume',label:`Hotel — ${night.near}`,time:t,lat:night.lat,lng:night.lng});
 
-      const morning=Math.max(0,drv-evening);
-      if(morning>1) push({k:'drive',legIdx:i,dist:leg.dist*(1-frac),dur:morning*60,part:'morning',toward:pl});
-      arr=t+morning; end=arr+vis;
+      if(night.hopMin>1) push({k:'drive',legIdx:i,dist:night.hopDist,dur:night.hopMin*60,part:'morning',toward:pl});
+      arr=t+night.hopMin; end=arr+vis;
     } else {
       push({k:'drive',legIdx:i,dist:leg.dist,dur:leg.dur});
     }
 
     if(lunchMin>0 && !lunch && arr>=12*60){push({k:'lunch',time:arr,dur:lunchMin});arr+=lunchMin;end=arr+vis;lunch=true}
     push({k:'visit',uid:s.uid,label:s.name,time:arr,end:end,lat:s.lat,lng:s.lng,stop:s});
-    t=end; prev=nextPt;
+    t=end;
     if(lunchMin>0 && !lunch && t>=12*60){push({k:'lunch',time:t,dur:lunchMin});t+=lunchMin;lunch=true}
   }
 
   // Final leg home — same evening/morning split so nobody drives all night.
   const fl=legs[legs.length-1], drv=fl.dur/60;
-  const destPt={lat:dest.lat,lng:dest.lng,label:dest.label};
   let arr=t+drv;
+  // driveTil decides only WHETHER you sleep before the flight. Where is fixed:
+  // the hotel nearest the Return Airport.
   if(arr>driveTil){
-    const evening=Math.max(0,Math.min(drv, driveTil-t));
-    const frac=drv>0?evening/drv:1;
-    const hp=frac>=1?destPt:pointAlong(fl.geom,frac,prev,destPt);
-    const nearLabel=frac>=1?dest.label:`${Math.round(frac*100)}% of the way to ${dest.label}`;
-    if(evening>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist*frac,dur:evening*60,part:(t>=15*60?'evening':'long'),startMin:t,toward:dest.label});
-    push({k:'hotel',lat:hp.lat,lng:hp.lng,near:nearLabel,time:t+evening,
-          toStop:dest.label,remainMin:Math.round(drv-evening)});
+    const night=nightHotelFor({lat:dest.lat,lng:dest.lng,label:dest.label});
+    if(drv>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist,dur:fl.dur,
+                    part:(t>=15*60?'evening':'long'),startMin:t,toward:dest.label,late:true});
+    push({k:'hotel',lat:night.lat,lng:night.lng,near:night.near,time:arr,late:true,
+          hotelName:night.name,hotelDist:night.d,pending:night.pending,
+          anchorLat:dest.lat,anchorLng:dest.lng,
+          toStop:dest.label,remainMin:night.hopMin});
     day++;days.push({items:[],date:day});t=dayStart;
-    push({k:'resume',label:`Hotel — ${nearLabel}`,time:t,lat:hp.lat,lng:hp.lng});
-    const morning=Math.max(0,drv-evening);
-    if(morning>1) push({k:'drive',legIdx:legs.length-1,dist:fl.dist*(1-frac),dur:morning*60,part:'morning',toward:dest.label});
-    arr=t+morning;
+    push({k:'resume',label:`Hotel — ${night.near}`,time:t,lat:night.lat,lng:night.lng});
+    if(night.hopMin>1) push({k:'drive',legIdx:legs.length-1,dist:night.hopDist,dur:night.hopMin*60,part:'morning',toward:dest.label});
+    arr=t+night.hopMin;
   } else {
     push({k:'drive',legIdx:legs.length-1,dist:fl.dist,dur:fl.dur});
   }
@@ -2922,58 +3002,162 @@ function renderAll(ordered,dest){
   renderItinerary(ordered,dest);
   buildPrint(ordered,dest);
 }
-const GKEY='AIzaSyBZsOxCFwhVeU7sNL9aAH-RBmOwWCw2U28';
-function mapFrame(path){
-  return `<iframe width="100%" height="420" style="border:0;display:block" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed/v1/${path}&key=${GKEY}"></iframe>`;
-}
-// Loads a plain map immediately on page open, and re-centers once a start point is picked.
-function showBaseMap(lat,lng,zoom){
-  const embed=$('mapEmbed'); if(!embed) return;
-  const c = (lat!=null&&lng!=null) ? `${lat},${lng}` : '39.5,-98.35';
-  embed.innerHTML = mapFrame(`view?center=${c}&zoom=${zoom||(lat!=null?9:4)}&maptype=roadmap`);
-}
-const EMBED_WP_MAX=9;   // origin + destination + this many waypoints
+/* ---------------- map (Leaflet + OSRM geometry) ----------------
+   Google's Maps Embed API capped the on-screen route at a fixed number of
+   waypoints, and drew ITS OWN route choice between them -- independent of
+   whichever OSRM route the app actually calculated and is describing in the
+   itinerary and print packet below. The two could silently disagree (e.g.
+   after picking a "shortest distance" alternate on a leg). Leaflet draws
+   straight from state.route.legs[i].geom, the literal geometry OSRM
+   returned for the leg the app chose, so the map and the printed directions
+   are provably the same route -- and there is no waypoint cap to hit, ever,
+   at up to MAX_STOPS.
 
-/* Build the point list for one day of the schedule, or the whole trip. */
+   Tile source: Stadia Maps' "Alidade Smooth Dark" basemap -- matches the
+   app's dark theme (Google's Embed API has no dark mode). No API key is
+   embedded here: Stadia authenticates by domain instead (see their
+   "Authentication Configuration" dashboard) -- register whatever domain
+   this page ends up served from (their free tier covers this app's volume
+   many times over) and tiles start working there with zero code changes.
+   Until then, and for localhost/file:// testing, Stadia serves keyless
+   requests too, just under a stricter rate limit. If that tier is ever not
+   enough, swap TILE_URL/TILE_ATTR for another provider (MapTiler, CARTO --
+   both now require a key of their own); everything else reads through
+   these two constants alone. */
+const TILE_URL='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png';
+const TILE_ATTR='&copy; <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+const ROUTE_COLOR='#F5B80C';   // var(--paint) -- Leaflet style options want a literal color, not a CSS var()
+
+let leafletMap=null, mapLayerGroup=null;
+function ensureMap(){
+  if(leafletMap) return leafletMap;
+  leafletMap=L.map('mapEmbed',{attributionControl:true,zoomControl:true}).setView([39.5,-98.35],4);
+  L.tileLayer(TILE_URL,{maxZoom:19,attribution:TILE_ATTR}).addTo(leafletMap);
+  mapLayerGroup=L.layerGroup().addTo(leafletMap);
+  // Belt-and-suspenders against the classic Leaflet-inits-before-layout-settles
+  // gray-tile glitch; #mapEmbed's height is a plain unconditional CSS rule so
+  // this should never be needed, but it's nearly free insurance.
+  setTimeout(()=>leafletMap&&leafletMap.invalidateSize(),60);
+  return leafletMap;
+}
+function clearMap(){
+  ensureMap();
+  mapLayerGroup.clearLayers();
+  return leafletMap;
+}
+// Plain divs, not Leaflet's default marker images -- nothing depends on the
+// CDN's marker-icon.png living at a guessable relative path.
+const stopIcon=(n,approx)=>L.divIcon({className:'',html:`<div class="rmMarker${approx?' approx':''}">${n}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
+const airportIcon=()=>L.divIcon({className:'',html:'<div class="rmAirport">&#9992;</div>',iconSize:[28,28],iconAnchor:[14,14]});
+const hotelIcon=()=>L.divIcon({className:'',html:'<div class="rmHotel">&#128717;</div>',iconSize:[23,23],iconAnchor:[11,11]});
+
+function showBaseMap(lat,lng,zoom){
+  clearMap().setView(lat!=null?[lat,lng]:[39.5,-98.35], zoom||(lat!=null?9:4));
+}
+
+/* Build the point list for one day of the schedule, or the whole trip. Every
+   point carries a `kind` (airport/stop/hotel) so drawMapFor() can pick the
+   right marker without sniffing label text. */
 function mapPointsFor(dayIdx,ordered,dest){
-  const P=(lat,lng,label)=>({lat,lng,label});
+  const P=(lat,lng,label,kind,num,approx)=>({lat,lng,label,kind,num,approx});
   if(dayIdx===null){
-    const pts=[P(state.origin.lat,state.origin.lng,state.origin.label)];
-    ordered.forEach(s=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name)));
-    pts.push(P(dest.lat,dest.lng,dest.label));
+    const pts=[P(state.origin.lat,state.origin.lng,state.origin.label,'airport')];
+    ordered.forEach((s,i)=>pts.push(P(s.lat,s.lng,placeLabel(s)||s.name,'stop',i+1,s.geoPrec==='approx')));
+    pts.push(P(dest.lat,dest.lng,dest.label,'airport'));
     return pts;
   }
   const d=state.schedule.days[dayIdx]; if(!d) return [];
   const pts=[];
   d.items.forEach(it=>{
-    if(it.k==='depart'||it.k==='resume') pts.push(P(it.lat,it.lng,it.label));
-    else if(it.k==='visit')              pts.push(P(it.lat,it.lng,it.label));
-    else if(it.k==='hotel')              pts.push(P(it.lat,it.lng,'Overnight — '+it.near));
-    else if(it.k==='arrive')             pts.push(P(it.lat,it.lng,it.label));
+    if(it.k==='depart')       pts.push(P(it.lat,it.lng,it.label,'airport'));
+    else if(it.k==='resume')  pts.push(P(it.lat,it.lng,it.label,'hotel'));      // always leaving last night's hotel
+    else if(it.k==='visit'){
+      const idx=ordered.findIndex(o=>o.uid===it.stop.uid)+1;
+      pts.push(P(it.lat,it.lng,it.label,'stop',idx||undefined,it.stop&&it.stop.geoPrec==='approx'));
+    }
+    else if(it.k==='hotel')   pts.push(P(it.lat,it.lng,'Overnight — '+it.near,'hotel'));
+    else if(it.k==='arrive')  pts.push(P(it.lat,it.lng,it.label,'airport'));
   });
   return pts;
 }
 
-function drawMapFor(dayIdx,ordered,dest){
+/* GeoJSON coordinates are [lng,lat]; Leaflet wants [lat,lng]. */
+const flipGeom=g=>(g||[]).map(([lng,lat])=>[lat,lng]);
+
+/* `solid` is OSRM's own leg geometry -- the exact route the itinerary and
+   print packet describe. `dashed` is the one thing OSRM never routed: the
+   morning hop from a resolved hotel back to the site (see the NIGHT HOTEL
+   RULE note above buildSchedule) -- short, so a straight line costs nothing
+   in accuracy. Every 'drive' item except part==='morning' corresponds 1:1
+   to a real leg -- the night-hotel rule always drives the WHOLE original leg
+   that evening, arriving at the site itself before peeling off to a hotel
+   nearby, so there is never a fractional leg left to reconstruct. */
+function routeLinesFor(dayIdx){
+  const legs=state.route&&state.route.legs;
+  if(!legs) return {solid:[],dashed:[]};
+  if(dayIdx===null){
+    const solid=legs.map(l=>flipGeom(l.geom)).filter(g=>g.length>1);
+    const dashed=[];
+    (state.schedule?state.schedule.days:[]).forEach(d=>d.items.forEach(it=>{
+      if(it.k==='hotel'&&it.anchorLat!=null) dashed.push([[it.lat,it.lng],[it.anchorLat,it.anchorLng]]);
+    }));
+    return {solid,dashed};
+  }
+  const day=state.schedule&&state.schedule.days[dayIdx];
+  if(!day) return {solid:[],dashed:[]};
+  const solid=[], dashed=[];
+  let hotelPt=null, pendingHop=false;
+  day.items.forEach(it=>{
+    if(it.k==='resume') hotelPt=[it.lat,it.lng];
+    else if(it.k==='drive'){
+      if(it.part==='morning') pendingHop=true;
+      else { const leg=legs[it.legIdx]; const g=leg&&flipGeom(leg.geom); if(g&&g.length>1) solid.push(g); }
+    } else if((it.k==='visit'||it.k==='arrive') && pendingHop && hotelPt){
+      dashed.push([hotelPt,[it.lat,it.lng]]);
+      pendingHop=false;
+    }
+  });
+  return {solid,dashed};
+}
+
+/* useReal=true draws OSRM's actual geometry (post-Build, and only when the
+   caller has confirmed state.route still matches the current stop set --
+   see refreshMapPreview() below for why that check can't be skipped).
+   useReal=false, or any day/leg missing geometry (a slim-reopened trip:
+   slimForSave() strips geom to keep saved trips small), falls back to a
+   straight line through the points in order -- honest about being a
+   preview, never silently wrong about which stops are even on the map. */
+function drawMapFor(dayIdx,ordered,dest,useReal){
   const pts=mapPointsFor(dayIdx,ordered,dest);
   const hint=$('mapHint');
   if(pts.length<2){
     if(hint) hint.textContent='Not enough points to draw this day.';
     return;
   }
-  // Exact coordinates — never city names, so two stops in one town stay distinct.
-  const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
-  const o=pts[0], dst=pts[pts.length-1];
-  let mid=pts.slice(1,-1), truncated=0;
-  if(mid.length>EMBED_WP_MAX){ truncated=mid.length-EMBED_WP_MAX; mid=mid.slice(0,EMBED_WP_MAX) }
-  const wp=mid.map(c).join('|');
-  $('mapEmbed').innerHTML=mapFrame(`directions?origin=${c(o)}&destination=${c(dst)}${wp?`&waypoints=${wp}`:''}&mode=driving`);
+  clearMap();
+  const {solid,dashed} = useReal ? routeLinesFor(dayIdx) : {solid:[],dashed:[]};
+  const bounds=[];
+  if(solid.length){
+    L.polyline(solid,{color:ROUTE_COLOR,weight:4,opacity:.85}).addTo(mapLayerGroup);
+    solid.forEach(line=>line.forEach(p=>bounds.push(p)));
+    dashed.forEach(seg=>{ L.polyline(seg,{color:ROUTE_COLOR,weight:3,opacity:.7,dashArray:'6 6'}).addTo(mapLayerGroup); bounds.push(...seg); });
+  } else {
+    const straight=pts.map(p=>[p.lat,p.lng]);
+    L.polyline(straight,{color:ROUTE_COLOR,weight:3,opacity:.7,dashArray:'2 9'}).addTo(mapLayerGroup);
+    bounds.push(...straight);
+  }
+  pts.forEach(p=>{
+    const icon = p.kind==='airport' ? airportIcon() : p.kind==='hotel' ? hotelIcon() : stopIcon(p.num,p.approx);
+    L.marker([p.lat,p.lng],{icon}).bindTooltip(esc(p.label||''),{direction:'top',offset:[0,-12]}).addTo(mapLayerGroup);
+    bounds.push([p.lat,p.lng]);
+  });
+  if(bounds.length) leafletMap.fitBounds(bounds,{padding:[26,26],maxZoom:12});
 
   if(hint){
-    const label = dayIdx===null ? 'the full trip' : `Day ${dayIdx+1}`;
-    hint.innerHTML = truncated
-      ? `Showing ${label} — Google's embed caps at ${EMBED_WP_MAX} stops, so <b style="color:var(--warn)">${truncated} more aren't drawn</b>. Use the <b style="color:var(--ink)">Day</b> tabs above to see every stop, or open the full route in Google Maps.`
-      : `Showing <b style="color:var(--ink)">${label}</b> — ${pts.length} points, exactly as listed in your itinerary below.`;
+    const label=dayIdx===null?'the full trip':`Day ${dayIdx+1}`;
+    hint.innerHTML = solid.length
+      ? `Showing <b style="color:var(--ink)">${label}</b> — the exact route OSRM calculated, ${pts.length} points.`
+      : `Showing <b style="color:var(--ink)">${label}</b> — ${pts.length} points, in the order listed. Hit <b style="color:var(--ink)">Build My Route</b> to draw the real road-following route.`;
   }
   [...document.querySelectorAll('.dayTab')].forEach(b=>
     b.classList.toggle('on', (b.dataset.day==='all'? dayIdx===null : +b.dataset.day===dayIdx)));
@@ -2982,21 +3166,21 @@ function drawMapFor(dayIdx,ordered,dest){
 /* ---------------- live map preview ----------------
    Adding, removing or reordering a stop used to leave the map showing the
    previously built route with nothing to say so — the only thing that ever
-   redrew it was Build My Route. The embed URL is built from coordinates
-   alone (no routing call), so the map can follow edits immediately and for
-   free. Drive times, the day split and turn-by-turn still need a real
-   build, so the hint says so and the day tabs hide until one happens. */
+   redrew it was Build My Route. drawMapFor() is cheap (no network call), so
+   the map can follow edits immediately and for free. Drive times, the day
+   split and turn-by-turn still need a real build, so the hint says so and
+   the day tabs hide until one happens. */
 let mapSig=null;   // geometry already drawn, so typing in a notes field doesn't redraw
 
 function tripGeometrySig(){
-  const dest=state.sameEnd?state.origin:state.dest;
+  const dest=state.dest;
   if(!state.origin||!dest) return '';
   return [`${state.origin.lat},${state.origin.lng}`,
           ...state.stops.filter(s=>s.name&&s.geo==='ok').map(s=>`${s.lat},${s.lng}`),
           `${dest.lat},${dest.lng}`].join('|');
 }
 function refreshMapPreview(){
-  const dest=state.sameEnd?state.origin:state.dest;
+  const dest=state.dest;
   if(!state.origin||!dest) return;
   const sig=tripGeometrySig();
   if(sig===mapSig) return;              // nothing about the trip's shape moved
@@ -3010,7 +3194,11 @@ function refreshMapPreview(){
     if(h) h.innerHTML='No stops on this trip yet. Add truck stops on the left and they\'ll appear here as you go.';
     return;
   }
-  drawMapFor(null,ready,dest);          // always the full trip: any day split is now stale
+  // useReal is always false here: this branch only runs when the stop set has
+  // drifted from the last build (the signature check above just failed), so
+  // any state.route.legs describe a DIFFERENT set or order of stops and must
+  // never be drawn as if it were the current plan.
+  drawMapFor(null,ready,dest,false);     // always the full trip: any day split is now stale
   if(tabs) tabs.style.display='none';
   const hint=$('mapHint'), n=ready.length, s=n>1?'s':'';
   if(hint) hint.innerHTML = state.route
@@ -3019,11 +3207,13 @@ function refreshMapPreview(){
 }
 
 function renderMap(ordered,dest){
-  // Full-route links (these open real Google Maps, which handles more stops than the embed)
+  // Full-route links (Google's real, public web app -- no key, no waypoint cap)
   const c=p=>`${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
   const gmUrl=`https://www.google.com/maps/dir/${c(state.origin)}/${ordered.map(c).join('/')}/${c(dest)}`;
+  // Google's Directions URL scheme accepts up to 25 waypoints -- matches this
+  // app's own MAX_STOPS, so nothing here needs truncating either.
   const gmDirUrl=`https://www.google.com/maps/dir/?api=1&origin=${c(state.origin)}&destination=${c(dest)}`
-    +`&waypoints=${ordered.slice(0,9).map(c).join('|')}&travelmode=driving`;
+    +`&waypoints=${ordered.map(c).join('|')}&travelmode=driving`;
   $('btnGMaps').onclick=()=>window.open(gmUrl,'_blank');
   $('btnGMapsDir').onclick=()=>window.open(gmDirUrl,'_blank');
   $('btnGasSearch') && ($('btnGasSearch').onclick=()=>{
@@ -3039,11 +3229,11 @@ function renderMap(ordered,dest){
       + Array.from({length:nd},(_,i)=>`<button class="dayTab" data-day="${i}">Day ${i+1}</button>`).join('');
     [...tabs.children].forEach(b=>b.onclick=()=>{
       const v=b.dataset.day;
-      drawMapFor(v==='all'?null:+v,ordered,dest);
+      drawMapFor(v==='all'?null:+v,ordered,dest,true);
     });
     tabs.style.display='flex';
   }
-  drawMapFor(null,ordered,dest);
+  drawMapFor(null,ordered,dest,true);
   // A real build settles the signature, so the next markDirty() (a keystroke in
   // a notes field, say) doesn't redraw over the built route with a preview.
   mapSig=tripGeometrySig();
@@ -3073,7 +3263,7 @@ function renderItinerary(ordered,dest){
         const dd=it.dist!=null?it.dist:leg.dist, du=it.dur!=null?it.dur:leg.dur;
         const partLbl=it.part==='evening'?'🌆 evening drive toward '+esc(it.toward||'')
                      :it.part==='long'   ?'🛣 long haul toward '+esc(it.toward||'')+' — overnight on the way'
-                     :it.part==='morning'?'🌅 finish the drive to '+esc(it.toward||'')
+                     :it.part==='morning'?'🌅 hotel → '+esc(it.toward||'')
                      :'drive'+(leg.via?` via ${esc(leg.via)}`:'');
         html+=`<div class="legChip"><span class="dots">┊</span><span class="mm">${fmtMi(dd)} · ${fmtDur(du)}</span><span>${partLbl}</span></div>`;
         if(alts.length>1 && !it.part){
@@ -3084,7 +3274,13 @@ function renderItinerary(ordered,dest){
               ${fmtDur(a.dur)} · ${fmtMi(a.dist)}<small>${esc(a.via)}${delta>0?` · +${delta} min`:' · fastest'}</small></button>`;
           }).join('')}</div>`;
         }
-        html+=`<details class="dirs"><summary>Turn-by-turn directions</summary><ol>${leg.steps.map(st=>`<li>${esc(st.t)} <span class="dm">${st.d>50?fmtMi(st.d):''}</span></li>`).join('')}</ol></details>`;
+        // leg.steps is absent on a reopened trip -- slimForSave() drops turn
+        // lists so a 25-stop trip doesn't eat the storage budget. Unguarded,
+        // this threw inside loadTrip()'s try/catch and the whole itinerary
+        // silently rendered empty behind a "Could not load that trip" toast.
+        // The morning hop is hotel -> site; its turn list belongs to last
+        // night's drive, so it is skipped rather than repeated.
+        if(it.part!=='morning' && leg.steps) html+=`<details class="dirs"><summary>Turn-by-turn directions</summary><ol>${leg.steps.map(st=>`<li>${esc(st.t)} <span class="dm">${st.d>50?fmtMi(st.d):''}</span></li>`).join('')}</ol></details>`;
       }else if(it.k==='lunch'){
         html+=`<div class="legChip"><span class="dots">┊</span><span class="mm" style="background:#6b4b00">🍔 Lunch · ${it.dur} min</span><span>${fmtT(it.time)}–${fmtT(it.time+it.dur)}</span></div>`;
       }else if(it.k==='visit'){
@@ -3107,15 +3303,18 @@ function renderItinerary(ordered,dest){
           ${s.notes?`<div class="addr" style="margin-top:7px">📝 ${esc(s.notes)}</div>`:''}
         </div>`;
       }else if(it.k==='hotel'){
-        const hid='h'+di+'_'+Math.round(it.lat*1000);
+        // Keyed on the anchor, not the hotel: the coordinate moves when the
+        // lookup resolves, and a saved hotel choice must survive that.
+        const hid='h'+di+'_'+Math.round((it.anchorLat??it.lat)*1000);
         const bwUrl=`https://www.google.com/maps/search/Best+Western+motel+hotel/@${it.lat},${it.lng},12z`;
         const gUrl=`https://www.google.com/maps/search/hotel+motel/@${it.lat},${it.lng},13z`;
         html+=`<div class="signCard hotelCard"><span class="exitTab">OVERNIGHT</span>
-          <h4>🛏 Hotel Night — near ${esc(it.near)}</h4>
-          <div class="times">Day wraps ~${fmtT(it.time)} · back on the road ${esc(fmtT(tToMin(state.dayStart)))} tomorrow</div>
-          <div style="font-size:12.5px;opacity:.85;margin:6px 0 10px">📍 Positioned toward <b>${esc(it.toStop||'tomorrow\'s first stop')}</b>${it.remainMin>1?` — about <b>${fmtDur(it.remainMin*60)}</b> of driving left in the morning`:` — <b>you're already there</b>, no morning drive`}.</div>
+          <h4>🛏 Hotel Night — ${esc(it.hotelName||it.near)}</h4>
+          <div class="times">Pull in ~${fmtT(it.time)} · back on the road ${esc(fmtT(tToMin(state.dayStart)))} tomorrow</div>
+          ${it.late?`<div style="font-size:12.5px;margin:6px 0 0;background:rgba(255,120,100,.22);border-radius:6px;padding:6px 9px">🌙 That puts you in at <b>${fmtT(it.time)}</b>, past your ${esc(fmtT(tToMin(state.driveTil||'19:00')))} stop-driving-by time. The hotel stays put — it's the closest one to tomorrow's first stop.</div>`:''}
+          <div style="font-size:12.5px;opacity:.85;margin:6px 0 10px">📍 Nearest hotel to <b>${esc(it.toStop||'tomorrow\'s first stop')}</b>${it.hotelDist!=null?` — <b>${it.hotelDist.toFixed(1)} mi</b> from it`:''}${it.remainMin>1?`, about <b>${it.remainMin} min</b> from the door in the morning`:`, so you start the day on top of it`}.${it.pending?(nightLookupNote?` <i>${esc(nightLookupNote)}</i>`:' <i>Looking up the nearest hotel…</i>'):''}</div>
           <div class="scActs">
-            <button onclick="findHotels(${it.lat},${it.lng},'${hid}')">🔎 Recommended hotels nearby</button>
+            <button onclick="findHotels(${it.anchorLat??it.lat},${it.anchorLng??it.lng},'${hid}')">🔎 Other hotels near tomorrow's stop</button>
             <a target="_blank" href="${bwUrl}">Best Western on Maps</a>
             <a target="_blank" href="${gUrl}">All hotels on Google Maps</a>
             <a target="_blank" href="https://www.bestwestern.com/en_US/book/hotel-search.html">bestwestern.com</a>
@@ -3180,9 +3379,9 @@ function buildPrint(ordered,dest){
       <div><b>Growth Strategist:</b> ${esc(gs||'____________________')}</div>
       <div><b>Trip:</b> ${esc(state.trip||'____________________')}</div>
       <div><b>Departs:</b> ${esc(fmtDate(addDays(state.startDate,0)))} · ${fmtT(tToMin(state.day1Start))}</div>
-      <div><b>From:</b> ${esc(state.origin.label)}</div>
+      <div><b>Depart airport:</b> ${esc(state.origin.label)}</div>
       <div><b>Returns:</b> ${esc(fmtDate(addDays(state.startDate,sc.days.length-1)))}</div>
-      <div><b>To:</b> ${esc(dest.label)}</div>
+      <div><b>Return airport:</b> ${esc(dest.label)}</div>
     </div>
     <div class="pTotals">
       <div class="pTot"><div class="v">${Math.round(mi(sc.totalDist)).toLocaleString()}</div><div class="k">Miles</div></div>
@@ -3197,7 +3396,7 @@ function buildPrint(ordered,dest){
       <li>After each visit: record notes &amp; post to Slack <b>#site-visits</b> before driving off</li>
       <li>Take pics / videos at every location</li>
       <li>Allow ${state.visitMin} min per visit · ${state.lunchMin} min lunch · work day ${fmtT(tToMin(state.dayStart))}–${fmtT(tToMin(state.dayEnd))}</li>
-      <li>Hotel at end of each day — Best Western or comparable, near last stop</li>
+      <li>Hotel at end of each day — the closest one to the NEXT day's first stop</li>
     </ul></div>
     <div class="pFoot">Generated ${new Date().toLocaleString()} · GS Travel Planner · Roady's Command Center</div>
   </div>`;
@@ -3238,10 +3437,10 @@ function buildPrint(ordered,dest){
         if(leg&&leg.steps){h+=`<div class="pDirs"><h4>Directions to ${esc(short(it.label))}</h4><ol>${leg.steps.map(st=>`<li>${esc(st.t)}${st.d>150?` — ${fmtMi(st.d)}`:''}</li>`).join('')}</ol></div>`}
       }
       if(it.k==='hotel'){
-        const hid='h'+di+'_'+Math.round(it.lat*1000);
+        const hid='h'+di+'_'+Math.round((it.anchorLat??it.lat)*1000);
         const pick=(state.hotelPicks||{})[hid]||'';
-        h+=`<div class="pHotel"><b>🛏 Overnight</b> — ${esc(it.near)}<br>
-          <b>Tomorrow:</b> ${esc(it.toStop||'')}${it.remainMin>1?` — about ${fmtDur(it.remainMin*60)} of driving after you pull out`:' — you are already there'}<br>
+        h+=`<div class="pHotel"><b>🛏 Overnight</b> — ${esc(it.hotelName||it.near)}${it.hotelDist!=null?` (${it.hotelDist.toFixed(1)} mi from tomorrow's first stop)`:''}<br>
+          <b>Tomorrow:</b> ${esc(it.toStop||'')}${it.remainMin>1?` — about ${it.remainMin} min from the hotel door`:' — you are already there'}<br>
           ${pick?`<b>Hotel:</b> ${esc(pick)}`:'Hotel: <span class="fillLine"></span> &nbsp; Conf#: <span class="fillLine" style="min-width:90pt"></span>'}
         </div>`;
       }
@@ -3275,7 +3474,7 @@ function collect(){
   state.startDate=$('startDate').value; state.day1Start=$('day1Start').value;
   state.dayStart=$('dayStart').value; state.dayEnd=$('dayEnd').value; state.driveTil=$('driveTil').value;
   state.visitMin=+$('visitMin').value; state.lunchMin=+$('lunchMin').value;
-  state.optMode=$('optMode').value; state.routePref=$('routePref').value; state.sameEnd=$('sameEnd').checked;
+  state.optMode=$('optMode').value; state.routePref=$('routePref').value;
 }
 function markDirty(){
   dirty=true;collect();
@@ -3383,7 +3582,7 @@ function regeocodeUnpinned(){
 function loadTrip(k){
   try{
     const d=JSON.parse(localStorage.getItem(k)); if(!d)return;
-    state=Object.assign(newStateDefaults(),d);
+    state=migrateAirports(Object.assign(newStateDefaults(),d));
     dirty=false;
     hydrateUI();
     regeocodeUnpinned();
@@ -3391,18 +3590,27 @@ function loadTrip(k){
     toast(`📂 Loaded "${state.trip||'Untitled'}"`);
     if(state.route&&state.route.legs&&state.route.legs.length){
       const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);
-      const dest=state.sameEnd?state.origin:state.dest;
+      const dest=state.dest;
       if(ordered.length&&dest){
         // Saved trips are stored slim, so re-derive the day plan from the legs.
         state.schedule=buildSchedule(ordered,dest);
         renderAll(ordered,dest);
+        resolveNightHotels();
         if(state.route.slim) status('Trip reopened. Times and hotels are restored — hit Build My Route to refresh turn-by-turn directions.');
       }
     } else if(state.origin){ showBaseMap(state.origin.lat,state.origin.lng,9) }
   }catch(e){toast('⚠ Could not load that trip')}
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
-function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,sameEnd:true,stops:[],pins:[],route:null,schedule:null}}
+function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,stops:[],pins:[],route:null,schedule:null,nightHotels:{}}}
+/* Trips saved before the Depart/Return split carry sameEnd:true with a null
+   dest -- the old "Return to start point" checkbox. Materialize that into a
+   real Return Airport on open, so nothing downstream has to infer one. */
+function migrateAirports(st){
+  if(st.sameEnd && !st.dest && st.origin) st.dest=Object.assign({},st.origin);
+  delete st.sameEnd;
+  return st;
+}
 /* Is there anything on this trip worth warning about before it's wiped? */
 function tripHasContent(){
   return !!(state.trip || state.origin || state.dest ||
@@ -3461,7 +3669,6 @@ function hydrateUI(){
   $('startDate').value=state.startDate||new Date().toISOString().slice(0,10);
   $('day1Start').value=state.day1Start;$('dayStart').value=state.dayStart;$('dayEnd').value=state.dayEnd;$('driveTil').value=state.driveTil||'19:00';
   $('visitMin').value=state.visitMin;$('lunchMin').value=state.lunchMin;$('optMode').value=state.optMode;$('routePref').value=state.routePref||'fast';
-  $('sameEnd').checked=state.sameEnd;$('destWrap').style.display=state.sameEnd?'none':'block';
   $('originIn').value=state.origin?state.origin.label:'';
   $('originMeta').textContent=state.origin?`✓ Pinned at ${state.origin.lat.toFixed(4)}, ${state.origin.lng.toFixed(4)}`:'';
   $('destIn').value=state.dest?state.dest.label:'';
@@ -3485,8 +3692,8 @@ function exportTrip(){
 }
 function importTrip(file){
   const rd=new FileReader();
-  rd.onload=()=>{try{const d=JSON.parse(rd.result);state=Object.assign(newStateDefaults(),d);dirty=false;hydrateUI();regeocodeUnpinned();saveTrip(true);toast('⬆ Trip imported');
-    if(state.route&&state.schedule){const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);const dest=state.sameEnd?state.origin:state.dest;if(ordered.length&&dest)renderAll(ordered,dest)}
+  rd.onload=()=>{try{const d=JSON.parse(rd.result);state=migrateAirports(Object.assign(newStateDefaults(),d));dirty=false;hydrateUI();regeocodeUnpinned();saveTrip(true);toast('⬆ Trip imported');
+    if(state.route&&state.schedule){const ordered=state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean);const dest=state.dest;if(ordered.length&&dest)renderAll(ordered,dest)}
   }catch(e){toast('⚠ Not a valid trip file')}};
   rd.readAsText(file);
 }
@@ -3497,7 +3704,15 @@ function init(){
   $('startDate').value=new Date().toISOString().slice(0,10);
   wireEndpoint('originIn','originSugg','originMeta','origin');
   wireEndpoint('destIn','destSugg','destMeta','dest');
-  $('sameEnd').onchange=e=>{$('destWrap').style.display=e.target.checked?'none':'block';markDirty()};
+  // Copies the depart airport into the return field -- an explicit action that
+  // writes a real value, never an assumption that the two match.
+  $('btnSameAir').onclick=()=>{
+    if(!state.origin){toast('Pick your Depart Airport first');return}
+    state.dest=Object.assign({},state.origin);
+    $('destIn').value=state.dest.label;
+    $('destMeta').textContent=`✓ Pinned at ${state.dest.lat.toFixed(4)}, ${state.dest.lng.toFixed(4)}`;
+    markDirty(); toast('Return airport set to '+state.dest.label);
+  };
   $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty();tpApplyProfileToTrip(curGS());tpRenderCard(curGS())};
   ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode','driveTil'].forEach(id=>$(id).addEventListener('input',markDirty));
   $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
@@ -3512,7 +3727,7 @@ function init(){
   $('importFile').onchange=e=>{if(e.target.files[0])importTrip(e.target.files[0]);e.target.value=''};
   $('btnPrint').onclick=()=>{
     if(!state.schedule){toast('Build your route first, then print');return}
-    collect();buildPrint(state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean),state.sameEnd?state.origin:state.dest);
+    collect();buildPrint(state.route.ordered.map(uid=>state.stops.find(s=>s.uid===uid)).filter(Boolean),state.dest);
     window.print();
   };
   // Gas station search now handled via Google Maps button in itinerary
