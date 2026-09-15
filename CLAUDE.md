@@ -151,9 +151,8 @@ someone's only way in, and there is no escrow.
   the other; the old `sameEnd` "Return to start point" checkbox is gone, and
   `migrateAirports()` materializes it into a real `dest` when an old trip is
   opened. "Same as depart" is a button that *writes* the value, not an
-  assumption. Up to `MAX_STOPS` (25) stops per trip; `EMBED_WP_MAX` (20) is
-  Google's embed waypoint ceiling, so a trip past 20 draws the first 20 and
-  `refreshMapPreview()` appends a warning naming how many were dropped. **Site Visit**: the `site-visit.html` form
+  assumption. Up to `MAX_STOPS` (25) stops per trip — the on-screen map has
+  no cap at all (see "Route Planner: the map" below). **Site Visit**: the `site-visit.html` form
   ported to this app's theme, with photo/video attachments stored as
   base64 inside the record. Visits save one key per visit under
   `gsp2:visit:<gs>:<id>`; `svSave()` warns past `SV_WARN_CHARS` and, if
@@ -183,6 +182,43 @@ someone's only way in, and there is no escrow.
   `GDRIVE_CLIENT_ID` (a Web-application OAuth client with the Drive API
   enabled and this page's origin authorized; `drive.file` scope only).
   Both show a "not configured yet" dialog until then.
+
+### Route Planner: the map (Leaflet + OSRM geometry, not Google Embed)
+
+The on-screen map is Leaflet, tiled from Stadia Maps' dark basemap
+(`TILE_URL`/`TILE_ATTR`), not Google's Maps Embed API. That switch happened
+because the Embed API drew **its own** route choice between waypoints,
+independent of whichever OSRM route the app actually calculated and
+describes in the itinerary/print packet — the two could silently disagree —
+and because its embed mode caps at a fixed waypoint count, which a 20-stop
+trip would blow past. Leaflet draws straight from `state.route.legs[i].geom`,
+the literal geometry OSRM returned for the chosen leg, so the map and the
+printed directions are provably the same route, and there's no waypoint cap
+to hit at any stop count up to `MAX_STOPS`.
+
+`ensureMap()`/`clearMap()` hold one persistent `L.map` + `L.layerGroup`,
+rebuilt on every redraw rather than an iframe `src` being thrown away —
+`drawMapFor(dayIdx, ordered, dest, useReal)` is the single entry point for
+both the full-trip and per-day views. **`useReal` must never be inferred
+from whether `state.route` exists** — it has to mean "the current stop set
+still matches what `state.route` was built from." `refreshMapPreview()`
+always passes `false`: it only ever runs when `tripGeometrySig()` has
+already proven the stops diverged from the last build (that's the whole
+reason it's redrawing), so `state.route.legs`, if present, describe a
+*different* set or order of stops and would draw a route that no longer
+matches the markers. `renderMap()` (called right after a successful Build,
+and by `loadTrip()`/`setLegAlt()`/`repickAllLegs()`, all of which keep
+`state.route` synchronized with the current stops first) always passes
+`true`.
+
+Even with `useReal:true`, `routeLinesFor()` falls back to a straight line
+per missing leg — a **slim-reopened trip has no `leg.geom` at all**
+(`slimForSave()` strips it to keep saved trips small), so every "solid"
+segment silently degrades to the dashed straight-line style rather than
+throwing or drawing nothing. The one thing OSRM never routes is the morning
+hotel→site hop from the night-hotel rule (below): `routeLinesFor()` draws
+that as its own dashed segment, matched up via a `pendingHop` flag set on a
+`part:'morning'` drive item and consumed by the next visit/arrive item.
 
 ### Route Planner: the night hotel rule
 
