@@ -280,3 +280,39 @@ test('calculateNetworkFitGrade: grade bands are correctly ordered', () => {
   });
   assert.equal(worst.grade, 'E');
 });
+
+test('conditionAdjustedGallons applies +10/0/-10 to finalGallons', () => {
+  assert.equal(BusDevGallonsCalc.conditionAdjustedGallons(10000, 'New or remodeled'), 11000);
+  assert.equal(BusDevGallonsCalc.conditionAdjustedGallons(10000, 'Average'), 10000);
+  assert.equal(BusDevGallonsCalc.conditionAdjustedGallons(10000, 'Older / dated'), 9000);
+});
+
+test('calculateMembershipFit: today\'s actual placeholder state (all 0) is "not configured", never NaN/Infinity', () => {
+  const r = BusDevGallonsCalc.calculateMembershipFit(10000);
+  assert.equal(r.valuePerGallonConfigured, false);
+  assert.deepEqual(r.plans, []);
+  assert.equal(r.monthlyValue, null);
+  const flat = JSON.stringify(r);
+  assert.ok(!/NaN/.test(flat) && !/Infinity/.test(flat), 'result must never contain NaN or Infinity: ' + flat);
+});
+
+test('calculateMembershipFit: valuePerGallon set, only one plan cost set', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const original = JSON.parse(JSON.stringify(BDPG_CONFIG.MEMBERSHIP_CONFIG));
+  BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = 0.05;
+  BDPG_CONFIG.MEMBERSHIP_CONFIG.plans[0].cost = 100; // Roady's only
+
+  const r = BusDevGallonsCalc.calculateMembershipFit(10000);
+  assert.equal(r.valuePerGallonConfigured, true);
+  assert.equal(r.monthlyValue, 500);
+  const roadys = r.plans.filter(p => p.name === "Roady's")[0];
+  const ptp = r.plans.filter(p => p.name === 'PTP')[0];
+  assert.equal(roadys.configured, true);
+  assert.equal(roadys.breakevenGallons, 2000);
+  assert.equal(roadys.coverageMultiple, 5);
+  assert.equal(ptp.configured, false);
+  assert.equal('breakevenGallons' in ptp, false);
+
+  BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = original.valuePerGallon;
+  BDPG_CONFIG.MEMBERSHIP_CONFIG.plans = original.plans;
+});

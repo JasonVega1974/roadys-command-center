@@ -189,6 +189,31 @@
     };
   }
 
+  function conditionAdjustedGallons(finalGallons, condition) {
+    var pct = BDPG_CONFIG.CONDITION_ADJUST.hasOwnProperty(condition) ? BDPG_CONFIG.CONDITION_ADJUST[condition] : 0;
+    return Math.round(finalGallons * (1 + pct));
+  }
+
+  function calculateMembershipFit(finalGallons) {
+    var cfg = BDPG_CONFIG.MEMBERSHIP_CONFIG;
+    var vpg = Number(cfg.valuePerGallon) || 0;
+
+    if (vpg <= 0) {
+      return { valuePerGallonConfigured: false, valuePerGallon: 0, monthlyValue: null, plans: [] };
+    }
+
+    var monthlyValue = finalGallons * vpg;
+    var plans = cfg.plans.map(function (p) {
+      var cost = Number(p.cost) || 0;
+      if (cost <= 0) return { name: p.name, configured: false };
+      var breakevenGallons = Math.round(cost / vpg);
+      var coverageMultiple = Math.round((finalGallons / breakevenGallons) * 100) / 100;
+      return { name: p.name, configured: true, cost: cost, breakevenGallons: breakevenGallons, coverageMultiple: coverageMultiple };
+    });
+
+    return { valuePerGallonConfigured: true, valuePerGallon: vpg, monthlyValue: monthlyValue, plans: plans };
+  }
+
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
@@ -199,6 +224,8 @@
     pricingAdjustment: pricingAdjustment,
     suggestAmenityLevel: suggestAmenityLevel,
     calculateEstimate: calculateEstimate,
-    calculateNetworkFitGrade: calculateNetworkFitGrade
+    calculateNetworkFitGrade: calculateNetworkFitGrade,
+    conditionAdjustedGallons: conditionAdjustedGallons,
+    calculateMembershipFit: calculateMembershipFit
   };
 });
