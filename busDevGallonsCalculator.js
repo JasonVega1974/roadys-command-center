@@ -31,9 +31,20 @@
     return found ? { profile: found.profile, roadway: found.roadway, lanes: found.lanes, baseline: found.baseline } : null;
   }
 
+  function resolveRegion(stateAbbr) {
+    if (!stateAbbr) return null;
+    var st = String(stateAbbr).toUpperCase();
+    var found = null;
+    Object.keys(BDPG_CONFIG.BDPG_REGION_MAP).forEach(function (region) {
+      if (BDPG_CONFIG.BDPG_REGION_MAP[region].indexOf(st) !== -1) found = region;
+    });
+    return found;
+  }
+
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
-    getBaselineRow: getBaselineRow
+    getBaselineRow: getBaselineRow,
+    resolveRegion: resolveRegion
   };
 });

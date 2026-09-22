@@ -37,3 +37,27 @@ test('all 8 baseline rows are reachable via profile+roadway', () => {
     assert.deepEqual(BusDevGallonsCalc.getBaselineRow(row.profile, row.roadway), row);
   });
 });
+
+test('resolveRegion maps confirmed border states correctly', () => {
+  assert.equal(BusDevGallonsCalc.resolveRegion('MD'), 'Northeast');
+  assert.equal(BusDevGallonsCalc.resolveRegion('DE'), 'Northeast');
+  assert.equal(BusDevGallonsCalc.resolveRegion('WV'), 'Southeast');
+  assert.equal(BusDevGallonsCalc.resolveRegion('OK'), 'Southwest');
+  assert.equal(BusDevGallonsCalc.resolveRegion('CO'), 'West');
+});
+
+test('resolveRegion is case-insensitive and null for unmapped input', () => {
+  assert.equal(BusDevGallonsCalc.resolveRegion('co'), 'West');
+  assert.equal(BusDevGallonsCalc.resolveRegion('XX'), null);
+  assert.equal(BusDevGallonsCalc.resolveRegion(''), null);
+  assert.equal(BusDevGallonsCalc.resolveRegion(null), null);
+});
+
+test('every state in BDPG_REGION_MAP resolves to exactly one region', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  Object.keys(BDPG_CONFIG.BDPG_REGION_MAP).forEach(region => {
+    BDPG_CONFIG.BDPG_REGION_MAP[region].forEach(st => {
+      assert.equal(BusDevGallonsCalc.resolveRegion(st), region);
+    });
+  });
+});
