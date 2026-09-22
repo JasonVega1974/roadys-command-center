@@ -61,6 +61,44 @@
     return BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT];
   }
 
+  function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+
+  function calculateEstimate(opts) {
+    var row = getBaselineRow(opts.profile, opts.roadway);
+    if (!row) return null;
+
+    var regionPct = Number(opts.regionPct) || 0;
+    var amenityPct = amenityAdjustment(opts.amenityLevel);
+    var review = reviewAdjustment(opts.reviewRating);
+    var pricingPct = pricingAdjustment(opts.pricingLevel);
+
+    var officialMultiplier = 1 + regionPct + amenityPct + review.pct;
+    var finalMultiplier = officialMultiplier + pricingPct;
+
+    var officialSubtotal = Math.round(row.baseline * officialMultiplier);
+    var finalGallons = Math.round(row.baseline * finalMultiplier);
+
+    var officialMathLine = fmtInt(row.baseline) + ' × (1 + ' +
+      regionPct.toFixed(2) + ' + ' + amenityPct.toFixed(2) + ' + ' + review.pct.toFixed(2) +
+      ') = ' + fmtInt(officialSubtotal);
+    var finalMathLine = fmtInt(row.baseline) + ' × (1 + ' +
+      regionPct.toFixed(2) + ' + ' + amenityPct.toFixed(2) + ' + ' + review.pct.toFixed(2) + ' + ' + pricingPct.toFixed(2) +
+      ') = ' + fmtInt(finalGallons);
+
+    return {
+      baseline: row.baseline,
+      regionPct: regionPct,
+      amenityPct: amenityPct,
+      reviewPct: review.pct,
+      pricingPct: pricingPct,
+      reviewFlagged: review.flagged,
+      officialSubtotal: officialSubtotal,
+      finalGallons: finalGallons,
+      officialMathLine: officialMathLine,
+      finalMathLine: finalMathLine
+    };
+  }
+
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
@@ -68,6 +106,7 @@
     resolveRegion: resolveRegion,
     amenityAdjustment: amenityAdjustment,
     reviewAdjustment: reviewAdjustment,
-    pricingAdjustment: pricingAdjustment
+    pricingAdjustment: pricingAdjustment,
+    calculateEstimate: calculateEstimate
   };
 });

@@ -100,3 +100,106 @@ test('pricingAdjustment falls back to the configured default for empty/unrecogni
   assert.equal(BusDevGallonsCalc.pricingAdjustment(undefined), defaultPct);
   assert.equal(BusDevGallonsCalc.pricingAdjustment('not a real band'), defaultPct);
 });
+
+test('calculateEstimate — case A @ Standard/0% pricing: officialSubtotal === finalGallons === 13750', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8, pricingLevel: 'Standard / moderate'
+  });
+  assert.equal(r.officialSubtotal, 13750);
+  assert.equal(r.finalGallons, 13750);
+});
+
+test('calculateEstimate — case B @ Standard/0% pricing: 2250', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Fuel stop', roadway: 'Any',
+    regionPct: 0, amenityLevel: 'Very limited', reviewRating: 2.7, pricingLevel: 'Standard / moderate'
+  });
+  assert.equal(r.officialSubtotal, 2250);
+  assert.equal(r.finalGallons, 2250);
+});
+
+test('calculateEstimate — case C @ Standard/0% pricing: 14550', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate',
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Standard / moderate'
+  });
+  assert.equal(r.officialSubtotal, 14550);
+  assert.equal(r.finalGallons, 14550);
+});
+
+test('calculateEstimate — case D @ Standard/0% pricing: 3240', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Small truck stop', roadway: 'Backroad',
+    regionPct: 0.06, amenityLevel: 'Average', reviewRating: 3.6, pricingLevel: 'Standard / moderate'
+  });
+  assert.equal(r.officialSubtotal, 3240);
+  assert.equal(r.finalGallons, 3240);
+});
+
+test('calculateEstimate — case A @ Most aggressive pricing: officialSubtotal unchanged, finalGallons 14375', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
+    pricingLevel: 'Most aggressive (deepest discounts)'
+  });
+  assert.equal(r.officialSubtotal, 13750);
+  assert.equal(r.finalGallons, 14375);
+});
+
+test('calculateEstimate — case A @ No discounts pricing: officialSubtotal unchanged, finalGallons 13125', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
+    pricingLevel: 'No discounts'
+  });
+  assert.equal(r.officialSubtotal, 13750);
+  assert.equal(r.finalGallons, 13125);
+});
+
+test('calculateEstimate — case C @ Aggressive pricing: officialSubtotal unchanged, finalGallons 14925', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate',
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Aggressive'
+  });
+  assert.equal(r.officialSubtotal, 14550);
+  assert.equal(r.finalGallons, 14925);
+});
+
+test('calculateEstimate — officialSubtotal is invariant across every pricing band', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const subtotals = BDPG_CONFIG.PRICING_LEVELS.map(level => BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate',
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: level
+  }).officialSubtotal);
+  assert.ok(subtotals.every(v => v === 14550), 'officialSubtotal must never change with pricing: ' + subtotals);
+});
+
+test('calculateEstimate — all 8 baseline rows at 0/0/0/0 equal the table exactly (both numbers)', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  BDPG_CONFIG.BASELINE_TABLE.forEach(row => {
+    const r = BusDevGallonsCalc.calculateEstimate({
+      profile: row.profile, roadway: row.roadway,
+      regionPct: 0, amenityLevel: 'Average', reviewRating: 3.2, pricingLevel: 'Standard / moderate'
+    });
+    assert.equal(r.officialSubtotal, row.baseline);
+    assert.equal(r.finalGallons, row.baseline);
+  });
+});
+
+test('calculateEstimate returns null for an invalid profile/roadway combination', () => {
+  assert.equal(BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Backroad',
+    regionPct: 0, amenityLevel: 'Average', reviewRating: 3.2, pricingLevel: 'Standard / moderate'
+  }), null);
+});
+
+test('calculateEstimate renders distinct official and final math lines', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
+    pricingLevel: 'Most aggressive (deepest discounts)'
+  });
+  assert.equal(r.officialMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02) = 13,750');
+  assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 + 0.05) = 14,375');
+});
