@@ -17458,7 +17458,70 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
     var netCtx = BDPG.networkContextHtml();
 
-    return hero + waterfall + rangeBar + netCtx;
+    return hero + waterfall + rangeBar + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml();
+  };
+
+  BDPG.conditionAdjustedHtml = function () {
+    var r = BDPG.state.result, e = r.estimate;
+    var delta = r.conditionAdjusted - e.finalGallons;
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Condition-Adjusted View <span style="font-size:.85em;color:var(--yellow);font-weight:400">(non-official)</span></div></div>' +
+      '<div style="font-size:1.3em;font-weight:700">' + BDPG.fmtGal(r.conditionAdjusted) + ' gal/mo</div>' +
+      '<div style="font-size:.8em;color:var(--muted)">' + (delta >= 0 ? '+' : '') + BDPG.fmtGal(delta) + ' vs. Final Potential Gallons, based on condition: ' +
+        BDPG.escHtml(BDPG.state.supportingDetails.condition || 'not set') + '</div>' +
+    '</div>';
+  };
+
+  BDPG.membershipFitHtml = function () {
+    var m = BDPG.state.result.membership;
+    if (!m.valuePerGallonConfigured) {
+      return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Membership Fit</div></div>' +
+        '<div style="color:var(--muted)">Membership pricing not configured.</div></div>';
+    }
+    var rows = m.plans.map(function (p) {
+      if (!p.configured) return '<tr><td>' + BDPG.escHtml(p.name) + '</td><td colspan="2" style="color:var(--muted)">Not configured</td></tr>';
+      return '<tr><td>' + BDPG.escHtml(p.name) + '</td>' +
+        '<td style="text-align:right">' + BDPG.fmtGal(p.breakevenGallons) + ' gal/mo breakeven</td>' +
+        '<td style="text-align:right">' + p.coverageMultiple + '×</td></tr>';
+    }).join('');
+    var best = m.plans.filter(function (p) { return p.configured; }).sort(function (a, b) { return b.coverageMultiple - a.coverageMultiple; })[0];
+    var recommendation = best
+      ? '<div style="margin-top:8px;font-weight:700">Membership pays for itself at ' + BDPG.fmtGal(best.breakevenGallons) + ' gal/mo — final potential estimate is ' +
+        BDPG.fmtGal(BDPG.state.result.estimate.finalGallons) + ' (' + best.coverageMultiple + '× coverage).</div>'
+      : '';
+    return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Membership Fit</div></div>' +
+      '<table class="dt" style="width:100%;font-size:.85em"><tbody>' + rows + '</tbody></table>' + recommendation + '</div>';
+  };
+
+  BDPG.analysisNarrativeHtml = function () {
+    var r = BDPG.state.result, e = r.estimate;
+    var levers = [];
+    if (e.amenityPct < 0.02) {
+      var gain = Math.round(e.baseline * (0.02 - e.amenityPct));
+      levers.push('Reaching "Good / full service" amenities adds up to +2% ≈ ' + BDPG.fmtGal(gain) + ' gal/mo.');
+    }
+    if (e.reviewPct < 0.02) {
+      var rgain = Math.round(e.baseline * (0.02 - e.reviewPct));
+      levers.push('Reaching a 3.6+ Trucker Path rating adds +2% ≈ ' + BDPG.fmtGal(rgain) + ' gal/mo.');
+    }
+    var pricingLevels = BDPG_CONFIG.PRICING_LEVELS;
+    var moreAggressiveIdx = pricingLevels.indexOf(BDPG.state.pricingLevel) - 1;
+    if (moreAggressiveIdx >= 0) {
+      var nextLevel = pricingLevels[moreAggressiveIdx];
+      var nextPct = BDPG_CONFIG.PRICING_ADJUST[nextLevel];
+      var pgain = Math.round(e.baseline * (nextPct - e.pricingPct));
+      levers.push('Moving from "' + BDPG.state.pricingLevel + '" to "' + nextLevel + '" pricing adds ' +
+        (pgain >= 0 ? '+' : '') + BDPG.fmtGal(pgain) + ' gal/mo to the Final Potential Gallons (does not change the official calculator subtotal).');
+    }
+    var leverHtml = levers.length ? '<ul>' + levers.map(function (l) { return '<li>' + BDPG.escHtml(l) + '</li>'; }).join('') + '</ul>' : '<p>Already at the top band for Amenities, Review, and Pricing.</p>';
+
+    return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Analysis</div></div>' +
+      '<p style="font-size:.85em">' + BDPG.escHtml(e.officialMathLine) + '</p>' +
+      '<p style="font-size:.85em">' + BDPG.escHtml(e.finalMathLine) + '</p>' +
+      '<div style="margin-top:8px;font-size:.85em"><b>Levers that would move the number:</b>' + leverHtml + '</div>' +
+      '<div style="margin-top:8px;font-size:.85em"><b>Network Fit:</b> Grade ' + r.grade.grade + ' (' + BDPG.escHtml(r.grade.gradeLabel) + '), ' +
+        Math.round(r.grade.rangePositionPct) + '% of its profile\'s range, ' + Math.round(r.grade.signalAvg) + '/100 avg on Supporting Details.</div>' +
+    '</div>';
   };
 
   BDPG.networkContextHtml = function () {
