@@ -16917,7 +16917,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       var el = document.getElementById('bdpg-content');
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html() + BDPG.step2Html();
+      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.adminPanelHtml();
     }
   };
 
@@ -16960,6 +16960,66 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     if (!BDPG.regionVariance.override || !BDPG.regionVariance.committed) return false;
     var o = BDPG.regionVariance.override, c = BDPG.regionVariance.committed;
     return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(o[k]) !== Number(c[k]); });
+  };
+
+  BDPG.state.adminOpen = false;
+  // Holds the pretty-printed JSON text from the most recent Save, so the preview
+  // block survives the BDPG.render() that Save triggers (adminPanelHtml() re-emits
+  // this block hidden/empty every render unless it has saved text to show).
+  BDPG.state.adminSavedJson = null;
+
+  BDPG.adminPanelHtml = function () {
+    var s = BDPG.state;
+    var v = BDPG.effectiveRegionVariance();
+    var regions = ['west', 'southwest', 'midwest', 'northeast', 'southeast'];
+    var labels = { west: 'West', southwest: 'Southwest', midwest: 'Midwest', northeast: 'Northeast', southeast: 'Southeast' };
+
+    var banner = !BDPG.regionVarianceIsSet()
+      ? '<div class="bdpg-box" style="border-color:var(--yellow);margin-top:14px">Region variance not set — estimates use 0% region adjustment.</div>'
+      : '';
+    var overrideNotice = BDPG.regionVarianceOverrideDiffers()
+      ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Using a local override that differs from the committed region_variance.json — ' +
+        '<button class="btn" onclick="BDPG.onClearRegionOverride()">Clear override</button></div>'
+      : '';
+
+    var inputs = regions.map(function (r) {
+      return '<div class="fg"><label style="font-size:.72em">' + labels[r] + ' %</label>' +
+        '<input id="bdpg-admin-' + r + '" type="number" step="0.1" value="' + BDPG.escHtml(v[r]) + '" style="width:90px"></div>';
+    }).join('');
+
+    return banner +
+      '<div class="bdpg-box" style="margin-top:14px">' +
+        '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleAdmin()">▸ Region % — Admin ' + (s.adminOpen ? '▾' : '▸') + '</div>' +
+        (s.adminOpen ? (
+          overrideNotice +
+          '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">' + inputs + '</div>' +
+          '<div class="fg" style="margin-top:10px;max-width:180px"><label>As of (month)</label>' +
+          '<input id="bdpg-admin-asof" value="' + BDPG.escHtml(v.asOf) + '" placeholder="e.g. 2026-09"></div>' +
+          '<button class="btn btn-accent" style="margin-top:10px" onclick="BDPG.onSaveRegionOverride()">Save locally</button>' +
+          '<div id="bdpg-admin-json" style="margin-top:10px;font-family:monospace;font-size:.75em;white-space:pre-wrap;background:var(--bg2,#111);padding:8px;border-radius:6px;' +
+            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>'
+        ) : '') +
+      '</div>';
+  };
+
+  BDPG.toggleAdmin = function () { BDPG.state.adminOpen = !BDPG.state.adminOpen; BDPG.render(); };
+
+  BDPG.onSaveRegionOverride = function () {
+    var regions = ['west', 'southwest', 'midwest', 'northeast', 'southeast'];
+    var out = {};
+    regions.forEach(function (r) { out[r] = Number(document.getElementById('bdpg-admin-' + r).value) || 0; });
+    out.asOf = document.getElementById('bdpg-admin-asof').value.trim();
+    localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
+    BDPG.regionVariance.override = out;
+    BDPG.state.adminSavedJson = JSON.stringify(out, null, 2) + '\n\n// Paste this into region_variance.json to make it the new team-wide default.';
+    BDPG.render();
+  };
+
+  BDPG.onClearRegionOverride = function () {
+    localStorage.removeItem('roadysBDPGRegionOverride');
+    BDPG.regionVariance.override = null;
+    BDPG.state.adminSavedJson = null;
+    BDPG.render();
   };
 
   BDPG.escHtml = function (s) {
