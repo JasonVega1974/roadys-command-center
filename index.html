@@ -16910,14 +16910,15 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
         condition: '', hours: '', distance: '', corridor: '', competition: '',
         prospectName: '', prospectCity: '', prospectState: '', actualLanes: ''
       },
-      result: null
+      result: null,
+      supportingOpen: false
     },
 
     render: function () {
       var el = document.getElementById('bdpg-content');
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.adminPanelHtml();
+      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml();
     }
   };
 
@@ -17317,6 +17318,61 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   BDPG.onAmenityConfirm = function (value) {
     BDPG.state.amenityLevel = value;
     BDPG.state.amenityOverridden = true;
+    BDPG.render();
+  };
+
+  BDPG.supportingDetailsHtml = function () {
+    var s = BDPG.state, sd = s.supportingDetails;
+    var opts = BDPG_CONFIG.NETWORK_FIT_SIGNAL_OPTIONS;
+
+    function selectHtml(id, options, current, field) {
+      return '<select id="' + id + '" onchange="BDPG.onSupportingSelect(\'' + field + '\', this.value)">' +
+        '<option value="">Select…</option>' +
+        options.map(function (o) { return '<option value="' + BDPG.escHtml(o) + '"' + (o === current ? ' selected' : '') + '>' + BDPG.escHtml(o) + '</option>'; }).join('') +
+        '</select>';
+    }
+
+    var row = (s.profile && s.roadway) ? BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway) : null;
+    var laneWarning = '';
+    if (row && sd.actualLanes !== '') {
+      var lo = parseInt(row.lanes, 10);
+      var hasPlus = /\+/.test(row.lanes);
+      var hi = hasPlus ? Infinity : parseInt(row.lanes.split('-')[1], 10);
+      var actual = Number(sd.actualLanes);
+      if (isFinite(actual) && (actual < lo || actual > hi)) {
+        laneWarning = '<div style="margin-top:6px;font-size:.78em;color:var(--yellow)">' +
+          'Selected row expects ' + BDPG.escHtml(row.lanes) + ' lanes — reconsider Location Profile/Roadway?</div>';
+      }
+    }
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleSupporting()">▸ Supporting Details ' + (s.supportingOpen ? '▾' : '▸') + '</div>' +
+      (s.supportingOpen ? (
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">' +
+          '<div class="fg"><label style="font-size:.72em">Condition</label>' + selectHtml('bdpg-sd-condition', opts.condition, sd.condition, 'condition') + '</div>' +
+          '<div class="fg"><label style="font-size:.72em">Hours</label>' + selectHtml('bdpg-sd-hours', opts.hours, sd.hours, 'hours') + '</div>' +
+          '<div class="fg"><label style="font-size:.72em">Distance to Interstate</label>' + selectHtml('bdpg-sd-distance', opts.distance, sd.distance, 'distance') + '</div>' +
+          '<div class="fg"><label style="font-size:.72em">Corridor</label>' + selectHtml('bdpg-sd-corridor', opts.corridor, sd.corridor, 'corridor') + '</div>' +
+          '<div class="fg"><label style="font-size:.72em">Competition</label>' + selectHtml('bdpg-sd-competition', opts.competition, sd.competition, 'competition') + '</div>' +
+          '<div class="fg"><label style="font-size:.72em">Actual Diesel Lanes Observed</label>' +
+            '<input id="bdpg-sd-lanes" type="number" min="0" value="' + BDPG.escHtml(sd.actualLanes) + '" oninput="BDPG.state.supportingDetails.actualLanes=this.value" onblur="BDPG.render()"></div>' +
+        '</div>' + laneWarning +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">' +
+          '<div class="fg"><label style="font-size:.72em">Prospect Name</label>' +
+            '<input id="bdpg-sd-name" value="' + BDPG.escHtml(sd.prospectName) + '" oninput="BDPG.state.supportingDetails.prospectName=this.value"></div>' +
+          '<div class="fg"><label style="font-size:.72em">City</label>' +
+            '<input id="bdpg-sd-city" value="' + BDPG.escHtml(sd.prospectCity) + '" oninput="BDPG.state.supportingDetails.prospectCity=this.value"></div>' +
+          '<div class="fg"><label style="font-size:.72em">State</label>' +
+            '<input id="bdpg-sd-pstate" value="' + BDPG.escHtml(sd.prospectState) + '" oninput="BDPG.state.supportingDetails.prospectState=this.value"></div>' +
+        '</div>'
+      ) : '') +
+    '</div>';
+  };
+
+  BDPG.toggleSupporting = function () { BDPG.state.supportingOpen = !BDPG.state.supportingOpen; BDPG.render(); };
+
+  BDPG.onSupportingSelect = function (field, value) {
+    BDPG.state.supportingDetails[field] = value;
     BDPG.render();
   };
 
