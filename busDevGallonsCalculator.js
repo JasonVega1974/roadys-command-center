@@ -119,6 +119,76 @@
     };
   }
 
+  function profileAdjustmentBounds() {
+    var amenityVals = Object.keys(BDPG_CONFIG.AMENITY_ADJUST).map(function (k) { return BDPG_CONFIG.AMENITY_ADJUST[k]; });
+    var reviewVals = BDPG_CONFIG.REVIEW_BANDS.map(function (b) { return b.pct; });
+    return {
+      min: Math.min.apply(null, amenityVals) + Math.min.apply(null, reviewVals),
+      max: Math.max.apply(null, amenityVals) + Math.max.apply(null, reviewVals)
+    };
+  }
+
+  function profileRange(profile) {
+    var rows = BDPG_CONFIG.BASELINE_TABLE.filter(function (r) { return r.profile === profile; });
+    if (!rows.length) return null;
+    var baselines = rows.map(function (r) { return r.baseline; });
+    var bounds = profileAdjustmentBounds();
+    var profileMin = Math.min.apply(null, baselines);
+    var profileMax = Math.max.apply(null, baselines);
+    return {
+      rangeLo: Math.round(profileMin * (1 + bounds.min)),
+      rangeHi: Math.round(profileMax * (1 + bounds.max))
+    };
+  }
+
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+  function signalScore(signal, value) {
+    var map = BDPG_CONFIG.NETWORK_FIT_SIGNAL_SCORES[signal];
+    return (map && map.hasOwnProperty(value)) ? map[value] : 0;
+  }
+
+  function gradeForScore(score) {
+    var band = BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS.filter(function (b) { return score >= b.min; })[0];
+    return band || BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS[BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS.length - 1];
+  }
+
+  function calculateNetworkFitGrade(opts) {
+    var range = profileRange(opts.profile);
+    var d = opts.supportingDetails || {};
+
+    var rangePositionPct;
+    if (!range || range.rangeHi === range.rangeLo) {
+      rangePositionPct = 0;
+    } else {
+      rangePositionPct = clamp((opts.officialSubtotal - range.rangeLo) / (range.rangeHi - range.rangeLo), 0, 1) * 100;
+    }
+
+    var signalScores = {
+      condition: signalScore('condition', d.condition),
+      hours: signalScore('hours', d.hours),
+      distance: signalScore('distance', d.distance),
+      corridor: signalScore('corridor', d.corridor),
+      competition: signalScore('competition', d.competition)
+    };
+    var signalKeys = Object.keys(signalScores);
+    var signalAvg = signalKeys.reduce(function (sum, k) { return sum + signalScores[k]; }, 0) / signalKeys.length;
+
+    var overallScore = 0.5 * rangePositionPct + 0.5 * signalAvg;
+    var band = gradeForScore(overallScore);
+
+    return {
+      rangeLo: range ? range.rangeLo : null,
+      rangeHi: range ? range.rangeHi : null,
+      rangePositionPct: rangePositionPct,
+      signalScores: signalScores,
+      signalAvg: signalAvg,
+      overallScore: overallScore,
+      grade: band.grade,
+      gradeLabel: band.label
+    };
+  }
+
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
@@ -128,6 +198,7 @@
     reviewAdjustment: reviewAdjustment,
     pricingAdjustment: pricingAdjustment,
     suggestAmenityLevel: suggestAmenityLevel,
-    calculateEstimate: calculateEstimate
+    calculateEstimate: calculateEstimate,
+    calculateNetworkFitGrade: calculateNetworkFitGrade
   };
 });

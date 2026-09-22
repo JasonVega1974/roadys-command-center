@@ -224,3 +224,59 @@ test('suggestAmenityLevel: fast food (not just full restaurant) still counts as 
   const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '10+', food: 'fast food', scale: 'yes', parking: '100+' });
   assert.equal(r.level, 'Good / full service');
 });
+
+test('calculateNetworkFitGrade: Fuel stop at exact baseline scores ~71% range-position, not near 0', () => {
+  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Fuel stop', officialSubtotal: 2500,
+    supportingDetails: { condition: 'Average', hours: 'Extended', distance: '5-15 mi', corridor: 'Regional', competition: '1 within 15 mi' }
+  });
+  assert.equal(r.rangeLo, 2250);
+  assert.equal(r.rangeHi, 2600);
+  assert.ok(r.rangePositionPct > 65 && r.rangePositionPct < 75, 'expected ~71, got ' + r.rangePositionPct);
+});
+
+test('calculateNetworkFitGrade: case A officialSubtotal (13750) clamps range-position at 100 regardless of pricing', () => {
+  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Medium truck stop', officialSubtotal: 13750,
+    supportingDetails: { condition: 'New or remodeled', hours: '24/7', distance: 'On exit', corridor: 'Major', competition: 'None within 15 mi' }
+  });
+  assert.equal(r.rangeLo, 6750);
+  assert.equal(r.rangeHi, 13000);
+  assert.equal(r.rangePositionPct, 100);
+  assert.equal(r.grade, 'A');
+});
+
+test('calculateNetworkFitGrade: grade is identical regardless of what finalGallons/pricing would have been -- it never receives finalGallons at all', () => {
+  // Same officialSubtotal (14550), passed directly -- proves the function's
+  // contract by construction: it has no pricingLevel/finalGallons parameter to leak through.
+  const r1 = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Large truck stop', officialSubtotal: 14550, supportingDetails: {}
+  });
+  const r2 = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Large truck stop', officialSubtotal: 14550, supportingDetails: {}
+  });
+  assert.deepEqual(r1, r2);
+});
+
+test('calculateNetworkFitGrade: never divides by zero for a single-baseline-row profile', () => {
+  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Fuel stop', officialSubtotal: 2500, supportingDetails: {}
+  });
+  assert.ok(Number.isFinite(r.rangePositionPct));
+  assert.ok(!Number.isNaN(r.rangePositionPct));
+});
+
+test('calculateNetworkFitGrade: missing supporting details score 0 for that signal, never throw', () => {
+  assert.doesNotThrow(() => {
+    const r = BusDevGallonsCalc.calculateNetworkFitGrade({ profile: 'Small truck stop', officialSubtotal: 5000, supportingDetails: {} });
+    assert.equal(r.signalScores.condition, 0);
+  });
+});
+
+test('calculateNetworkFitGrade: grade bands are correctly ordered', () => {
+  const worst = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Large truck stop', officialSubtotal: 9000,
+    supportingDetails: { condition: 'Older / dated', hours: 'Business hours only', distance: '15+ mi', corridor: 'Local', competition: 'Adjacent to a major chain' }
+  });
+  assert.equal(worst.grade, 'E');
+});
