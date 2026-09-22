@@ -16997,7 +16997,8 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
           '<input id="bdpg-admin-asof" value="' + BDPG.escHtml(v.asOf) + '" placeholder="e.g. 2026-09"></div>' +
           '<button class="btn btn-accent" style="margin-top:10px" onclick="BDPG.onSaveRegionOverride()">Save locally</button>' +
           '<div id="bdpg-admin-json" style="margin-top:10px;font-family:monospace;font-size:.75em;white-space:pre-wrap;background:var(--bg2,#111);padding:8px;border-radius:6px;' +
-            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>'
+            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>' +
+          BDPG.regionCsvHtml()
         ) : '') +
       '</div>';
   };
@@ -17019,6 +17020,117 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     localStorage.removeItem('roadysBDPGRegionOverride');
     BDPG.regionVariance.override = null;
     BDPG.state.adminSavedJson = null;
+    BDPG.render();
+  };
+
+  // Minimal CSV line parser (no library). Handles a quoted field containing a
+  // comma or an escaped `""` inside quotes; not a full RFC 4180 parser (no
+  // embedded newlines inside a quoted field), which is fine for the simple
+  // per-location gallons/state exports this feeds.
+  BDPG.parseCsv = function (text) {
+    var lines = text.replace(/\r\n/g, '\n').split('\n').filter(function (l) { return l.length; });
+    return lines.map(function (line) {
+      var out = [], cur = '', inQ = false;
+      for (var i = 0; i < line.length; i++) {
+        var c = line[i];
+        if (c === '"') {
+          if (inQ && line[i + 1] === '"') { cur += '"'; i++; continue; }
+          inQ = !inQ;
+          continue;
+        }
+        if (c === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+        cur += c;
+      }
+      out.push(cur);
+      return out;
+    });
+  };
+
+  // Uploaded rows live only in memory for the duration of the mapping +
+  // compute step. They are never written to localStorage or sent anywhere —
+  // only the five resulting percentages (plus asOf) are persisted, and this
+  // object is reset back to empty immediately after BDPG.onRegionCsvCompute
+  // finishes, win or lose. See CLAUDE.md privacy note for gs-travel-planner-
+  // style handling of anything that could be internal business data.
+  BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
+
+  BDPG.regionCsvHtml = function () {
+    if (!BDPG.regionCsv.headers.length) {
+      return '<div class="fg" style="margin-top:14px"><label>Optional: compute Region % from an Interstate export (per-location gallons + state)</label>' +
+        '<input type="file" accept=".csv" onchange="BDPG.onRegionCsvFile(this)"></div>';
+    }
+    var h = BDPG.regionCsv.headers;
+    function opt(v, selected) { return '<option value="' + BDPG.escHtml(v) + '"' + (selected ? ' selected' : '') + '>' + BDPG.escHtml(v) + '</option>'; }
+    return '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">' +
+      '<div style="font-size:.8em;margin-bottom:6px">Which column is <b>State</b>? ' +
+        '<select id="bdpg-csv-state-col" onchange="BDPG.regionCsv.stateCol=this.value">' +
+          h.map(function (col) { return opt(col, col === BDPG.regionCsv.stateCol); }).join('') + '</select></div>' +
+      '<div style="font-size:.8em;margin-bottom:6px">Which column is <b>Gallons</b>? ' +
+        '<select id="bdpg-csv-gal-col" onchange="BDPG.regionCsv.gallonsCol=this.value">' +
+          h.map(function (col) { return opt(col, col === BDPG.regionCsv.gallonsCol); }).join('') + '</select></div>' +
+      '<button class="btn btn-accent" onclick="BDPG.onRegionCsvCompute()">Compute Region %</button>' +
+      '<div id="bdpg-csv-result" style="margin-top:8px;font-size:.8em"></div>' +
+    '</div>';
+  };
+
+  BDPG.onRegionCsvFile = function (input) {
+    var file = input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var rows = BDPG.parseCsv(String(reader.result));
+      if (!rows.length) return;
+      BDPG.regionCsv.headers = rows[0];
+      BDPG.regionCsv.rows = rows.slice(1);
+      BDPG.regionCsv.stateCol = rows[0].filter(function (col) { return /state/i.test(col); })[0] || rows[0][0];
+      BDPG.regionCsv.gallonsCol = rows[0].filter(function (col) { return /gallon/i.test(col); })[0] || rows[0][0];
+      BDPG.render();
+    };
+    reader.readAsText(file);
+  };
+
+  BDPG.onRegionCsvCompute = function () {
+    var headers = BDPG.regionCsv.headers;
+    var stateIdx = headers.indexOf(BDPG.regionCsv.stateCol);
+    var galIdx = headers.indexOf(BDPG.regionCsv.gallonsCol);
+    var sums = {}, counts = {};
+    var netSum = 0, netCount = 0;
+
+    BDPG.regionCsv.rows.forEach(function (row) {
+      var st = (row[stateIdx] || '').trim().toUpperCase();
+      var gal = Number(row[galIdx]);
+      var region = BusDevGallonsCalc.resolveRegion(st);
+      if (!region || !isFinite(gal)) return;
+      sums[region] = (sums[region] || 0) + gal;
+      counts[region] = (counts[region] || 0) + 1;
+      netSum += gal;
+      netCount += 1;
+    });
+
+    if (!netCount) {
+      document.getElementById('bdpg-csv-result').textContent = 'No usable rows found — check the column mapping.';
+      return;
+    }
+
+    var networkAvg = netSum / netCount;
+    var out = { west: 0, southwest: 0, midwest: 0, northeast: 0, southeast: 0, asOf: (new Date()).toISOString().slice(0, 7) };
+    Object.keys(sums).forEach(function (region) {
+      var regionAvg = sums[region] / counts[region];
+      var pct = Math.round(((regionAvg / networkAvg) - 1) * 1000) / 10;
+      out[region.toLowerCase()] = pct;
+    });
+
+    localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
+    BDPG.regionVariance.override = out;
+    BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
+    // BDPG.render() rebuilds adminPanelHtml()'s innerHTML wholesale, and with
+    // regionCsv.headers now empty it reverts to the plain file-input markup
+    // (no #bdpg-csv-result element in it) — that's the whole point, it's the
+    // proof the uploaded rows were discarded rather than left mapped on
+    // screen. So the confirmation message has to be set on the OLD DOM
+    // before render() replaces it; setting it after would hit a null element.
+    var resultEl = document.getElementById('bdpg-csv-result');
+    if (resultEl) resultEl.textContent = 'Computed and saved locally: ' + JSON.stringify(out);
     BDPG.render();
   };
 
