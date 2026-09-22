@@ -16938,7 +16938,8 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
       el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() + BDPG.generateButtonHtml() +
-        (BDPG.state.result ? (BDPG.resultsHtml() + '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button>' + BDPG.exportPdfHtml()) : '');
+        (BDPG.state.result ? (BDPG.resultsHtml() + '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button> ' +
+          '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' + BDPG.exportPdfHtml()) : '');
     }
   };
 
@@ -17616,6 +17617,44 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       document.body.classList.remove('bdpg-print-mode');
     });
   }
+
+  BDPG.summaryText = function () {
+    var r = BDPG.state.result, e = r.estimate, sd = BDPG.state.supportingDetails;
+    var lines = [
+      'Roady\'s Prospective Member Gallons Calculator',
+      (sd.prospectName || 'Prospect') + ' — ' + (sd.prospectCity || '') + ', ' + (sd.prospectState || ''),
+      '',
+      'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
+      'Official calculator math: ' + e.officialMathLine,
+      'Official Calculator Subtotal: ' + BDPG.fmtGal(e.officialSubtotal),
+      'Pricing Strategy: ' + BDPG.state.pricingLevel,
+      'Final Potential Gallons math: ' + e.finalMathLine,
+      'Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons),
+      'Network Fit Grade: ' + r.grade.grade + ' (' + r.grade.gradeLabel + ')'
+    ];
+    if (r.membership.valuePerGallonConfigured && r.membership.plans.some(function (p) { return p.configured; })) {
+      var best = r.membership.plans.filter(function (p) { return p.configured; }).sort(function (a, b) { return b.coverageMultiple - a.coverageMultiple; })[0];
+      lines.push('Membership pays for itself at ' + BDPG.fmtGal(best.breakevenGallons) + ' gal/mo (' + best.coverageMultiple + '× coverage).');
+    }
+    return lines.join('\n');
+  };
+
+  BDPG.onCopySummary = function () {
+    var text = BDPG.summaryText();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast('Copied to clipboard'); }, function () { BDPG.fallbackCopy(text); });
+    } else {
+      BDPG.fallbackCopy(text);
+    }
+  };
+
+  BDPG.fallbackCopy = function (text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('Copied to clipboard'); } catch (e) { alert(text); }
+    document.body.removeChild(ta);
+  };
 
   BDPG.analysisNarrativeHtml = function () {
     var r = BDPG.state.result, e = r.estimate;
