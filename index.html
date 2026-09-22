@@ -525,6 +525,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .dt td.up{color:var(--green);}
 .dt td.dn{color:var(--red);}
 .dt td.fl{color:var(--yellow);}
+.bdpg-box{background:var(--bg2,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px;padding:12px 14px}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
@@ -16915,9 +16916,65 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     render: function () {
       var el = document.getElementById('bdpg-content');
       if (!el) return;
-      el.innerHTML = '<div class="sec-hdr"><div class="sec-title">BUS DEV POTENTIAL GALLONS</div></div>' +
-        '<p style="color:var(--muted)">Loading…</p>';
+      el.innerHTML = BDPG.step1Html();
     }
+  };
+
+  BDPG.escHtml = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
+
+  BDPG.step1Html = function () {
+    var s = BDPG.state;
+    var profiles = BusDevGallonsCalc.getProfiles();
+    var profileOpts = '<option value="">Select…</option>' + profiles.map(function (p) {
+      return '<option value="' + BDPG.escHtml(p) + '"' + (p === s.profile ? ' selected' : '') + '>' + BDPG.escHtml(p) + '</option>';
+    }).join('');
+
+    var roadways = s.profile ? BusDevGallonsCalc.getValidRoadways(s.profile) : [];
+    var roadwayOpts = '<option value="">' + (s.profile ? 'Select…' : '— pick a profile first —') + '</option>' + roadways.map(function (r) {
+      return '<option value="' + BDPG.escHtml(r) + '"' + (r === s.roadway ? ' selected' : '') + '>' + BDPG.escHtml(r) + '</option>';
+    }).join('');
+
+    var row = (s.profile && s.roadway) ? BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway) : null;
+
+    var tableRows = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
+      var hi = row && r.profile === row.profile && r.roadway === row.roadway;
+      return '<tr' + (hi ? ' style="background:rgba(0,200,255,.12);font-weight:700"' : '') + '>' +
+        '<td>' + BDPG.escHtml(r.profile) + '</td><td>' + BDPG.escHtml(r.roadway) + '</td>' +
+        '<td>' + BDPG.escHtml(r.lanes) + '</td><td style="text-align:right">' + BDPG.fmtGal(r.baseline) + '</td></tr>';
+    }).join('');
+
+    return '<div class="sec-hdr"><div class="sec-title">BUS DEV POTENTIAL GALLONS</div><span class="badge ba">Step 1</span></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;max-width:520px">' +
+        '<div class="fg"><label>Location Profile</label>' +
+          '<select id="bdpg-profile" onchange="BDPG.onProfileChange(this.value)">' + profileOpts + '</select></div>' +
+        '<div class="fg"><label>Roadway</label>' +
+          '<select id="bdpg-roadway" onchange="BDPG.onRoadwayChange(this.value)"' + (s.profile ? '' : ' disabled') + '>' + roadwayOpts + '</select></div>' +
+      '</div>' +
+      (row ? ('<div class="bdpg-box" style="margin-bottom:12px">' +
+        '<div style="font-size:.72em;color:var(--muted);text-transform:uppercase">Fuel Lanes (auto)</div>' +
+        '<div style="font-weight:700">' + BDPG.escHtml(row.lanes) + '</div>' +
+        '<div style="font-size:.72em;color:var(--muted);text-transform:uppercase;margin-top:8px">Baseline Avg. Gal./Mo.</div>' +
+        '<div style="font-weight:800;font-size:1.3em;color:var(--accent)">' + BDPG.fmtGal(row.baseline) + '</div></div>') : '') +
+      '<div class="tw"><table class="dt" style="width:100%">' +
+        '<thead><tr><th>Location Profile</th><th>Roadway</th><th>Fuel Lanes</th><th style="text-align:right">Avg. Gal./Mo.</th></tr></thead>' +
+        '<tbody>' + tableRows + '</tbody></table></div>';
+  };
+
+  BDPG.onProfileChange = function (profile) {
+    BDPG.state.profile = profile;
+    BDPG.state.roadway = '';
+    BDPG.render();
+  };
+
+  BDPG.onRoadwayChange = function (roadway) {
+    BDPG.state.roadway = roadway;
+    BDPG.render();
   };
 
   window.BDPG = BDPG;
