@@ -206,7 +206,7 @@
     var plans = cfg.plans.map(function (p) {
       var cost = Number(p.cost) || 0;
       if (cost <= 0) return { name: p.name, configured: false };
-      var breakevenGallons = Math.round(cost / vpg);
+      var breakevenGallons = Math.max(1, Math.round(cost / vpg));
       var coverageMultiple = Math.round((finalGallons / breakevenGallons) * 100) / 100;
       return { name: p.name, configured: true, cost: cost, breakevenGallons: breakevenGallons, coverageMultiple: coverageMultiple };
     });
