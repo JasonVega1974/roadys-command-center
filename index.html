@@ -16919,7 +16919,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.generateButtonHtml() +
+      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() + BDPG.generateButtonHtml() +
         (BDPG.state.result ? BDPG.resultsHtml() : '');
     }
   };
@@ -17035,6 +17035,76 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     BDPG.regionVariance.override = null;
     BDPG.state.adminSavedJson = null;
     BDPG.render();
+  };
+
+  // Uploaded rows live only in memory for the duration of the compute step —
+  // never written to localStorage or sent anywhere. See CLAUDE.md's Task 22
+  // note: the raw CSV is parsed entirely client-side and never persisted.
+  BDPG.ncCsv = { rows: null, headers: [] };
+
+  BDPG.networkContextGeneratorHtml = function () {
+    var s = BDPG.state;
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleNcGenerator()">▸ Regenerate network-context.json ' + (s.ncGeneratorOpen ? '▾' : '▸') + '</div>' +
+      (s.ncGeneratorOpen ? (
+        '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Drop in the current location-list CSV. Parsed entirely in this browser tab — never uploaded anywhere.</div>' +
+        '<input type="file" accept=".csv" onchange="BDPG.onNetworkContextCsvFile(this)" style="margin-top:8px">' +
+        '<div id="bdpg-nc-result" style="margin-top:10px;font-family:monospace;font-size:.72em;white-space:pre-wrap;max-height:300px;overflow:auto;background:var(--bg2,#111);padding:8px;border-radius:6px"></div>'
+      ) : '') +
+    '</div>';
+  };
+
+  BDPG.toggleNcGenerator = function () { BDPG.state.ncGeneratorOpen = !BDPG.state.ncGeneratorOpen; BDPG.render(); };
+
+  BDPG.onNetworkContextCsvFile = function (input) {
+    var file = input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var rows = BDPG.parseCsv(String(reader.result));
+      BDPG.ncCsv.headers = rows[0];
+      BDPG.ncCsv.rows = rows.slice(1);
+      BDPG.onNetworkContextCsvCompute();
+    };
+    reader.readAsText(file);
+  };
+
+  BDPG.onNetworkContextCsvCompute = function () {
+    var h = BDPG.ncCsv.headers;
+    var idx = {
+      company: h.indexOf('Company'), name: h.indexOf('Name'), type: h.indexOf('Type'),
+      group: h.indexOf('Group'), state: h.indexOf('State'), status: h.indexOf('Status')
+    };
+    var byRegion = {};
+    ['West', 'Southwest', 'Midwest', 'Northeast', 'Southeast'].forEach(function (r) {
+      byRegion[r] = { total: 0, byType: {}, byGroup: {}, byTypeGroup: {} };
+    });
+
+    BDPG.ncCsv.rows.forEach(function (row) {
+      var status = (row[idx.status] || '').trim().toLowerCase();
+      var company = (row[idx.company] || '').toLowerCase();
+      var name = (row[idx.name] || '').toLowerCase();
+      if (status !== 'active') return;
+      if (company.indexOf('demo') !== -1 || name.indexOf('demo') !== -1) return;
+
+      var region = BusDevGallonsCalc.resolveRegion(row[idx.state]);
+      if (!region) return;
+      var type = (row[idx.type] || '').trim() || 'Unknown';
+      var group = (row[idx.group] || '').trim() || 'Unknown';
+
+      var rd = byRegion[region];
+      rd.total += 1;
+      rd.byType[type] = (rd.byType[type] || 0) + 1;
+      rd.byGroup[group] = (rd.byGroup[group] || 0) + 1;
+      rd.byTypeGroup[type] = rd.byTypeGroup[type] || {};
+      rd.byTypeGroup[type][group] = (rd.byTypeGroup[type][group] || 0) + 1;
+    });
+
+    var activeTotal = Object.keys(byRegion).reduce(function (sum, r) { return sum + byRegion[r].total; }, 0);
+    var out = { asOf: (new Date()).toISOString().slice(0, 10), activeTotal: activeTotal, byRegion: byRegion };
+
+    var el = document.getElementById('bdpg-nc-result');
+    if (el) el.textContent = JSON.stringify(out, null, 2) + '\n\n// Paste this into network-context.json to make it the new committed default.';
   };
 
   // Minimal CSV line parser (no library). Handles a quoted field containing a
