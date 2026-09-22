@@ -16917,7 +16917,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       var el = document.getElementById('bdpg-content');
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html();
+      el.innerHTML = BDPG.step1Html() + BDPG.step2Html();
     }
   };
 
@@ -16970,6 +16970,24 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
   BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
 
+  BDPG.regionMapSvg = function (activeRegion) {
+    var regions = [
+      { name: 'West', x: 10, y: 10, w: 70, h: 90 },
+      { name: 'Southwest', x: 85, y: 60, w: 60, h: 40 },
+      { name: 'Midwest', x: 150, y: 10, w: 80, h: 60 },
+      { name: 'Northeast', x: 235, y: 5, w: 45, h: 45 },
+      { name: 'Southeast', x: 150, y: 75, w: 130, h: 45 }
+    ];
+    var rects = regions.map(function (r) {
+      var on = r.name === activeRegion;
+      return '<rect x="' + r.x + '" y="' + r.y + '" width="' + r.w + '" height="' + r.h + '" rx="6" ' +
+        'fill="' + (on ? 'var(--accent)' : 'var(--bg2,#222)') + '" stroke="var(--border)" stroke-width="1.5" opacity="' + (on ? '0.9' : '0.5') + '"/>' +
+        '<text x="' + (r.x + r.w / 2) + '" y="' + (r.y + r.h / 2) + '" text-anchor="middle" dominant-baseline="middle" ' +
+        'font-size="10" fill="' + (on ? '#031018' : 'var(--muted)') + '" font-weight="' + (on ? '800' : '400') + '">' + r.name + '</text>';
+    }).join('');
+    return '<svg viewBox="0 0 290 125" style="width:100%;max-width:340px;display:block;margin:8px 0" role="img" aria-label="Network region map">' + rects + '</svg>';
+  };
+
   BDPG.step1Html = function () {
     var s = BDPG.state;
     var profiles = BusDevGallonsCalc.getProfiles();
@@ -17016,6 +17034,117 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
   BDPG.onRoadwayChange = function (roadway) {
     BDPG.state.roadway = roadway;
+    BDPG.render();
+  };
+
+  BDPG.step2Html = function () {
+    var s = BDPG.state;
+    var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
+    var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
+    var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS;
+
+    if (!s.pricingLevel) s.pricingLevel = BDPG_CONFIG.PRICING_DEFAULT;
+
+    function selectHtml(id, options, current, handler) {
+      return '<select id="' + id + '" onchange="' + handler + '(this.value)">' +
+        '<option value="">Select…</option>' +
+        options.map(function (o) { return '<option value="' + BDPG.escHtml(o) + '"' + (o === current ? ' selected' : '') + '>' + BDPG.escHtml(o) + '</option>'; }).join('') +
+        '</select>';
+    }
+
+    // The Confirmed Amenity Level only ever *defaults* to the suggestion (spec §8) --
+    // it does not get silently overwritten once the rep has manually confirmed/overridden it.
+    var suggestion = BusDevGallonsCalc.suggestAmenityLevel(s.amenityDetails);
+    if (!s.amenityOverridden) {
+      s.amenityLevel = suggestion.level;
+    }
+
+    var review = s.truckerPathRating === '' ? null : Number(s.truckerPathRating);
+    var reviewInfo = BusDevGallonsCalc.reviewAdjustment(review);
+    var reviewBandLabel = reviewInfo.flagged ? 'No rating found — 0%' :
+      (reviewInfo.pct < 0 ? 'Below 3.0 — −5%' : reviewInfo.pct > 0 ? '3.6+ — +2%' : '3.0–3.5 — 0%');
+
+    var pricingSelect = '<select id="bdpg-pricing" onchange="BDPG.onPricingChange(this.value)">' +
+      BDPG_CONFIG.PRICING_LEVELS.map(function (lvl) {
+        var pct = BDPG_CONFIG.PRICING_ADJUST[lvl];
+        var pctLabel = (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%';
+        return '<option value="' + BDPG.escHtml(lvl) + '"' + (lvl === s.pricingLevel ? ' selected' : '') + '>' + BDPG.escHtml(lvl) + ' (' + pctLabel + ')</option>';
+      }).join('') + '</select>';
+
+    return '<div id="bdpg-step2" class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-title">Step 2 — Adjustments</div></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+        '<div class="fg">' +
+          '<label>State</label>' +
+          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
+            'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase;width:80px">' +
+          (region ? ('<div style="margin-top:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>') :
+            (s.state ? '<div style="margin-top:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '')) +
+          BDPG.regionMapSvg(region) +
+        '</div>' +
+        '<div class="fg">' +
+          '<label>Trucker Path Rating</label>' +
+          '<input id="bdpg-tp-rating" type="number" min="1" max="5" step="0.1" value="' + BDPG.escHtml(s.truckerPathRating) + '" ' +
+            'oninput="BDPG.onTruckerPathInput(this.value)" style="width:90px">' +
+          '<div style="margin-top:6px;font-size:.8em;color:var(--muted)" id="bdpg-tp-band">' + reviewBandLabel + '</div>' +
+          '<label style="margin-top:14px;display:block">Discount / Pricing Posture</label>' +
+          pricingSelect +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:16px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Amenity Details</div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">' +
+        '<div class="fg"><label style="font-size:.72em">Showers</label>' + selectHtml('bdpg-am-showers', opts.showers, s.amenityDetails.showers, 'BDPG.onAmenityDetail.bind(null,\'showers\')') + '</div>' +
+        '<div class="fg"><label style="font-size:.72em">Food</label>' + selectHtml('bdpg-am-food', opts.food, s.amenityDetails.food, 'BDPG.onAmenityDetail.bind(null,\'food\')') + '</div>' +
+        '<div class="fg"><label style="font-size:.72em">Certified Scale</label>' + selectHtml('bdpg-am-scale', opts.scale, s.amenityDetails.scale, 'BDPG.onAmenityDetail.bind(null,\'scale\')') + '</div>' +
+        '<div class="fg"><label style="font-size:.72em">Truck Parking</label>' + selectHtml('bdpg-am-parking', opts.parking, s.amenityDetails.parking, 'BDPG.onAmenityDetail.bind(null,\'parking\')') + '</div>' +
+        '<div class="fg"><label style="font-size:.72em">Service</label>' + selectHtml('bdpg-am-service', opts.service, s.amenityDetails.service, 'BDPG.onAmenityDetail.bind(null,\'service\')') + '</div>' +
+        '<div class="fg"><label style="font-size:.72em">DEF / Reefer</label>' + selectHtml('bdpg-am-defreefer', opts.defReefer, s.amenityDetails.defReefer, 'BDPG.onAmenityDetail.bind(null,\'defReefer\')') + '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Suggested: <b>' + BDPG.escHtml(suggestion.level) + '</b> — ' + BDPG.escHtml(suggestion.reason) + '</div>' +
+      '<div class="fg" style="margin-top:6px;max-width:260px"><label>Confirmed Amenity Level</label>' +
+        selectHtml('bdpg-amenity-confirm', BDPG_CONFIG.AMENITY_LEVELS, s.amenityLevel, 'BDPG.onAmenityConfirm') + '</div>' +
+      '</div>' +
+    '</div>';
+  };
+
+  // Re-renders only the Step 2 box (via outerHTML), not the whole page, and
+  // restores focus + cursor position afterward -- typing a 2-letter state code
+  // must not visibly lose focus after the first keystroke.
+  BDPG.onStateInput = function (val) {
+    BDPG.state.state = val.toUpperCase();
+    var stepEl = document.getElementById('bdpg-step2');
+    if (!stepEl) return;
+    stepEl.outerHTML = BDPG.step2Html();
+    var input = document.getElementById('bdpg-state');
+    if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  };
+
+  // Targeted update of just the band-chip text -- no rebuild at all, so the
+  // number input never loses focus while typing a rating like "3.8".
+  BDPG.onTruckerPathInput = function (val) {
+    BDPG.state.truckerPathRating = val;
+    var chip = document.getElementById('bdpg-tp-band');
+    if (chip) {
+      var review = val === '' ? null : Number(val);
+      var info = BusDevGallonsCalc.reviewAdjustment(review);
+      chip.textContent = info.flagged ? 'No rating found — 0%' : (info.pct < 0 ? 'Below 3.0 — −5%' : info.pct > 0 ? '3.6+ — +2%' : '3.0–3.5 — 0%');
+    }
+  };
+
+  // Pricing is a <select> -- no cursor/focus to preserve, full re-render is fine.
+  BDPG.onPricingChange = function (value) {
+    BDPG.state.pricingLevel = value;
+    BDPG.render();
+  };
+
+  BDPG.onAmenityDetail = function (field, value) {
+    BDPG.state.amenityDetails[field] = value;
+    BDPG.render();
+  };
+
+  BDPG.onAmenityConfirm = function (value) {
+    BDPG.state.amenityLevel = value;
+    BDPG.state.amenityOverridden = true;
     BDPG.render();
   };
 
