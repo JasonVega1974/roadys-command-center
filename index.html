@@ -792,6 +792,24 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .impl-form-group input:focus,.impl-form-group select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.15);}
 .impl-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
 @media (max-width:768px){.impl-charts{grid-template-columns:1fr;}.impl-dashboard{grid-template-columns:1fr;}}
+/* Bus Dev Potential Gallons — Export PDF (Task 23).
+   Gated on body.bdpg-print-mode (set by BDPG.onExportPdf, cleared on 'afterprint')
+   rather than unconditionally on #pg-bus-dev-potential-gallons, so a plain
+   browser File > Print on any OTHER page keeps behaving exactly as it does
+   today (the existing .page{display:none}/.page.active{display:block} rules
+   already make window.print() print only the active page). Without this
+   gate, these rules would force-hide every page and force-show this one
+   regardless of which page the user was actually printing. */
+@media print {
+  body.bdpg-print-mode .sidebar, body.bdpg-print-mode .topbar, body.bdpg-print-mode #toast { display: none !important; }
+  body.bdpg-print-mode .page { display: none !important; }
+  body.bdpg-print-mode #pg-bus-dev-potential-gallons { display: block !important; }
+  body.bdpg-print-mode #bdpg-content > *:not(#bdpg-print-only) { display: none !important; }
+  body.bdpg-print-mode #bdpg-print-only { display: block !important; }
+  body.bdpg-print-mode, body.bdpg-print-mode .page { background: #fff !important; color: #000 !important; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-box { border: 1px solid #999 !important; page-break-inside: avoid; }
+}
+#bdpg-print-only { display: none; }
 </style>
 </head>
 <body>
@@ -16920,7 +16938,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
       el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() + BDPG.generateButtonHtml() +
-        (BDPG.state.result ? BDPG.resultsHtml() : '');
+        (BDPG.state.result ? (BDPG.resultsHtml() + '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button>' + BDPG.exportPdfHtml()) : '');
     }
   };
 
@@ -17562,6 +17580,42 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Membership Fit</div></div>' +
       '<table class="dt" style="width:100%;font-size:.85em"><tbody>' + rows + '</tbody></table>' + recommendation + '</div>';
   };
+
+  BDPG.exportPdfHtml = function () {
+    var r = BDPG.state.result;
+    if (!r) return '';
+    var e = r.estimate, sd = BDPG.state.supportingDetails;
+    var membershipLine = r.membership.valuePerGallonConfigured && r.membership.plans.some(function (p) { return p.configured; })
+      ? BDPG.membershipFitHtml()
+      : '';
+
+    return '<div id="bdpg-print-only">' +
+      '<h1>Roady\'s Prospective Member Gallons Calculator</h1>' +
+      '<h2>' + BDPG.escHtml(sd.prospectName || 'Prospect') + ' — ' + BDPG.escHtml(sd.prospectCity) + ', ' + BDPG.escHtml(sd.prospectState) + '</h2>' +
+      '<h3>Step 1</h3><p>' + BDPG.escHtml(BDPG.state.profile) + ' / ' + BDPG.escHtml(BDPG.state.roadway) + ' — Baseline ' + BDPG.fmtGal(e.baseline) + ' gal/mo</p>' +
+      '<h3>Step 2 — Official Calculator</h3><p>' + BDPG.escHtml(e.officialMathLine) + '</p>' +
+      '<h3>Official Calculator Subtotal: ' + BDPG.fmtGal(e.officialSubtotal) + '</h3>' +
+      '<h3>Step 3 — Pricing Strategy: ' + BDPG.escHtml(BDPG.state.pricingLevel) + '</h3><p>' + BDPG.escHtml(e.finalMathLine) + '</p>' +
+      '<h3>Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons) + '</h3>' +
+      membershipLine +
+    '</div>';
+  };
+
+  BDPG.onExportPdf = function () {
+    if (!BDPG.state.result) { alert('Generate a Value Profile first.'); return; }
+    // body.bdpg-print-mode is what the @media print rules key off of (see <style>),
+    // so a plain browser File > Print on some other page never gets caught by
+    // these rules — only a print triggered through this button does.
+    document.body.classList.add('bdpg-print-mode');
+    window.print();
+  };
+
+  if (!BDPG._printModeCleanupBound) {
+    BDPG._printModeCleanupBound = true;
+    window.addEventListener('afterprint', function () {
+      document.body.classList.remove('bdpg-print-mode');
+    });
+  }
 
   BDPG.analysisNarrativeHtml = function () {
     var r = BDPG.state.result, e = r.estimate;
