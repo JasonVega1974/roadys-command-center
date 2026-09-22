@@ -61,3 +61,26 @@ test('every state in BDPG_REGION_MAP resolves to exactly one region', () => {
     });
   });
 });
+
+test('amenityAdjustment returns the exact configured percentage', () => {
+  assert.equal(BusDevGallonsCalc.amenityAdjustment('Very limited'), -0.05);
+  assert.equal(BusDevGallonsCalc.amenityAdjustment('Average'), 0);
+  assert.equal(BusDevGallonsCalc.amenityAdjustment('Good / full service'), 0.02);
+});
+
+test('reviewAdjustment boundaries: 2.9 / 3.0 / 3.5 / 3.6', () => {
+  assert.equal(BusDevGallonsCalc.reviewAdjustment(2.9).pct, -0.05);
+  assert.equal(BusDevGallonsCalc.reviewAdjustment(3.0).pct, 0);
+  assert.equal(BusDevGallonsCalc.reviewAdjustment(3.5).pct, 0);
+  assert.equal(BusDevGallonsCalc.reviewAdjustment(3.6).pct, 0.02);
+});
+
+test('reviewAdjustment with no rating is 0% and flagged', () => {
+  const r = BusDevGallonsCalc.reviewAdjustment(null);
+  assert.equal(r.pct, 0);
+  assert.equal(r.flagged, true);
+});
+
+test('reviewAdjustment with a real rating is not flagged', () => {
+  assert.equal(BusDevGallonsCalc.reviewAdjustment(4.2).flagged, false);
+});

@@ -41,10 +41,27 @@
     return found;
   }
 
+  function amenityAdjustment(level) {
+    return BDPG_CONFIG.AMENITY_ADJUST.hasOwnProperty(level) ? BDPG_CONFIG.AMENITY_ADJUST[level] : 0;
+  }
+
+  function reviewAdjustment(rating) {
+    if (rating === null || rating === undefined || rating === '') {
+      return { pct: 0, flagged: true };
+    }
+    var n = Number(rating);
+    if (isNaN(n)) return { pct: 0, flagged: true };
+    var band = BDPG_CONFIG.REVIEW_BANDS.filter(function (b) { return n <= b.max; })[0];
+    var last = BDPG_CONFIG.REVIEW_BANDS[BDPG_CONFIG.REVIEW_BANDS.length - 1];
+    return { pct: band ? band.pct : last.pct, flagged: false };
+  }
+
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
     getBaselineRow: getBaselineRow,
-    resolveRegion: resolveRegion
+    resolveRegion: resolveRegion,
+    amenityAdjustment: amenityAdjustment,
+    reviewAdjustment: reviewAdjustment
   };
 });
