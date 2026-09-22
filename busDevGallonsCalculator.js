@@ -63,6 +63,26 @@
 
   function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
 
+  function suggestAmenityLevel(details) {
+    var d = details || {};
+    var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS;
+
+    var hasShowers = d.showers && d.showers !== 'none';
+    var hasScale = d.scale === 'yes';
+    var goodParking = opts.goodParking.indexOf(d.parking) !== -1;
+    var goodFood = opts.goodFood.indexOf(d.food) !== -1;
+    var noParking = d.parking === 'none' || !d.parking;
+    var limitedFood = opts.limitedFood.indexOf(d.food) !== -1 || !d.food;
+
+    if (hasShowers && goodFood && hasScale && goodParking) {
+      return { level: 'Good / full service', reason: 'Showers, food service, a certified scale, and 16+ parking spots.' };
+    }
+    if (!hasShowers && noParking && limitedFood) {
+      return { level: 'Very limited', reason: 'No showers, no truck parking, and no real food service.' };
+    }
+    return { level: 'Average', reason: 'Falls between the Good and Very limited thresholds.' };
+  }
+
   function calculateEstimate(opts) {
     var row = getBaselineRow(opts.profile, opts.roadway);
     if (!row) return null;
@@ -107,6 +127,7 @@
     amenityAdjustment: amenityAdjustment,
     reviewAdjustment: reviewAdjustment,
     pricingAdjustment: pricingAdjustment,
+    suggestAmenityLevel: suggestAmenityLevel,
     calculateEstimate: calculateEstimate
   };
 });

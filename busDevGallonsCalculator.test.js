@@ -203,3 +203,24 @@ test('calculateEstimate renders distinct official and final math lines', () => {
   assert.equal(r.officialMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02) = 13,750');
   assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 + 0.05) = 14,375');
 });
+
+test('suggestAmenityLevel: Good / full service rule', () => {
+  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '4-9', food: 'full restaurant', scale: 'yes', parking: '16-50' });
+  assert.equal(r.level, 'Good / full service');
+  assert.ok(r.reason.length > 0);
+});
+
+test('suggestAmenityLevel: Very limited rule', () => {
+  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: 'none', food: 'none', scale: 'no', parking: 'none' });
+  assert.equal(r.level, 'Very limited');
+});
+
+test('suggestAmenityLevel: falls back to Average otherwise', () => {
+  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '1-3', food: 'grab-and-go', scale: 'no', parking: '1-15' });
+  assert.equal(r.level, 'Average');
+});
+
+test('suggestAmenityLevel: fast food (not just full restaurant) still counts as good food', () => {
+  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '10+', food: 'fast food', scale: 'yes', parking: '100+' });
+  assert.equal(r.level, 'Good / full service');
+});
