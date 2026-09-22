@@ -16916,8 +16916,50 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     render: function () {
       var el = document.getElementById('bdpg-content');
       if (!el) return;
+      if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       el.innerHTML = BDPG.step1Html();
     }
+  };
+
+  BDPG.regionVariance = { committed: null, override: null };
+  BDPG._regionVarianceLoaded = false;
+
+  BDPG.loadRegionVariance = function (onDone) {
+    if (BDPG._regionVarianceLoaded) { if (onDone) onDone(); return; }
+    BDPG._regionVarianceLoaded = true;
+
+    var raw = localStorage.getItem('roadysBDPGRegionOverride');
+    if (raw) { try { BDPG.regionVariance.override = JSON.parse(raw); } catch (e) { /* corrupt value, ignore */ } }
+
+    fetch('region_variance.json').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (json) { BDPG.regionVariance.committed = json; if (onDone) onDone(); })
+      .catch(function () { if (onDone) onDone(); });
+  };
+
+  BDPG.effectiveRegionVariance = function () {
+    return BDPG.regionVariance.override || BDPG.regionVariance.committed || { west: 0, southwest: 0, midwest: 0, northeast: 0, southeast: 0, asOf: '' };
+  };
+
+  BDPG.effectiveRegionPct = function (region) {
+    if (!region) return 0;
+    var v = BDPG.effectiveRegionVariance();
+    var key = region.toLowerCase();
+    return (Number(v[key]) || 0) / 100;
+  };
+
+  BDPG.regionVarianceAsOf = function () {
+    return BDPG.effectiveRegionVariance().asOf || null;
+  };
+
+  BDPG.regionVarianceIsSet = function () {
+    var v = BDPG.effectiveRegionVariance();
+    return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(v[k]) !== 0; });
+  };
+
+  BDPG.regionVarianceOverrideDiffers = function () {
+    if (!BDPG.regionVariance.override || !BDPG.regionVariance.committed) return false;
+    var o = BDPG.regionVariance.override, c = BDPG.regionVariance.committed;
+    return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(o[k]) !== Number(c[k]); });
   };
 
   BDPG.escHtml = function (s) {
