@@ -84,3 +84,19 @@ test('reviewAdjustment with no rating is 0% and flagged', () => {
 test('reviewAdjustment with a real rating is not flagged', () => {
   assert.equal(BusDevGallonsCalc.reviewAdjustment(4.2).flagged, false);
 });
+
+test('pricingAdjustment returns the exact configured percentage for each band', () => {
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('Most aggressive (deepest discounts)'), 0.05);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('Aggressive'), 0.025);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('Standard / moderate'), 0);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('Light discounting'), -0.025);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('No discounts'), -0.05);
+});
+
+test('pricingAdjustment falls back to the configured default for empty/unrecognized input', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const defaultPct = BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT];
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(''), defaultPct);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(undefined), defaultPct);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('not a real band'), defaultPct);
+});

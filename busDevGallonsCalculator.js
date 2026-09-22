@@ -56,12 +56,18 @@
     return { pct: band ? band.pct : last.pct, flagged: false };
   }
 
+  function pricingAdjustment(level) {
+    if (BDPG_CONFIG.PRICING_ADJUST.hasOwnProperty(level)) return BDPG_CONFIG.PRICING_ADJUST[level];
+    return BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT];
+  }
+
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
     getBaselineRow: getBaselineRow,
     resolveRegion: resolveRegion,
     amenityAdjustment: amenityAdjustment,
-    reviewAdjustment: reviewAdjustment
+    reviewAdjustment: reviewAdjustment,
+    pricingAdjustment: pricingAdjustment
   };
 });
