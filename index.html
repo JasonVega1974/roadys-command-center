@@ -13,6 +13,8 @@
 <script src="https://cdn.jsdelivr.net/npm/d3-geo@3.1.0/dist/d3-geo.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="busDevGallonsConfig.js"></script>
+<script src="busDevGallonsCalculator.js"></script>
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
@@ -855,6 +857,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
     <div class="nav-parent" data-nav-grp-toggle="bizdev" onclick="toggleNavGrp(this)"><span class="ni-icon">📈</span>Business Dev<span class="expand-icon">▶</span></div>
     <div class="nav-children" data-nav-grp-children="bizdev">
       <div class="ni" data-nav-id="crm" onclick="location.href='CRM.html'"><span class="ni-icon">📞</span>Business Development CRM</div>
+      <div class="ni" data-nav-id="bus-dev-potential-gallons" onclick="nav('bus-dev-potential-gallons',this)"><span class="ni-icon">⛽</span>Bus Dev Potential Gallons</div>
     </div>
     <div class="ni" data-nav-id="kpi-entry" onclick="nav('kpi-entry',this)"><span class="ni-icon">✏️</span>KPI Data Entry + KPI Table</div>
     <div class="ni" data-nav-id="implementation" onclick="nav('implementation',this)"><span class="ni-icon">🚧</span>Implementation</div>
@@ -1228,6 +1231,11 @@ R01180,no,yes,yes,no,yes,no</code>
         <div id="ft-summary" style="font-size:.78em;color:var(--muted)"></div>
       </div>
       <div class="tw"><table class="dt" id="full-tbl"></table></div>
+    </div>
+
+    <!-- ══ BUS DEV POTENTIAL GALLONS ══ -->
+    <div class="page" id="pg-bus-dev-potential-gallons">
+      <div id="bdpg-content"></div>
     </div>
 
     <!-- ══ OVERVIEW (Fuel Network Summary) ══ -->
@@ -2858,7 +2866,7 @@ function toast(msg,type='tok'){
 // ═══════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════
-const TITLES={master:'Executive Summary','gs-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal','interstate-v2':'Interstate V2 — Dashboard Card Spec','rewards-promotions':'Rewards Promotions','backend-plan':'Backend Developer Plan'};
+const TITLES={master:'Executive Summary','gs-metrics':'GS Performance Metrics',overview:'Network Summary',truckstops:'Truck Stops',tsdetail:'Stop Detail',aggregators:'Aggregators',fleets:'Fleets',fuelman:'Fuelman',rcheck:'R-Check','kpi-financial':'Financial Performance','kpi-membership':'Membership Metrics','kpi-bizdev':'Business Development','kpi-rewards':'Rewards Program','kpi-ptp':'PTP Conversions','kpi-vendors':'Vendor Programs',crm:'CRM — Business Development','kpi-entry':'KPI Data Entry','kpi-fulltable':'Full KPI Table',import:'Import / Export',settings:'Settings',valprops:'Value Propositions','mem-contacts':'Truck Stop Contact List','mem-locations':'Master Locations','mem-onboarding':'Onboarding Tracker','service-desk':'Service Desk',implementation:'Implementation Portal','interstate-v2':'Interstate V2 — Dashboard Card Spec','rewards-promotions':'Rewards Promotions','backend-plan':'Backend Developer Plan','bus-dev-potential-gallons':'Bus Dev Potential Gallons'};
 function nav(id,el){
   // Check if page is locked
   if(SETTINGS.locked[id]&&SETTINGS.pin&&!pinUnlocked[id]){
@@ -3079,6 +3087,7 @@ function renderPage(id){
   else if(id==='kpi-vendors') pgKpiVendors();
   else if(id==='kpi-entry') pgKpiEntry();
   else if(id==='kpi-fulltable') pgKpiFullTable();
+  else if(id==='bus-dev-potential-gallons') renderBusDevGallons();
   else if(id==='valprops'){ renderValueProps(); vpPopulateStops(); }
   else if(id==='import'){ renderDataSourceMap(); de2PopulateStops(); renderBulkTable(); }
   else if(id==='mem-contacts') renderMemContacts();
@@ -16886,6 +16895,34 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
 
 
+</script>
+<script>
+(function () {
+  'use strict';
+
+  var BDPG = {
+    state: {
+      profile: '', roadway: '',
+      state: '', amenityDetails: {}, amenityLevel: '', amenityOverridden: false,
+      truckerPathRating: '', pricingLevel: '',
+      supportingDetails: {
+        condition: '', hours: '', distance: '', corridor: '', competition: '',
+        prospectName: '', prospectCity: '', prospectState: '', actualLanes: ''
+      },
+      result: null
+    },
+
+    render: function () {
+      var el = document.getElementById('bdpg-content');
+      if (!el) return;
+      el.innerHTML = '<div class="sec-hdr"><div class="sec-title">BUS DEV POTENTIAL GALLONS</div></div>' +
+        '<p style="color:var(--muted)">Loading…</p>';
+    }
+  };
+
+  window.BDPG = BDPG;
+})();
+function renderBusDevGallons(){ if (window.BDPG) window.BDPG.render(); }
 </script>
 </body>
 </html>
