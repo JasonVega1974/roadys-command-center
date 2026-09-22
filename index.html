@@ -16918,6 +16918,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       var el = document.getElementById('bdpg-content');
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
+      if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
       el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.generateButtonHtml() +
         (BDPG.state.result ? BDPG.resultsHtml() : '');
     }
@@ -16935,6 +16936,17 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
     fetch('region_variance.json').then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) { BDPG.regionVariance.committed = json; if (onDone) onDone(); })
+      .catch(function () { if (onDone) onDone(); });
+  };
+
+  BDPG.networkContext = null;
+  BDPG._networkContextLoaded = false;
+
+  BDPG.loadNetworkContext = function (onDone) {
+    if (BDPG._networkContextLoaded) { if (onDone) onDone(); return; }
+    BDPG._networkContextLoaded = true;
+    fetch('network-context.json').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (json) { BDPG.networkContext = json; if (onDone) onDone(); })
       .catch(function () { if (onDone) onDone(); });
   };
 
@@ -17408,9 +17420,63 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   };
 
   BDPG.resultsHtml = function () {
+    var r = BDPG.state.result, e = r.estimate, g = r.grade;
+    var annual = e.finalGallons * 12;
+    var regionAdjusted = Math.round(e.baseline * (1 + e.regionPct));
+
+    var hero = '<div class="bdpg-box" style="margin-top:14px;text-align:center">' +
+      '<div style="font-size:.75em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Final Potential Gallons</div>' +
+      '<div style="font-size:2.4em;font-weight:800;color:var(--accent)">' + BDPG.fmtGal(e.finalGallons) + '</div>' +
+      '<div style="font-size:.85em;color:var(--muted)">≈ ' + BDPG.fmtGal(annual) + ' gal/yr</div>' +
+      '<div style="margin-top:10px;font-size:.9em">Official calculator subtotal: <b>' + BDPG.fmtGal(e.officialSubtotal) + '</b></div>' +
+      '<div style="margin-top:8px;font-family:monospace;font-size:.78em;color:var(--muted)">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
+      '<div style="margin-top:2px;font-family:monospace;font-size:.78em;color:var(--muted)">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
+      (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '') +
+    '</div>';
+
+    var waterfall = '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Adjustment Waterfall</div></div>' +
+      '<table class="dt" style="width:100%;font-size:.85em"><tbody>' +
+        '<tr><td>1. Baseline</td><td style="text-align:right">' + BDPG.fmtGal(e.baseline) + '</td></tr>' +
+        '<tr><td>2. Region-adjusted (' + (e.regionPct >= 0 ? '+' : '') + (e.regionPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + BDPG.fmtGal(regionAdjusted) + '</td></tr>' +
+        '<tr style="font-weight:700"><td>3. Official calculator subtotal (+ Amenities ' + (e.amenityPct >= 0 ? '+' : '') + (e.amenityPct * 100).toFixed(1) + '% + Review ' + (e.reviewPct >= 0 ? '+' : '') + (e.reviewPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + BDPG.fmtGal(e.officialSubtotal) + '</td></tr>' +
+        '<tr><td>4. Pricing adjustment (' + (e.pricingPct >= 0 ? '+' : '') + (e.pricingPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + (e.finalGallons - e.officialSubtotal >= 0 ? '+' : '') + BDPG.fmtGal(e.finalGallons - e.officialSubtotal) + '</td></tr>' +
+        '<tr style="font-weight:700;border-top:1px solid var(--border)"><td>5. Final Potential Gallons</td><td style="text-align:right">' + BDPG.fmtGal(e.finalGallons) + '</td></tr>' +
+      '</tbody></table></div>';
+
+    var netPos = Math.max(0, Math.min(100, ((e.officialSubtotal - 2500) / (15000 - 2500)) * 100));
+    var rangeBar = '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Position in Network Range (2,500–15,000)</div></div>' +
+      '<div style="background:var(--bg2,#222);border-radius:6px;height:14px;position:relative">' +
+        '<div style="position:absolute;left:' + netPos.toFixed(1) + '%;top:-4px;width:3px;height:22px;background:var(--accent)"></div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:.72em;color:var(--muted);margin-top:4px"><span>2,500</span><span>15,000</span></div>' +
+      '<div style="font-size:.7em;color:var(--muted);margin-top:2px">Based on the official calculator subtotal (' + BDPG.fmtGal(e.officialSubtotal) + '), not the pricing-adjusted final.</div>' +
+      '<div style="margin-top:10px;font-weight:700">Network Fit Grade: ' + g.grade + ' — ' + BDPG.escHtml(g.gradeLabel) + '</div>' +
+      '<div style="font-size:.78em;color:var(--muted)">Scored against its own Location Profile\'s range (' + BDPG.fmtGal(g.rangeLo) + '–' + BDPG.fmtGal(g.rangeHi) + '), using the official subtotal — never affected by Pricing Strategy.</div>' +
+    '</div>';
+
+    var netCtx = BDPG.networkContextHtml();
+
+    return hero + waterfall + rangeBar + netCtx;
+  };
+
+  BDPG.networkContextHtml = function () {
     var r = BDPG.state.result;
-    return '<div class="bdpg-box" style="margin-top:14px">Official: ' + BDPG.fmtGal(r.estimate.officialSubtotal) +
-      ' · Final: ' + BDPG.fmtGal(r.estimate.finalGallons) + ' gal/mo (full Results UI comes in Task 20-21)</div>';
+    if (!BDPG.networkContext || !r.region) return '';
+    var regionData = BDPG.networkContext.byRegion[r.region];
+    if (!regionData) return '';
+
+    var typeRows = Object.keys(regionData.byType).map(function (t) {
+      return '<tr><td>' + BDPG.escHtml(t) + '</td><td style="text-align:right">' + regionData.byType[t] + '</td></tr>';
+    }).join('');
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Network Context — ' + BDPG.escHtml(r.region) + '</div></div>' +
+      '<div style="font-size:.85em;margin-bottom:8px">' + regionData.total + ' active locations in this region ' +
+      '(as of ' + BDPG.escHtml(BDPG.networkContext.asOf) + ')</div>' +
+      '<table class="dt" style="width:100%;font-size:.82em"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody>' + typeRows + '</tbody></table>' +
+    '</div>';
   };
 
   window.BDPG = BDPG;
