@@ -16918,7 +16918,8 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       var el = document.getElementById('bdpg-content');
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml();
+      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.generateButtonHtml() +
+        (BDPG.state.result ? BDPG.resultsHtml() : '');
     }
   };
 
@@ -17374,6 +17375,42 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   BDPG.onSupportingSelect = function (field, value) {
     BDPG.state.supportingDetails[field] = value;
     BDPG.render();
+  };
+
+  BDPG.generateButtonHtml = function () {
+    var s = BDPG.state;
+    var canGenerate = !!(s.profile && s.roadway && s.state);
+    return '<button class="btn btn-accent" style="width:100%;padding:12px;font-size:1em;margin-top:14px" ' +
+      (canGenerate ? '' : 'disabled title="Pick a Location Profile, Roadway, and State first"') +
+      ' onclick="BDPG.onGenerate()">Generate Value Profile</button>';
+  };
+
+  BDPG.onGenerate = function () {
+    var s = BDPG.state;
+    var region = BusDevGallonsCalc.resolveRegion(s.state);
+    var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
+
+    var estimate = BusDevGallonsCalc.calculateEstimate({
+      profile: s.profile, roadway: s.roadway, regionPct: regionPct,
+      amenityLevel: s.amenityLevel, reviewRating: s.truckerPathRating === '' ? null : Number(s.truckerPathRating),
+      pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT
+    });
+    if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return; }
+
+    var grade = BusDevGallonsCalc.calculateNetworkFitGrade({
+      profile: s.profile, officialSubtotal: estimate.officialSubtotal, supportingDetails: s.supportingDetails
+    });
+    var conditionAdjusted = BusDevGallonsCalc.conditionAdjustedGallons(estimate.finalGallons, s.supportingDetails.condition);
+    var membership = BusDevGallonsCalc.calculateMembershipFit(estimate.finalGallons);
+
+    s.result = { estimate: estimate, grade: grade, conditionAdjusted: conditionAdjusted, membership: membership, region: region };
+    BDPG.render();
+  };
+
+  BDPG.resultsHtml = function () {
+    var r = BDPG.state.result;
+    return '<div class="bdpg-box" style="margin-top:14px">Official: ' + BDPG.fmtGal(r.estimate.officialSubtotal) +
+      ' · Final: ' + BDPG.fmtGal(r.estimate.finalGallons) + ' gal/mo (full Results UI comes in Task 20-21)</div>';
   };
 
   window.BDPG = BDPG;
