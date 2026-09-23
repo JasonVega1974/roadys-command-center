@@ -31,6 +31,7 @@ body.day-mode{
 body.day-mode ::-webkit-scrollbar-track{background:#E8EBF0;}
 body.day-mode ::-webkit-scrollbar-thumb{background:#C0C7D3;}
 body.day-mode #usa-svg path{stroke:#D8DCE3;}
+body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3;}
 body.day-mode .pin-overlay{background:rgba(0,0,0,.4);}
 body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3;color:#1A1D24;}
 body.day-mode .tog .slider{background:#B0BEC5;}
@@ -549,6 +550,17 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-rangebar{position:relative;height:8px;background:var(--surface);border:1px solid var(--border);border-radius:5px;margin-top:8px;}
 .bdpg-rangebar-tick{position:absolute;top:-4px;width:3px;height:14px;background:var(--accent);border-radius:2px;}
 .bdpg-rangebar-ends{display:flex;justify-content:space-between;font-size:.66em;color:var(--muted);margin-top:4px;}
+#bdpg-usa-svg{width:100%;height:auto;display:block;}
+#bdpg-usa-svg path{cursor:pointer;stroke:#0A0E1A;stroke-width:.5;transition:all .15s;}
+#bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
+#bdpg-usa-svg path.sel{stroke:var(--accent);stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(0,200,255,.7));}
+#bdpg-usa-svg path.nomap{cursor:default;}
+.bdpg-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.bdpg-chip{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:.72em;}
+.bdpg-chip.on{border-color:var(--accent);box-shadow:0 0 10px rgba(0,200,255,.3);}
+.bdpg-chip-dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto;}
+.bdpg-chip-name{font-weight:700;color:var(--text);}
+.bdpg-chip-meta{color:var(--muted);}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
@@ -16973,6 +16985,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
           '<button class="btn" onclick="BDPG.toggleMyProfiles()">My Profiles</button>' +
           BDPG.myProfilesModalHtml() +
         '</div>';
+      BDPG.renderMap();
     }
   };
 
@@ -17317,22 +17330,95 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     return !!(BDPG.state.state && BusDevGallonsCalc.resolveRegion(BDPG.state.state));
   };
 
-  BDPG.regionMapSvg = function (activeRegion) {
-    var regions = [
-      { name: 'West', x: 10, y: 10, w: 70, h: 90 },
-      { name: 'Southwest', x: 85, y: 60, w: 60, h: 40 },
-      { name: 'Midwest', x: 150, y: 10, w: 80, h: 60 },
-      { name: 'Northeast', x: 235, y: 5, w: 45, h: 45 },
-      { name: 'Southeast', x: 150, y: 75, w: 130, h: 45 }
-    ];
-    var rects = regions.map(function (r) {
-      var on = r.name === activeRegion;
-      return '<rect x="' + r.x + '" y="' + r.y + '" width="' + r.w + '" height="' + r.h + '" rx="6" ' +
-        'fill="' + (on ? 'var(--accent)' : 'var(--bg2,#222)') + '" stroke="var(--border)" stroke-width="1.5" opacity="' + (on ? '0.9' : '0.5') + '"/>' +
-        '<text x="' + (r.x + r.w / 2) + '" y="' + (r.y + r.h / 2) + '" text-anchor="middle" dominant-baseline="middle" ' +
-        'font-size="10" fill="' + (on ? '#031018' : 'var(--muted)') + '" font-weight="' + (on ? '800' : '400') + '">' + r.name + '</text>';
-    }).join('');
-    return '<svg viewBox="0 0 290 125" style="width:100%;max-width:340px;display:block;margin:8px 0" role="img" aria-label="Network region map">' + rects + '</svg>';
+  // BDPG region fills. Cyan (--accent) is deliberately NOT here: it is reserved
+  // for the selected-state highlight, which must read against every region color.
+  BDPG.REGION_COLORS = {
+    West: '#00D68F', Southwest: '#FF6B35', Midwest: '#FFD60A',
+    Northeast: '#7C3AED', Southeast: '#FF4757'
+  };
+
+  BDPG.mapHtml = function () {
+    return '<div style="position:relative">' +
+      '<svg id="bdpg-usa-svg" viewBox="0 0 900 550" xmlns="http://www.w3.org/2000/svg"><g id="bdpg-states-group"></g></svg>' +
+      '<div class="map-tooltip" id="bdpg-map-tip"></div>' +
+    '</div>';
+  };
+
+  // Third instance of the shared TopoJSON map (Territory and GS Metrics are the
+  // other two). loadUSTopojson() is memoized, so this costs no extra fetch.
+  BDPG.renderMap = function () {
+    var sg = document.getElementById('bdpg-states-group');
+    if (!sg) return;
+    if (typeof usTopoLoaded === 'undefined' || !usTopoLoaded) {
+      sg.innerHTML = '<text x="450" y="280" text-anchor="middle" fill="var(--muted)" font-size="14">Loading map…</text>';
+      loadUSTopojson().then(function () { BDPG.renderMap(); });
+      return;
+    }
+    var sel = BDPG.state.state;
+    var activeRegion = sel ? BusDevGallonsCalc.resolveRegion(sel) : null;
+    var html = '';
+    Object.keys(STATE_PATHS).forEach(function (st) {
+      var region = BusDevGallonsCalc.resolveRegion(st);
+      var isSel = (st === sel);
+      var fill, cls;
+      if (!region) {
+        fill = hexToRgba('#3A4A6B', 0.35); cls = 'nomap';
+      } else {
+        fill = hexToRgba(BDPG.REGION_COLORS[region], region === activeRegion ? 0.85 : 0.55);
+        cls = isSel ? 'sel' : '';
+      }
+      html += '<path id="bdpg-st-' + st + '" d="' + STATE_PATHS[st] + '" fill="' + fill + '" class="' + cls + '"' +
+        ' onmouseenter="BDPG.mapTip(event,\'' + st + '\')" onmouseleave="BDPG.mapTipHide()"' +
+        (region ? ' onclick="BDPG.onMapStateClick(\'' + st + '\')"' : '') + '/>' +
+        '<text x="' + getCentroid(STATE_PATHS[st], 'x') + '" y="' + getCentroid(STATE_PATHS[st], 'y') +
+        '" text-anchor="middle" dominant-baseline="middle" fill="rgba(255,255,255,.9)" font-size="9" font-weight="600"' +
+        ' font-family="var(--ff)" pointer-events="none" style="text-shadow:0 1px 2px rgba(0,0,0,.6)">' + st + '</text>';
+    });
+    sg.innerHTML = html;
+  };
+
+  BDPG.mapTip = function (e, st) {
+    var tt = document.getElementById('bdpg-map-tip');
+    if (!tt) return;
+    var region = BusDevGallonsCalc.resolveRegion(st);
+    var name = (typeof STATE_NAMES !== 'undefined' && STATE_NAMES[st]) ? STATE_NAMES[st] : st;
+    var body;
+    if (region) {
+      var pct = BDPG.effectiveRegionPct(region) * 100;
+      body = BDPG.escHtml(name) + ' — ' + BDPG.escHtml(region) + ' — ' +
+             (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+    } else {
+      body = BDPG.escHtml(name) + ' — not in any network region';
+    }
+    tt.innerHTML = '<div class="map-tooltip-state">' + body + '</div>';
+    tt.style.display = 'block';
+    tt.style.left = (e.clientX + 12) + 'px';
+    tt.style.top = (e.clientY - 10) + 'px';
+  };
+  BDPG.mapTipHide = function () {
+    var tt = document.getElementById('bdpg-map-tip');
+    if (tt) tt.style.display = 'none';
+  };
+
+  BDPG.onMapStateClick = function (st) {
+    // Same field the typed input sets; a click is just a second path to it.
+    BDPG.state.state = st;
+    BDPG.render();
+  };
+
+  BDPG.regionChipsHtml = function () {
+    var active = BDPG.state.state ? BusDevGallonsCalc.resolveRegion(BDPG.state.state) : null;
+    var nc = BDPG.networkContext;
+    return '<div class="bdpg-chips">' + Object.keys(BDPG.REGION_COLORS).map(function (r) {
+      var pct = BDPG.effectiveRegionPct(r) * 100;
+      var count = (nc && nc.byRegion && nc.byRegion[r]) ? nc.byRegion[r].total : null;
+      return '<div class="bdpg-chip' + (r === active ? ' on' : '') + '">' +
+        '<span class="bdpg-chip-dot" style="background:' + BDPG.REGION_COLORS[r] + '"></span>' +
+        '<span class="bdpg-chip-name">' + BDPG.escHtml(r) + '</span>' +
+        '<span class="bdpg-chip-meta">' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% · ' +
+          (count === null ? '—' : count + ' loc') + '</span>' +
+      '</div>';
+    }).join('') + '</div>';
   };
 
   BDPG.step1Html = function () {
@@ -17419,11 +17505,13 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
         '<div class="fg">' +
           '<label>State</label>' +
-          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
-            'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase;width:80px">' +
-          (region ? ('<div style="margin-top:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>') :
-            (s.state ? '<div style="margin-top:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '')) +
-          BDPG.regionMapSvg(region) +
+          (region ? ('<div style="margin-bottom:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>') :
+            (s.state ? '<div style="margin-bottom:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '')) +
+          BDPG.mapHtml() +
+          '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
+            '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
+            'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
+          BDPG.regionChipsHtml() +
         '</div>' +
         '<div class="fg">' +
           '<label>Trucker Path Rating</label>' +
@@ -17482,6 +17570,9 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
         check.remove();
       }
     }
+    // The outerHTML swap above destroyed the map's <svg> along with the rest
+    // of #bdpg-step2 -- rebuild it so typing a state code updates the map too.
+    BDPG.renderMap();
   };
 
   // Targeted update of just the band-chip text -- no rebuild at all, so the
