@@ -16937,9 +16937,15 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() + BDPG.generateButtonHtml() +
+      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() +
+        BDPG.generateButtonHtml() +
         (BDPG.state.result ? (BDPG.resultsHtml() + '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button> ' +
-          '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' + BDPG.exportPdfHtml()) : '');
+          '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' + BDPG.exportPdfHtml()) : '') +
+        '<div class="bdpg-box" style="margin-top:14px">' +
+          '<button class="btn" onclick="BDPG.onSaveProfile()">Save Profile</button> ' +
+          '<button class="btn" onclick="BDPG.toggleMyProfiles()">My Profiles</button>' +
+          BDPG.myProfilesModalHtml() +
+        '</div>';
     }
   };
 
@@ -17703,6 +17709,55 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       '(as of ' + BDPG.escHtml(BDPG.networkContext.asOf) + ')</div>' +
       '<table class="dt" style="width:100%;font-size:.82em"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody>' + typeRows + '</tbody></table>' +
     '</div>';
+  };
+
+  BDPG.getSavedProfiles = function () {
+    try { return JSON.parse(localStorage.getItem('roadysBDPGProfiles') || '[]'); } catch (e) { return []; }
+  };
+
+  BDPG.onSaveProfile = function () {
+    var name = BDPG.state.supportingDetails.prospectName || prompt('Name this profile:');
+    if (!name) return;
+    var profiles = BDPG.getSavedProfiles();
+    var snapshot = JSON.parse(JSON.stringify(BDPG.state));
+    delete snapshot.result;
+    profiles.push({ id: 'bdpg_' + Date.now(), name: name, savedAt: new Date().toISOString(), state: snapshot });
+    localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
+    toast('Profile saved');
+    BDPG.render();
+  };
+
+  BDPG.onLoadProfile = function (id) {
+    var profiles = BDPG.getSavedProfiles();
+    var found = profiles.filter(function (p) { return p.id === id; })[0];
+    if (!found) return;
+    BDPG.state = JSON.parse(JSON.stringify(found.state));
+    BDPG.state.result = null;
+    BDPG.state.myProfilesOpen = false;
+    BDPG.render();
+  };
+
+  BDPG.onDeleteProfile = function (id) {
+    if (!confirm('Delete this saved profile?')) return;
+    var profiles = BDPG.getSavedProfiles().filter(function (p) { return p.id !== id; });
+    localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
+    BDPG.render();
+  };
+
+  BDPG.toggleMyProfiles = function () { BDPG.state.myProfilesOpen = !BDPG.state.myProfilesOpen; BDPG.render(); };
+
+  BDPG.myProfilesModalHtml = function () {
+    if (!BDPG.state.myProfilesOpen) return '';
+    var profiles = BDPG.getSavedProfiles();
+    var rows = profiles.length
+      ? profiles.map(function (p) {
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">' +
+            '<span>' + BDPG.escHtml(p.name) + ' <span style="color:var(--muted);font-size:.75em">' + new Date(p.savedAt).toLocaleDateString() + '</span></span>' +
+            '<span><button class="btn btn-accent" onclick="BDPG.onLoadProfile(\'' + p.id + '\')">Load</button> ' +
+            '<button class="btn" onclick="BDPG.onDeleteProfile(\'' + p.id + '\')">Delete</button></span></div>';
+        }).join('')
+      : '<div style="color:var(--muted)">No saved profiles yet.</div>';
+    return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">My Profiles</div></div>' + rows + '</div>';
   };
 
   window.BDPG = BDPG;
