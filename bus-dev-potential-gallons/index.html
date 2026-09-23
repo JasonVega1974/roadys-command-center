@@ -409,7 +409,7 @@ function getCentroid(pathStr, axis){
     state: {
       profile: '', roadway: '',
       state: '', amenityDetails: {}, amenityLevel: '', amenityOverridden: false,
-      truckerPathRating: '', pricingLevel: '',
+      truckerPathRating: '', pricingLevel: '', rewardsLevel: '',
       prospect: { name: '', street: '', city: '', locationType: '', notes: '' },
       autoSetNote: '', suggestProfiles: [],
       supportingDetails: {
@@ -1298,6 +1298,7 @@ function getCentroid(pathStr, axis){
     var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
 
     if (!s.pricingLevel) s.pricingLevel = BDPG_CONFIG.PRICING_DEFAULT;
+    if (!s.rewardsLevel) s.rewardsLevel = BDPG_CONFIG.REWARDS_DEFAULT;
 
     function selectHtml(id, options, current, handler) {
       return '<select id="' + id + '" onchange="' + handler + '(this.value)">' +
@@ -1361,6 +1362,19 @@ function getCentroid(pathStr, axis){
         '<span style="opacity:.85">' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%</span></button>';
     }).join('');
 
+    // Three fixed tones rather than the pricing row's five-stop gradient:
+    // this is a yes / unknown / no posture, not a scale.
+    var REWARD_COLS = ['var(--green)', 'var(--yellow)', 'var(--red)'];
+    var rsegs = BDPG_CONFIG.REWARDS_LEVELS.map(function (lvl, i) {
+      var pct = BDPG_CONFIG.REWARDS_ADJUST[lvl];
+      var on = (s.rewardsLevel === lvl);
+      return '<button class="' + (on ? 'on' : '') + '"' +
+        (on ? ' style="background:' + REWARD_COLS[i] + '"' : '') +
+        ' onclick="BDPG.onRewardsChange(' + JSON.stringify(lvl).replace(/"/g, '&quot;') + ')">' +
+        BDPG.escHtml(lvl.replace("Participating in Roady's Rewards", 'Participating')) + '<br>' +
+        '<span style="opacity:.85">' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%</span></button>';
+    }).join('');
+
     var acards = Object.keys(AICONS).map(function (f) {
       var v = s.amenityDetails[f];
       return '<div class="bdpg-acard' + (v ? ' set' : '') + '" onclick="BDPG.onAmenityCycle(\'' + f + '\')">' +
@@ -1374,6 +1388,8 @@ function getCentroid(pathStr, axis){
         ratingBlock +
         '<label style="margin-top:14px;display:block">Discount / Pricing Posture</label>' +
         '<div class="bdpg-seg">' + segs + '</div>' +
+        '<label style="margin-top:14px;display:block">Roady\'s Rewards Participation</label>' +
+        '<div class="bdpg-seg">' + rsegs + '</div>' +
         '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + acards + '</div>' +
         '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Suggested: <b>' + BDPG.escHtml(suggestion.level) + '</b> — ' + BDPG.escHtml(suggestion.reason) + '</div>' +
@@ -1494,6 +1510,14 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
+  // Mirrors onPricingChange exactly, invalidation guard included -- rewards is
+  // an engine input, so a change here strands any result already on screen.
+  BDPG.onRewardsChange = function (value) {
+    if (BDPG.state.rewardsLevel !== value) BDPG.invalidateResult();
+    BDPG.state.rewardsLevel = value;
+    BDPG.render();
+  };
+
   BDPG.onAmenityConfirm = function (value) {
     if (BDPG.state.amenityLevel !== value) BDPG.invalidateResult();
     BDPG.state.amenityLevel = value;
@@ -1583,6 +1607,7 @@ function getCentroid(pathStr, axis){
   //   state .................. regionPct, and result.region
   //   truckerPathRating ...... calculateEstimate
   //   pricingLevel ........... calculateEstimate
+  //   rewardsLevel ........... calculateEstimate
   //   amenityLevel ........... calculateEstimate
   //   amenityDetails ......... feeds amenityLevel whenever the rep hasn't
   //                            overridden the suggestion, and the results
@@ -1673,7 +1698,8 @@ function getCentroid(pathStr, axis){
     var estimate = BusDevGallonsCalc.calculateEstimate({
       profile: s.profile, roadway: s.roadway, regionPct: regionPct,
       amenityLevel: s.amenityLevel, reviewRating: s.truckerPathRating === '' ? null : Number(s.truckerPathRating),
-      pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT
+      pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT,
+      rewardsLevel: s.rewardsLevel || BDPG_CONFIG.REWARDS_DEFAULT
     });
     if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return; }
 
@@ -2106,7 +2132,8 @@ function getCentroid(pathStr, axis){
       finalGallons: e ? e.finalGallons : null,
       grade: r && r.grade ? r.grade.grade : '', gradeLabel: r && r.grade ? r.grade.gradeLabel : '',
       preEvalSignal: s.prospect.preEvalSignal || '',
-      amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || ''
+      amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || '',
+      rewardsLevel: s.rewardsLevel || ''
     };
   };
 
@@ -2131,6 +2158,7 @@ function getCentroid(pathStr, axis){
       preEvalSignal: sum.preEvalSignal || pr.preEvalSignal || '',
       amenityLevel: sum.amenityLevel || st.amenityLevel || '',
       pricingLevel: sum.pricingLevel || st.pricingLevel || '',
+      rewardsLevel: sum.rewardsLevel || st.rewardsLevel || '',
       savedAt: p.savedAt || ''
     };
   };
@@ -2232,6 +2260,9 @@ function getCentroid(pathStr, axis){
     // A profile saved before Task 6 has no preEvalOpen at all -- default it
     // to open, matching the documented default for every other page load.
     if (BDPG.state.preEvalOpen === undefined) BDPG.state.preEvalOpen = true;
+    // A profile saved before the rewards term existed has no rewardsLevel;
+    // default it so it resolves to 0% and its stored numbers stay put.
+    if (!BDPG.state.rewardsLevel) BDPG.state.rewardsLevel = BDPG_CONFIG.REWARDS_DEFAULT;
     // A profile saved before Task 4 has no `prospect` at all -- default it
     // to the same empty shape the page starts with, so prospect-reading
     // code (the Step 0 card, the badge, trackerSummary) never throws on
