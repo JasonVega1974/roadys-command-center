@@ -822,6 +822,25 @@ function getCentroid(pathStr, axis){
     return BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || 'Prospect';
   };
 
+  // City/State counterpart to displayName(), for the print header and Copy
+  // Summary. Both used to read only Step 3's older, optional
+  // supportingDetails.prospectCity/prospectState -- but the ⓪ Prospect
+  // Profile card now carries a *required* City and State, so a rep who fills
+  // the required fields and skips Step 3's duplicates got a packet headed
+  // "Pilot Travel Center — , ", which reads as a rendering bug on a
+  // prospect-facing leave-behind. Same precedence as displayName(): the ⓪
+  // card first, Step 3 as fallback. State comes from BDPG.state.state (what
+  // the ⓪ card's State field actually writes, via onStateInput), not
+  // prospect.stateCode, which nothing sets. Returns '' when both halves are
+  // empty so callers can drop the separator entirely rather than print a
+  // dangling dash and comma.
+  BDPG.displayLocation = function () {
+    var city = BDPG.state.prospect.city || BDPG.state.supportingDetails.prospectCity || '';
+    var st = BDPG.state.state || BDPG.state.supportingDetails.prospectState || '';
+    if (!city && !st) return '';
+    return city + (city && st ? ', ' : '') + st;
+  };
+
   // Continuous text fields: write state, refresh the Generate button when a
   // required field just changed, and keep the ⓪ badge current -- never a
   // full BDPG.render() (that would steal focus mid-word).
@@ -1704,7 +1723,7 @@ function getCentroid(pathStr, axis){
   BDPG.exportPdfHtml = function () {
     var r = BDPG.state.result;
     if (!r) return '';
-    var e = r.estimate, g = r.grade, sd = BDPG.state.supportingDetails;
+    var e = r.estimate, g = r.grade, loc = BDPG.displayLocation();
     var membershipLine = r.membership.valuePerGallonConfigured && r.membership.plans.some(function (p) { return p.configured; })
       ? BDPG.membershipFitHtml()
       : '';
@@ -1733,7 +1752,7 @@ function getCentroid(pathStr, axis){
 
     return '<div id="bdpg-print-only">' +
       '<h1>Roady\'s Prospective Member Gallons Calculator</h1>' +
-      '<h2>' + BDPG.escHtml(BDPG.displayName()) + ' — ' + BDPG.escHtml(sd.prospectCity) + ', ' + BDPG.escHtml(sd.prospectState) + '</h2>' +
+      '<h2>' + BDPG.escHtml(BDPG.displayName()) + (loc ? ' — ' + BDPG.escHtml(loc) : '') + '</h2>' +
       '<h3>Step 1</h3><p>' + BDPG.escHtml(BDPG.state.profile) + ' / ' + BDPG.escHtml(BDPG.state.roadway) + ' — Baseline ' + BDPG.fmtGal(e.baseline) + ' gal/mo</p>' +
       '<h3>Step 2 — Official Calculator</h3><p>' + BDPG.escHtml(e.officialMathLine) + '</p>' +
       '<p style="font-size:.85em;color:#666">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</p>' +
@@ -1783,10 +1802,10 @@ function getCentroid(pathStr, axis){
   }
 
   BDPG.summaryText = function () {
-    var r = BDPG.state.result, e = r.estimate, sd = BDPG.state.supportingDetails;
+    var r = BDPG.state.result, e = r.estimate, loc = BDPG.displayLocation();
     var lines = [
       'Roady\'s Prospective Member Gallons Calculator',
-      BDPG.displayName() + ' — ' + (sd.prospectCity || '') + ', ' + (sd.prospectState || ''),
+      BDPG.displayName() + (loc ? ' — ' + loc : ''),
       '',
       'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
       'Official calculator math: ' + e.officialMathLine,
@@ -2014,6 +2033,17 @@ function getCentroid(pathStr, axis){
   // on one bad cell, so every map lookup below goes through this.
   function hasOwn(obj, key) { return !!key && Object.prototype.hasOwnProperty.call(obj, key); }
 
+  // Same reasoning, for the stored gallons values. BDPG.readSummary() only
+  // screens out null/undefined, so a hand-edited record can hand the table a
+  // string, an object or NaN. `!= null` would let all three through into
+  // fmtGal() and print the literal "NaN" -- and in the diff-arrow chain a NaN
+  // difference compares false against both `> 0` and `< 0` and lands on the
+  // `else`, so corrupt data would render as the confident business claim
+  // "No pricing adjustment". Every numeric cell tests the value itself with
+  // the same guard trackerStatsHtml uses for the averages, and falls back to
+  // the same "—" the rest of the table uses for missing data.
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+
   // One row of the Prospects tracker, built entirely from BDPG.readSummary()
   // -- never from p.state/p.summary directly -- so a pre-Task-7 record
   // renders dashes instead of throwing or printing "undefined".
@@ -2042,10 +2072,10 @@ function getCentroid(pathStr, axis){
     var profileCell = (sum.profile && sum.roadway)
       ? BDPG.escHtml(sum.profile) + ' · ' + BDPG.escHtml(sum.roadway) : '—';
 
-    var officialCell = sum.officialSubtotal != null ? BDPG.fmtGal(sum.officialSubtotal) : '—';
+    var officialCell = isNum(sum.officialSubtotal) ? BDPG.fmtGal(sum.officialSubtotal) : '—';
 
-    var finalCell = sum.finalGallons != null ? BDPG.fmtGal(sum.finalGallons) : '—';
-    if (sum.finalGallons != null && sum.officialSubtotal != null) {
+    var finalCell = isNum(sum.finalGallons) ? BDPG.fmtGal(sum.finalGallons) : '—';
+    if (isNum(sum.finalGallons) && isNum(sum.officialSubtotal)) {
       var diff = sum.finalGallons - sum.officialSubtotal;
       if (diff > 0) {
         finalCell += ' <span style="color:var(--green)" title="Pricing posture adds ' + BDPG.fmtGal(diff) + ' gal/mo">▲</span>';
@@ -2147,19 +2177,16 @@ function getCentroid(pathStr, axis){
       // simply excluded, same treatment as an empty one.
       if (hasOwn(gradeCounts, sum.grade)) gradeCounts[sum.grade]++;
       if (hasOwn(signalCounts, sum.preEvalSignal)) signalCounts[sum.preEvalSignal]++;
-      // typeof + isFinite, not just `!= null`: readSummary only guards
-      // against null/undefined, so a hand-edited record holding a numeric
-      // *string* ('5000') would pass `!= null` and then `+=` would
-      // concatenate instead of add, and any other non-numeric value would
-      // poison both averages to NaN for the whole tracker. A rejected value
-      // must not inflate the denominator either, so the count only
-      // increments alongside the sum.
-      if (typeof sum.officialSubtotal === 'number' && isFinite(sum.officialSubtotal)) {
-        officialSum += sum.officialSubtotal; officialN++;
-      }
-      if (typeof sum.finalGallons === 'number' && isFinite(sum.finalGallons)) {
-        finalSum += sum.finalGallons; finalN++;
-      }
+      // isNum(), not just `!= null`: readSummary only guards against
+      // null/undefined, so a hand-edited record holding a numeric *string*
+      // ('5000') would pass `!= null` and then `+=` would concatenate
+      // instead of add, and any other non-numeric value would poison both
+      // averages to NaN for the whole tracker. A rejected value must not
+      // inflate the denominator either, so the count only increments
+      // alongside the sum. Same guard the row cells above use, so a value
+      // the table prints as "—" is also the one the averages skip.
+      if (isNum(sum.officialSubtotal)) { officialSum += sum.officialSubtotal; officialN++; }
+      if (isNum(sum.finalGallons)) { finalSum += sum.finalGallons; finalN++; }
     });
 
     var avgOfficial = officialN ? BDPG.fmtGal(officialSum / officialN) + ' gal/mo' : '—';
