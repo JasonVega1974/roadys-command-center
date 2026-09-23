@@ -1690,16 +1690,28 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
-  // Mirrors the five rows of the on-screen waterfall table exactly, so the chart
+  // Mirrors the six rows of the on-screen waterfall table exactly, so the chart
   // and the table can never disagree. Presentation arithmetic only -- every
   // number comes from the engine's estimate object.
+  //
+  // Pricing and Rewards both use the difference form (this step's own
+  // to - from), not a fresh Math.round(baseline * pct). Each of baseline,
+  // pricingAdjusted and finalGallons is already independently rounded by the
+  // engine, so a step computed from a re-multiplied percentage can land a
+  // gallon off from what its own bar spans -- and the column would stop
+  // summing to the stated total. The difference form keeps every step
+  // chained to the one before it, which is the property a waterfall actually
+  // promises; a one-gallon disagreement with a recomputed percentage is
+  // invisible, but rows that don't add up to the total is not. (See Task 3
+  // ruling in .superpowers/sdd/2026-09-23-bdpg-rewards-and-b2b-pitch/task-1-rulings.md.)
   BDPG.waterfallData = function (e) {
     var regionAdj = Math.round(e.baseline * (1 + e.regionPct));
     var steps = [
       { label: 'Baseline',    from: 0,                   to: e.baseline,          neutral: true },
       { label: 'Region',      from: e.baseline,          to: regionAdj },
       { label: 'Amen+Review', from: regionAdj,           to: e.officialSubtotal },
-      { label: 'Pricing',     from: e.officialSubtotal,  to: e.finalGallons },
+      { label: 'Pricing',     from: e.officialSubtotal,  to: e.pricingAdjusted },
+      { label: 'Rewards',     from: e.pricingAdjusted,   to: e.finalGallons },
       { label: 'Final',       from: 0,                   to: e.finalGallons,      neutral: true, accent: true }
     ];
     return {
@@ -1843,8 +1855,13 @@ function getCentroid(pathStr, axis){
         '<tr><td>1. Baseline</td><td style="text-align:right">' + BDPG.fmtGal(e.baseline) + '</td></tr>' +
         '<tr><td>2. Region-adjusted (' + (e.regionPct >= 0 ? '+' : '') + (e.regionPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + BDPG.fmtGal(regionAdjusted) + '</td></tr>' +
         '<tr style="font-weight:700"><td>3. Official calculator subtotal (+ Amenities ' + (e.amenityPct >= 0 ? '+' : '') + (e.amenityPct * 100).toFixed(1) + '% + Review ' + (e.reviewPct >= 0 ? '+' : '') + (e.reviewPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + BDPG.fmtGal(e.officialSubtotal) + '</td></tr>' +
-        '<tr><td>4. Pricing adjustment (' + (e.pricingPct >= 0 ? '+' : '') + (e.pricingPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + (e.finalGallons - e.officialSubtotal >= 0 ? '+' : '') + BDPG.fmtGal(e.finalGallons - e.officialSubtotal) + '</td></tr>' +
-        '<tr style="font-weight:700;border-top:1px solid var(--border)"><td>5. Final Potential Gallons</td><td style="text-align:right">' + BDPG.fmtGal(e.finalGallons) + '</td></tr>' +
+        '<tr><td>4. Pricing adjustment (' + (e.pricingPct >= 0 ? '+' : '') + (e.pricingPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + (e.pricingAdjusted - e.officialSubtotal >= 0 ? '+' : '') + BDPG.fmtGal(e.pricingAdjusted - e.officialSubtotal) + '</td></tr>' +
+        // Difference form (finalGallons - pricingAdjusted), not Math.round(baseline * rewardsPct):
+        // each figure is independently rounded, so a recomputed-percentage step can land a
+        // gallon off from the bar it's supposed to label and break "rows sum to the total".
+        // See the comment atop BDPG.waterfallData.
+        '<tr><td>5. Rewards adjustment (' + (e.rewardsPct >= 0 ? '+' : '') + (e.rewardsPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + (e.finalGallons - e.pricingAdjusted >= 0 ? '+' : '') + BDPG.fmtGal(e.finalGallons - e.pricingAdjusted) + '</td></tr>' +
+        '<tr style="font-weight:700;border-top:1px solid var(--border)"><td>6. Final Potential Gallons</td><td style="text-align:right">' + BDPG.fmtGal(e.finalGallons) + '</td></tr>' +
       '</tbody></table></div>';
 
     var rangeSection = '<div class="bdpg-hero" style="margin-top:14px">' +
