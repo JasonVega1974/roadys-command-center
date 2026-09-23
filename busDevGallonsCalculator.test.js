@@ -201,7 +201,7 @@ test('calculateEstimate renders distinct official and final math lines', () => {
     pricingLevel: 'Most aggressive (deepest discounts)'
   });
   assert.equal(r.officialMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02) = 13,750');
-  assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 + 0.05) = 14,375');
+  assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 + 0.05 + 0.00) = 14,375');
 });
 
 test('calculateEstimate — case C @ Aggressive finalMathLine prints the exact 0.025 pricing term and "- 0.03" region term (not the lossy "+ -0.03")', () => {
@@ -210,7 +210,7 @@ test('calculateEstimate — case C @ Aggressive finalMathLine prints the exact 0
     regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Aggressive'
   });
   assert.equal(r.finalGallons, 14925, 'gallon value must not change, only the equation string');
-  assert.equal(r.finalMathLine, '15,000 × (1 - 0.03 + 0.00 + 0.00 + 0.025) = 14,925');
+  assert.equal(r.finalMathLine, '15,000 × (1 - 0.03 + 0.00 + 0.00 + 0.025 + 0.00) = 14,925');
   assert.ok(r.finalMathLine.includes('0.025'), 'pricing term must print 0.025, not the rounded 0.03');
   assert.ok(!r.finalMathLine.includes('+ -0.03'), 'must never print the "+ -0.03" form for a negative term');
 });
@@ -222,7 +222,7 @@ test('calculateEstimate — case A @ No discounts finalMathLine reads "- 0.05" f
     pricingLevel: 'No discounts'
   });
   assert.equal(r.finalGallons, 13125, 'gallon value must not change, only the equation string');
-  assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 - 0.05) = 13,125');
+  assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 - 0.05 + 0.00) = 13,125');
   assert.ok(r.finalMathLine.includes('- 0.05'), 'pricing term must read "- 0.05"');
   assert.ok(!r.finalMathLine.includes('+ -0.05'), 'must never print the "+ -0.05" form for a negative term');
 });
@@ -361,4 +361,71 @@ test('calculateMembershipFit: degenerate input (large valuePerGallon, small cost
     BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = original.valuePerGallon;
     BDPG_CONFIG.MEMBERSHIP_CONFIG.plans = original.plans;
   }
+});
+
+test('calculateEstimate — case E: case A + Most aggressive pricing + Rewards participating', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
+    pricingLevel: 'Most aggressive (deepest discounts)',
+    rewardsLevel: "Participating in Roady's Rewards"
+  });
+  // 12,500 × (1 + .06 + .02 + .02 + .05 + .05) = 12,500 × 1.20
+  assert.equal(r.finalGallons, 15000);
+  assert.equal(r.officialSubtotal, 13750, 'official must exclude pricing AND rewards');
+  assert.equal(r.pricingAdjusted, 14375, 'pricing-adjusted excludes rewards only');
+});
+
+test('calculateEstimate — case F: case B + No discounts + Not participating', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Fuel stop', roadway: 'Any',
+    regionPct: 0, amenityLevel: 'Very limited', reviewRating: 2.7,
+    pricingLevel: 'No discounts', rewardsLevel: 'Not participating'
+  });
+  // 2,500 × (1 + 0 - .05 - .05 - .05 - .05) = 2,500 × 0.80
+  assert.equal(r.finalGallons, 2000);
+  assert.equal(r.officialSubtotal, 2250, 'official must exclude pricing AND rewards');
+  assert.equal(r.pricingAdjusted, 2125);
+});
+
+test('calculateEstimate — officialSubtotal is invariant across every rewards band', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const subtotals = BDPG_CONFIG.REWARDS_LEVELS.map(level => BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate',
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5,
+    pricingLevel: 'Aggressive', rewardsLevel: level
+  }).officialSubtotal);
+  assert.ok(subtotals.every(v => v === 14550), 'officialSubtotal must never change with rewards: ' + subtotals);
+});
+
+test('rewardsAdjustment returns 0 for an unknown or absent level', () => {
+  assert.equal(BusDevGallonsCalc.rewardsAdjustment(undefined), 0);
+  assert.equal(BusDevGallonsCalc.rewardsAdjustment(''), 0);
+  assert.equal(BusDevGallonsCalc.rewardsAdjustment('constructor'), 0);
+  assert.equal(BusDevGallonsCalc.rewardsAdjustment('Undecided / unknown'), 0);
+});
+
+test('an estimate with no rewardsLevel equals one at the default — old profiles do not move', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const base = {
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
+    pricingLevel: 'Most aggressive (deepest discounts)'
+  };
+  const withoutRewards = BusDevGallonsCalc.calculateEstimate(base);
+  const atDefault = BusDevGallonsCalc.calculateEstimate(
+    Object.assign({}, base, { rewardsLevel: BDPG_CONFIG.REWARDS_DEFAULT }));
+  assert.equal(withoutRewards.finalGallons, 14375, 'unchanged from the pre-rewards value');
+  assert.equal(withoutRewards.finalGallons, atDefault.finalGallons);
+  assert.equal(withoutRewards.finalMathLine, atDefault.finalMathLine);
+});
+
+test('rewards does not widen profileRange, so the Network Fit Grade is unaffected', () => {
+  // profileAdjustmentBounds() sums ONLY amenity + review extremes: -0.05 + -0.05
+  // and +0.02 + +0.02. Medium truck stop baselines are 7,500 and 12,500.
+  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Medium truck stop', officialSubtotal: 13750, supportingDetails: {}
+  });
+  assert.equal(r.rangeLo, 6750);
+  assert.equal(r.rangeHi, 13000);
 });

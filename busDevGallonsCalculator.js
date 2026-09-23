@@ -61,6 +61,11 @@
     return BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT];
   }
 
+  function rewardsAdjustment(level) {
+    if (BDPG_CONFIG.REWARDS_ADJUST.hasOwnProperty(level)) return BDPG_CONFIG.REWARDS_ADJUST[level];
+    return BDPG_CONFIG.REWARDS_ADJUST[BDPG_CONFIG.REWARDS_DEFAULT];
+  }
+
   function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
 
   // Formats a percentage magnitude for the exported math lines with up to 3
@@ -107,18 +112,28 @@
     var amenityPct = amenityAdjustment(opts.amenityLevel);
     var review = reviewAdjustment(opts.reviewRating);
     var pricingPct = pricingAdjustment(opts.pricingLevel);
+    var rewardsPct = rewardsAdjustment(opts.rewardsLevel);
 
+    // Three multipliers, each adding one more term to the one above it.
+    // officialMultiplier is the line that must never gain a term: it is what
+    // reproduces Roady's published calculator.
     var officialMultiplier = 1 + regionPct + amenityPct + review.pct;
-    var finalMultiplier = officialMultiplier + pricingPct;
+    var pricingMultiplier = officialMultiplier + pricingPct;
+    var finalMultiplier = pricingMultiplier + rewardsPct;
 
     var officialSubtotal = Math.round(row.baseline * officialMultiplier);
+    var pricingAdjusted = Math.round(row.baseline * pricingMultiplier);
     var finalGallons = Math.round(row.baseline * finalMultiplier);
 
     var officialMathLine = fmtInt(row.baseline) + ' × (1' +
       pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) +
       ') = ' + fmtInt(officialSubtotal);
-    var finalMathLine = fmtInt(row.baseline) + ' × (1' +
+    var pricingMathLine = fmtInt(row.baseline) + ' × (1' +
       pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) + pctTerm(pricingPct) +
+      ') = ' + fmtInt(pricingAdjusted);
+    var finalMathLine = fmtInt(row.baseline) + ' × (1' +
+      pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) +
+      pctTerm(pricingPct) + pctTerm(rewardsPct) +
       ') = ' + fmtInt(finalGallons);
 
     return {
@@ -127,10 +142,13 @@
       amenityPct: amenityPct,
       reviewPct: review.pct,
       pricingPct: pricingPct,
+      rewardsPct: rewardsPct,
       reviewFlagged: review.flagged,
       officialSubtotal: officialSubtotal,
+      pricingAdjusted: pricingAdjusted,
       finalGallons: finalGallons,
       officialMathLine: officialMathLine,
+      pricingMathLine: pricingMathLine,
       finalMathLine: finalMathLine
     };
   }
@@ -238,6 +256,7 @@
     amenityAdjustment: amenityAdjustment,
     reviewAdjustment: reviewAdjustment,
     pricingAdjustment: pricingAdjustment,
+    rewardsAdjustment: rewardsAdjustment,
     suggestAmenityLevel: suggestAmenityLevel,
     calculateEstimate: calculateEstimate,
     calculateNetworkFitGrade: calculateNetworkFitGrade,
