@@ -1920,8 +1920,16 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.onSaveProfile = function () {
-    var name = BDPG.state.supportingDetails.prospectName || prompt('Name this profile:');
+    var name = BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || prompt('Name this profile:');
     if (!name) return;
+    // The prompt fallback above is otherwise a dead end: BDPG.displayName()
+    // (used for both the record's `name` and `summary.name` below) only
+    // ever reads prospect.name / supportingDetails.prospectName, so a typed
+    // prompt answer has to be written back into state or it vanishes and
+    // every display falls back to the literal "Prospect".
+    if (!BDPG.state.prospect.name && !BDPG.state.supportingDetails.prospectName) {
+      BDPG.state.prospect.name = name;
+    }
     var profiles = BDPG.getSavedProfiles();
     var snapshot = JSON.parse(JSON.stringify(BDPG.state));
     delete snapshot.result;
