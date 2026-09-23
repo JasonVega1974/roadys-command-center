@@ -189,6 +189,7 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .impl-sub-tab{padding:9px 20px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-size:.88em;font-weight:600;transition:.15s;margin-bottom:-2px;}
 .impl-sub-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .impl-sub-tab:hover{color:var(--text);}
+.bdpg-subtabs{display:flex;gap:4px;padding:0 22px;border-bottom:2px solid var(--border);background:var(--surface);}
 
 /* Bus Dev Potential Gallons — Export PDF (Task 23).
    Gated on body.bdpg-print-mode (set by BDPG.onExportPdf, cleared on 'afterprint')
@@ -238,6 +239,10 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
     <div class="bdpg-page-title">⛽ Bus Dev Potential Gallons</div>
     <div style="flex:1"></div>
     <button class="btn" onclick="BDPG.toggleTheme()">🌙</button>
+  </div>
+  <div class="bdpg-subtabs">
+    <button id="bdpg-tab-calc" class="impl-sub-tab active" onclick="BDPG.switchTab('calc')">⛽ Potential Gallons</button>
+    <button id="bdpg-tab-prospects" class="impl-sub-tab" onclick="BDPG.switchTab('prospects')">📋 Prospects</button>
   </div>
   <div class="container" id="bdpg-content"></div>
   <div class="toast" id="toast"></div>
@@ -412,6 +417,7 @@ function getCentroid(pathStr, axis){
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
+      if (BDPG.activeTab === 'prospects') { el.innerHTML = BDPG.prospectsHtml(); return; }
       el.innerHTML =
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
@@ -1586,6 +1592,18 @@ function getCentroid(pathStr, axis){
         }).join('')
       : '<div style="color:var(--muted)">No saved profiles yet.</div>';
     return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">My Profiles</div></div>' + rows + '</div>';
+  };
+
+  BDPG.activeTab = 'calc';
+  BDPG.switchTab = function (name) {
+    BDPG.activeTab = name;
+    document.getElementById('bdpg-tab-calc').classList.toggle('active', name === 'calc');
+    document.getElementById('bdpg-tab-prospects').classList.toggle('active', name === 'prospects');
+    BDPG.render();
+  };
+
+  BDPG.prospectsHtml = function () {
+    return '<div class="cc"><div class="cc-lbl">Prospects</div><div style="color:var(--muted)">Tracker coming in a later task.</div></div>';
   };
 
   window.BDPG = BDPG;
