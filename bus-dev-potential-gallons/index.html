@@ -1022,7 +1022,17 @@ function getCentroid(pathStr, axis){
       c6 = { label: 'Estimated profile', text: '—', tone: 'blue' };
     }
 
-    // #7 Overall signal -- rolled up from #1-4 only; #5/#6 carry no judgement.
+    // Rewards posture -- informational only. Deliberately NOT part of the
+    // `judged` roll-up below: rewards is a posture the rep sets, not a fact
+    // about the prospect's market, and folding it in would let that choice
+    // flip a "Strong candidate" verdict.
+    var rewardsPct = BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel);
+    var cRewards;
+    if (rewardsPct > 0) cRewards = { label: 'Rewards signal', text: 'Rewards: +5%', tone: 'green' };
+    else if (rewardsPct < 0) cRewards = { label: 'Rewards signal', text: 'Rewards: −5%', tone: 'red' };
+    else cRewards = { label: 'Rewards signal', text: 'Rewards: undecided', tone: 'yellow' };
+
+    // #7 Overall signal -- rolled up from #1-4 only; #5/#6/rewards carry no judgement.
     var judged = [c1, c2, c3, c4];
     var anyRed = judged.some(function (c) { return c.tone === 'red'; });
     var allGreen = judged.every(function (c) { return c.tone === 'green'; });
@@ -1031,7 +1041,7 @@ function getCentroid(pathStr, axis){
     else if (allGreen) { signal = 'Strong'; c7 = { label: 'Overall signal', text: 'Strong candidate', tone: 'green' }; }
     else { signal = 'Moderate'; c7 = { label: 'Overall signal', text: 'Moderate opportunity', tone: 'yellow' }; }
 
-    return { chips: [c1, c2, c3, c4, c5, c6, c7], signal: signal };
+    return { chips: [c1, c2, c3, c4, c5, c6, cRewards, c7], signal: signal };
   };
 
   BDPG.togglePreEval = function () {
@@ -1078,15 +1088,15 @@ function getCentroid(pathStr, axis){
         ' above to see a pre-evaluation.</div>';
     }
 
-    var judgementChips = result.chips.slice(0, 6).map(function (c) {
+    var judged = result.chips.slice(0, result.chips.length - 1);
+    var overall = result.chips[result.chips.length - 1];
+    var judgementChips = judged.map(function (c) {
       return '<div>' +
         '<div style="font-size:.68em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:5px">' +
           BDPG.escHtml(c.label) + '</div>' +
         '<span class="badge tag-' + c.tone + '">' + BDPG.escHtml(c.text) + '</span>' +
       '</div>';
     }).join('');
-
-    var overall = result.chips[6];
     return '<div class="bdpg-grid-3">' + judgementChips + '</div>' +
       '<div class="bdpg-callout" style="text-align:center">' +
         '<div class="bdpg-lbl">' + BDPG.escHtml(overall.label) + '</div>' +
