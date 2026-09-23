@@ -569,6 +569,8 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-seg button:hover{color:var(--text);}
 .bdpg-seg button.on{color:#06101E;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
+.bdpg-star-half{position:relative;display:inline-block;}
+.bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
 .bdpg-acard{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px;cursor:pointer;text-align:center;transition:all .15s;}
 .bdpg-acard:hover{border-color:var(--border2);}
 .bdpg-acard.set{border-color:var(--accent);background:rgba(0,200,255,.07);}
@@ -17647,7 +17649,11 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
   BDPG.starsHtml = function (v) {
     var n = Number(v) || 0, out = '';
-    for (var i = 1; i <= 5; i++) out += (n >= i ? '★' : (n >= i - 0.5 ? '★' : '☆'));
+    for (var i = 1; i <= 5; i++) {
+      if (n >= i) out += '★';
+      else if (n >= i - 0.5) out += '<span class="bdpg-star-half">☆<span>★</span></span>';
+      else out += '☆';
+    }
     return '<span class="bdpg-stars">' + out + '</span>';
   };
   BDPG.ratingBandHtml = function (v) {
@@ -17822,7 +17828,16 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       mkchart('bdpg-waterfall', {
         type: 'bar',
         data: { labels: w.labels, datasets: [{ label: 'gal/mo', data: w.data, backgroundColor: w.colors, borderRadius: 3 }] },
-        options: Object.assign({}, CDO, { plugins: { legend: { display: false } } })
+        // animation:{duration:0} -- Export PDF grabs this canvas via toBase64Image()
+        // for the print packet. Chart.js's default 1000ms grow-in animation means a
+        // rep clicking Generate then Export within about a second (verified: calling
+        // chart.update('none') right before the capture does NOT reliably jump an
+        // already-in-flight animation to its finished values -- toBase64Image() still
+        // returned the mid-animation frame in testing) would otherwise ship a
+        // partially-drawn waterfall to a prospect-facing leave-behind. Disabling the
+        // animation on this one chart removes the race entirely: the canvas is
+        // always fully drawn on the very first frame, whenever it's captured.
+        options: Object.assign({}, CDO, { animation: { duration: 0 }, plugins: { legend: { display: false } } })
       });
     }
     if (document.getElementById('bdpg-amenity')) {
@@ -18007,6 +18022,9 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     // has to happen before the #bdpg-print-only rebuild below so exportPdfHtml()
     // can inline it as an <img>; if it fails for any reason the packet still
     // prints, just without the chart image.
+    // The waterfall chart is built with animation:{duration:0} (see drawCharts)
+    // specifically so this capture is always complete no matter how soon after
+    // Generate the rep clicks Export -- see the comment there for why.
     BDPG.printChartImg = '';
     try {
       if (typeof CHS !== 'undefined' && CHS['bdpg-waterfall']) {
