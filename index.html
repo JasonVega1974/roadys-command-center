@@ -537,6 +537,18 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;}
 .bdpg-callout{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:12px;}
 .bdpg-lbl{font-size:.7em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.bdpg-bcard{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:12px;cursor:pointer;transition:all .15s;text-align:left;}
+.bdpg-bcard:hover{border-color:var(--border2);transform:translateY(-1px);}
+.bdpg-bcard.dim{opacity:.45;}
+.bdpg-bcard.on{border-color:var(--accent);background:rgba(0,200,255,.08);box-shadow:0 0 14px rgba(0,200,255,.25);}
+.bdpg-bcard-ico{font-size:1.3em;line-height:1;margin-bottom:6px;}
+.bdpg-bcard-name{font-family:var(--ff);font-size:1em;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text);}
+.bdpg-bcard-sub{font-size:.72em;color:var(--muted);margin-top:2px;}
+.bdpg-bcard-gal{font-family:var(--ff);font-size:1.35em;font-weight:800;color:var(--muted);margin-top:8px;}
+.bdpg-bcard.on .bdpg-bcard-gal{color:var(--accent);}
+.bdpg-rangebar{position:relative;height:8px;background:var(--surface);border:1px solid var(--border);border-radius:5px;margin-top:8px;}
+.bdpg-rangebar-tick{position:absolute;top:-4px;width:3px;height:14px;background:var(--accent);border-radius:2px;}
+.bdpg-rangebar-ends{display:flex;justify-content:space-between;font-size:.66em;color:var(--muted);margin-top:4px;}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
@@ -17325,48 +17337,46 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
   BDPG.step1Html = function () {
     var s = BDPG.state;
-    var profiles = BusDevGallonsCalc.getProfiles();
-    var profileOpts = '<option value="">Select…</option>' + profiles.map(function (p) {
-      return '<option value="' + BDPG.escHtml(p) + '"' + (p === s.profile ? ' selected' : '') + '>' + BDPG.escHtml(p) + '</option>';
-    }).join('');
-
-    var roadways = s.profile ? BusDevGallonsCalc.getValidRoadways(s.profile) : [];
-    var roadwayOpts = '<option value="">' + (s.profile ? 'Select…' : '— pick a profile first —') + '</option>' + roadways.map(function (r) {
-      return '<option value="' + BDPG.escHtml(r) + '"' + (r === s.roadway ? ' selected' : '') + '>' + BDPG.escHtml(r) + '</option>';
+    var ICONS = { 'Fuel stop': '⛽', 'Small truck stop': '🚏',
+                  'Medium truck stop': '🚛', 'Large truck stop': '🏙' };
+    // Cards are generated from BASELINE_TABLE itself -- never a hand-copied
+    // duplicate of it, so the grid can't drift from the config.
+    var cards = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
+      var on = (r.profile === s.profile && r.roadway === s.roadway);
+      var dim = (s.profile && r.profile !== s.profile && !on);
+      return '<div class="bdpg-bcard' + (on ? ' on' : '') + (dim ? ' dim' : '') + '" ' +
+        'onclick="BDPG.onBaselineCardClick(' + JSON.stringify(r.profile).replace(/"/g, '&quot;') +
+        ',' + JSON.stringify(r.roadway).replace(/"/g, '&quot;') + ')">' +
+        '<div class="bdpg-bcard-ico">' + (ICONS[r.profile] || '📍') + '</div>' +
+        '<div class="bdpg-bcard-name">' + BDPG.escHtml(r.profile) + '</div>' +
+        '<div class="bdpg-bcard-sub">' + BDPG.escHtml(r.roadway) + ' · ' + BDPG.escHtml(r.lanes) + ' lanes</div>' +
+        '<div class="bdpg-bcard-gal">' + BDPG.fmtGal(r.baseline) + '</div>' +
+        '<div class="bdpg-bcard-sub">avg gal/mo</div>' +
+      '</div>';
     }).join('');
 
     var row = (s.profile && s.roadway) ? BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway) : null;
+    var callout = '';
+    if (row) {
+      var pos = Math.max(0, Math.min(100, ((row.baseline - 2500) / 12500) * 100));
+      callout = '<div class="bdpg-callout">' +
+        '<div class="bdpg-lbl">Selected Baseline</div>' +
+        '<div style="font-family:var(--ff);font-size:2em;font-weight:800;color:var(--accent);line-height:1">' +
+          BDPG.fmtGal(row.baseline) + '<span style="font-size:.45em;color:var(--muted);margin-left:8px">avg gal/mo baseline</span></div>' +
+        '<div class="bdpg-rangebar"><div class="bdpg-rangebar-tick" style="left:' + pos.toFixed(1) + '%"></div></div>' +
+        '<div class="bdpg-rangebar-ends"><span>2,500</span><span>15,000</span></div>' +
+      '</div>';
+    } else {
+      callout = '<div class="bdpg-callout" style="color:var(--muted);font-size:.85em">Pick a location profile above to set the baseline.</div>';
+    }
 
-    var tableRows = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
-      var hi = row && r.profile === row.profile && r.roadway === row.roadway;
-      return '<tr' + (hi ? ' style="background:rgba(0,200,255,.12);font-weight:700"' : '') + '>' +
-        '<td>' + BDPG.escHtml(r.profile) + '</td><td>' + BDPG.escHtml(r.roadway) + '</td>' +
-        '<td>' + BDPG.escHtml(r.lanes) + '</td><td style="text-align:right">' + BDPG.fmtGal(r.baseline) + '</td></tr>';
-    }).join('');
-
-    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;max-width:520px">' +
-        '<div class="fg"><label>Location Profile</label>' +
-          '<select id="bdpg-profile" onchange="BDPG.onProfileChange(this.value)">' + profileOpts + '</select></div>' +
-        '<div class="fg"><label>Roadway</label>' +
-          '<select id="bdpg-roadway" onchange="BDPG.onRoadwayChange(this.value)"' + (s.profile ? '' : ' disabled') + '>' + roadwayOpts + '</select></div>' +
-      '</div>' +
-      (row ? ('<div class="bdpg-box" style="margin-bottom:12px">' +
-        '<div style="font-size:.72em;color:var(--muted);text-transform:uppercase">Fuel Lanes (auto)</div>' +
-        '<div style="font-weight:700">' + BDPG.escHtml(row.lanes) + '</div>' +
-        '<div style="font-size:.72em;color:var(--muted);text-transform:uppercase;margin-top:8px">Baseline Avg. Gal./Mo.</div>' +
-        '<div style="font-weight:800;font-size:1.3em;color:var(--accent)">' + BDPG.fmtGal(row.baseline) + '</div></div>') : '') +
-      '<div class="tw"><table class="dt" style="width:100%">' +
-        '<thead><tr><th>Location Profile</th><th>Roadway</th><th>Fuel Lanes</th><th style="text-align:right">Avg. Gal./Mo.</th></tr></thead>' +
-        '<tbody>' + tableRows + '</tbody></table></div>';
+    return '<div class="bdpg-grid-3">' + cards + '</div>' + callout;
   };
 
-  BDPG.onProfileChange = function (profile) {
+  BDPG.onBaselineCardClick = function (profile, roadway) {
+    // Sets the same two fields the old cascading selects set -- one click instead
+    // of two, same resulting state.
     BDPG.state.profile = profile;
-    BDPG.state.roadway = '';
-    BDPG.render();
-  };
-
-  BDPG.onRoadwayChange = function (roadway) {
     BDPG.state.roadway = roadway;
     BDPG.render();
   };
