@@ -526,6 +526,17 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .dt td.dn{color:var(--red);}
 .dt td.fl{color:var(--yellow);}
 .bdpg-box{background:var(--bg2,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+/* ── Bus Dev Potential Gallons — wizard shell ── */
+.bdpg-step{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px;position:relative;}
+.bdpg-step.done{border-left:3px solid var(--green);}
+.bdpg-step-hd{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.bdpg-badge{width:28px;height:28px;flex:0 0 auto;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--muted);display:flex;align-items:center;justify-content:center;font-family:var(--ff);font-weight:800;font-size:1em;}
+.bdpg-step.done .bdpg-badge{background:rgba(0,214,143,.15);border-color:var(--green);color:var(--green);}
+.bdpg-step-title{font-family:var(--ff);font-size:1.15em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text);}
+.bdpg-check{color:var(--green);font-size:.9em;font-weight:700;margin-left:auto;}
+.bdpg-grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;}
+.bdpg-callout{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:12px;}
+.bdpg-lbl{font-size:.7em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
@@ -16937,7 +16948,11 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
-      el.innerHTML = BDPG.step1Html() + BDPG.step2Html() + BDPG.supportingDetailsHtml() + BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() +
+      el.innerHTML =
+        BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
+        BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
+        BDPG.stepCardOpen(3, 'Step 3 — Supporting Details', false) + BDPG.supportingDetailsHtml() + BDPG.stepCardClose() +
+        BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() +
         BDPG.generateButtonHtml() +
         (BDPG.state.result ? (BDPG.resultsHtml() + '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button> ' +
           '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' + BDPG.exportPdfHtml()) : '') +
@@ -17267,6 +17282,29 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
   BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
 
+  // Step cards are built by every step-rendering function; keeping the chrome in
+  // one helper is what stops the three cards from drifting apart visually.
+  BDPG.stepCardOpen = function (num, title, isDone) {
+    var glyph = ['①', '②', '③'][num - 1] || String(num);
+    return '<div class="bdpg-step' + (isDone ? ' done' : '') + '">' +
+      '<div class="bdpg-step-hd">' +
+        '<div class="bdpg-badge">' + glyph + '</div>' +
+        '<div class="bdpg-step-title">' + BDPG.escHtml(title) + '</div>' +
+        (isDone ? '<div class="bdpg-check">✓</div>' : '') +
+      '</div>';
+  };
+  BDPG.stepCardClose = function () { return '</div>'; };
+
+  // Step completion: Step 1 done when profile+roadway resolve to a real baseline
+  // row; Step 2 done when the typed/clicked state resolves to a known region.
+  BDPG.step1Done = function () {
+    var s = BDPG.state;
+    return !!(s.profile && s.roadway && BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway));
+  };
+  BDPG.step2Done = function () {
+    return !!(BDPG.state.state && BusDevGallonsCalc.resolveRegion(BDPG.state.state));
+  };
+
   BDPG.regionMapSvg = function (activeRegion) {
     var regions = [
       { name: 'West', x: 10, y: 10, w: 70, h: 90 },
@@ -17306,8 +17344,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
         '<td>' + BDPG.escHtml(r.lanes) + '</td><td style="text-align:right">' + BDPG.fmtGal(r.baseline) + '</td></tr>';
     }).join('');
 
-    return '<div class="sec-hdr"><div class="sec-title">BUS DEV POTENTIAL GALLONS</div><span class="badge ba">Step 1</span></div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;max-width:520px">' +
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;max-width:520px">' +
         '<div class="fg"><label>Location Profile</label>' +
           '<select id="bdpg-profile" onchange="BDPG.onProfileChange(this.value)">' + profileOpts + '</select></div>' +
         '<div class="fg"><label>Roadway</label>' +
@@ -17368,8 +17405,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
         return '<option value="' + BDPG.escHtml(lvl) + '"' + (lvl === s.pricingLevel ? ' selected' : '') + '>' + BDPG.escHtml(lvl) + ' (' + pctLabel + ')</option>';
       }).join('') + '</select>';
 
-    return '<div id="bdpg-step2" class="bdpg-box" style="margin-top:14px">' +
-      '<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-title">Step 2 — Adjustments</div></div>' +
+    return '<div id="bdpg-step2">' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
         '<div class="fg">' +
           '<label>State</label>' +
@@ -17411,6 +17447,11 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     BDPG.state.state = val.toUpperCase();
     var stepEl = document.getElementById('bdpg-step2');
     if (!stepEl) return;
+    // Step 2's done badge/checkmark live in the surrounding .bdpg-step card,
+    // outside the #bdpg-step2 content div this function replaces -- keep a
+    // handle on it so the wizard-shell badge can be kept current below
+    // without a full BDPG.render() (which would steal focus from the input).
+    var card = stepEl.parentElement;
     stepEl.outerHTML = BDPG.step2Html();
     var input = document.getElementById('bdpg-state');
     if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
@@ -17420,6 +17461,17 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     // instead of calling render(), which would steal focus from the input above.
     var btn = document.getElementById('bdpg-generate-btn');
     if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
+    if (card) {
+      var done = BDPG.step2Done();
+      card.classList.toggle('done', done);
+      var hd = card.querySelector('.bdpg-step-hd');
+      var check = hd ? hd.querySelector('.bdpg-check') : null;
+      if (done && hd && !check) {
+        hd.insertAdjacentHTML('beforeend', '<div class="bdpg-check">✓</div>');
+      } else if (!done && check) {
+        check.remove();
+      }
+    }
   };
 
   // Targeted update of just the band-chip text -- no rebuild at all, so the
@@ -17475,8 +17527,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       }
     }
 
-    return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleSupporting()">▸ Supporting Details ' + (s.supportingOpen ? '▾' : '▸') + '</div>' +
+    return '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleSupporting()">▸ Supporting Details ' + (s.supportingOpen ? '▾' : '▸') + '</div>' +
       (s.supportingOpen ? (
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">' +
           '<div class="fg"><label style="font-size:.72em">Condition</label>' + selectHtml('bdpg-sd-condition', opts.condition, sd.condition, 'condition') + '</div>' +
@@ -17495,8 +17546,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
           '<div class="fg"><label style="font-size:.72em">State</label>' +
             '<input id="bdpg-sd-pstate" value="' + BDPG.escHtml(sd.prospectState) + '" oninput="BDPG.state.supportingDetails.prospectState=this.value"></div>' +
         '</div>'
-      ) : '') +
-    '</div>';
+      ) : '');
   };
 
   BDPG.toggleSupporting = function () { BDPG.state.supportingOpen = !BDPG.state.supportingOpen; BDPG.render(); };
