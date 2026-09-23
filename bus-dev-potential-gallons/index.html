@@ -2099,32 +2099,99 @@ function getCentroid(pathStr, axis){
     document.body.removeChild(ta);
   };
 
-  BDPG.analysisNarrativeHtml = function () {
-    var r = BDPG.state.result, e = r.estimate;
-    var levers = [];
+  // Every bullet is generated from the actual selected values -- never a
+  // hardcoded list -- and appears ONLY when its signal is positive. Negative
+  // and neutral signals are handled by pitchOpportunitiesHtml() instead, so
+  // this section never tells a prospect what is wrong with their site.
+  BDPG.pitchDrivers = function () {
+    var s = BDPG.state, e = s.result.estimate, out = [];
+
+    if (s.roadway === 'Interstate') {
+      out.push('Your Interstate location puts you in the path of high-volume fleet corridors — the strongest traffic signal in our network.');
+    } else if (s.roadway === 'Highway') {
+      out.push('Your highway location sits on a steady regional freight corridor.');
+    }
+    if (e.regionPct > 0) {
+      out.push('The ' + s.result.region + ' region runs +' + (e.regionPct * 100).toFixed(1) +
+        '% above network average — your geography works in your favor.');
+    }
+    if (e.amenityPct > 0) {
+      out.push('Your ' + s.amenityLevel + ' amenity rating places you above the network average for driver satisfaction.');
+    }
+    if (e.reviewPct > 0) {
+      out.push('Your ' + Number(s.truckerPathRating).toFixed(1) +
+        ' Trucker Path rating clears the 3.6 threshold — drivers already rate you well.');
+    }
+    if (e.pricingPct > 0) {
+      out.push(s.pricingLevel.replace(' (deepest discounts)', '') + ' discount pricing is projected to drive an additional +' +
+        (e.pricingPct * 100).toFixed(1) + '% gallon volume above baseline.');
+    }
+    if (e.rewardsPct > 0) {
+      out.push('Participating in Roady\'s Rewards adds an estimated +' + (e.rewardsPct * 100).toFixed(1) +
+        '% volume uplift as loyalty members are directed to your stop.');
+    }
+    return out;
+  };
+
+  BDPG.pitchDriversHtml = function () {
+    var items = BDPG.pitchDrivers();
+    // Omit the whole section rather than render an empty heading.
+    if (!items.length) return '';
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">How We Get There</div></div>' +
+      '<ul style="margin:0 0 0 18px;font-size:.9em;line-height:1.7">' +
+        items.map(function (t) { return '<li>' + BDPG.escHtml(t) + '</li>'; }).join('') +
+      '</ul></div>';
+  };
+
+  // The mirror of pitchDrivers(): everything that is NOT already a positive
+  // signal, phrased as upside the prospect can capture -- never as a
+  // diagnosis of what is wrong with their site.
+  BDPG.pitchOpportunities = function () {
+    var s = BDPG.state, e = s.result.estimate, out = [];
+
+    if (e.rewardsPct < 0.05) {
+      out.push('Adding Roady\'s Rewards participation could add an estimated +' +
+        ((0.05 - e.rewardsPct) * 100).toFixed(1) + '% ≈ ' +
+        BDPG.fmtGal(Math.round(e.baseline * (0.05 - e.rewardsPct))) + ' gal/mo to your projection.');
+    }
     if (e.amenityPct < 0.02) {
-      var gain = Math.round(e.baseline * (0.02 - e.amenityPct));
-      levers.push('Reaching "Good / full service" amenities adds up to +2% ≈ ' + BDPG.fmtGal(gain) + ' gal/mo.');
+      out.push('Reaching a "Good / full service" amenity level could add +' +
+        ((0.02 - e.amenityPct) * 100).toFixed(1) + '% ≈ ' +
+        BDPG.fmtGal(Math.round(e.baseline * (0.02 - e.amenityPct))) + ' gal/mo.');
     }
     if (e.reviewPct < 0.02) {
-      var rgain = Math.round(e.baseline * (0.02 - e.reviewPct));
-      levers.push('Reaching a 3.6+ Trucker Path rating adds +2% ≈ ' + BDPG.fmtGal(rgain) + ' gal/mo.');
+      out.push('Reaching a 3.6+ Trucker Path rating could add +' +
+        ((0.02 - e.reviewPct) * 100).toFixed(1) + '% ≈ ' +
+        BDPG.fmtGal(Math.round(e.baseline * (0.02 - e.reviewPct))) + ' gal/mo.');
     }
-    var pricingLevels = BDPG_CONFIG.PRICING_LEVELS;
-    var moreAggressiveIdx = pricingLevels.indexOf(BDPG.state.pricingLevel) - 1;
-    if (moreAggressiveIdx >= 0) {
-      var nextLevel = pricingLevels[moreAggressiveIdx];
-      var nextPct = BDPG_CONFIG.PRICING_ADJUST[nextLevel];
-      var pgain = Math.round(e.baseline * (nextPct - e.pricingPct));
-      levers.push('Moving from "' + BDPG.state.pricingLevel + '" to "' + nextLevel + '" pricing adds ' +
-        (pgain >= 0 ? '+' : '') + BDPG.fmtGal(pgain) + ' gal/mo to the Final Potential Gallons (does not change the official calculator subtotal).');
+    var levels = BDPG_CONFIG.PRICING_LEVELS;
+    var nextIdx = levels.indexOf(s.pricingLevel) - 1;
+    if (nextIdx >= 0) {
+      var nextPct = BDPG_CONFIG.PRICING_ADJUST[levels[nextIdx]];
+      out.push('Moving to "' + levels[nextIdx].replace(' (deepest discounts)', '') +
+        '" discount pricing could add ' +
+        BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) + ' gal/mo.');
     }
-    var leverHtml = levers.length ? '<ul>' + levers.map(function (l) { return '<li>' + BDPG.escHtml(l) + '</li>'; }).join('') + '</ul>' : '<p>Already at the top band for Amenities, Review, and Pricing.</p>';
+    return out;
+  };
+
+  BDPG.pitchOpportunitiesHtml = function () {
+    var items = BDPG.pitchOpportunities();
+    if (!items.length) return '';
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Opportunities to Grow</div></div>' +
+      '<ul style="margin:0 0 0 18px;font-size:.9em;line-height:1.7">' +
+        items.map(function (t) { return '<li>' + BDPG.escHtml(t) + '</li>'; }).join('') +
+      '</ul></div>';
+  };
+
+  BDPG.analysisNarrativeHtml = function () {
+    var r = BDPG.state.result, e = r.estimate;
 
     return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Analysis</div></div>' +
       '<p style="font-size:.85em">' + BDPG.escHtml(e.officialMathLine) + '</p>' +
       '<p style="font-size:.85em">' + BDPG.escHtml(e.finalMathLine) + '</p>' +
-      '<div style="margin-top:8px;font-size:.85em"><b>Levers that would move the number:</b>' + leverHtml + '</div>' +
       '<div style="margin-top:8px;font-size:.85em"><b>Network Fit:</b> Grade ' + r.grade.grade + ' (' + BDPG.escHtml(r.grade.gradeLabel) + '), ' +
         Math.round(r.grade.rangePositionPct) + '% of its profile\'s range, ' + Math.round(r.grade.signalAvg) + '/100 avg on Supporting Details.</div>' +
     '</div>';
