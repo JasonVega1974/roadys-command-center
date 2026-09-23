@@ -989,14 +989,35 @@ function getCentroid(pathStr, axis){
     card.outerHTML = BDPG.preEvalCardHtml();
   };
 
-  BDPG.preEvalHtml = function () {
+  // Keeps BDPG.state.prospect.preEvalSignal in sync with the four
+  // prerequisites and BDPG.preEval() *regardless of whether the card is
+  // currently rendered open* -- Task 7 saves this value into the record,
+  // Task 8 shows it as the tracker's Pre-Eval column, and Task 9 counts it
+  // in the summary chips, so it must never go stale just because the panel
+  // is collapsed. Clears the signal back to '' the moment a prerequisite
+  // stops being met, rather than leaving a previously-computed value
+  // sitting there. BDPG.preEval() itself stays a pure function -- this is
+  // the one and only place that writes to state.
+  BDPG.updatePreEvalSignal = function () {
     var missing = BDPG.preEvalPrereqsMissing();
     if (missing.length) {
-      return '<div style="color:var(--muted);font-size:.85em">Fill in ' + missing.map(BDPG.escHtml).join(', ') +
-        ' above to see a pre-evaluation.</div>';
+      BDPG.state.prospect.preEvalSignal = '';
+      return null;
     }
     var result = BDPG.preEval();
     BDPG.state.prospect.preEvalSignal = result.signal;
+    return result;
+  };
+
+  // Purely presentational -- takes the already-computed result (or null,
+  // when prerequisites aren't met) rather than computing/assigning anything
+  // itself.
+  BDPG.preEvalHtml = function (result) {
+    var missing = BDPG.preEvalPrereqsMissing();
+    if (!result || missing.length) {
+      return '<div style="color:var(--muted);font-size:.85em">Fill in ' + missing.map(BDPG.escHtml).join(', ') +
+        ' above to see a pre-evaluation.</div>';
+    }
 
     var judgementChips = result.chips.slice(0, 6).map(function (c) {
       return '<div>' +
@@ -1016,13 +1037,17 @@ function getCentroid(pathStr, axis){
 
   BDPG.preEvalCardHtml = function () {
     var open = BDPG.state.preEvalOpen;
+    // Computed unconditionally -- must happen whether or not the card is
+    // open, so state.prospect.preEvalSignal never freezes at a stale value
+    // while collapsed (see BDPG.updatePreEvalSignal's comment).
+    var result = BDPG.updatePreEvalSignal();
     return '<div class="bdpg-step" id="bdpg-preeval-card">' +
       '<div class="bdpg-step-hd" style="cursor:pointer" onclick="BDPG.togglePreEval()">' +
         '<div class="bdpg-badge">' + (open ? '▾' : '▸') + '</div>' +
         '<div class="bdpg-step-title">Pre-Evaluation</div>' +
       '</div>' +
       '<div style="font-size:.78em;color:var(--muted);margin:-8px 0 12px">complete the calculator below for a full analysis.</div>' +
-      (open ? BDPG.preEvalHtml() : '') +
+      (open ? BDPG.preEvalHtml(result) : '') +
     '</div>';
   };
 
@@ -1867,6 +1892,9 @@ function getCentroid(pathStr, axis){
     BDPG.state = JSON.parse(JSON.stringify(found.state));
     BDPG.state.result = null;
     BDPG.state.myProfilesOpen = false;
+    // A profile saved before Task 6 has no preEvalOpen at all -- default it
+    // to open, matching the documented default for every other page load.
+    if (BDPG.state.preEvalOpen === undefined) BDPG.state.preEvalOpen = true;
     BDPG.render();
   };
 
