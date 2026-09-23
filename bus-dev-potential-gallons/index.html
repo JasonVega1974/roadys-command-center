@@ -1870,7 +1870,13 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.getSavedProfiles = function () {
-    try { return JSON.parse(localStorage.getItem('roadysBDPGProfiles') || '[]'); } catch (e) { return []; }
+    try {
+      var v = JSON.parse(localStorage.getItem('roadysBDPGProfiles') || '[]');
+      // A corrupted value (e.g. hand-edited to "{}" or "x") must not take
+      // down every caller -- getSavedProfiles() is the one place all of
+      // them read through, so guarding here fixes it everywhere at once.
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
   };
 
   // Captures what the Prospects tracker table shows, from the *current*
@@ -2000,6 +2006,14 @@ function getCentroid(pathStr, axis){
   // (see the c7 overall-signal chip): Strong=green, Moderate=yellow, Review=red.
   BDPG.PREEVAL_SIGNAL_TONES = { Strong: 'green', Moderate: 'yellow', Review: 'red' };
 
+  // Plain `[]` lookups on REGION_COLORS/GRADE_COLORS/PREEVAL_SIGNAL_TONES
+  // would resolve a stored value of "constructor" or "toString" to an
+  // inherited Object.prototype function instead of undefined, which then
+  // blows up the caller (e.g. hexToRgba(fn, ...) calling fn.startsWith).
+  // Requires hand-edited storage to reach, but the table must never break
+  // on one bad cell, so every map lookup below goes through this.
+  function hasOwn(obj, key) { return !!key && Object.prototype.hasOwnProperty.call(obj, key); }
+
   // One row of the Prospects tracker, built entirely from BDPG.readSummary()
   // -- never from p.state/p.summary directly -- so a pre-Task-7 record
   // renders dashes instead of throwing or printing "undefined".
@@ -2012,8 +2026,13 @@ function getCentroid(pathStr, axis){
 
     var cityState = (!sum.city && !sum.stateCode) ? '—' :
       BDPG.escHtml(sum.city || '') + (sum.city && sum.stateCode ? ', ' : '') + BDPG.escHtml(sum.stateCode || '');
+    // Only append the region chip when there's a real city/state to append it
+    // to -- otherwise the cell could read "— Southeast", which defeats the
+    // sort handler's exact `=== '—'` "dashes sort last" check (currently
+    // unreachable since readSummary derives region from the same state field
+    // as stateCode, but one line of defence costs nothing).
     var regionChip = '';
-    if (sum.region && BDPG.REGION_COLORS[sum.region]) {
+    if (cityState !== '—' && sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
       var rc = BDPG.REGION_COLORS[sum.region];
       regionChip = ' <span class="badge" style="background:' + hexToRgba(rc, 0.18) + ';color:' + rc + '">' +
         BDPG.escHtml(sum.region) + '</span>';
@@ -2039,25 +2058,53 @@ function getCentroid(pathStr, axis){
 
     var gradeCell = '—';
     if (sum.grade) {
-      var gcol = BDPG.GRADE_COLORS[sum.grade] || 'var(--muted)';
+      var gcol = hasOwn(BDPG.GRADE_COLORS, sum.grade) ? BDPG.GRADE_COLORS[sum.grade] : 'var(--muted)';
       gradeCell = '<span class="badge" title="' + BDPG.escHtml(sum.gradeLabel || '') + '" style="background:rgba(255,255,255,.08);color:' +
         gcol + ';border:1px solid ' + gcol + '">' + BDPG.escHtml(sum.grade) + '</span>';
     }
 
     var signalCell = '—';
     if (sum.preEvalSignal) {
-      var tone = BDPG.PREEVAL_SIGNAL_TONES[sum.preEvalSignal] || 'gray';
+      var tone = hasOwn(BDPG.PREEVAL_SIGNAL_TONES, sum.preEvalSignal) ? BDPG.PREEVAL_SIGNAL_TONES[sum.preEvalSignal] : 'gray';
       signalCell = '<span class="badge tag-' + tone + '">' + BDPG.escHtml(sum.preEvalSignal) + '</span>';
     }
 
     var amenityCell = sum.amenityLevel ? BDPG.escHtml(sum.amenityLevel) : '—';
     var pricingCell = sum.pricingLevel ? BDPG.escHtml(sum.pricingLevel) : '—';
-    var savedCell = sum.savedAt ? new Date(sum.savedAt).toLocaleDateString() : '—';
+    // "YYYY MM DD" sliced straight from the stored ISO string -- not
+    // `new Date(...).toLocaleDateString()` -- for three reasons (see
+    // task-8-ruling.md): (1) the shared sort handler's numeric-parse strips
+    // whitespace but not "/" or "-", so this is the one digit-grouping that
+    // collapses to a single chronologically-correct integer instead of
+    // tying same-year or same-month rows; (2) slicing never produces the
+    // literal string "Invalid Date" for a non-empty-but-unparseable value;
+    // (3) it sidesteps the UTC-stored/local-rendered day-shift a Date
+    // conversion could introduce for a timestamp saved late in the day.
+    var savedCell = (typeof sum.savedAt === 'string' && sum.savedAt.length >= 10)
+      ? sum.savedAt.slice(0, 10).replace(/-/g, ' ') : '—';
 
-    var actionsCell =
-      '<button class="btn btn-accent" onclick="BDPG.onTrackerLoad(\'' + p.id + '\')">Load</button> ' +
-      '<button class="btn" onclick="BDPG.onTrackerExport(\'' + p.id + '\')">Export PDF</button> ' +
-      '<button class="btn" onclick="BDPG.onDeleteProfile(\'' + p.id + '\')">Delete</button>';
+    // A record missing its id (unreachable from any real Save Profile,
+    // which always writes 'bdpg_' + Date.now(), but hand-edited storage
+    // could produce one) must not render action buttons that silently
+    // no-op or, worse, consume a Delete confirmation and delete nothing.
+    var pid = p.id || '';
+    var actionsCell;
+    if (pid) {
+      // JSON.stringify + escaping only the HTML-attribute-delimiting `"`
+      // (matching the existing onLocationType(...) pattern elsewhere in
+      // this file) is what actually neutralizes an id containing a quote
+      // inside this onclick="..." attribute -- HTML-entity-escaping the id
+      // itself (BDPG.escHtml) would not, because the browser decodes
+      // entities in the attribute value before compiling it as JS, so an
+      // escaped `'` would decode right back into a string-breaking quote.
+      var idJs = JSON.stringify(pid).replace(/"/g, '&quot;');
+      actionsCell =
+        '<button class="btn btn-accent" onclick="BDPG.onTrackerLoad(' + idJs + ')">Load</button> ' +
+        '<button class="btn" onclick="BDPG.onTrackerExport(' + idJs + ')">Export PDF</button> ' +
+        '<button class="btn" onclick="BDPG.onDeleteProfile(' + idJs + ')">Delete</button>';
+    } else {
+      actionsCell = '<span style="color:var(--muted);font-size:.8em">No id — can’t act</span>';
+    }
 
     return '<tr>' +
       '<td>' + nameCell + '</td>' +
@@ -2099,25 +2146,51 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.onTrackerLoad = function (id) {
+    if (!id) return;
     BDPG.onLoadProfile(id);
     BDPG.switchTab('calc');
   };
 
   // Export needs a generated result, and onLoadProfile deliberately clears
-  // state.result (see its comment). A legacy record with no profile/roadway
-  // can never produce one -- BusDevGallonsCalc.getBaselineRow() is exactly
-  // the check BDPG.onGenerate() itself uses to decide whether to bail with
-  // an alert(), so checking it here first means that alert is never reached
-  // and the tracker can show a clear toast instead of an empty print dialog.
+  // state.result (see its comment) -- but onLoadProfile also replaces the
+  // *entire* BDPG.state wholesale. A REFUSED export must not do that: if a
+  // rep has an in-progress, not-yet-saved profile on the Potential Gallons
+  // tab and clicks Export PDF on some other tracker row that turns out to
+  // be ungeneratable, the toast must be the only effect -- their unsaved
+  // work has to survive. So the profile/roadway check has to run against
+  // the *saved record itself* (via getSavedProfiles(), same as
+  // onLoadProfile reads it) before anything touches BDPG.state, not against
+  // BDPG.state after onLoadProfile has already overwritten it.
   BDPG.onTrackerExport = function (id) {
-    BDPG.onLoadProfile(id);
-    var s = BDPG.state;
-    if (!BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway)) {
+    if (!id) return;
+    var found = BDPG.getSavedProfiles().filter(function (p) { return p.id === id; })[0];
+    if (!found) return;
+    var st = found.state || {};
+    // BusDevGallonsCalc.getBaselineRow() is exactly the check
+    // BDPG.onGenerate() itself uses to decide whether to bail with an
+    // alert(), so checking it here first means that alert is never reached
+    // and the tracker can show a clear toast instead of an empty print
+    // dialog -- all before BDPG.state is touched.
+    if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
       toast('This saved prospect is missing a Location Profile/Roadway and can\'t generate a PDF.', 'err');
       return;
     }
-    BDPG.switchTab('calc');
-    BDPG.onGenerate();
+
+    BDPG.onLoadProfile(id);
+    try {
+      BDPG.switchTab('calc');
+      BDPG.onGenerate();
+    } catch (err) {
+      // The profile/roadway check above can pass yet render() still throw
+      // deeper in -- e.g. a hand-edited record missing supportingDetails or
+      // amenityDetails -- which would otherwise leave #bdpg-content stuck
+      // mid-render and the page inert. Recover to a working tab and say so,
+      // rather than leaving that promise conditional.
+      BDPG.activeTab = 'prospects';
+      BDPG.render();
+      toast('Could not generate a value profile for this prospect.', 'err');
+      return;
+    }
     if (!BDPG.state.result) {
       toast('Could not generate a value profile for this prospect.', 'err');
       return;
