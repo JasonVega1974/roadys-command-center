@@ -1872,28 +1872,36 @@ function getCentroid(pathStr, axis){
       '</div>';
   };
 
+  // Prospect-facing hero. Extracted so the Export Pitch Summary renders the
+  // identical block rather than a hand-maintained second copy that could
+  // drift from what the rep saw on screen.
+  BDPG.pitchHeroHtml = function () {
+    var e = BDPG.state.result.estimate;
+    var annual = e.finalGallons * 12;
+    // displayName() falls back to the literal "Prospect" when nothing is
+    // entered, which reads badly mid-sentence -- use a neutral phrase instead.
+    var raw = BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || '';
+    var who = raw ? BDPG.escHtml(raw) : 'this location';
+
+    return '<div class="bdpg-hero-card final" style="margin-bottom:14px">' +
+      '<div class="bdpg-hero-num" style="font-size:2.3em;line-height:1.15">' +
+        'Roady\'s can drive ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month to ' + who + '</div>' +
+      '<div style="font-size:.95em;color:var(--muted);margin-top:8px">That\'s ' + BDPG.fmtGal(annual) +
+        ' gallons annually — based on your location profile, region, and network data.</div>' +
+      '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
+        '<span class="bdpg-lbl" style="display:inline">Roady\'s Published Calculator Figure:</span> ' +
+        '<b style="font-size:1.15em">' + BDPG.fmtGal(e.officialSubtotal) + ' gal/mo</b>' +
+        '<div style="font-size:.72em;color:var(--muted);margin-top:3px">' +
+          'Matches Roady\'s published prospective-member calculator.</div>' +
+      '</div>' +
+    '</div>';
+  };
+
   BDPG.resultsHtml = function () {
     var r = BDPG.state.result, e = r.estimate, g = r.grade;
-    var annual = e.finalGallons * 12;
     var regionAdjusted = Math.round(e.baseline * (1 + e.regionPct));
 
-    var nameHeader = '<div style="font-family:var(--ff);font-size:1.1em;font-weight:800;letter-spacing:.06em;' +
-      'text-transform:uppercase;margin-bottom:10px">' + BDPG.escHtml(BDPG.displayName()) + '</div>';
-
-    var hero = '<div class="bdpg-hero">' +
-      '<div class="bdpg-hero-card final">' +
-        '<div class="bdpg-lbl">Final Potential Gallons</div>' +
-        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.finalGallons) + '</div>' +
-        '<div style="font-size:.8em;color:var(--muted);margin-top:4px">gal/mo · ≈ ' + BDPG.fmtGal(annual) + ' gal/yr</div>' +
-        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
-      '</div>' +
-      '<div class="bdpg-hero-card official">' +
-        '<div class="bdpg-lbl">Official Calculator Subtotal</div>' +
-        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.officialSubtotal) + '</div>' +
-        '<div style="font-size:.8em;color:var(--muted);margin-top:4px">gal/mo · traces to the printed calculator</div>' +
-        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
-      '</div>' +
-    '</div>' +
+    var hero = BDPG.pitchHeroHtml() +
     '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
     (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '');
 
@@ -1924,7 +1932,7 @@ function getCentroid(pathStr, axis){
 
     var netCtx = BDPG.networkContextHtml();
 
-    return '<div class="bdpg-results">' + nameHeader + hero + waterfall + rangeSection + amenitySection + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
+    return '<div class="bdpg-results">' + hero + waterfall + rangeSection + amenitySection + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
   };
 
   BDPG.conditionAdjustedHtml = function () {
