@@ -849,12 +849,24 @@ function getCentroid(pathStr, axis){
     return !!(p.name && p.city && BDPG.state.state);
   };
 
+  // Single source of the prospect-name precedence: the ⓪ card's name first,
+  // then the older Step 3 "Prospect Name" field (pre-Task-4 data), else ''.
+  // Every caller (displayName(), pitchHeroHtml(), and any future one such as
+  // the print packet) must resolve the name through this helper rather than
+  // re-reading prospect.name / supportingDetails.prospectName directly --
+  // otherwise the hero, the print header and the tracker could disagree about
+  // who the prospect is. Returns the raw name with no fallback wording of its
+  // own: callers differ only in what they show when it's empty (see below).
+  BDPG.resolveProspectName = function () {
+    return BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || '';
+  };
+
   // Single place every prospect-name display reads from, so results/export/
-  // summary can never show a different name than the ⓪ card holds. Falls back
-  // to the older Step 3 "Prospect Name" field (pre-Task-4 data) and then a
-  // plain placeholder.
+  // summary can never show a different name than the ⓪ card holds. 'Prospect'
+  // reads fine as a heading, which is why this fallback differs from
+  // pitchHeroHtml()'s -- see resolveProspectName().
   BDPG.displayName = function () {
-    return BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || 'Prospect';
+    return BDPG.resolveProspectName() || 'Prospect';
   };
 
   // City/State counterpart to displayName(), for the print header and Copy
@@ -1880,7 +1892,8 @@ function getCentroid(pathStr, axis){
     var annual = e.finalGallons * 12;
     // displayName() falls back to the literal "Prospect" when nothing is
     // entered, which reads badly mid-sentence -- use a neutral phrase instead.
-    var raw = BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || '';
+    // See resolveProspectName() for the shared precedence both draw from.
+    var raw = BDPG.resolveProspectName();
     var who = raw ? BDPG.escHtml(raw) : 'this location';
 
     return '<div class="bdpg-hero-card final" style="margin-bottom:14px">' +
