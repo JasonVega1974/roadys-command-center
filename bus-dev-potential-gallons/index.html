@@ -1996,8 +1996,133 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
+  // Signal -> chip tone, mirrors the tones BDPG.preEval() itself assigns
+  // (see the c7 overall-signal chip): Strong=green, Moderate=yellow, Review=red.
+  BDPG.PREEVAL_SIGNAL_TONES = { Strong: 'green', Moderate: 'yellow', Review: 'red' };
+
+  // One row of the Prospects tracker, built entirely from BDPG.readSummary()
+  // -- never from p.state/p.summary directly -- so a pre-Task-7 record
+  // renders dashes instead of throwing or printing "undefined".
+  BDPG.trackerRowHtml = function (p) {
+    var sum = BDPG.readSummary(p);
+
+    var typeBadge = sum.locationType
+      ? ' <span class="badge tag-gray">' + BDPG.escHtml(sum.locationType) + '</span>' : '';
+    var nameCell = BDPG.escHtml(sum.name) + typeBadge;
+
+    var cityState = (!sum.city && !sum.stateCode) ? '—' :
+      BDPG.escHtml(sum.city || '') + (sum.city && sum.stateCode ? ', ' : '') + BDPG.escHtml(sum.stateCode || '');
+    var regionChip = '';
+    if (sum.region && BDPG.REGION_COLORS[sum.region]) {
+      var rc = BDPG.REGION_COLORS[sum.region];
+      regionChip = ' <span class="badge" style="background:' + hexToRgba(rc, 0.18) + ';color:' + rc + '">' +
+        BDPG.escHtml(sum.region) + '</span>';
+    }
+    var locationCell = cityState + regionChip;
+
+    var profileCell = (sum.profile && sum.roadway)
+      ? BDPG.escHtml(sum.profile) + ' · ' + BDPG.escHtml(sum.roadway) : '—';
+
+    var officialCell = sum.officialSubtotal != null ? BDPG.fmtGal(sum.officialSubtotal) : '—';
+
+    var finalCell = sum.finalGallons != null ? BDPG.fmtGal(sum.finalGallons) : '—';
+    if (sum.finalGallons != null && sum.officialSubtotal != null) {
+      var diff = sum.finalGallons - sum.officialSubtotal;
+      if (diff > 0) {
+        finalCell += ' <span style="color:var(--green)" title="Pricing posture adds ' + BDPG.fmtGal(diff) + ' gal/mo">▲</span>';
+      } else if (diff < 0) {
+        finalCell += ' <span style="color:var(--red)" title="Pricing posture removes ' + BDPG.fmtGal(Math.abs(diff)) + ' gal/mo">▼</span>';
+      } else {
+        finalCell += ' <span style="color:var(--muted)" title="No pricing adjustment">●</span>';
+      }
+    }
+
+    var gradeCell = '—';
+    if (sum.grade) {
+      var gcol = BDPG.GRADE_COLORS[sum.grade] || 'var(--muted)';
+      gradeCell = '<span class="badge" title="' + BDPG.escHtml(sum.gradeLabel || '') + '" style="background:rgba(255,255,255,.08);color:' +
+        gcol + ';border:1px solid ' + gcol + '">' + BDPG.escHtml(sum.grade) + '</span>';
+    }
+
+    var signalCell = '—';
+    if (sum.preEvalSignal) {
+      var tone = BDPG.PREEVAL_SIGNAL_TONES[sum.preEvalSignal] || 'gray';
+      signalCell = '<span class="badge tag-' + tone + '">' + BDPG.escHtml(sum.preEvalSignal) + '</span>';
+    }
+
+    var amenityCell = sum.amenityLevel ? BDPG.escHtml(sum.amenityLevel) : '—';
+    var pricingCell = sum.pricingLevel ? BDPG.escHtml(sum.pricingLevel) : '—';
+    var savedCell = sum.savedAt ? new Date(sum.savedAt).toLocaleDateString() : '—';
+
+    var actionsCell =
+      '<button class="btn btn-accent" onclick="BDPG.onTrackerLoad(\'' + p.id + '\')">Load</button> ' +
+      '<button class="btn" onclick="BDPG.onTrackerExport(\'' + p.id + '\')">Export PDF</button> ' +
+      '<button class="btn" onclick="BDPG.onDeleteProfile(\'' + p.id + '\')">Delete</button>';
+
+    return '<tr>' +
+      '<td>' + nameCell + '</td>' +
+      '<td>' + locationCell + '</td>' +
+      '<td>' + profileCell + '</td>' +
+      '<td>' + officialCell + '</td>' +
+      '<td>' + finalCell + '</td>' +
+      '<td>' + gradeCell + '</td>' +
+      '<td>' + signalCell + '</td>' +
+      '<td>' + amenityCell + '</td>' +
+      '<td>' + pricingCell + '</td>' +
+      '<td>' + savedCell + '</td>' +
+      '<td>' + actionsCell + '</td>' +
+    '</tr>';
+  };
+
   BDPG.prospectsHtml = function () {
-    return '<div class="cc"><div class="cc-lbl">Prospects</div><div style="color:var(--muted)">Tracker coming in a later task.</div></div>';
+    // Default sort: saved date descending (newest first). ISO 8601 strings
+    // sort correctly lexicographically; a missing savedAt (pre-Task-7
+    // record) sorts to the bottom since '' < any real timestamp. The
+    // delegated table-header handler (bound once on document, see the
+    // SORTABLE TABLES block near the top of this file) takes over from
+    // here on any header click -- this only sets the order shown on load.
+    var profiles = BDPG.getSavedProfiles().slice().sort(function (a, b) {
+      return (b.savedAt || '').localeCompare(a.savedAt || '');
+    });
+
+    var rows = profiles.length
+      ? profiles.map(BDPG.trackerRowHtml).join('')
+      : '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted)">📋 No prospects evaluated yet — complete a profile above and save it.</td></tr>';
+
+    return '<div class="cc"><div class="cc-lbl">Prospects Tracker</div>' +
+      '<div class="tw"><table class="dt"><thead><tr>' +
+        '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
+        '<th>Official Subtotal</th><th>Final Potential Gallons</th>' +
+        '<th>Grade</th><th>Pre-Eval</th><th>Amenity Level</th>' +
+        '<th>Pricing Posture</th><th>Saved</th><th style="width:50px">Actions</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  };
+
+  BDPG.onTrackerLoad = function (id) {
+    BDPG.onLoadProfile(id);
+    BDPG.switchTab('calc');
+  };
+
+  // Export needs a generated result, and onLoadProfile deliberately clears
+  // state.result (see its comment). A legacy record with no profile/roadway
+  // can never produce one -- BusDevGallonsCalc.getBaselineRow() is exactly
+  // the check BDPG.onGenerate() itself uses to decide whether to bail with
+  // an alert(), so checking it here first means that alert is never reached
+  // and the tracker can show a clear toast instead of an empty print dialog.
+  BDPG.onTrackerExport = function (id) {
+    BDPG.onLoadProfile(id);
+    var s = BDPG.state;
+    if (!BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway)) {
+      toast('This saved prospect is missing a Location Profile/Roadway and can\'t generate a PDF.', 'err');
+      return;
+    }
+    BDPG.switchTab('calc');
+    BDPG.onGenerate();
+    if (!BDPG.state.result) {
+      toast('Could not generate a value profile for this prospect.', 'err');
+      return;
+    }
+    BDPG.onExportPdf();
   };
 
   window.BDPG = BDPG;
