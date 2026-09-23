@@ -452,10 +452,12 @@ function getCentroid(pathStr, axis){
         // cleared", so BDPG.invalidateResult() can swap between them with a
         // targeted patch instead of a focus-stealing full render.
         '<div id="bdpg-results-wrap">' + BDPG.resultsWrapHtml() + '</div>' +
+        // Save writes the record and re-renders; the Prospects tab is where
+        // saved prospects are read back. The old "My Profiles" modal that
+        // used to sit beside this button was a second, less-hardened view of
+        // the same roadysBDPGProfiles array and has been removed.
         '<div class="bdpg-box" style="margin-top:14px">' +
-          '<button class="btn" onclick="BDPG.onSaveProfile()">Save Profile</button> ' +
-          '<button class="btn" onclick="BDPG.toggleMyProfiles()">My Profiles</button>' +
-          BDPG.myProfilesModalHtml() +
+          '<button class="btn" onclick="BDPG.onSaveProfile()">Save Profile</button>' +
         '</div>';
       BDPG.renderMap();
       BDPG.drawCharts();
@@ -1631,6 +1633,10 @@ function getCentroid(pathStr, axis){
   // disclosure triangle is not unsaved work, and the result is rebuilt by
   // Generate. Keys are walked in sorted order so a freshly-typed state and a
   // JSON round-tripped one produce the same string for the same data.
+  // myProfilesOpen is kept deliberately: the modal it belonged to is gone, but
+  // records saved before its removal still carry the key in their snapshot,
+  // and onLoadProfile copies the snapshot into BDPG.state wholesale. Skipping
+  // it keeps a legacy record's signature comparable with a fresh one.
   BDPG.SIG_SKIP = {
     result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
     ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1
@@ -2206,7 +2212,6 @@ function getCentroid(pathStr, axis){
     // snapshot; it must not resurrect a warning about someone else's edit.)
     BDPG.state.resultStale = false;
     BDPG.currentProfileId = found.id;
-    BDPG.state.myProfilesOpen = false;
     // A profile saved before Task 6 has no preEvalOpen at all -- default it
     // to open, matching the documented default for every other page load.
     if (BDPG.state.preEvalOpen === undefined) BDPG.state.preEvalOpen = true;
@@ -2236,41 +2241,6 @@ function getCentroid(pathStr, axis){
       BDPG.savedSig = '';
     }
     BDPG.render();
-  };
-
-  BDPG.toggleMyProfiles = function () { BDPG.state.myProfilesOpen = !BDPG.state.myProfilesOpen; BDPG.render(); };
-
-  BDPG.myProfilesModalHtml = function () {
-    if (!BDPG.state.myProfilesOpen) return '';
-    var profiles = BDPG.getSavedProfiles();
-    var rows = profiles.length
-      ? profiles.map(function (p) {
-          // This modal reads the same roadysBDPGProfiles array the Prospects
-          // tracker does, so it gets the same two guards trackerRowHtml
-          // applies (they were fixed there and missed here):
-          //  * the saved date is sliced out of the stored ISO string rather
-          //    than pushed through new Date(...).toLocaleDateString(), which
-          //    renders the literal "Invalid Date" for an absent or
-          //    unparseable value;
-          //  * the id goes through JSON.stringify + &quot; so an id holding
-          //    a quote cannot close this onclick's string and run as JS.
-          //    HTML-entity-escaping the id instead would not work -- the
-          //    browser decodes entities before compiling the attribute.
-          //    (Reproduced: an id of `x') + alert(9) + ('` executed.)
-          var savedTxt = (typeof p.savedAt === 'string' && p.savedAt.length >= 10)
-            ? p.savedAt.slice(0, 10).replace(/-/g, ' ') : '—';
-          var pid = p.id || '';
-          var idJs = JSON.stringify(pid).replace(/"/g, '&quot;');
-          var actions = pid
-            ? ('<button class="btn btn-accent" onclick="BDPG.onLoadProfile(' + idJs + ')">Load</button> ' +
-               '<button class="btn" onclick="BDPG.onDeleteProfile(' + idJs + ')">Delete</button>')
-            : '<span style="color:var(--muted);font-size:.8em">No id — can’t act</span>';
-          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">' +
-            '<span>' + BDPG.escHtml(p.name || '—') + ' <span style="color:var(--muted);font-size:.75em">' + savedTxt + '</span></span>' +
-            '<span>' + actions + '</span></div>';
-        }).join('')
-      : '<div style="color:var(--muted)">No saved profiles yet.</div>';
-    return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">My Profiles</div></div>' + rows + '</div>';
   };
 
   BDPG.activeTab = 'calc';
