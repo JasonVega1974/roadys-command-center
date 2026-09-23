@@ -90,6 +90,7 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .bdpg-bcard:hover{border-color:var(--border2);transform:translateY(-1px);}
 .bdpg-bcard.dim{opacity:.45;}
 .bdpg-bcard.on{border-color:var(--accent);background:rgba(0,200,255,.08);box-shadow:0 0 14px rgba(0,200,255,.25);}
+.bdpg-bcard.suggest{border-color:var(--yellow);box-shadow:0 0 10px rgba(255,214,10,.2);}
 .bdpg-bcard-ico{font-size:1.3em;line-height:1;margin-bottom:6px;}
 .bdpg-bcard-name{font-family:var(--ff);font-size:1em;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text);}
 .bdpg-bcard-sub{font-size:.72em;color:var(--muted);margin-top:2px;}
@@ -405,6 +406,7 @@ function getCentroid(pathStr, axis){
       state: '', amenityDetails: {}, amenityLevel: '', amenityOverridden: false,
       truckerPathRating: '', pricingLevel: '',
       prospect: { name: '', street: '', city: '', locationType: '', notes: '' },
+      autoSetNote: '', suggestProfiles: [],
       supportingDetails: {
         condition: '', hours: '', distance: '', corridor: '', competition: '',
         prospectName: '', prospectCity: '', prospectState: '', actualLanes: ''
@@ -830,10 +832,31 @@ function getCentroid(pathStr, axis){
     BDPG.updateStepCardBadge(0, BDPG.prospectDone());
   };
 
-  // Location Type is a plain field write + full render this task -- its Step 1
-  // coupling (e.g. pre-selecting a baseline card) is Task 5's job.
+  // Location Type -> Step 1 baseline coupling. Fuel Stop auto-selects a
+  // baseline card; Service Center / Truck Stop-Service Center only suggest
+  // (outline, no selection); Truck Stop / C-Store couple to nothing. This
+  // lives ONLY in the change handler, never in a render path -- a manual
+  // card click (BDPG.onBaselineCardClick) always overrides it, and the only
+  // way that can hold is if this logic fires once, on change, not on every
+  // re-render.
+  BDPG.LOCTYPE_PROFILE = {
+    'Fuel Stop':                   { auto: 'Fuel stop', roadway: 'Any' },
+    'Service Center':              { suggest: ['Medium truck stop', 'Large truck stop'] },
+    'Truck Stop / Service Center': { suggest: ['Medium truck stop', 'Large truck stop'] }
+  };
+
   BDPG.onLocationType = function (v) {
-    BDPG.state.prospect.locationType = v;
+    var s = BDPG.state;
+    s.prospect.locationType = v;
+    var rule = BDPG.LOCTYPE_PROFILE[v];
+    s.autoSetNote = '';
+    s.suggestProfiles = [];
+    if (rule && rule.auto) {
+      s.profile = rule.auto; s.roadway = rule.roadway;
+      s.autoSetNote = v + ' type selected — baseline auto-set.';
+    } else if (rule && rule.suggest) {
+      s.suggestProfiles = rule.suggest;
+    }
     BDPG.render();
   };
 
@@ -968,7 +991,8 @@ function getCentroid(pathStr, axis){
     var cards = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
       var on = (r.profile === s.profile && r.roadway === s.roadway);
       var dim = (s.profile && r.profile !== s.profile && !on);
-      return '<div class="bdpg-bcard' + (on ? ' on' : '') + (dim ? ' dim' : '') + '" ' +
+      var suggest = !on && (s.suggestProfiles || []).indexOf(r.profile) !== -1;
+      return '<div class="bdpg-bcard' + (on ? ' on' : '') + (dim ? ' dim' : '') + (suggest ? ' suggest' : '') + '" ' +
         'onclick="BDPG.onBaselineCardClick(' + JSON.stringify(r.profile).replace(/"/g, '&quot;') +
         ',' + JSON.stringify(r.roadway).replace(/"/g, '&quot;') + ')">' +
         '<div class="bdpg-bcard-ico">' + (ICONS[r.profile] || '📍') + '</div>' +
@@ -994,14 +1018,23 @@ function getCentroid(pathStr, axis){
       callout = '<div class="bdpg-callout" style="color:var(--muted);font-size:.85em">Pick a location profile above to set the baseline.</div>';
     }
 
-    return '<div class="bdpg-grid-3">' + cards + '</div>' + callout;
+    var note = s.autoSetNote
+      ? '<div style="margin-top:10px;font-size:.82em;color:var(--accent)">' + BDPG.escHtml(s.autoSetNote) + '</div>'
+      : (s.suggestProfiles && s.suggestProfiles.length
+          ? '<div style="margin-top:10px;font-size:.82em;color:var(--yellow)">Suggested starting point for this location type.</div>'
+          : '');
+
+    return '<div class="bdpg-grid-3">' + cards + '</div>' + note + callout;
   };
 
   BDPG.onBaselineCardClick = function (profile, roadway) {
     // Sets the same two fields the old cascading selects set -- one click instead
-    // of two, same resulting state.
+    // of two, same resulting state. A manual pick always wins over an earlier
+    // Location Type auto-set, so any stale "baseline auto-set" note must not
+    // linger next to a contradicting selection.
     BDPG.state.profile = profile;
     BDPG.state.roadway = roadway;
+    BDPG.state.autoSetNote = '';
     BDPG.render();
   };
 
