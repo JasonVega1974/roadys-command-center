@@ -2121,6 +2121,68 @@ function getCentroid(pathStr, axis){
     '</tr>';
   };
 
+  // Roll-up beneath the Prospects table: five grade chips + three signal
+  // chips (always all eight, even at zero, per the user's ruling that the
+  // shape must stay fixed and comparable) plus the two averages. Every
+  // field comes from BDPG.readSummary(p) -- never p.state/p.summary
+  // directly -- so a legacy record (no `prospect`, no `summary`) degrades
+  // exactly like it does in trackerRowHtml: an empty grade/signal is
+  // excluded from its distribution (never miscounted as 'A' or 'Strong'),
+  // and a null gallons value is excluded from the averages' denominator
+  // rather than counted as zero -- a profile saved before Generate has run
+  // has null gallons, and averaging it in as 0 would silently drag every
+  // average down and misreport the pipeline.
+  BDPG.trackerStatsHtml = function (profiles) {
+    var gradeOrder = ['A', 'B', 'C', 'D', 'E'];
+    var gradeCounts = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+    var signalOrder = ['Strong', 'Moderate', 'Review'];
+    var signalCounts = { Strong: 0, Moderate: 0, Review: 0 };
+    var officialSum = 0, officialN = 0, finalSum = 0, finalN = 0;
+
+    profiles.forEach(function (p) {
+      var sum = BDPG.readSummary(p);
+      // hasOwn guards against a stored grade/signal that isn't one of the
+      // known five/three (or a prototype-polluting key like "constructor")
+      // silently landing in the wrong bucket -- an unrecognized value is
+      // simply excluded, same treatment as an empty one.
+      if (hasOwn(gradeCounts, sum.grade)) gradeCounts[sum.grade]++;
+      if (hasOwn(signalCounts, sum.preEvalSignal)) signalCounts[sum.preEvalSignal]++;
+      if (sum.officialSubtotal != null) { officialSum += sum.officialSubtotal; officialN++; }
+      if (sum.finalGallons != null) { finalSum += sum.finalGallons; finalN++; }
+    });
+
+    var avgOfficial = officialN ? BDPG.fmtGal(officialSum / officialN) + ' gal/mo' : '—';
+    var avgFinal = finalN ? BDPG.fmtGal(finalSum / finalN) + ' gal/mo' : '—';
+
+    var gradeChips = gradeOrder.map(function (g) {
+      var col = BDPG.GRADE_COLORS[g];
+      return '<span class="badge" style="background:rgba(255,255,255,.08);color:' + col +
+        ';border:1px solid ' + col + ';margin:0 6px 6px 0;display:inline-block">' +
+        g + ' ×' + gradeCounts[g] + '</span>';
+    }).join('');
+
+    var signalChips = signalOrder.map(function (s) {
+      var tone = BDPG.PREEVAL_SIGNAL_TONES[s];
+      return '<span class="badge tag-' + tone + '" style="margin:0 6px 6px 0;display:inline-block">' +
+        BDPG.escHtml(s) + ' ×' + signalCounts[s] + '</span>';
+    }).join('');
+
+    var statLbl = 'font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px';
+
+    return '<div class="cc" style="margin-top:16px">' +
+      '<div class="cc-lbl">Tracker Summary</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start">' +
+        '<div><div style="' + statLbl + '">Avg Official Subtotal</div>' +
+          '<div style="font-size:1.2em;font-weight:700">' + avgOfficial + '</div></div>' +
+        '<div><div style="' + statLbl + '">Avg Final Potential Gallons</div>' +
+          '<div style="font-size:1.2em;font-weight:700">' + avgFinal + '</div></div>' +
+        '<div><div style="' + statLbl + '">Grade Distribution</div>' +
+          '<div>' + gradeChips + '</div></div>' +
+        '<div><div style="' + statLbl + '">Pre-Eval Signal</div>' +
+          '<div>' + signalChips + '</div></div>' +
+      '</div></div>';
+  };
+
   BDPG.prospectsHtml = function () {
     // Default sort: saved date descending (newest first). ISO 8601 strings
     // sort correctly lexicographically; a missing savedAt (pre-Task-7
@@ -2136,13 +2198,22 @@ function getCentroid(pathStr, axis){
       ? profiles.map(BDPG.trackerRowHtml).join('')
       : '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted)">📋 No prospects evaluated yet — complete a profile above and save it.</td></tr>';
 
+    // The summary card is a separate .cc sibling, not a <tr> in this table
+    // -- the delegated sort handler operates on `tbody > tr` (see the
+    // SORTABLE TABLES block), so keeping the roll-up entirely outside the
+    // <table> means a header click can never sort it into the body,
+    // duplicate it, or lose it. Hidden outright with zero profiles: an
+    // average of nothing and all-zero chips would just be noise sitting
+    // above the tracker's own "no prospects yet" empty state.
+    var statsHtml = profiles.length ? BDPG.trackerStatsHtml(profiles) : '';
+
     return '<div class="cc"><div class="cc-lbl">Prospects Tracker</div>' +
       '<div class="tw"><table class="dt"><thead><tr>' +
         '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
         '<th>Official Subtotal</th><th>Final Potential Gallons</th>' +
         '<th>Grade</th><th>Pre-Eval</th><th>Amenity Level</th>' +
         '<th>Pricing Posture</th><th>Saved</th><th style="width:50px">Actions</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' + statsHtml;
   };
 
   BDPG.onTrackerLoad = function (id) {
