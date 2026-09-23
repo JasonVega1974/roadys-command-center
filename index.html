@@ -591,6 +591,14 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-hero-card.final .bdpg-hero-num{font-size:3.2em;color:var(--accent);}
 .bdpg-hero-card.official .bdpg-hero-num{font-size:2.2em;color:var(--text);}
 .bdpg-hero-math{font-family:monospace;font-size:.68em;color:var(--muted);margin-top:8px;word-break:break-word;}
+.bdpg-grade{text-align:center;padding:16px;border-radius:10px;border:1px solid var(--border);}
+.bdpg-grade-l{font-family:var(--ff);font-size:3.4em;font-weight:800;line-height:1;}
+.bdpg-grade-lbl{font-family:var(--ff);font-size:1em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-top:4px;}
+.bdpg-nrange{position:relative;height:30px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin:10px 0 4px;}
+.bdpg-nrange-m{position:absolute;top:-5px;height:40px;width:3px;border-radius:2px;}
+.bdpg-nrange-m.final{background:var(--accent);box-shadow:0 0 8px rgba(0,200,255,.7);}
+.bdpg-nrange-m.official{background:var(--text);opacity:.85;}
+.bdpg-nrange-key{display:flex;gap:16px;font-size:.7em;color:var(--muted);margin-top:8px;}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
@@ -17016,6 +17024,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
           BDPG.myProfilesModalHtml() +
         '</div>';
       BDPG.renderMap();
+      BDPG.drawCharts();
     }
   };
 
@@ -17751,6 +17760,109 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     BDPG.render();
   };
 
+  // Mirrors the five rows of the on-screen waterfall table exactly, so the chart
+  // and the table can never disagree. Presentation arithmetic only -- every
+  // number comes from the engine's estimate object.
+  BDPG.waterfallData = function (e) {
+    var regionAdj = Math.round(e.baseline * (1 + e.regionPct));
+    var steps = [
+      { label: 'Baseline',    from: 0,                   to: e.baseline,          neutral: true },
+      { label: 'Region',      from: e.baseline,          to: regionAdj },
+      { label: 'Amen+Review', from: regionAdj,           to: e.officialSubtotal },
+      { label: 'Pricing',     from: e.officialSubtotal,  to: e.finalGallons },
+      { label: 'Final',       from: 0,                   to: e.finalGallons,      neutral: true, accent: true }
+    ];
+    return {
+      labels: steps.map(function (s) { return s.label; }),
+      data: steps.map(function (s) { return [s.from, s.to]; }),
+      colors: steps.map(function (s) {
+        if (s.accent) return 'rgba(0,200,255,.75)';
+        if (s.neutral) return 'rgba(58,74,107,.85)';
+        return s.to >= s.from ? 'rgba(0,214,143,.7)' : 'rgba(255,71,87,.7)';
+      })
+    };
+  };
+
+  // Ordinal position of each selected option within its own config array, 0-100.
+  // Presentation-only: this scale is not an engine concept and feeds no formula.
+  // `compare` is the clean hook for a future per-region average dataset.
+  BDPG.amenityProfileData = function (details, compare) {
+    var fields = ['showers','food','scale','parking','service','defReefer'];
+    var labels = { showers:'Showers', food:'Food', scale:'Scale', parking:'Parking', service:'Service', defReefer:'DEF/Reefer' };
+    return {
+      labels: fields.map(function (f) { return labels[f]; }),
+      data: fields.map(function (f) {
+        var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[f] || [];
+        var i = opts.indexOf(details[f]);
+        return (i < 0 || opts.length < 2) ? 0 : Math.round((i / (opts.length - 1)) * 100);
+      }),
+      compare: compare || null
+    };
+  };
+
+  BDPG.drawCharts = function () {
+    var r = BDPG.state.result;
+    if (!r) return;
+    if (document.getElementById('bdpg-waterfall')) {
+      var w = BDPG.waterfallData(r.estimate);
+      mkchart('bdpg-waterfall', {
+        type: 'bar',
+        data: { labels: w.labels, datasets: [{ label: 'gal/mo', data: w.data, backgroundColor: w.colors, borderRadius: 3 }] },
+        options: Object.assign({}, CDO, { plugins: { legend: { display: false } } })
+      });
+    }
+    if (document.getElementById('bdpg-amenity')) {
+      var a = BDPG.amenityProfileData(BDPG.state.amenityDetails);
+      mkchart('bdpg-amenity', {
+        type: 'bar',
+        data: { labels: a.labels, datasets: [{ label: 'Score', data: a.data, backgroundColor: 'rgba(0,200,255,.6)', borderRadius: 3 }] },
+        options: Object.assign({}, CDO, {
+          indexAxis: 'y',
+          plugins: { legend: { display: false } },
+          // Deliberately NOT built from CDO.scales.x/y here. Those nested tick/grid
+          // objects are shared, mutable state that every other chart on the page
+          // also passes to Chart.js by reference, and Chart.js bakes resolved,
+          // type-specific config (scale `type`, and a category/linear-specific
+          // ticks.callback) directly onto whatever objects it's given. This is the
+          // only horizontal (indexAxis:'y') chart in the file, so reusing CDO's
+          // y-scale config here would inherit a linear-axis tick callback (or leave
+          // this axis typed 'linear') and print raw indices ("0".."5") instead of
+          // the category labels -- and could just as easily corrupt CDO.scales.y
+          // for every other (vertical) chart that reads it afterward. Fresh,
+          // plain-literal style objects keep the same visual look with none of that
+          // shared-reference risk.
+          scales: {
+            x: { type: 'linear', max: 100, ticks: { color: '#6B7A99', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+            y: { type: 'category', ticks: { color: '#6B7A99', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.05)' } }
+          }
+        })
+      });
+    }
+  };
+
+  BDPG.GRADE_COLORS = { A: 'var(--accent)', B: 'var(--green)', C: 'var(--yellow)', D: 'var(--orange)', E: 'var(--red)' };
+
+  BDPG.gradeBadgeHtml = function (g) {
+    var col = BDPG.GRADE_COLORS[g.grade] || 'var(--muted)';
+    return '<div class="bdpg-grade" style="border-color:' + col + '">' +
+      '<div class="bdpg-grade-l" style="color:' + col + '">' + BDPG.escHtml(g.grade) + '</div>' +
+      '<div class="bdpg-grade-lbl" style="color:' + col + '">' + BDPG.escHtml(g.gradeLabel) + '</div>' +
+    '</div>';
+  };
+
+  BDPG.rangeBarHtml = function (e) {
+    function pos(v) { return Math.max(0, Math.min(100, ((v - 2500) / 12500) * 100)); }
+    return '<div class="bdpg-nrange">' +
+        '<div class="bdpg-nrange-m official" style="left:' + pos(e.officialSubtotal).toFixed(1) + '%"></div>' +
+        '<div class="bdpg-nrange-m final" style="left:' + pos(e.finalGallons).toFixed(1) + '%"></div>' +
+      '</div>' +
+      '<div class="bdpg-rangebar-ends"><span>2,500</span><span>15,000</span></div>' +
+      '<div class="bdpg-nrange-key">' +
+        '<span><span style="display:inline-block;width:10px;height:3px;background:var(--accent);vertical-align:middle"></span> Final ' + BDPG.fmtGal(e.finalGallons) + '</span>' +
+        '<span><span style="display:inline-block;width:10px;height:3px;background:var(--text);vertical-align:middle"></span> Official ' + BDPG.fmtGal(e.officialSubtotal) + '</span>' +
+      '</div>';
+  };
+
   BDPG.resultsHtml = function () {
     var r = BDPG.state.result, e = r.estimate, g = r.grade;
     var annual = e.finalGallons * 12;
@@ -17773,9 +17885,9 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
     (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '');
 
-    var waterfall = '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Adjustment Waterfall</div></div>' +
-      '<table class="dt" style="width:100%;font-size:.85em"><tbody>' +
+    var waterfall = '<div class="cc" style="margin-top:14px"><div class="cc-lbl">Adjustment Waterfall</div>' +
+      '<div class="cw" style="height:220px"><canvas id="bdpg-waterfall"></canvas></div>' +
+      '<table class="dt" style="width:100%;font-size:.85em;margin-top:10px"><tbody>' +
         '<tr><td>1. Baseline</td><td style="text-align:right">' + BDPG.fmtGal(e.baseline) + '</td></tr>' +
         '<tr><td>2. Region-adjusted (' + (e.regionPct >= 0 ? '+' : '') + (e.regionPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + BDPG.fmtGal(regionAdjusted) + '</td></tr>' +
         '<tr style="font-weight:700"><td>3. Official calculator subtotal (+ Amenities ' + (e.amenityPct >= 0 ? '+' : '') + (e.amenityPct * 100).toFixed(1) + '% + Review ' + (e.reviewPct >= 0 ? '+' : '') + (e.reviewPct * 100).toFixed(1) + '%)</td><td style="text-align:right">' + BDPG.fmtGal(e.officialSubtotal) + '</td></tr>' +
@@ -17783,21 +17895,19 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
         '<tr style="font-weight:700;border-top:1px solid var(--border)"><td>5. Final Potential Gallons</td><td style="text-align:right">' + BDPG.fmtGal(e.finalGallons) + '</td></tr>' +
       '</tbody></table></div>';
 
-    var netPos = Math.max(0, Math.min(100, ((e.officialSubtotal - 2500) / (15000 - 2500)) * 100));
-    var rangeBar = '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Position in Network Range (2,500–15,000)</div></div>' +
-      '<div style="background:var(--bg2,#222);border-radius:6px;height:14px;position:relative">' +
-        '<div style="position:absolute;left:' + netPos.toFixed(1) + '%;top:-4px;width:3px;height:22px;background:var(--accent)"></div>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:.72em;color:var(--muted);margin-top:4px"><span>2,500</span><span>15,000</span></div>' +
-      '<div style="font-size:.7em;color:var(--muted);margin-top:2px">Based on the official calculator subtotal (' + BDPG.fmtGal(e.officialSubtotal) + '), not the pricing-adjusted final.</div>' +
-      '<div style="margin-top:10px;font-weight:700">Network Fit Grade: ' + g.grade + ' — ' + BDPG.escHtml(g.gradeLabel) + '</div>' +
-      '<div style="font-size:.78em;color:var(--muted)">Scored against its own Location Profile\'s range (' + BDPG.fmtGal(g.rangeLo) + '–' + BDPG.fmtGal(g.rangeHi) + '), using the official subtotal — never affected by Pricing Strategy.</div>' +
+    var rangeSection = '<div class="bdpg-hero" style="margin-top:14px">' +
+      '<div class="cc"><div class="cc-lbl">Position in Network Range</div>' + BDPG.rangeBarHtml(e) +
+        '<div style="font-size:.68em;color:var(--muted);margin-top:6px">Grade is scored from the official subtotal and is never affected by Pricing Strategy.</div></div>' +
+      BDPG.gradeBadgeHtml(g) +
     '</div>';
+
+    var amenitySection = '<div class="cc" style="margin-top:14px"><div class="cc-lbl">Your Amenity Profile</div>' +
+      '<div class="cw" style="height:180px"><canvas id="bdpg-amenity"></canvas></div>' +
+      '<div style="font-size:.68em;color:var(--muted)">This prospect’s own amenity levels. No network average available yet.</div></div>';
 
     var netCtx = BDPG.networkContextHtml();
 
-    return '<div class="bdpg-results">' + hero + waterfall + rangeBar + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
+    return '<div class="bdpg-results">' + hero + waterfall + rangeSection + amenitySection + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
   };
 
   BDPG.conditionAdjustedHtml = function () {
