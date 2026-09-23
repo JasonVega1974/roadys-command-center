@@ -576,6 +576,21 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-acard-f{font-size:.64em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px;}
 .bdpg-acard-v{font-size:.76em;font-weight:700;color:var(--text);margin-top:3px;min-height:1.1em;}
 .bdpg-acard:not(.set) .bdpg-acard-v{color:var(--dim);}
+.bdpg-go{width:100%;padding:15px;margin:16px 0;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
+.bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(0,200,255,.45);}
+.bdpg-go:disabled{opacity:.45;cursor:not-allowed;background:var(--surface2);color:var(--muted);}
+.bdpg-results{animation:bdpgIn .22s ease-out;}
+@keyframes bdpgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.bdpg-hero{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;}
+@media(max-width:820px){.bdpg-hero{grid-template-columns:1fr;}}
+.bdpg-hero-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;position:relative;overflow:hidden;}
+.bdpg-hero-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.bdpg-hero-card.final::before{background:var(--accent);}
+.bdpg-hero-card.official::before{background:var(--muted);}
+.bdpg-hero-num{font-family:var(--ff);font-weight:800;line-height:1;}
+.bdpg-hero-card.final .bdpg-hero-num{font-size:3.2em;color:var(--accent);}
+.bdpg-hero-card.official .bdpg-hero-num{font-size:2.2em;color:var(--text);}
+.bdpg-hero-math{font-family:monospace;font-size:.68em;color:var(--muted);margin-top:8px;word-break:break-word;}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
@@ -17709,10 +17724,9 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
   BDPG.generateButtonHtml = function () {
     var s = BDPG.state;
-    var canGenerate = !!(s.profile && s.roadway && s.state);
-    return '<button id="bdpg-generate-btn" class="btn btn-accent" style="width:100%;padding:12px;font-size:1em;margin-top:14px" ' +
-      (canGenerate ? '' : 'disabled title="Pick a Location Profile, Roadway, and State first"') +
-      ' onclick="BDPG.onGenerate()">Generate Value Profile</button>';
+    var can = !!(s.profile && s.roadway && s.state);   // unchanged condition
+    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled title="Complete Steps 1 and 2 to generate."') +
+      ' onclick="BDPG.onGenerate()">🚛 Generate Value Profile</button>';
   };
 
   BDPG.onGenerate = function () {
@@ -17742,16 +17756,22 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     var annual = e.finalGallons * 12;
     var regionAdjusted = Math.round(e.baseline * (1 + e.regionPct));
 
-    var hero = '<div class="bdpg-box" style="margin-top:14px;text-align:center">' +
-      '<div style="font-size:.75em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Final Potential Gallons</div>' +
-      '<div style="font-size:2.4em;font-weight:800;color:var(--accent)">' + BDPG.fmtGal(e.finalGallons) + '</div>' +
-      '<div style="font-size:.85em;color:var(--muted)">≈ ' + BDPG.fmtGal(annual) + ' gal/yr</div>' +
-      '<div style="margin-top:10px;font-size:.9em">Official calculator subtotal: <b>' + BDPG.fmtGal(e.officialSubtotal) + '</b></div>' +
-      '<div style="margin-top:8px;font-family:monospace;font-size:.78em;color:var(--muted)">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
-      '<div style="margin-top:2px;font-family:monospace;font-size:.78em;color:var(--muted)">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
-      '<div style="margin-top:6px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
-      (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '') +
-    '</div>';
+    var hero = '<div class="bdpg-hero">' +
+      '<div class="bdpg-hero-card final">' +
+        '<div class="bdpg-lbl">Final Potential Gallons</div>' +
+        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.finalGallons) + '</div>' +
+        '<div style="font-size:.8em;color:var(--muted);margin-top:4px">gal/mo · ≈ ' + BDPG.fmtGal(annual) + ' gal/yr</div>' +
+        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
+      '</div>' +
+      '<div class="bdpg-hero-card official">' +
+        '<div class="bdpg-lbl">Official Calculator Subtotal</div>' +
+        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.officialSubtotal) + '</div>' +
+        '<div style="font-size:.8em;color:var(--muted);margin-top:4px">gal/mo · traces to the printed calculator</div>' +
+        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
+    (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '');
 
     var waterfall = '<div class="bdpg-box" style="margin-top:14px">' +
       '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Adjustment Waterfall</div></div>' +
@@ -17777,7 +17797,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
     var netCtx = BDPG.networkContextHtml();
 
-    return hero + waterfall + rangeBar + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml();
+    return '<div class="bdpg-results">' + hero + waterfall + rangeBar + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
   };
 
   BDPG.conditionAdjustedHtml = function () {
