@@ -90,7 +90,12 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .bdpg-bcard:hover{border-color:var(--border2);transform:translateY(-1px);}
 .bdpg-bcard.dim{opacity:.45;}
 .bdpg-bcard.on{border-color:var(--accent);background:rgba(0,200,255,.08);box-shadow:0 0 14px rgba(0,200,255,.25);}
-.bdpg-bcard.suggest{border-color:var(--yellow);box-shadow:0 0 10px rgba(255,214,10,.2);}
+/* :not(.on) makes the "selected beats suggested" rule live in the CSS itself.
+   Both selectors set border-color at equal specificity, so without it the
+   winner is decided by source order, and the only reason a card never carries
+   both classes is step1Html's `suggest = !on && …` boolean -- a JS guard one
+   simplification away from turning a selected card yellow. */
+.bdpg-bcard.suggest:not(.on){border-color:var(--yellow);box-shadow:0 0 10px rgba(255,214,10,.2);}
 .bdpg-bcard-ico{font-size:1.3em;line-height:1;margin-bottom:6px;}
 .bdpg-bcard-name{font-family:var(--ff);font-size:1em;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text);}
 .bdpg-bcard-sub{font-size:.72em;color:var(--muted);margin-top:2px;}
@@ -192,21 +197,21 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .impl-sub-tab:hover{color:var(--text);}
 .bdpg-subtabs{display:flex;gap:4px;padding:0 22px;border-bottom:2px solid var(--border);background:var(--surface);}
 
-/* Bus Dev Potential Gallons — Export PDF (Task 23).
-   Gated on body.bdpg-print-mode (set by BDPG.onExportPdf, cleared on 'afterprint')
-   rather than unconditionally on #pg-bus-dev-potential-gallons, so a plain
-   browser File > Print on any OTHER page keeps behaving exactly as it does
-   today (the existing .page{display:none}/.page.active{display:block} rules
-   already make window.print() print only the active page). Without this
-   gate, these rules would force-hide every page and force-show this one
-   regardless of which page the user was actually printing. */
+/* Bus Dev Potential Gallons — Export PDF.
+   Gated on body.bdpg-print-mode (set by BDPG.onExportPdf, cleared on
+   'afterprint') rather than unconditionally, so a plain browser File > Print
+   keeps behaving normally -- only a print triggered through the Export PDF
+   button gets caught by these rules.
+   The dashboard-only selectors this block used to carry (.sidebar, .topbar,
+   .page, #pg-bus-dev-potential-gallons) came over verbatim with the
+   extraction and match 0 elements on this standalone page; they were removed
+   rather than left reading as load-bearing. #toast is kept: this page does
+   have one. */
 @media print {
-  body.bdpg-print-mode .sidebar, body.bdpg-print-mode .topbar, body.bdpg-print-mode #toast { display: none !important; }
-  body.bdpg-print-mode .page { display: none !important; }
-  body.bdpg-print-mode #pg-bus-dev-potential-gallons { display: block !important; }
+  body.bdpg-print-mode #toast { display: none !important; }
   body.bdpg-print-mode #bdpg-content > *:not(#bdpg-print-only) { display: none !important; }
   body.bdpg-print-mode #bdpg-print-only { display: block !important; }
-  body.bdpg-print-mode, body.bdpg-print-mode .page { background: #fff !important; color: #000 !important; }
+  body.bdpg-print-mode { background: #fff !important; color: #000 !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-box { border: 1px solid #999 !important; page-break-inside: avoid; }
   /* Hero cards, grade badge and range bar reuse the on-screen classes so the
      print layout stays in lockstep with Task 7's markup, but the glow/accent
@@ -412,6 +417,10 @@ function getCentroid(pathStr, axis){
         prospectName: '', prospectCity: '', prospectState: '', actualLanes: ''
       },
       result: null,
+      // True only while a result that HAD been generated has since been
+      // dropped because an input feeding it changed -- see
+      // BDPG.invalidateResult(). Never serialized into a saved record.
+      resultStale: false,
       supportingOpen: false,
       preEvalOpen: true
     },
@@ -421,7 +430,16 @@ function getCentroid(pathStr, axis){
       if (!el) return;
       if (!BDPG._regionVarianceLoaded) { BDPG.loadRegionVariance(BDPG.render); return; }
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
-      if (BDPG.activeTab === 'prospects') { el.innerHTML = BDPG.prospectsHtml(); return; }
+      if (BDPG.activeTab === 'prospects') {
+        // updatePreEvalSignal() is documented as the sole assignor of
+        // prospect.preEvalSignal, and every other render path reaches it
+        // through preEvalCardHtml(). This branch doesn't render the ⓪ card,
+        // so it has to call it directly -- otherwise this is the one route
+        // that can leave the signal stale while the tracker reads it.
+        BDPG.updatePreEvalSignal();
+        el.innerHTML = BDPG.prospectsHtml();
+        return;
+      }
       el.innerHTML =
         BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
         BDPG.preEvalCardHtml() +
@@ -430,8 +448,10 @@ function getCentroid(pathStr, axis){
         BDPG.stepCardOpen(3, 'Step 3 — Supporting Details', false) + BDPG.supportingDetailsHtml() + BDPG.stepCardClose() +
         BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() +
         BDPG.generateButtonHtml() +
-        (BDPG.state.result ? (BDPG.resultsHtml() + '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button> ' +
-          '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' + BDPG.exportPdfHtml()) : '') +
+        // One container for "the results, or the notice that they were
+        // cleared", so BDPG.invalidateResult() can swap between them with a
+        // targeted patch instead of a focus-stealing full render.
+        '<div id="bdpg-results-wrap">' + BDPG.resultsWrapHtml() + '</div>' +
         '<div class="bdpg-box" style="margin-top:14px">' +
           '<button class="btn" onclick="BDPG.onSaveProfile()">Save Profile</button> ' +
           '<button class="btn" onclick="BDPG.toggleMyProfiles()">My Profiles</button>' +
@@ -439,6 +459,12 @@ function getCentroid(pathStr, axis){
         '</div>';
       BDPG.renderMap();
       BDPG.drawCharts();
+      // Baseline for "does the rep have unsaved work?", captured after the
+      // first complete calc render rather than off the state literal: both
+      // step2Html() (pricingLevel/amenityLevel defaults) and
+      // preEvalCardHtml() (preEvalSignal) write to state while building the
+      // markup above, so a signature taken any earlier would never match.
+      if (BDPG.savedSig === null) BDPG.savedSig = BDPG.stateSig();
     }
   };
 
@@ -552,6 +578,9 @@ function getCentroid(pathStr, axis){
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
     BDPG.regionVariance.override = out;
     BDPG.state.adminSavedJson = JSON.stringify(out, null, 2) + '\n\n// Paste this into region_variance.json to make it the new team-wide default.';
+    // The region % set is an engine input too -- it just lives outside
+    // BDPG.state. Changing it strands any result computed under the old one.
+    BDPG.invalidateResult();
     BDPG.render();
   };
 
@@ -559,6 +588,7 @@ function getCentroid(pathStr, axis){
     localStorage.removeItem('roadysBDPGRegionOverride');
     BDPG.regionVariance.override = null;
     BDPG.state.adminSavedJson = null;
+    BDPG.invalidateResult();
     BDPG.render();
   };
 
@@ -740,6 +770,9 @@ function getCentroid(pathStr, axis){
 
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
     BDPG.regionVariance.override = out;
+    // Third writer of the region % set (with onSaveRegionOverride and
+    // onClearRegionOverride) -- same reason it has to invalidate.
+    BDPG.invalidateResult();
     BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
     // BDPG.render() rebuilds adminPanelHtml()'s innerHTML wholesale, and with
     // regionCsv.headers now empty it reverts to the plain file-input markup
@@ -877,6 +910,11 @@ function getCentroid(pathStr, axis){
     s.autoSetNote = '';
     s.suggestProfiles = [];
     if (rule && rule.auto) {
+      // The ⓪ card's only coupling into the engine: this is the one branch
+      // where picking a Location Type rewrites Step 1's baseline, so it is
+      // the one branch that can strand a generated result. A `suggest` rule
+      // (below) only outlines cards and changes no input.
+      if (s.profile !== rule.auto || s.roadway !== rule.roadway) BDPG.invalidateResult();
       s.profile = rule.auto; s.roadway = rule.roadway;
       s.autoSetNote = v + ' type selected — baseline auto-set.';
     } else if (rule && rule.suggest) {
@@ -1173,6 +1211,7 @@ function getCentroid(pathStr, axis){
 
   BDPG.onMapStateClick = function (st) {
     // Same field the typed input sets; a click is just a second path to it.
+    if (BDPG.state.state !== st) BDPG.invalidateResult();
     BDPG.state.state = st;
     BDPG.render();
   };
@@ -1242,6 +1281,9 @@ function getCentroid(pathStr, axis){
     // of two, same resulting state. A manual pick always wins over an earlier
     // Location Type auto-set, so any stale "baseline auto-set" note must not
     // linger next to a contradicting selection.
+    // Only a real change invalidates: re-clicking the already-selected card
+    // must not throw away results it still describes exactly.
+    if (BDPG.state.profile !== profile || BDPG.state.roadway !== roadway) BDPG.invalidateResult();
     BDPG.state.profile = profile;
     BDPG.state.roadway = roadway;
     BDPG.state.autoSetNote = '';
@@ -1344,7 +1386,12 @@ function getCentroid(pathStr, axis){
   // restores focus + cursor position afterward -- typing a 2-letter state code
   // must not visibly lose focus after the first keystroke.
   BDPG.onStateInput = function (val) {
-    BDPG.state.state = val.toUpperCase();
+    var next = val.toUpperCase();
+    // State selects the region, which sets regionPct in the estimate and
+    // result.region on the record. Guarded on a real change so a keystroke
+    // that re-types the same letter is a no-op.
+    if (BDPG.state.state !== next) BDPG.invalidateResult();
+    BDPG.state.state = next;
     // Two inputs can call this now (Step 2's own "type a state code" field,
     // and the Prospect Profile card's State field added in Task 4) -- only
     // refocus Step 2's field below if it was the one actually being typed
@@ -1404,6 +1451,10 @@ function getCentroid(pathStr, axis){
 
   // Targeted DOM update only -- a slider drag must never rebuild the panel.
   BDPG.onRatingSlider = function (v) {
+    // Review % is an engine input. invalidateResult() patches the results
+    // container rather than re-rendering, so a drag keeps its grip on the
+    // slider while the stale panel is replaced by the notice.
+    if (String(BDPG.state.truckerPathRating) !== String(v)) BDPG.invalidateResult();
     BDPG.state.truckerPathRating = v;
     var num = document.getElementById('bdpg-tp-num');
     var st = document.getElementById('bdpg-tp-stars');
@@ -1413,6 +1464,7 @@ function getCentroid(pathStr, axis){
     if (band) band.innerHTML = BDPG.ratingBandHtml(v);
   };
   BDPG.onRatingClear = function () {
+    if (BDPG.state.truckerPathRating !== '') BDPG.invalidateResult();
     BDPG.state.truckerPathRating = '';
     BDPG.render();
   };
@@ -1424,17 +1476,24 @@ function getCentroid(pathStr, axis){
     if (!opts.length) return;
     var cur = BDPG.state.amenityDetails[field];
     var i = opts.indexOf(cur);
+    // Always a real change (the cycle always advances). Invalidates even when
+    // the rep has overridden the Confirmed Amenity Level -- the results
+    // panel's own amenity chart is drawn straight from amenityDetails, so it
+    // would go stale regardless of whether the estimate did.
+    BDPG.invalidateResult();
     BDPG.state.amenityDetails[field] = opts[(i + 1) % opts.length];
     BDPG.render();
   };
 
   // Pricing is a <select> -- no cursor/focus to preserve, full re-render is fine.
   BDPG.onPricingChange = function (value) {
+    if (BDPG.state.pricingLevel !== value) BDPG.invalidateResult();
     BDPG.state.pricingLevel = value;
     BDPG.render();
   };
 
   BDPG.onAmenityConfirm = function (value) {
+    if (BDPG.state.amenityLevel !== value) BDPG.invalidateResult();
     BDPG.state.amenityLevel = value;
     BDPG.state.amenityOverridden = true;
     BDPG.render();
@@ -1482,7 +1541,14 @@ function getCentroid(pathStr, axis){
       '</div>';
   };
 
+  // The five signal selects this handles (condition, hours, distance,
+  // corridor, competition) are all read by calculateNetworkFitGrade, and
+  // `condition` also by conditionAdjustedGallons -- both parts of
+  // state.result. The Step 3 free-text fields do NOT route through here
+  // (they write supportingDetails directly from their own oninput) and are
+  // correctly left alone: nothing in the result derives from them.
   BDPG.onSupportingSelect = function (field, value) {
+    if (BDPG.state.supportingDetails[field] !== value) BDPG.invalidateResult();
     BDPG.state.supportingDetails[field] = value;
     BDPG.render();
   };
@@ -1493,6 +1559,105 @@ function getCentroid(pathStr, axis){
     return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled title="Complete Prospect Profile, Steps 1 and 2 to generate."') +
       ' onclick="BDPG.onGenerate()">🚛 Generate Value Profile</button>';
   };
+
+  // ── Result ↔ input coupling ────────────────────────────────────────────
+  // BDPG.state.result is the engine's answer for ONE exact set of inputs,
+  // while BDPG.trackerSummary() pairs it with the *live* profile / roadway /
+  // state / city. So the moment an input that feeds the engine changes while
+  // a result is still sitting in state, Save Profile would freeze a
+  // mismatched pair into a durable record — a tracker row stating an
+  // Official Subtotal that the location profile printed beside it could
+  // never produce (measured: 14,250 stored against a Fuel stop whose real
+  // subtotal is 2,375). That is the one number that has to match Roady's
+  // published calculator in front of a customer.
+  //
+  // The fix is at the root: every handler that changes an engine input calls
+  // this, which drops the result and says so on screen. Recomputing silently
+  // at Save time was rejected on purpose — that would rewrite the number the
+  // rep just read off the screen, which is a different lie, not a fix.
+  //
+  // Inputs that invalidate — precisely what onGenerate() feeds the engine:
+  //   profile / roadway ...... calculateEstimate + calculateNetworkFitGrade
+  //   state .................. regionPct, and result.region
+  //   truckerPathRating ...... calculateEstimate
+  //   pricingLevel ........... calculateEstimate
+  //   amenityLevel ........... calculateEstimate
+  //   amenityDetails ......... feeds amenityLevel whenever the rep hasn't
+  //                            overridden the suggestion, and the results
+  //                            panel's own amenity chart reads it directly
+  //                            either way
+  //   supportingDetails' five signal selects ... calculateNetworkFitGrade,
+  //                            and `condition` also conditionAdjustedGallons
+  //   the region-variance override ... effectiveRegionPct()
+  //
+  // Inputs that deliberately do NOT invalidate, because nothing in
+  // state.result derives from them: prospect name / street / city / notes
+  // (display only, and read live by displayName() / trackerSummary(), so
+  // they cannot go stale against the result); prospect.locationType on its
+  // own (it matters only when it auto-sets profile/roadway, and
+  // onLocationType invalidates in exactly that case); Step 3's
+  // prospectName / prospectCity / prospectState (display-only duplicates);
+  // actualLanes (drives only Step 3's lane-mismatch warning); and every
+  // panel open/closed toggle.
+  BDPG.invalidateResult = function () {
+    if (!BDPG.state.result) return;
+    BDPG.state.result = null;
+    BDPG.state.resultStale = true;
+    // The handlers that patch the DOM instead of calling render() (the state
+    // field, the rating slider) would otherwise leave the old results panel
+    // on screen describing inputs that no longer exist.
+    var wrap = document.getElementById('bdpg-results-wrap');
+    if (wrap) wrap.innerHTML = BDPG.resultsWrapHtml();
+  };
+
+  BDPG.resultsWrapHtml = function () {
+    if (BDPG.state.result) {
+      return BDPG.resultsHtml() +
+        '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button> ' +
+        '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' +
+        BDPG.exportPdfHtml();
+    }
+    if (BDPG.state.resultStale) {
+      return '<div class="bdpg-box" style="margin-top:14px;border-color:var(--yellow);color:var(--yellow)">' +
+        '⚠ An input changed after the last Generate, so those results no longer describe this prospect and have been cleared. ' +
+        'Click <b>Generate Value Profile</b> to recalculate before saving or exporting.</div>';
+    }
+    return '';
+  };
+
+  // ── Unsaved-work detection ─────────────────────────────────────────────
+  // Signature of everything a saved record actually carries. Panel
+  // open/closed flags and the derived result are excluded: toggling a
+  // disclosure triangle is not unsaved work, and the result is rebuilt by
+  // Generate. Keys are walked in sorted order so a freshly-typed state and a
+  // JSON round-tripped one produce the same string for the same data.
+  BDPG.SIG_SKIP = {
+    result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
+    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1
+  };
+  BDPG.stateSig = function () {
+    var s = BDPG.state, out = {};
+    Object.keys(s).sort().forEach(function (k) {
+      if (!Object.prototype.hasOwnProperty.call(BDPG.SIG_SKIP, k)) out[k] = s[k];
+    });
+    try { return JSON.stringify(out); } catch (e) { return ''; }
+  };
+  // null means "no baseline captured yet" (the very first render hasn't
+  // finished), which must not be reported as unsaved work.
+  BDPG.savedSig = null;
+  BDPG.hasUnsavedWork = function () {
+    return BDPG.savedSig !== null && BDPG.stateSig() !== BDPG.savedSig;
+  };
+  BDPG.confirmDiscard = function (msg) {
+    if (!BDPG.hasUnsavedWork()) return true;
+    return confirm(msg);
+  };
+
+  // Id of the saved record the current state came from (an explicit Load, or
+  // this page's own last Save), so a re-save updates that record instead of
+  // appending a second row for the same prospect. Lives on BDPG, not on
+  // BDPG.state, so it is never serialized into a snapshot.
+  BDPG.currentProfileId = null;
 
   BDPG.onGenerate = function () {
     var s = BDPG.state;
@@ -1513,6 +1678,9 @@ function getCentroid(pathStr, axis){
     var membership = BusDevGallonsCalc.calculateMembershipFit(estimate.finalGallons);
 
     s.result = { estimate: estimate, grade: grade, conditionAdjusted: conditionAdjusted, membership: membership, region: region };
+    // The result and the inputs are back in step, so the "results cleared"
+    // notice must go with them.
+    s.resultStale = false;
     BDPG.render();
   };
 
@@ -1956,26 +2124,88 @@ function getCentroid(pathStr, axis){
       BDPG.state.prospect.name = name;
     }
     var profiles = BDPG.getSavedProfiles();
+
+    // Re-saving a prospect that came from the tracker (or that this page
+    // saved a moment ago) updates that record instead of appending another
+    // one. The tracker's averages and its grade/signal distributions count
+    // rows, so three rows for one prospect misreports the pipeline
+    // threefold -- the natural "pull it up, refresh the numbers, save" loop
+    // used to do exactly that.
+    //
+    // The binding is dropped the moment the displayed name stops matching
+    // the record's: a rep who types a different prospect over the top of a
+    // loaded one is starting a new record and must never overwrite the old
+    // one. That errs toward an extra row (harmless, deletable) rather than
+    // toward silent data loss.
+    var idx = -1;
+    if (BDPG.currentProfileId) {
+      for (var i = 0; i < profiles.length; i++) {
+        if (profiles[i].id === BDPG.currentProfileId) { idx = i; break; }
+      }
+      if (idx >= 0 && profiles[idx].name !== BDPG.displayName()) idx = -1;
+    }
+
+    // Nothing may be stored that describes a different input set than the
+    // result it carries. By the time Save runs, that can only be true one
+    // way -- an input changed after Generate, so invalidateResult() already
+    // dropped the result -- and the two honest outcomes are "store it blank"
+    // or "go back and Generate". Which one it is has to be the rep's call,
+    // never a silent recompute of the number they last read on screen.
+    if (!BDPG.state.result) {
+      var prevSum = (idx >= 0 && profiles[idx].summary) ? profiles[idx].summary : null;
+      var wouldBlankStoredFigures = !!prevSum &&
+        (isNum(prevSum.officialSubtotal) || isNum(prevSum.finalGallons));
+      if (BDPG.state.resultStale || wouldBlankStoredFigures) {
+        var why = BDPG.state.resultStale
+          ? 'An input changed after the last Generate, so there are no current results to save.'
+          : 'No value profile has been generated since this prospect was loaded, so there are no current results to save.';
+        if (!confirm(why + '\n\nSaving now stores this prospect with BLANK gallon figures and no grade.\n\n' +
+                     'OK — save it blank.\nCancel — go back and click Generate Value Profile first.')) return;
+      }
+    }
+
     var snapshot = JSON.parse(JSON.stringify(BDPG.state));
     delete snapshot.result;
-    profiles.push({
-      id: 'bdpg_' + Date.now(),
+    delete snapshot.resultStale;
+    var record = {
+      id: idx >= 0 ? profiles[idx].id : 'bdpg_' + Date.now(),
       name: BDPG.displayName(),
       savedAt: new Date().toISOString(),
       state: snapshot,
       summary: BDPG.trackerSummary()
-    });
+    };
+    if (idx >= 0) profiles[idx] = record; else profiles.push(record);
     localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
-    toast('Profile saved');
+    BDPG.currentProfileId = record.id;
+    toast(idx >= 0 ? 'Profile updated' : 'Profile saved');
     BDPG.render();
+    // After the render, so step2Html()'s pricingLevel/amenityLevel defaults
+    // are already settled and the baseline matches what is now on screen.
+    BDPG.savedSig = BDPG.stateSig();
   };
 
-  BDPG.onLoadProfile = function (id) {
+  // Returns true only if the profile was actually loaded, so callers that
+  // do more afterwards (onTrackerLoad's tab switch, onTrackerExport's
+  // generate-and-print) stop when the rep declines.
+  // `skipConfirm` is for callers that have already asked with a message of
+  // their own -- never a way to skip the question altogether.
+  BDPG.onLoadProfile = function (id, skipConfirm) {
     var profiles = BDPG.getSavedProfiles();
     var found = profiles.filter(function (p) { return p.id === id; })[0];
-    if (!found) return;
+    if (!found) return false;
+    // Loading replaces BDPG.state wholesale and there is no undo and no
+    // history in roadysBDPGProfiles -- an in-progress prospect that was
+    // never saved is simply gone. Ask first.
+    if (!skipConfirm && !BDPG.confirmDiscard(
+      'You have unsaved changes on the Potential Gallons tab.\n\n' +
+      'Loading "' + (found.name || 'this prospect') + '" replaces them, and they cannot be recovered.\n\nContinue?')) return false;
     BDPG.state = JSON.parse(JSON.stringify(found.state));
     BDPG.state.result = null;
+    // A deliberate load is not a stale result -- there is simply no result
+    // yet. (And a record saved by an older build could carry the flag in its
+    // snapshot; it must not resurrect a warning about someone else's edit.)
+    BDPG.state.resultStale = false;
+    BDPG.currentProfileId = found.id;
     BDPG.state.myProfilesOpen = false;
     // A profile saved before Task 6 has no preEvalOpen at all -- default it
     // to open, matching the documented default for every other page load.
@@ -1988,12 +2218,23 @@ function getCentroid(pathStr, axis){
       BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '' };
     }
     BDPG.render();
+    BDPG.savedSig = BDPG.stateSig();
+    return true;
   };
 
   BDPG.onDeleteProfile = function (id) {
     if (!confirm('Delete this saved profile?')) return;
     var profiles = BDPG.getSavedProfiles().filter(function (p) { return p.id !== id; });
     localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
+    if (BDPG.currentProfileId === id) {
+      // What is on the calculator tab came from the record just deleted, so
+      // it is no longer stored anywhere: drop the update binding (a later
+      // Save must create a new record, not resurrect this id) and mark the
+      // state as unsaved work. '' can never equal a real signature, so
+      // hasUnsavedWork() reports true until the next Save or Load.
+      BDPG.currentProfileId = null;
+      BDPG.savedSig = '';
+    }
     BDPG.render();
   };
 
@@ -2004,10 +2245,29 @@ function getCentroid(pathStr, axis){
     var profiles = BDPG.getSavedProfiles();
     var rows = profiles.length
       ? profiles.map(function (p) {
+          // This modal reads the same roadysBDPGProfiles array the Prospects
+          // tracker does, so it gets the same two guards trackerRowHtml
+          // applies (they were fixed there and missed here):
+          //  * the saved date is sliced out of the stored ISO string rather
+          //    than pushed through new Date(...).toLocaleDateString(), which
+          //    renders the literal "Invalid Date" for an absent or
+          //    unparseable value;
+          //  * the id goes through JSON.stringify + &quot; so an id holding
+          //    a quote cannot close this onclick's string and run as JS.
+          //    HTML-entity-escaping the id instead would not work -- the
+          //    browser decodes entities before compiling the attribute.
+          //    (Reproduced: an id of `x') + alert(9) + ('` executed.)
+          var savedTxt = (typeof p.savedAt === 'string' && p.savedAt.length >= 10)
+            ? p.savedAt.slice(0, 10).replace(/-/g, ' ') : '—';
+          var pid = p.id || '';
+          var idJs = JSON.stringify(pid).replace(/"/g, '&quot;');
+          var actions = pid
+            ? ('<button class="btn btn-accent" onclick="BDPG.onLoadProfile(' + idJs + ')">Load</button> ' +
+               '<button class="btn" onclick="BDPG.onDeleteProfile(' + idJs + ')">Delete</button>')
+            : '<span style="color:var(--muted);font-size:.8em">No id — can’t act</span>';
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">' +
-            '<span>' + BDPG.escHtml(p.name) + ' <span style="color:var(--muted);font-size:.75em">' + new Date(p.savedAt).toLocaleDateString() + '</span></span>' +
-            '<span><button class="btn btn-accent" onclick="BDPG.onLoadProfile(\'' + p.id + '\')">Load</button> ' +
-            '<button class="btn" onclick="BDPG.onDeleteProfile(\'' + p.id + '\')">Delete</button></span></div>';
+            '<span>' + BDPG.escHtml(p.name || '—') + ' <span style="color:var(--muted);font-size:.75em">' + savedTxt + '</span></span>' +
+            '<span>' + actions + '</span></div>';
         }).join('')
       : '<div style="color:var(--muted)">No saved profiles yet.</div>';
     return '<div class="bdpg-box" style="margin-top:14px"><div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">My Profiles</div></div>' + rows + '</div>';
@@ -2260,8 +2520,12 @@ function getCentroid(pathStr, axis){
 
   BDPG.onTrackerLoad = function (id) {
     if (!id) return;
-    BDPG.onLoadProfile(id);
+    // onLoadProfile asks before discarding unsaved work and returns false if
+    // the rep declines -- in which case we stay on the Prospects tab with
+    // their in-progress calculation untouched.
+    if (!BDPG.onLoadProfile(id)) return;
     BDPG.switchTab('calc');
+    BDPG.savedSig = BDPG.stateSig();
   };
 
   // Export needs a generated result, and onLoadProfile deliberately clears
@@ -2289,10 +2553,19 @@ function getCentroid(pathStr, axis){
       return;
     }
 
-    BDPG.onLoadProfile(id);
+    // Only now, once the export is known to be possible, is anything about
+    // to be discarded. "Export PDF" does not read as "throw away what I am
+    // working on", so the rep has to be told that it does -- there is no
+    // prompt, no toast and no undo on the other side of this.
+    if (!BDPG.confirmDiscard(
+      'You have unsaved changes on the Potential Gallons tab.\n\n' +
+      'Exporting "' + (found.name || 'this prospect') + '" loads it over them, and they cannot be recovered.\n\nContinue?')) return;
+
+    BDPG.onLoadProfile(id, true);
     try {
       BDPG.switchTab('calc');
       BDPG.onGenerate();
+      BDPG.savedSig = BDPG.stateSig();
     } catch (err) {
       // The profile/roadway check above can pass yet render() still throw
       // deeper in -- e.g. a hand-edited record missing supportingDetails or
