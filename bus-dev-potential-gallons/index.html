@@ -412,7 +412,8 @@ function getCentroid(pathStr, axis){
         prospectName: '', prospectCity: '', prospectState: '', actualLanes: ''
       },
       result: null,
-      supportingOpen: false
+      supportingOpen: false,
+      preEvalOpen: true
     },
 
     render: function () {
@@ -423,6 +424,7 @@ function getCentroid(pathStr, axis){
       if (BDPG.activeTab === 'prospects') { el.innerHTML = BDPG.prospectsHtml(); return; }
       el.innerHTML =
         BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
+        BDPG.preEvalCardHtml() +
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(3, 'Step 3 — Supporting Details', false) + BDPG.supportingDetailsHtml() + BDPG.stepCardClose() +
@@ -828,6 +830,10 @@ function getCentroid(pathStr, axis){
     if (field === 'name' || field === 'city') {
       var btn = document.getElementById('bdpg-generate-btn');
       if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
+      // Name/city are two of the Pre-Evaluation panel's four prerequisites --
+      // refresh it so the "what's missing" prompt clears the instant the last
+      // one is filled, without stealing focus via a full BDPG.render().
+      BDPG.refreshPreEvalCard();
     }
     BDPG.updateStepCardBadge(0, BDPG.prospectDone());
   };
@@ -858,6 +864,166 @@ function getCentroid(pathStr, axis){
       s.suggestProfiles = rule.suggest;
     }
     BDPG.render();
+  };
+
+  // ── Pre-Evaluation panel (spec §4.5) ──────────────────────────────────
+  // Read-only summary computed from data the tool already has (region map,
+  // network-context.json, region_variance.json, BASELINE_TABLE). Never
+  // writes anything the calculator consumes -- the only state it touches is
+  // BDPG.state.prospect.preEvalSignal (for the Prospects tracker) and its
+  // own open/closed flag.
+
+  BDPG.preEvalPrereqsMissing = function () {
+    var p = BDPG.state.prospect;
+    var missing = [];
+    if (!p.name) missing.push('Truck Stop Name');
+    if (!p.city) missing.push('City');
+    if (!BDPG.state.state) missing.push('State');
+    if (!p.locationType) missing.push('Location Type');
+    return missing;
+  };
+
+  // Reuses the Task 5 Location Type -> profile coupling as the only source of
+  // "what profile does this location type suggest" -- never invents a new
+  // mapping for the types LOCTYPE_PROFILE doesn't cover (plain 'Truck Stop',
+  // 'C-Store'), which is why those two correctly fall through to null (chips
+  // 5/6 render '—') rather than guessing a business rule that doesn't exist
+  // anywhere else in the app.
+  BDPG.preEvalMappedProfile = function (locationType) {
+    var rule = BDPG.LOCTYPE_PROFILE[locationType];
+    if (!rule) return null;
+    if (rule.auto) return { profile: rule.auto, roadway: rule.roadway };
+    if (rule.suggest && rule.suggest.length) {
+      var profile = rule.suggest[0];
+      var roadways = BusDevGallonsCalc.getValidRoadways(profile);
+      if (!roadways.length) return null;
+      return { profile: profile, roadway: roadways[0] };
+    }
+    return null;
+  };
+
+  BDPG.preEval = function () {
+    var s = BDPG.state, p = s.prospect;
+    var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
+    var nc = BDPG.networkContext;
+
+    function countTone(n) { return n > 20 ? 'green' : (n >= 10 ? 'yellow' : 'red'); }
+
+    // #1 Region identified
+    var c1;
+    if (region) c1 = { label: 'Region identified', text: region, tone: 'green' };
+    else if (!s.state) c1 = { label: 'Region identified', text: 'State not entered', tone: 'yellow' };
+    else c1 = { label: 'Region identified', text: 'Not a recognized state code', tone: 'yellow' };
+
+    // #2 Region performance
+    var pct = region ? BDPG.effectiveRegionPct(region) * 100 : null;
+    var c2;
+    if (pct === null) c2 = { label: 'Region performance', text: '—', tone: 'yellow' };
+    else if (pct > 0) c2 = { label: 'Region performance', text: '+' + pct.toFixed(1) + '%', tone: 'green' };
+    else if (pct === 0) c2 = { label: 'Region performance', text: '0% (not configured)', tone: 'yellow' };
+    else c2 = { label: 'Region performance', text: pct.toFixed(1) + '%', tone: 'red' };
+
+    // #3 Network presence (region total)
+    var c3;
+    var regionData = (region && nc && nc.byRegion) ? nc.byRegion[region] : null;
+    if (!regionData) c3 = { label: 'Network presence (region total)', text: '—', tone: 'yellow' };
+    else c3 = { label: 'Network presence (region total)', text: regionData.total + ' locations in ' + region, tone: countTone(regionData.total) };
+
+    // #4 Location type in network
+    var c4;
+    var locType = p.locationType;
+    if (!locType) {
+      c4 = { label: 'Location type in network', text: 'Location type not set', tone: 'yellow' };
+    } else if (!regionData || !regionData.byType || !regionData.byType.hasOwnProperty(locType)) {
+      c4 = { label: 'Location type in network', text: '—', tone: 'yellow' };
+    } else {
+      var typeCount = regionData.byType[locType];
+      c4 = { label: 'Location type in network', text: typeCount + ' ' + locType + ' in ' + region, tone: countTone(typeCount) };
+    }
+
+    // #5 Baseline range for type -- always blue, informational only
+    var mapped = BDPG.preEvalMappedProfile(locType);
+    var c5;
+    if (mapped) {
+      var rows = BDPG_CONFIG.BASELINE_TABLE.filter(function (r) { return r.profile === mapped.profile; });
+      var baselines = rows.map(function (r) { return r.baseline; });
+      var lo = Math.min.apply(null, baselines), hi = Math.max.apply(null, baselines);
+      c5 = { label: 'Baseline range for type', text: BDPG.fmtGal(lo) + '–' + BDPG.fmtGal(hi), tone: 'blue' };
+    } else {
+      c5 = { label: 'Baseline range for type', text: '—', tone: 'blue' };
+    }
+
+    // #6 Estimated profile -- always blue, suggestion only
+    var c6;
+    var mappedRow = mapped ? BusDevGallonsCalc.getBaselineRow(mapped.profile, mapped.roadway) : null;
+    if (mappedRow) {
+      var lanesDisp = String(mappedRow.lanes).replace('-', '–');
+      c6 = { label: 'Estimated profile', text: mappedRow.profile + ' · ' + mappedRow.roadway + ' · ' + lanesDisp + ' lanes · ' + BDPG.fmtGal(mappedRow.baseline) + ' baseline', tone: 'blue' };
+    } else {
+      c6 = { label: 'Estimated profile', text: '—', tone: 'blue' };
+    }
+
+    // #7 Overall signal -- rolled up from #1-4 only; #5/#6 carry no judgement.
+    var judged = [c1, c2, c3, c4];
+    var anyRed = judged.some(function (c) { return c.tone === 'red'; });
+    var allGreen = judged.every(function (c) { return c.tone === 'green'; });
+    var signal, c7;
+    if (anyRed) { signal = 'Review'; c7 = { label: 'Overall signal', text: 'Review carefully', tone: 'red' }; }
+    else if (allGreen) { signal = 'Strong'; c7 = { label: 'Overall signal', text: 'Strong candidate', tone: 'green' }; }
+    else { signal = 'Moderate'; c7 = { label: 'Overall signal', text: 'Moderate opportunity', tone: 'yellow' }; }
+
+    return { chips: [c1, c2, c3, c4, c5, c6, c7], signal: signal };
+  };
+
+  BDPG.togglePreEval = function () {
+    BDPG.state.preEvalOpen = !BDPG.state.preEvalOpen;
+    BDPG.refreshPreEvalCard();
+  };
+
+  // Targeted DOM patch -- shared by every field that can change what the
+  // pre-eval panel shows (name/city gating, typed state, location type via
+  // full render()) without forcing an unrelated full-panel rebuild.
+  BDPG.refreshPreEvalCard = function () {
+    var card = document.getElementById('bdpg-preeval-card');
+    if (!card) return;
+    card.outerHTML = BDPG.preEvalCardHtml();
+  };
+
+  BDPG.preEvalHtml = function () {
+    var missing = BDPG.preEvalPrereqsMissing();
+    if (missing.length) {
+      return '<div style="color:var(--muted);font-size:.85em">Fill in ' + missing.map(BDPG.escHtml).join(', ') +
+        ' above to see a pre-evaluation.</div>';
+    }
+    var result = BDPG.preEval();
+    BDPG.state.prospect.preEvalSignal = result.signal;
+
+    var judgementChips = result.chips.slice(0, 6).map(function (c) {
+      return '<div>' +
+        '<div style="font-size:.68em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:5px">' +
+          BDPG.escHtml(c.label) + '</div>' +
+        '<span class="badge tag-' + c.tone + '">' + BDPG.escHtml(c.text) + '</span>' +
+      '</div>';
+    }).join('');
+
+    var overall = result.chips[6];
+    return '<div class="bdpg-grid-3">' + judgementChips + '</div>' +
+      '<div class="bdpg-callout" style="text-align:center">' +
+        '<div class="bdpg-lbl">' + BDPG.escHtml(overall.label) + '</div>' +
+        '<span class="badge tag-' + overall.tone + '" style="font-size:1.1em;padding:6px 16px">' + BDPG.escHtml(overall.text) + '</span>' +
+      '</div>';
+  };
+
+  BDPG.preEvalCardHtml = function () {
+    var open = BDPG.state.preEvalOpen;
+    return '<div class="bdpg-step" id="bdpg-preeval-card">' +
+      '<div class="bdpg-step-hd" style="cursor:pointer" onclick="BDPG.togglePreEval()">' +
+        '<div class="bdpg-badge">' + (open ? '▾' : '▸') + '</div>' +
+        '<div class="bdpg-step-title">Pre-Evaluation</div>' +
+      '</div>' +
+      '<div style="font-size:.78em;color:var(--muted);margin:-8px 0 12px">complete the calculator below for a full analysis.</div>' +
+      (open ? BDPG.preEvalHtml() : '') +
+    '</div>';
   };
 
   BDPG.prospectHtml = function () {
@@ -1167,6 +1333,10 @@ function getCentroid(pathStr, axis){
     // The outerHTML swap above destroyed the map's <svg> along with the rest
     // of #bdpg-step2 -- rebuild it so typing a state code updates the map too.
     BDPG.renderMap();
+    // State drives three of the seven Pre-Evaluation chips (region, region
+    // performance, network presence) -- keep it in step with every other
+    // targeted patch this handler already does.
+    BDPG.refreshPreEvalCard();
   };
 
   BDPG.starsHtml = function (v) {
