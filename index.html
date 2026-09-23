@@ -881,6 +881,20 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
   body.bdpg-print-mode #bdpg-print-only { display: block !important; }
   body.bdpg-print-mode, body.bdpg-print-mode .page { background: #fff !important; color: #000 !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-box { border: 1px solid #999 !important; page-break-inside: avoid; }
+  /* Hero cards, grade badge and range bar reuse the on-screen classes so the
+     print layout stays in lockstep with Task 7's markup, but the glow/accent
+     styling those classes carry on-screen (box-shadow, var(--accent) text)
+     has to become plain black-on-white with a border for a leave-behind. */
+  body.bdpg-print-mode #bdpg-print-only .bdpg-hero-card { background: #fff !important; border: 1px solid #999 !important; page-break-inside: avoid; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-hero-card::before { display: none !important; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-hero-num,
+  body.bdpg-print-mode #bdpg-print-only .bdpg-hero-math,
+  body.bdpg-print-mode #bdpg-print-only .bdpg-lbl { color: #000 !important; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-grade { border: 2px solid #000 !important; page-break-inside: avoid; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-grade-l,
+  body.bdpg-print-mode #bdpg-print-only .bdpg-grade-lbl { color: #000 !important; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange { background: #fff !important; border: 1px solid #999 !important; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-m { box-shadow: none !important; border: 1px solid #000 !important; }
 }
 #bdpg-print-only { display: none; }
 </style>
@@ -17945,10 +17959,32 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   BDPG.exportPdfHtml = function () {
     var r = BDPG.state.result;
     if (!r) return '';
-    var e = r.estimate, sd = BDPG.state.supportingDetails;
+    var e = r.estimate, g = r.grade, sd = BDPG.state.supportingDetails;
     var membershipLine = r.membership.valuePerGallonConfigured && r.membership.plans.some(function (p) { return p.configured; })
       ? BDPG.membershipFitHtml()
       : '';
+
+    var heroPrint = '<div class="bdpg-hero" style="margin:14px 0">' +
+      '<div class="bdpg-hero-card final"><div class="bdpg-lbl">Final Potential Gallons</div>' +
+        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.finalGallons) + '</div>' +
+        '<div style="font-size:.8em;color:#333;margin-top:4px">gal/mo</div>' +
+        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
+      '</div>' +
+      '<div class="bdpg-hero-card official"><div class="bdpg-lbl">Official Calculator Subtotal</div>' +
+        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.officialSubtotal) + '</div>' +
+        '<div style="font-size:.8em;color:#333;margin-top:4px">gal/mo · traces to the printed calculator</div>' +
+        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
+      '</div>' +
+    '</div>';
+
+    var chartImg = BDPG.printChartImg
+      ? '<div style="margin-top:14px"><img src="' + BDPG.printChartImg + '" alt="Adjustment waterfall chart" style="width:100%;max-width:560px;border:1px solid #999"></div>'
+      : '';
+
+    var gradeSection = '<div class="bdpg-hero" style="margin-top:14px">' +
+      '<div class="bdpg-box"><div class="bdpg-lbl">Position in Network Range</div>' + BDPG.rangeBarHtml(e) + '</div>' +
+      BDPG.gradeBadgeHtml(g) +
+    '</div>';
 
     return '<div id="bdpg-print-only">' +
       '<h1>Roady\'s Prospective Member Gallons Calculator</h1>' +
@@ -17959,12 +17995,31 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       '<h3>Official Calculator Subtotal: ' + BDPG.fmtGal(e.officialSubtotal) + '</h3>' +
       '<h3>Step 3 — Pricing Strategy: ' + BDPG.escHtml(BDPG.state.pricingLevel) + '</h3><p>' + BDPG.escHtml(e.finalMathLine) + '</p>' +
       '<h3>Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons) + '</h3>' +
+      heroPrint + chartImg + gradeSection +
       membershipLine +
     '</div>';
   };
 
   BDPG.onExportPdf = function () {
     if (!BDPG.state.result) { alert('Generate a Value Profile first.'); return; }
+    // A live <canvas> doesn't reproduce reliably across print pipelines, so grab
+    // a static image of the waterfall chart before anything else changes. This
+    // has to happen before the #bdpg-print-only rebuild below so exportPdfHtml()
+    // can inline it as an <img>; if it fails for any reason the packet still
+    // prints, just without the chart image.
+    BDPG.printChartImg = '';
+    try {
+      if (typeof CHS !== 'undefined' && CHS['bdpg-waterfall']) {
+        BDPG.printChartImg = CHS['bdpg-waterfall'].toBase64Image();
+      }
+    } catch (err) { BDPG.printChartImg = ''; }
+
+    // Rebuild just the print-only block (not a full BDPG.render(), which would
+    // tear down and recreate the on-screen charts) so the freshly-captured
+    // chart image is actually in the DOM before window.print() opens.
+    var printOnly = document.getElementById('bdpg-print-only');
+    if (printOnly) printOnly.outerHTML = BDPG.exportPdfHtml();
+
     // body.bdpg-print-mode is what the @media print rules key off of (see <style>),
     // so a plain browser File > Print on some other page never gets caught by
     // these rules — only a print triggered through this button does.
