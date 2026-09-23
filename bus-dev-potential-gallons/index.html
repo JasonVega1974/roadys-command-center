@@ -404,6 +404,7 @@ function getCentroid(pathStr, axis){
       profile: '', roadway: '',
       state: '', amenityDetails: {}, amenityLevel: '', amenityOverridden: false,
       truckerPathRating: '', pricingLevel: '',
+      prospect: { name: '', street: '', city: '', locationType: '', notes: '' },
       supportingDetails: {
         condition: '', hours: '', distance: '', corridor: '', competition: '',
         prospectName: '', prospectCity: '', prospectState: '', actualLanes: ''
@@ -419,6 +420,7 @@ function getCentroid(pathStr, axis){
       if (!BDPG._networkContextLoaded) { BDPG.loadNetworkContext(BDPG.render); return; }
       if (BDPG.activeTab === 'prospects') { el.innerHTML = BDPG.prospectsHtml(); return; }
       el.innerHTML =
+        BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(3, 'Step 3 — Supporting Details', false) + BDPG.supportingDetailsHtml() + BDPG.stepCardClose() +
@@ -757,8 +759,12 @@ function getCentroid(pathStr, axis){
   // Step cards are built by every step-rendering function; keeping the chrome in
   // one helper is what stops the three cards from drifting apart visually.
   BDPG.stepCardOpen = function (num, title, isDone) {
-    var glyph = ['①', '②', '③'][num - 1] || String(num);
-    return '<div class="bdpg-step' + (isDone ? ' done' : '') + '">' +
+    // Indexed by num directly (⓪=0 … ③=3) rather than num-1, so the Task 4
+    // Prospect Profile card (num 0) gets a real glyph instead of falling
+    // through to String(num) === "0". The three pre-existing call sites keep
+    // passing num 1/2/3 unchanged and still land on ①/②/③.
+    var glyph = ['⓪', '①', '②', '③'][num] || String(num);
+    return '<div class="bdpg-step' + (isDone ? ' done' : '') + '" id="bdpg-step-card-' + num + '">' +
       '<div class="bdpg-step-hd">' +
         '<div class="bdpg-badge">' + glyph + '</div>' +
         '<div class="bdpg-step-title">' + BDPG.escHtml(title) + '</div>' +
@@ -766,6 +772,23 @@ function getCentroid(pathStr, axis){
       '</div>';
   };
   BDPG.stepCardClose = function () { return '</div>'; };
+
+  // Flips one step card's "done" styling (left border + checkmark) without a
+  // full BDPG.render() -- shared by every targeted DOM patch that can change
+  // a card's completion state while the user is mid-keystroke elsewhere
+  // (Step 2's typed state field, the Prospect Profile card's fields).
+  BDPG.updateStepCardBadge = function (num, isDone) {
+    var card = document.getElementById('bdpg-step-card-' + num);
+    if (!card) return;
+    card.classList.toggle('done', isDone);
+    var hd = card.querySelector('.bdpg-step-hd');
+    var check = hd ? hd.querySelector('.bdpg-check') : null;
+    if (isDone && hd && !check) {
+      hd.insertAdjacentHTML('beforeend', '<div class="bdpg-check">✓</div>');
+    } else if (!isDone && check) {
+      check.remove();
+    }
+  };
 
   // Step completion: Step 1 done when profile+roadway resolve to a real baseline
   // row; Step 2 done when the typed/clicked state resolves to a known region.
@@ -775,6 +798,74 @@ function getCentroid(pathStr, axis){
   };
   BDPG.step2Done = function () {
     return !!(BDPG.state.state && BusDevGallonsCalc.resolveRegion(BDPG.state.state));
+  };
+
+  BDPG.LOCATION_TYPES = ['Truck Stop', 'Fuel Stop', 'Service Center', 'Truck Stop / Service Center', 'C-Store'];
+
+  // Prospect Profile (⓪) done when the three required fields are filled. State
+  // is BDPG.state.state itself -- there is no prospect.state -- so this stays
+  // true the instant the same field Step 2's map/typed-fallback write is set.
+  BDPG.prospectDone = function () {
+    var p = BDPG.state.prospect;
+    return !!(p.name && p.city && BDPG.state.state);
+  };
+
+  // Single place every prospect-name display reads from, so results/export/
+  // summary can never show a different name than the ⓪ card holds. Falls back
+  // to the older Step 3 "Prospect Name" field (pre-Task-4 data) and then a
+  // plain placeholder.
+  BDPG.displayName = function () {
+    return BDPG.state.prospect.name || BDPG.state.supportingDetails.prospectName || 'Prospect';
+  };
+
+  // Continuous text fields: write state, refresh the Generate button when a
+  // required field just changed, and keep the ⓪ badge current -- never a
+  // full BDPG.render() (that would steal focus mid-word).
+  BDPG.onProspectInput = function (field, value) {
+    BDPG.state.prospect[field] = value;
+    if (field === 'name' || field === 'city') {
+      var btn = document.getElementById('bdpg-generate-btn');
+      if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
+    }
+    BDPG.updateStepCardBadge(0, BDPG.prospectDone());
+  };
+
+  // Location Type is a plain field write + full render this task -- its Step 1
+  // coupling (e.g. pre-selecting a baseline card) is Task 5's job.
+  BDPG.onLocationType = function (v) {
+    BDPG.state.prospect.locationType = v;
+    BDPG.render();
+  };
+
+  BDPG.prospectHtml = function () {
+    var p = BDPG.state.prospect;
+    var req = ' <span style="color:var(--red)">*</span>';
+
+    var segs = BDPG.LOCATION_TYPES.map(function (t) {
+      var on = (p.locationType === t);
+      return '<button class="' + (on ? 'on' : '') + '"' + (on ? ' style="background:var(--accent)"' : '') +
+        ' onclick="BDPG.onLocationType(' + JSON.stringify(t).replace(/"/g, '&quot;') + ')">' + BDPG.escHtml(t) + '</button>';
+    }).join('');
+
+    return '<div class="bdpg-grid-3">' +
+        '<div class="fg"><label>Truck Stop Name' + req + '</label>' +
+          '<input id="bdpg-prospect-name" value="' + BDPG.escHtml(p.name) + '" oninput="BDPG.onProspectInput(\'name\', this.value)"></div>' +
+        '<div class="fg"><label>Street Address</label>' +
+          '<input id="bdpg-prospect-street" value="' + BDPG.escHtml(p.street) + '" oninput="BDPG.onProspectInput(\'street\', this.value)"></div>' +
+        '<div class="fg"><label>City' + req + '</label>' +
+          '<input id="bdpg-prospect-city" value="' + BDPG.escHtml(p.city) + '" oninput="BDPG.onProspectInput(\'city\', this.value)"></div>' +
+        // Same field Step 2's map click and typed fallback write -- routed
+        // through the existing BDPG.onStateInput, not a parallel handler, so
+        // typing a code here resolves the region and updates the map for free.
+        '<div class="fg"><label>State' + req + '</label>' +
+          '<input id="bdpg-prospect-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(BDPG.state.state) + '" ' +
+          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
+      '</div>' +
+      '<div class="fg" style="margin-top:12px"><label>Location Type</label><div class="bdpg-seg">' + segs + '</div></div>' +
+      '<div class="fg" style="margin-top:12px"><label>Notes</label>' +
+        '<textarea id="bdpg-prospect-notes" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);' +
+        'border-radius:5px;color:var(--text);padding:6px 8px;font-size:.85em;font-family:var(--fb)" ' +
+        'oninput="BDPG.onProspectInput(\'notes\', this.value)">' + BDPG.escHtml(p.notes) + '</textarea></div>';
   };
 
   // BDPG region fills. Cyan (--accent) is deliberately NOT here: it is reserved
@@ -1011,33 +1102,35 @@ function getCentroid(pathStr, axis){
   // must not visibly lose focus after the first keystroke.
   BDPG.onStateInput = function (val) {
     BDPG.state.state = val.toUpperCase();
+    // Two inputs can call this now (Step 2's own "type a state code" field,
+    // and the Prospect Profile card's State field added in Task 4) -- only
+    // refocus Step 2's field below if it was the one actually being typed
+    // in, never unconditionally, or typing in the OTHER field would get its
+    // focus yanked away after every keystroke.
+    var wasStep2Field = document.activeElement && document.activeElement.id === 'bdpg-state';
     var stepEl = document.getElementById('bdpg-step2');
     if (!stepEl) return;
-    // Step 2's done badge/checkmark live in the surrounding .bdpg-step card,
-    // outside the #bdpg-step2 content div this function replaces -- keep a
-    // handle on it so the wizard-shell badge can be kept current below
-    // without a full BDPG.render() (which would steal focus from the input).
-    var card = stepEl.parentElement;
     stepEl.outerHTML = BDPG.step2Html();
-    var input = document.getElementById('bdpg-state');
-    if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+    if (wasStep2Field) {
+      var input = document.getElementById('bdpg-state');
+      if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+    }
     // The Generate button lives outside #bdpg-step2, so its disabled state
     // (which depends on s.state) would otherwise go stale until some other
     // control triggers a full BDPG.render() -- update just the button here
     // instead of calling render(), which would steal focus from the input above.
     var btn = document.getElementById('bdpg-generate-btn');
     if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
-    if (card) {
-      var done = BDPG.step2Done();
-      card.classList.toggle('done', done);
-      var hd = card.querySelector('.bdpg-step-hd');
-      var check = hd ? hd.querySelector('.bdpg-check') : null;
-      if (done && hd && !check) {
-        hd.insertAdjacentHTML('beforeend', '<div class="bdpg-check">✓</div>');
-      } else if (!done && check) {
-        check.remove();
-      }
-    }
+    // Step 2's done badge/checkmark live in the surrounding .bdpg-step card,
+    // outside the #bdpg-step2 content div just replaced above.
+    BDPG.updateStepCardBadge(2, BDPG.step2Done());
+    // Mirror the value into whichever of the two State inputs did NOT just
+    // trigger this call, so both stay showing the same single source of
+    // truth -- but never touch the one currently focused, or its cursor
+    // position would jump while the user is still typing in it.
+    var pInput = document.getElementById('bdpg-prospect-state');
+    if (pInput && document.activeElement !== pInput) pInput.value = BDPG.state.state;
+    BDPG.updateStepCardBadge(0, BDPG.prospectDone());
     // The outerHTML swap above destroyed the map's <svg> along with the rest
     // of #bdpg-step2 -- rebuild it so typing a state code updates the map too.
     BDPG.renderMap();
@@ -1149,8 +1242,8 @@ function getCentroid(pathStr, axis){
 
   BDPG.generateButtonHtml = function () {
     var s = BDPG.state;
-    var can = !!(s.profile && s.roadway && s.state);   // unchanged condition
-    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled title="Complete Steps 1 and 2 to generate."') +
+    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state);
+    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled title="Complete Prospect Profile, Steps 1 and 2 to generate."') +
       ' onclick="BDPG.onGenerate()">🚛 Generate Value Profile</button>';
   };
 
@@ -1303,6 +1396,9 @@ function getCentroid(pathStr, axis){
     var annual = e.finalGallons * 12;
     var regionAdjusted = Math.round(e.baseline * (1 + e.regionPct));
 
+    var nameHeader = '<div style="font-family:var(--ff);font-size:1.1em;font-weight:800;letter-spacing:.06em;' +
+      'text-transform:uppercase;margin-bottom:10px">' + BDPG.escHtml(BDPG.displayName()) + '</div>';
+
     var hero = '<div class="bdpg-hero">' +
       '<div class="bdpg-hero-card final">' +
         '<div class="bdpg-lbl">Final Potential Gallons</div>' +
@@ -1342,7 +1438,7 @@ function getCentroid(pathStr, axis){
 
     var netCtx = BDPG.networkContextHtml();
 
-    return '<div class="bdpg-results">' + hero + waterfall + rangeSection + amenitySection + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
+    return '<div class="bdpg-results">' + nameHeader + hero + waterfall + rangeSection + amenitySection + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
   };
 
   BDPG.conditionAdjustedHtml = function () {
@@ -1409,7 +1505,7 @@ function getCentroid(pathStr, axis){
 
     return '<div id="bdpg-print-only">' +
       '<h1>Roady\'s Prospective Member Gallons Calculator</h1>' +
-      '<h2>' + BDPG.escHtml(sd.prospectName || 'Prospect') + ' — ' + BDPG.escHtml(sd.prospectCity) + ', ' + BDPG.escHtml(sd.prospectState) + '</h2>' +
+      '<h2>' + BDPG.escHtml(BDPG.displayName()) + ' — ' + BDPG.escHtml(sd.prospectCity) + ', ' + BDPG.escHtml(sd.prospectState) + '</h2>' +
       '<h3>Step 1</h3><p>' + BDPG.escHtml(BDPG.state.profile) + ' / ' + BDPG.escHtml(BDPG.state.roadway) + ' — Baseline ' + BDPG.fmtGal(e.baseline) + ' gal/mo</p>' +
       '<h3>Step 2 — Official Calculator</h3><p>' + BDPG.escHtml(e.officialMathLine) + '</p>' +
       '<p style="font-size:.85em;color:#666">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</p>' +
@@ -1462,7 +1558,7 @@ function getCentroid(pathStr, axis){
     var r = BDPG.state.result, e = r.estimate, sd = BDPG.state.supportingDetails;
     var lines = [
       'Roady\'s Prospective Member Gallons Calculator',
-      (sd.prospectName || 'Prospect') + ' — ' + (sd.prospectCity || '') + ', ' + (sd.prospectState || ''),
+      BDPG.displayName() + ' — ' + (sd.prospectCity || '') + ', ' + (sd.prospectState || ''),
       '',
       'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
       'Official calculator math: ' + e.officialMathLine,
