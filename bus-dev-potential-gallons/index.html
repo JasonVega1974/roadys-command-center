@@ -1873,13 +1873,65 @@ function getCentroid(pathStr, axis){
     try { return JSON.parse(localStorage.getItem('roadysBDPGProfiles') || '[]'); } catch (e) { return []; }
   };
 
+  // Captures what the Prospects tracker table shows, from the *current*
+  // state and result, so the tracker never has to re-derive it. A profile
+  // saved before Generate has run has null gallons and an empty grade --
+  // that is legitimate data, not corruption.
+  BDPG.trackerSummary = function () {
+    var s = BDPG.state, r = s.result, e = r ? r.estimate : null;
+    return {
+      name: BDPG.displayName(),
+      locationType: s.prospect.locationType || '',
+      city: s.prospect.city || '',
+      stateCode: s.state || '',
+      region: s.state ? BusDevGallonsCalc.resolveRegion(s.state) : '',
+      profile: s.profile || '', roadway: s.roadway || '',
+      officialSubtotal: e ? e.officialSubtotal : null,
+      finalGallons: e ? e.finalGallons : null,
+      grade: r && r.grade ? r.grade.grade : '', gradeLabel: r && r.grade ? r.grade.gradeLabel : '',
+      preEvalSignal: s.prospect.preEvalSignal || '',
+      amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || ''
+    };
+  };
+
+  // Profiles saved before this release have no `prospect` and no `summary`.
+  // Every field falls back to a dash or empty string; nothing here may ever
+  // render "undefined", and a legitimate zero (=== 0) must not collapse to
+  // the "missing" fallback the way `|| null` would.
+  BDPG.readSummary = function (p) {
+    var sum = p.summary || {};
+    var st = p.state || {};
+    var pr = st.prospect || {};
+    return {
+      name: sum.name || p.name || pr.name || '—',
+      locationType: sum.locationType || pr.locationType || '',
+      city: sum.city || pr.city || '',
+      stateCode: sum.stateCode || st.state || '',
+      region: sum.region || (st.state ? BusDevGallonsCalc.resolveRegion(st.state) : '') || '',
+      profile: sum.profile || st.profile || '', roadway: sum.roadway || st.roadway || '',
+      officialSubtotal: (sum.officialSubtotal === 0 || sum.officialSubtotal) ? sum.officialSubtotal : null,
+      finalGallons: (sum.finalGallons === 0 || sum.finalGallons) ? sum.finalGallons : null,
+      grade: sum.grade || '', gradeLabel: sum.gradeLabel || '',
+      preEvalSignal: sum.preEvalSignal || pr.preEvalSignal || '',
+      amenityLevel: sum.amenityLevel || st.amenityLevel || '',
+      pricingLevel: sum.pricingLevel || st.pricingLevel || '',
+      savedAt: p.savedAt || ''
+    };
+  };
+
   BDPG.onSaveProfile = function () {
     var name = BDPG.state.supportingDetails.prospectName || prompt('Name this profile:');
     if (!name) return;
     var profiles = BDPG.getSavedProfiles();
     var snapshot = JSON.parse(JSON.stringify(BDPG.state));
     delete snapshot.result;
-    profiles.push({ id: 'bdpg_' + Date.now(), name: name, savedAt: new Date().toISOString(), state: snapshot });
+    profiles.push({
+      id: 'bdpg_' + Date.now(),
+      name: BDPG.displayName(),
+      savedAt: new Date().toISOString(),
+      state: snapshot,
+      summary: BDPG.trackerSummary()
+    });
     localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
     toast('Profile saved');
     BDPG.render();
@@ -1895,6 +1947,13 @@ function getCentroid(pathStr, axis){
     // A profile saved before Task 6 has no preEvalOpen at all -- default it
     // to open, matching the documented default for every other page load.
     if (BDPG.state.preEvalOpen === undefined) BDPG.state.preEvalOpen = true;
+    // A profile saved before Task 4 has no `prospect` at all -- default it
+    // to the same empty shape the page starts with, so prospect-reading
+    // code (the Step 0 card, the badge, trackerSummary) never throws on
+    // a pre-Task-4 record.
+    if (!BDPG.state.prospect) {
+      BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '' };
+    }
     BDPG.render();
   };
 
