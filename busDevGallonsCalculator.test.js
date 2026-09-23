@@ -204,6 +204,29 @@ test('calculateEstimate renders distinct official and final math lines', () => {
   assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 + 0.05) = 14,375');
 });
 
+test('calculateEstimate — case C @ Aggressive finalMathLine prints the exact 0.025 pricing term and "- 0.03" region term (not the lossy "+ -0.03")', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate',
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Aggressive'
+  });
+  assert.equal(r.finalGallons, 14925, 'gallon value must not change, only the equation string');
+  assert.equal(r.finalMathLine, '15,000 × (1 - 0.03 + 0.00 + 0.00 + 0.025) = 14,925');
+  assert.ok(r.finalMathLine.includes('0.025'), 'pricing term must print 0.025, not the rounded 0.03');
+  assert.ok(!r.finalMathLine.includes('+ -0.03'), 'must never print the "+ -0.03" form for a negative term');
+});
+
+test('calculateEstimate — case A @ No discounts finalMathLine reads "- 0.05" for the negative pricing term', () => {
+  const r = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate',
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
+    pricingLevel: 'No discounts'
+  });
+  assert.equal(r.finalGallons, 13125, 'gallon value must not change, only the equation string');
+  assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 - 0.05) = 13,125');
+  assert.ok(r.finalMathLine.includes('- 0.05'), 'pricing term must read "- 0.05"');
+  assert.ok(!r.finalMathLine.includes('+ -0.05'), 'must never print the "+ -0.05" form for a negative term');
+});
+
 test('suggestAmenityLevel: Good / full service rule', () => {
   const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '4-9', food: 'full restaurant', scale: 'yes', parking: '16-50' });
   assert.equal(r.level, 'Good / full service');

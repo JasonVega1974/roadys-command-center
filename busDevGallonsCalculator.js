@@ -63,6 +63,22 @@
 
   function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
 
+  // Formats a percentage magnitude for the exported math lines with up to 3
+  // decimals, trailing zeros trimmed but never below 2 decimals -- so 0.06
+  // prints "0.06", 0.025 prints "0.025" (not the lossy "0.03" from
+  // toFixed(2)), and 0 prints "0.00". Sign is handled by pctTerm(), not here.
+  function fmtPct(n) {
+    var s = Math.abs(n).toFixed(3);
+    if (s.length > 4 && s.charAt(s.length - 1) === '0') s = s.slice(0, -1);
+    return s;
+  }
+
+  // Renders one term of a math-line sum with its own sign, so a negative
+  // percentage reads "- 0.03" instead of "+ -0.03".
+  function pctTerm(n) {
+    return (n < 0 ? ' - ' : ' + ') + fmtPct(n);
+  }
+
   function suggestAmenityLevel(details) {
     var d = details || {};
     var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS;
@@ -98,11 +114,11 @@
     var officialSubtotal = Math.round(row.baseline * officialMultiplier);
     var finalGallons = Math.round(row.baseline * finalMultiplier);
 
-    var officialMathLine = fmtInt(row.baseline) + ' × (1 + ' +
-      regionPct.toFixed(2) + ' + ' + amenityPct.toFixed(2) + ' + ' + review.pct.toFixed(2) +
+    var officialMathLine = fmtInt(row.baseline) + ' × (1' +
+      pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) +
       ') = ' + fmtInt(officialSubtotal);
-    var finalMathLine = fmtInt(row.baseline) + ' × (1 + ' +
-      regionPct.toFixed(2) + ' + ' + amenityPct.toFixed(2) + ' + ' + review.pct.toFixed(2) + ' + ' + pricingPct.toFixed(2) +
+    var finalMathLine = fmtInt(row.baseline) + ' × (1' +
+      pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) + pctTerm(pricingPct) +
       ') = ' + fmtInt(finalGallons);
 
     return {

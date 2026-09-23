@@ -16990,6 +16990,13 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     return BDPG.effectiveRegionVariance().asOf || null;
   };
 
+  // Spec §6: the effective region-variance "as of" date must be shown on
+  // both the results view and the export -- this is the shared text for both.
+  BDPG.regionVarianceAsOfLine = function () {
+    var asOf = BDPG.regionVarianceAsOf();
+    return asOf ? ('Region variance as of: ' + asOf) : 'Region variance: not set (0% adjustment)';
+  };
+
   BDPG.regionVarianceIsSet = function () {
     var v = BDPG.effectiveRegionVariance();
     return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(v[k]) !== 0; });
@@ -17130,6 +17137,11 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
 
     var el = document.getElementById('bdpg-nc-result');
     if (el) el.textContent = JSON.stringify(out, null, 2) + '\n\n// Paste this into network-context.json to make it the new committed default.';
+
+    // Rows live only for the duration of this compute step (see the comment
+    // above BDPG.ncCsv) -- reset now that the result is rendered, matching
+    // the sibling BDPG.onRegionCsvCompute reset below.
+    BDPG.ncCsv = { rows: null, headers: [] };
   };
 
   // Minimal CSV line parser (no library). Handles a quoted field containing a
@@ -17137,6 +17149,10 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   // embedded newlines inside a quoted field), which is fine for the simple
   // per-location gallons/state exports this feeds.
   BDPG.parseCsv = function (text) {
+    // Strip a leading UTF-8 BOM -- an Excel export otherwise makes the first
+    // header read as "﻿Company", which breaks exact indexOf() header
+    // matching in both CSV consumers (network-context generator, region CSV).
+    text = text.replace(/^﻿/, '');
     var lines = text.replace(/\r\n/g, '\n').split('\n').filter(function (l) { return l.length; });
     return lines.map(function (line) {
       var out = [], cur = '', inQ = false;
@@ -17398,6 +17414,12 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     stepEl.outerHTML = BDPG.step2Html();
     var input = document.getElementById('bdpg-state');
     if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+    // The Generate button lives outside #bdpg-step2, so its disabled state
+    // (which depends on s.state) would otherwise go stale until some other
+    // control triggers a full BDPG.render() -- update just the button here
+    // instead of calling render(), which would steal focus from the input above.
+    var btn = document.getElementById('bdpg-generate-btn');
+    if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
   };
 
   // Targeted update of just the band-chip text -- no rebuild at all, so the
@@ -17487,7 +17509,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   BDPG.generateButtonHtml = function () {
     var s = BDPG.state;
     var canGenerate = !!(s.profile && s.roadway && s.state);
-    return '<button class="btn btn-accent" style="width:100%;padding:12px;font-size:1em;margin-top:14px" ' +
+    return '<button id="bdpg-generate-btn" class="btn btn-accent" style="width:100%;padding:12px;font-size:1em;margin-top:14px" ' +
       (canGenerate ? '' : 'disabled title="Pick a Location Profile, Roadway, and State first"') +
       ' onclick="BDPG.onGenerate()">Generate Value Profile</button>';
   };
@@ -17526,6 +17548,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       '<div style="margin-top:10px;font-size:.9em">Official calculator subtotal: <b>' + BDPG.fmtGal(e.officialSubtotal) + '</b></div>' +
       '<div style="margin-top:8px;font-family:monospace;font-size:.78em;color:var(--muted)">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
       '<div style="margin-top:2px;font-family:monospace;font-size:.78em;color:var(--muted)">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
+      '<div style="margin-top:6px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
       (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '') +
     '</div>';
 
@@ -17601,6 +17624,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       '<h2>' + BDPG.escHtml(sd.prospectName || 'Prospect') + ' — ' + BDPG.escHtml(sd.prospectCity) + ', ' + BDPG.escHtml(sd.prospectState) + '</h2>' +
       '<h3>Step 1</h3><p>' + BDPG.escHtml(BDPG.state.profile) + ' / ' + BDPG.escHtml(BDPG.state.roadway) + ' — Baseline ' + BDPG.fmtGal(e.baseline) + ' gal/mo</p>' +
       '<h3>Step 2 — Official Calculator</h3><p>' + BDPG.escHtml(e.officialMathLine) + '</p>' +
+      '<p style="font-size:.85em;color:#666">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</p>' +
       '<h3>Official Calculator Subtotal: ' + BDPG.fmtGal(e.officialSubtotal) + '</h3>' +
       '<h3>Step 3 — Pricing Strategy: ' + BDPG.escHtml(BDPG.state.pricingLevel) + '</h3><p>' + BDPG.escHtml(e.finalMathLine) + '</p>' +
       '<h3>Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons) + '</h3>' +
