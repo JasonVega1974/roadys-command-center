@@ -495,6 +495,12 @@ table.svTbl td input{padding:5px 8px;font-size:13px}
         <div><label class="f">Airline</label><input id="outAirline" placeholder="e.g. Southwest"></div>
       </div>
       <div class="small" id="outFlightNote" style="margin-top:4px"></div>
+      <label class="f" style="margin-top:12px">Rental Car (optional)</label>
+      <div class="grid2" style="margin-top:6px">
+        <div><label class="f">Company</label><input id="rentalCompany" placeholder="e.g. Enterprise"></div>
+        <div><label class="f">Confirmation #</label><input id="rentalConf" placeholder="e.g. ABC123"></div>
+        <div><label class="f">Pickup Time</label><input type="time" id="rentalPickupTime"></div>
+      </div>
       <label class="f" style="margin-top:12px">Return Airport — you fly out here</label>
       <div class="stopSearchWrap"><input id="destIn" placeholder="Type airport or address…" autocomplete="off"><div class="sugg" id="destSugg"></div></div>
       <div class="small" id="destMeta" style="margin-top:4px"></div>
@@ -2322,6 +2328,7 @@ let state = {
   // schedule (see syncDay1FromFlight()/checkReturnFlight()) -- the rest is
   // plain data entry for the print packet, never touched by any calculation.
   flights:{out:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}, ret:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}},
+  rental:{company:'',conf:'',pickupTime:''},
   stops:[], pins:[], route:null, schedule:null
 };
 /* dirty = the working trip has edits that are not in localStorage yet.
@@ -3394,6 +3401,25 @@ const gmapsDir=s=>`https://www.google.com/maps/dir/?api=1&destination=${encodeUR
 const wazeDir=s=>`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
 const appleDir=s=>`https://maps.apple.com/?daddr=${s.lat},${s.lng}`;
 
+// Plain-text summary of one flight leg -- shared by the on-screen itinerary
+// and the print packet so the two never drift into different wording.
+// Pure data entry (see the state.flights comment above): never touches the
+// schedule, just reports whatever was typed into the Airports fields.
+function flightLegSummary(leg){
+  if(!leg.airline && !leg.flightNo && !leg.depTime && !leg.arrTime) return '';
+  const id=[leg.airline,leg.flightNo].filter(Boolean).join(' ');
+  const times=[leg.depTime?'departs '+fmtT(tToMin(leg.depTime)):'',leg.arrTime?'lands '+fmtT(tToMin(leg.arrTime)):''].filter(Boolean).join(', ');
+  return [id,times].filter(Boolean).join(' — ');
+}
+function rentalSummary(){
+  const r=state.rental||{};
+  if(!r.company && !r.conf && !r.pickupTime) return '';
+  const bits=[r.company||'Rental car'];
+  if(r.conf) bits.push('Conf# '+r.conf);
+  if(r.pickupTime) bits.push('pickup ~'+fmtT(tToMin(r.pickupTime)));
+  return bits.join(' — ');
+}
+
 function renderItinerary(ordered,dest){
   const sc=state.schedule, box=$('itin');
   $('totRow').style.display='flex';
@@ -3408,7 +3434,9 @@ function renderItinerary(ordered,dest){
     html+=`<div class="dayHead"><h3>Day ${di+1}</h3><span class="small">${esc(date)}</span><span class="small">${dayStats(d)}</span></div>`;
     d.items.forEach(it=>{
       if(it.k==='depart'||it.k==='resume'){
-        html+=`<div class="signCard airCard"><span class="exitTab">${it.k==='depart'?'WHEELS UP → WHEELS DOWN':'DAY START'}</span><h4>${it.k==='depart'?'Depart':'Leave hotel'} — ${esc(it.label)}</h4><div class="times">${fmtT(it.time)}</div></div>`;
+        const flightLn=it.k==='depart'?flightLegSummary(state.flights.out):'';
+        const rentalLn=it.k==='depart'?rentalSummary():'';
+        html+=`<div class="signCard airCard"><span class="exitTab">${it.k==='depart'?'WHEELS UP → WHEELS DOWN':'DAY START'}</span><h4>${it.k==='depart'?'Depart':'Leave hotel'} — ${esc(it.label)}</h4><div class="times">${fmtT(it.time)}</div>${flightLn?`<div style="font-size:12.5px;opacity:.9;margin-top:4px">✈ ${esc(flightLn)}</div>`:''}${rentalLn?`<div style="font-size:12.5px;opacity:.9;margin-top:2px">🚗 ${esc(rentalLn)}</div>`:''}</div>`;
       }else if(it.k==='drive'){
         const leg=state.route.legs[it.legIdx];
         const alts=leg.alts||[];
@@ -3482,7 +3510,8 @@ function renderItinerary(ordered,dest){
           </div>
         </div>`;
       }else if(it.k==='arrive'){
-        html+=`<div class="signCard airCard"><span class="exitTab">TRIP COMPLETE</span><h4>Arrive — ${esc(it.label)}</h4><div class="times">${fmtT(it.time)}</div></div>`;
+        const retFlightLn=flightLegSummary(state.flights.ret);
+        html+=`<div class="signCard airCard"><span class="exitTab">TRIP COMPLETE</span><h4>Arrive — ${esc(it.label)}</h4><div class="times">${fmtT(it.time)}</div>${retFlightLn?`<div style="font-size:12.5px;opacity:.9;margin-top:4px">✈ ${esc(retFlightLn)}</div>`:''}</div>`;
       }
     });
   });
@@ -3532,10 +3561,11 @@ function buildPrint(ordered,dest){
       <div><b>Trip:</b> ${esc(state.trip||'____________________')}</div>
       <div><b>Departs:</b> ${esc(fmtDate(addDays(state.startDate,0)))} · ${fmtT(tToMin(state.day1Start))}</div>
       <div><b>Depart airport:</b> ${esc(state.origin.label)}</div>
-      ${(state.flights.out.airline||state.flights.out.flightNo)?`<div><b>Outbound flight:</b> ${esc([state.flights.out.airline,state.flights.out.flightNo].filter(Boolean).join(' '))}${state.flights.out.arrTime?' — lands '+fmtT(tToMin(state.flights.out.arrTime)):''}</div>`:''}
+      ${flightLegSummary(state.flights.out)?`<div><b>Outbound flight:</b> ${esc(flightLegSummary(state.flights.out))}</div>`:''}
+      ${rentalSummary()?`<div><b>Rental car:</b> ${esc(rentalSummary())}</div>`:''}
       <div><b>Returns:</b> ${esc(fmtDate(addDays(state.startDate,sc.days.length-1)))}</div>
       <div><b>Return airport:</b> ${esc(dest.label)}</div>
-      ${(state.flights.ret.airline||state.flights.ret.flightNo)?`<div><b>Return flight:</b> ${esc([state.flights.ret.airline,state.flights.ret.flightNo].filter(Boolean).join(' '))}${state.flights.ret.depTime?' — departs '+fmtT(tToMin(state.flights.ret.depTime)):''}</div>`:''}
+      ${flightLegSummary(state.flights.ret)?`<div><b>Return flight:</b> ${esc(flightLegSummary(state.flights.ret))}</div>`:''}
     </div>
     <div class="pTotals">
       <div class="pTot"><div class="v">${Math.round(mi(sc.totalDist)).toLocaleString()}</div><div class="k">Miles</div></div>
@@ -3635,6 +3665,8 @@ function collect(){
   state.flights.ret={depDate:$('retDepDate').value,depTime:$('retDepTime').value,
     arrDate:$('retArrDate').value,arrTime:$('retArrTime').value,
     flightNo:$('retFlightNo').value.trim(),airline:$('retAirline').value.trim()};
+  state.rental={company:$('rentalCompany').value.trim(),conf:$('rentalConf').value.trim(),
+    pickupTime:$('rentalPickupTime').value};
 }
 function markDirty(){
   dirty=true;collect();
@@ -3762,7 +3794,7 @@ function loadTrip(k){
   }catch(e){toast('⚠ Could not load that trip')}
 }
 function delTrip(k){localStorage.removeItem(k);openTrips();toast('Trip deleted')}
-function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,flights:{out:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''},ret:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}},stops:[],pins:[],route:null,schedule:null,nightHotels:{}}}
+function newStateDefaults(){return {gs:'',trip:'',startDate:'',day1Start:'08:00',dayStart:'08:00',dayEnd:'17:00',visitMin:90,lunchMin:45,optMode:'auto',routePref:'fast',driveTil:'19:00',origin:null,dest:null,flights:{out:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''},ret:{depDate:'',depTime:'',arrDate:'',arrTime:'',flightNo:'',airline:''}},rental:{company:'',conf:'',pickupTime:''},stops:[],pins:[],route:null,schedule:null,nightHotels:{}}}
 /* Trips saved before the Depart/Return split carry sameEnd:true with a null
    dest -- the old "Return to start point" checkbox. Materialize that into a
    real Return Airport on open, so nothing downstream has to infer one. */
@@ -3840,6 +3872,8 @@ function hydrateUI(){
   $('retDepDate').value=fr.depDate; $('retDepTime').value=fr.depTime;
   $('retArrDate').value=fr.arrDate; $('retArrTime').value=fr.arrTime;
   $('retFlightNo').value=fr.flightNo; $('retAirline').value=fr.airline;
+  const rc=state.rental||{company:'',conf:'',pickupTime:''};
+  $('rentalCompany').value=rc.company; $('rentalConf').value=rc.conf; $('rentalPickupTime').value=rc.pickupTime;
   syncDay1FromFlight(); checkOutboundFlight(); checkReturnFlight();
   renderStops();
   // Setting #gsName above is programmatic, so its change handler never fires
@@ -3883,7 +3917,7 @@ function init(){
   };
   $('gsName').onchange=e=>{$('gsNameOther').style.display=e.target.value==='__other'?'block':'none';markDirty();tpApplyProfileToTrip(curGS());tpRenderCard(curGS())};
   ['gsNameOther','tripName','startDate','day1Start','dayStart','dayEnd','visitMin','lunchMin','optMode','driveTil'].forEach(id=>$(id).addEventListener('input',markDirty));
-  ['outDepDate','outDepTime','outFlightNo','outAirline','retArrDate','retArrTime','retFlightNo','retAirline'].forEach(id=>$(id).addEventListener('input',markDirty));
+  ['outDepDate','outDepTime','outFlightNo','outAirline','retArrDate','retArrTime','retFlightNo','retAirline','rentalCompany','rentalConf','rentalPickupTime'].forEach(id=>$(id).addEventListener('input',markDirty));
   ['outArrDate','outArrTime'].forEach(id=>$(id).addEventListener('input',()=>{markDirty();syncDay1FromFlight();checkOutboundFlight();}));
   ['retDepDate','retDepTime'].forEach(id=>$(id).addEventListener('input',()=>{markDirty();checkReturnFlight();}));
   $('routePref').addEventListener('change',()=>{ collect(); if(state.route){ repickAllLegs(); toast('Re-picked every leg for '+(state.routePref==='short'?'shortest distance':'fastest time')) } else markDirty(); });
