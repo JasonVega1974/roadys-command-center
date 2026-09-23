@@ -17351,7 +17351,7 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
     if (!sg) return;
     if (typeof usTopoLoaded === 'undefined' || !usTopoLoaded) {
       sg.innerHTML = '<text x="450" y="280" text-anchor="middle" fill="var(--muted)" font-size="14">Loading map…</text>';
-      loadUSTopojson().then(function () { BDPG.renderMap(); });
+      loadUSTopojson().then(function () { if (usTopoLoaded) BDPG.renderMap(); });
       return;
     }
     var sel = BDPG.state.state;
