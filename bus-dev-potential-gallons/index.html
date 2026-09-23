@@ -2147,18 +2147,33 @@ function getCentroid(pathStr, axis){
       // simply excluded, same treatment as an empty one.
       if (hasOwn(gradeCounts, sum.grade)) gradeCounts[sum.grade]++;
       if (hasOwn(signalCounts, sum.preEvalSignal)) signalCounts[sum.preEvalSignal]++;
-      if (sum.officialSubtotal != null) { officialSum += sum.officialSubtotal; officialN++; }
-      if (sum.finalGallons != null) { finalSum += sum.finalGallons; finalN++; }
+      // typeof + isFinite, not just `!= null`: readSummary only guards
+      // against null/undefined, so a hand-edited record holding a numeric
+      // *string* ('5000') would pass `!= null` and then `+=` would
+      // concatenate instead of add, and any other non-numeric value would
+      // poison both averages to NaN for the whole tracker. A rejected value
+      // must not inflate the denominator either, so the count only
+      // increments alongside the sum.
+      if (typeof sum.officialSubtotal === 'number' && isFinite(sum.officialSubtotal)) {
+        officialSum += sum.officialSubtotal; officialN++;
+      }
+      if (typeof sum.finalGallons === 'number' && isFinite(sum.finalGallons)) {
+        finalSum += sum.finalGallons; finalN++;
+      }
     });
 
     var avgOfficial = officialN ? BDPG.fmtGal(officialSum / officialN) + ' gal/mo' : '—';
     var avgFinal = finalN ? BDPG.fmtGal(finalSum / finalN) + ' gal/mo' : '—';
 
     var gradeChips = gradeOrder.map(function (g) {
-      var col = BDPG.GRADE_COLORS[g];
+      // hasOwn for consistency with every other GRADE_COLORS/PREEVAL_SIGNAL_TONES
+      // lookup in this file (see the comment on hasOwn above) -- unreachable
+      // today since gradeOrder is this function's own fixed literal, but one
+      // lookup style for this map beats two.
+      var col = hasOwn(BDPG.GRADE_COLORS, g) ? BDPG.GRADE_COLORS[g] : 'var(--muted)';
       return '<span class="badge" style="background:rgba(255,255,255,.08);color:' + col +
         ';border:1px solid ' + col + ';margin:0 6px 6px 0;display:inline-block">' +
-        g + ' ×' + gradeCounts[g] + '</span>';
+        BDPG.escHtml(g) + ' ×' + gradeCounts[g] + '</span>';
     }).join('');
 
     var signalChips = signalOrder.map(function (s) {
