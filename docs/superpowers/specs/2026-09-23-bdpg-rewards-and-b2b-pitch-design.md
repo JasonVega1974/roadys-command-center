@@ -97,7 +97,13 @@ No signature change.
 
 ### 1.7 Tests
 
-All 42 existing tests must pass unmodified. Two new cases:
+All 42 existing tests keep passing. Three of them — and only three — have an
+updated expected `finalMathLine` string, each gaining a trailing ` + 0.00` for
+the rewards term, because the math line is required to show all five terms and
+zero-valued terms are already printed today. Their gallon totals are unchanged,
+and the `includes('0.025')` / `includes('- 0.05')` / `!includes('+ -0.03')`
+assertions guarding precision and sign form are untouched, as is
+`officialMathLine`'s assertion. Two new cases:
 
 | case | inputs | expected |
 |---|---|---|
