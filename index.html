@@ -555,6 +555,13 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
 #bdpg-usa-svg path.sel{stroke:var(--accent);stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(0,200,255,.7));}
 #bdpg-usa-svg path.nomap{cursor:default;}
+/* .nomap paths (AK, HI, DC -- states with no network region) would otherwise
+   inherit the generic path:hover glow above, which reads as "clickable" even
+   though onclick is a no-op for them. Opt them back out of the hover styling
+   while leaving the tooltip in place -- it usefully explains why nothing
+   happens. */
+#bdpg-usa-svg path.nomap:hover{opacity:1;stroke-width:.5;stroke:#0A0E1A;filter:none;}
+body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .bdpg-chip{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:.72em;}
 .bdpg-chip.on{border-color:var(--accent);box-shadow:0 0 10px rgba(0,200,255,.3);}
@@ -567,7 +574,13 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-seg button{flex:1;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--muted);padding:9px 4px;font-family:var(--fb);font-size:.68em;font-weight:700;cursor:pointer;transition:all .15s;line-height:1.3;}
 .bdpg-seg button:last-child{border-right:none;}
 .bdpg-seg button:hover{color:var(--text);}
-.bdpg-seg button.on{color:#06101E;}
+/* #000 (not a --token) matches the project convention used for text on every
+   other saturated accent-colored button/badge in this file (e.g. .btn-accent
+   above, the map's TAP TO REDEEM chip) -- it has to stay dark regardless of
+   theme since the segmented button's "on" background cycles through green,
+   yellow, orange and red in both day and night mode, and no --root token
+   evaluates to a theme-stable dark. */
+.bdpg-seg button.on{color:#000;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
 .bdpg-star-half{position:relative;display:inline-block;}
 .bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
@@ -598,8 +611,13 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .bdpg-grade-lbl{font-family:var(--ff);font-size:1em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-top:4px;}
 .bdpg-nrange{position:relative;height:30px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin:10px 0 4px;}
 .bdpg-nrange-m{position:absolute;top:-5px;height:40px;width:3px;border-radius:2px;}
-.bdpg-nrange-m.final{background:var(--accent);box-shadow:0 0 8px rgba(0,200,255,.7);}
-.bdpg-nrange-m.official{background:var(--text);opacity:.85;}
+/* When pricing is Standard, officialSubtotal===finalGallons and both markers
+   land at the identical left%. A small opposite-direction nudge keeps both
+   visible edge-to-edge instead of the cyan Final marker fully eclipsing the
+   Official one -- harmless at any other position too, since it's a couple
+   px against a track hundreds of px wide. */
+.bdpg-nrange-m.final{background:var(--accent);box-shadow:0 0 8px rgba(0,200,255,.7);transform:translateX(1.5px);}
+.bdpg-nrange-m.official{background:var(--text);opacity:.85;transform:translateX(-1.5px);}
 .bdpg-nrange-key{display:flex;gap:16px;font-size:.7em;color:var(--muted);margin-top:8px;}
 .pl-edit-cell:hover{background:rgba(0,200,255,.08)!important;outline:1px dashed rgba(0,200,255,.4);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68em;font-weight:700;letter-spacing:.04em;}
@@ -897,6 +915,15 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
   body.bdpg-print-mode #bdpg-print-only .bdpg-grade-lbl { color: #000 !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-nrange { background: #fff !important; border: 1px solid #999 !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-m { box-shadow: none !important; border: 1px solid #000 !important; }
+  /* The key's "Official" swatch is inline-styled background:var(--text), which
+     resolves to #E8EDF8 -- effectively invisible on the print packet's white
+     page. Force it dark to match the border treatment the marker itself
+     already gets above. Final's swatch (var(--accent), cyan) already reads
+     fine on white so it's left alone. The muted key/endpoint labels are
+     forced to #000 too for consistency with every other label on this page. */
+  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-key-sw.official { background: #000 !important; }
+  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-key,
+  body.bdpg-print-mode #bdpg-print-only .bdpg-rangebar-ends { color: #000 !important; }
 }
 #bdpg-print-only { display: none; }
 </style>
@@ -17578,8 +17605,12 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       var pct = BDPG_CONFIG.PRICING_ADJUST[lvl];
       var on = (s.pricingLevel === lvl);
       // green -> yellow -> red across the row, matching the waterfall's
-      // positive-adjustment-is-green convention.
-      var col = ['var(--green)','#7FD98C','var(--yellow)','var(--orange)','var(--red)'][i];
+      // positive-adjustment-is-green convention. The 2nd stop has no direct
+      // token (it's a green/yellow midpoint), so it's derived from --green
+      // and --yellow with color-mix() -- same technique already used for
+      // the badge tint above -- so it re-tints with the theme instead of
+      // sitting as an untethered literal.
+      var col = ['var(--green)','color-mix(in srgb, var(--green) 55%, var(--yellow))','var(--yellow)','var(--orange)','var(--red)'][i];
       return '<button class="' + (on ? 'on' : '') + '"' +
         (on ? ' style="background:' + col + '"' : '') +
         ' onclick="BDPG.onPricingChange(' + JSON.stringify(lvl).replace(/"/g,'&quot;') + ')">' +
@@ -17806,6 +17837,14 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
   // Ordinal position of each selected option within its own config array, 0-100.
   // Presentation-only: this scale is not an engine concept and feeds no formula.
   // `compare` is the clean hook for a future per-region average dataset.
+  //
+  // Two of the six AMENITY_DETAIL_OPTIONS arrays are ordered best-to-worst
+  // (scale: 'yes' first; defReefer: 'both' first) while the other four run
+  // worst-to-best. The chart scores by quality, so those two need their
+  // index flipped before normalizing -- the option *values* still come
+  // straight from config, only the scoring direction is a UI concern.
+  BDPG.AMENITY_SCORE_DESC = { scale: true, defReefer: true };
+
   BDPG.amenityProfileData = function (details, compare) {
     var fields = ['showers','food','scale','parking','service','defReefer'];
     var labels = { showers:'Showers', food:'Food', scale:'Scale', parking:'Parking', service:'Service', defReefer:'DEF/Reefer' };
@@ -17814,7 +17853,9 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       data: fields.map(function (f) {
         var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[f] || [];
         var i = opts.indexOf(details[f]);
-        return (i < 0 || opts.length < 2) ? 0 : Math.round((i / (opts.length - 1)) * 100);
+        if (i < 0 || opts.length < 2) return 0;
+        var pos = BDPG.AMENITY_SCORE_DESC[f] ? (opts.length - 1 - i) : i;
+        return Math.round((pos / (opts.length - 1)) * 100);
       }),
       compare: compare || null
     };
@@ -17887,8 +17928,8 @@ _masterObserver.observe(document.body,{childList:true,subtree:true});
       '</div>' +
       '<div class="bdpg-rangebar-ends"><span>2,500</span><span>15,000</span></div>' +
       '<div class="bdpg-nrange-key">' +
-        '<span><span style="display:inline-block;width:10px;height:3px;background:var(--accent);vertical-align:middle"></span> Final ' + BDPG.fmtGal(e.finalGallons) + '</span>' +
-        '<span><span style="display:inline-block;width:10px;height:3px;background:var(--text);vertical-align:middle"></span> Official ' + BDPG.fmtGal(e.officialSubtotal) + '</span>' +
+        '<span><span class="bdpg-nrange-key-sw final" style="display:inline-block;width:10px;height:3px;background:var(--accent);vertical-align:middle"></span> Final ' + BDPG.fmtGal(e.finalGallons) + '</span>' +
+        '<span><span class="bdpg-nrange-key-sw official" style="display:inline-block;width:10px;height:3px;background:var(--text);vertical-align:middle"></span> Official ' + BDPG.fmtGal(e.officialSubtotal) + '</span>' +
       '</div>';
   };
 
