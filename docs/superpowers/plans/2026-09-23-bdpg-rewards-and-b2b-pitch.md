@@ -15,7 +15,7 @@
 - **`officialSubtotal` must always equal `Baseline × (1 + Region% + Amenities% + Review%)` and must never include Pricing or Rewards.** It is what matches Roady's published PDF calculator. The final review verifies this explicitly.
 - The formula is **additive**, not multiplicative chaining: `finalGallons = Baseline × (1 + Region% + Amenities% + Review% + Pricing% + Rewards%)`.
 - Rewards bands: Participating `+0.05` / Undecided `0.00` (default) / Not participating `-0.05`.
-- **44 tests passing, 0 failing, at every commit** (42 existing + Cases E and F). Three existing `finalMathLine` snapshot assertions get updated expected strings — see Task 1.
+- **48 tests passing, 0 failing, at every commit** — 42 existing plus the six Task 1 adds: Cases E and F, rewards-invariance of `officialSubtotal`, unknown-level handling, default-equivalence for old profiles, and the `profileRange` guard. Three existing `finalMathLine` snapshot assertions get updated expected strings — see Task 1.
 - `profileAdjustmentBounds()` must NOT include rewards. `calculateNetworkFitGrade()` must stay unaffected by rewards.
 - `rewardsLevel` is an engine input and **must** invalidate `state.result`.
 - Old saved profiles default to Undecided / 0% and their numbers must not move.
@@ -223,7 +223,7 @@ and the return object becomes:
 - [ ] **Step 7: Run the tests**
 
 Run: `node --test busDevGallonsCalculator.test.js`
-Expected: **44 pass, 0 fail.**
+Expected: **48 pass, 0 fail.**
 
 Confirm by hand that `profileAdjustmentBounds()` was not touched — it must still read only `AMENITY_ADJUST` and `REVIEW_BANDS`.
 
@@ -352,7 +352,7 @@ Serve with `python -m http.server 8791`, open `http://localhost:8791/bus-dev-pot
 - [ ] **Step 9: Run tests and commit**
 
 ```bash
-node --test busDevGallonsCalculator.test.js   # 44 pass
+node --test busDevGallonsCalculator.test.js   # 48 pass
 git add bus-dev-potential-gallons/index.html
 git commit -m "feat(bdpg): Step 2 rewards control, wiring, invalidation and migration"
 ```
@@ -994,7 +994,7 @@ git commit -m "feat(bdpg): Export Pitch Summary with GS name and pitch-only pack
 7. **`CDO.scales` uncorrupted.** `JSON.stringify(CDO.scales)` after both charts render must equal the original literal with no baked-on `type`.
 8. **Print gating.** `body.bdpg-print-mode` still scopes the `@media print` rules.
 9. **Tracker.** 12 columns, empty state `colspan="12"`, Rewards column sorts via the delegated handler with no added sort code.
-10. **44/44 tests**, and `git diff` shows no change to the delegated sort handler and none to the dashboard `index.html`.
+10. **48/48 tests**, and `git diff` shows no change to the delegated sort handler and none to the dashboard `index.html`.
 
 - [ ] **Step 2: Fix anything the checklist surfaces**
 
@@ -1003,7 +1003,7 @@ Anything genuinely pre-existing and outside this work goes into `FOLLOW-UPS.md` 
 - [ ] **Step 3: Commit**
 
 ```bash
-node --test busDevGallonsCalculator.test.js   # 44 pass
+node --test busDevGallonsCalculator.test.js   # 48 pass
 git add -A
 git commit -m "fix(bdpg): polish pass -- invariant checklist"
 ```

@@ -112,7 +112,7 @@ Plus:
   default — proof that old saved profiles are numerically unchanged.
 - `profileRange()`/`calculateNetworkFitGrade()` unchanged by rewards.
 
-Target: **44 passing, 0 failing.**
+Target: **48 passing, 0 failing** — 42 existing plus the six above.
 
 ---
 
@@ -325,7 +325,7 @@ print header, and only when non-empty. It is **not** an engine input and must
 
 - `officialSubtotal` never includes Pricing or Rewards (§1.2) — verified
   explicitly in the final review.
-- 44/44 tests pass at every commit.
+- 48/48 tests pass at every commit.
 - `rewardsLevel` invalidates the result (§2.2).
 - Network Fit Grade is unchanged by rewards (§1.5).
 - Old saved profiles load with rewards defaulted, numbers unmoved (§2.3).
