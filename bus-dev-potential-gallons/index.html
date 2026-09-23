@@ -1373,13 +1373,25 @@ function getCentroid(pathStr, axis){
     }).join('');
 
     // Three fixed tones rather than the pricing row's five-stop gradient:
-    // this is a yes / unknown / no posture, not a scale.
-    var REWARD_COLS = ['var(--green)', 'var(--yellow)', 'var(--red)'];
+    // this is a yes / unknown / no posture, not a scale. Keyed by level
+    // *name*, not position, and shared with the tracker's Rewards column
+    // (BDPG.REWARDS_TONES, defined below) so there is one map of posture ->
+    // tone instead of two parallel ones that could drift out of sync --
+    // hasOwn-guarded the same way every other name-keyed lookup in this file
+    // is, so reordering BDPG_CONFIG.REWARDS_LEVELS (or a hand-edited state)
+    // can't silently mis-tint this control the way an index-keyed array
+    // would.
     var rsegs = BDPG_CONFIG.REWARDS_LEVELS.map(function (lvl, i) {
       var pct = BDPG_CONFIG.REWARDS_ADJUST[lvl];
       var on = (s.rewardsLevel === lvl);
+      // Unreachable via REWARDS_LEVELS.map itself (every lvl here is by
+      // definition a key of the map it drives), but rtone is looked up
+      // through the same hasOwn guard as every other name-keyed lookup for
+      // consistency, and a miss falls back to a real CSS var (there is no
+      // --gray token) rather than an inert var(--gray).
+      var rcol = hasOwn(BDPG.REWARDS_TONES, lvl) ? 'var(--' + BDPG.REWARDS_TONES[lvl] + ')' : 'var(--muted)';
       return '<button class="' + (on ? 'on' : '') + '"' +
-        (on ? ' style="background:' + REWARD_COLS[i] + '"' : '') +
+        (on ? ' style="background:' + rcol + '"' : '') +
         ' onclick="BDPG.onRewardsChange(' + JSON.stringify(lvl).replace(/"/g, '&quot;') + ')">' +
         BDPG.escHtml(lvl.replace("Participating in Roady's Rewards", 'Participating')) + '<br>' +
         '<span style="opacity:.85">' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%</span></button>';
@@ -2313,6 +2325,18 @@ function getCentroid(pathStr, axis){
   // (see the c7 overall-signal chip): Strong=green, Moderate=yellow, Review=red.
   BDPG.PREEVAL_SIGNAL_TONES = { Strong: 'green', Moderate: 'yellow', Review: 'red' };
 
+  // Rewards posture -> chip/segment tone. Keyed by level name (matching
+  // BDPG_CONFIG.REWARDS_LEVELS), not position, so this one map serves both
+  // the tracker's Rewards column badge below and the Step 2 segmented
+  // control's selected-background color (see rcol in step2Html) -- an
+  // index-keyed array next to this would just invite the same reordering
+  // hazard this map exists to avoid.
+  BDPG.REWARDS_TONES = {
+    "Participating in Roady's Rewards": 'green',
+    'Undecided / unknown': 'yellow',
+    'Not participating': 'red'
+  };
+
   // Plain `[]` lookups on REGION_COLORS/GRADE_COLORS/PREEVAL_SIGNAL_TONES
   // would resolve a stored value of "constructor" or "toString" to an
   // inherited Object.prototype function instead of undefined, which then
@@ -2389,6 +2413,15 @@ function getCentroid(pathStr, axis){
 
     var amenityCell = sum.amenityLevel ? BDPG.escHtml(sum.amenityLevel) : '—';
     var pricingCell = sum.pricingLevel ? BDPG.escHtml(sum.pricingLevel) : '—';
+
+    // Tone by posture, via the same hasOwn-guarded map style every other
+    // lookup in this file uses, so a hand-edited value can't resolve to an
+    // inherited Object.prototype member.
+    var rewardsCell = '—';
+    if (sum.rewardsLevel) {
+      var rtone = hasOwn(BDPG.REWARDS_TONES, sum.rewardsLevel) ? BDPG.REWARDS_TONES[sum.rewardsLevel] : 'gray';
+      rewardsCell = '<span class="badge tag-' + rtone + '">' + BDPG.escHtml(sum.rewardsLevel) + '</span>';
+    }
     // "YYYY MM DD" sliced straight from the stored ISO string -- not
     // `new Date(...).toLocaleDateString()` -- for three reasons (see
     // task-8-ruling.md): (1) the shared sort handler's numeric-parse strips
@@ -2434,6 +2467,7 @@ function getCentroid(pathStr, axis){
       '<td>' + signalCell + '</td>' +
       '<td>' + amenityCell + '</td>' +
       '<td>' + pricingCell + '</td>' +
+      '<td>' + rewardsCell + '</td>' +
       '<td>' + savedCell + '</td>' +
       '<td>' + actionsCell + '</td>' +
     '</tr>';
@@ -2526,7 +2560,7 @@ function getCentroid(pathStr, axis){
 
     var rows = profiles.length
       ? profiles.map(BDPG.trackerRowHtml).join('')
-      : '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted)">📋 No prospects evaluated yet — complete a profile above and save it.</td></tr>';
+      : '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">📋 No prospects evaluated yet — complete a profile above and save it.</td></tr>';
 
     // The summary card is a separate .cc sibling, not a <tr> in this table
     // -- the delegated sort handler operates on `tbody > tr` (see the
@@ -2542,7 +2576,7 @@ function getCentroid(pathStr, axis){
         '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
         '<th>Official Subtotal</th><th>Final Potential Gallons</th>' +
         '<th>Grade</th><th>Pre-Eval</th><th>Amenity Level</th>' +
-        '<th>Pricing Posture</th><th>Saved</th><th style="width:50px">Actions</th>' +
+        '<th>Pricing Posture</th><th>Rewards</th><th>Saved</th><th style="width:50px">Actions</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' + statsHtml;
   };
 
