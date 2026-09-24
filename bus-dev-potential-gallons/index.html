@@ -627,11 +627,21 @@ function getCentroid(pathStr, axis){
   // this block hidden/empty every render unless it has saved text to show).
   BDPG.state.adminSavedJson = null;
 
+  // "region-a" style id fragment for a region key that may contain spaces
+  // ("Upper Midwest") -- shared by the slider render and the Save/Reset
+  // handlers so the three can never look up mismatched element ids.
+  BDPG.regionSlug = function (r) { return String(r).replace(/\s+/g, '-').toLowerCase(); };
+
+  BDPG.committedRegionPct = function (r) {
+    var c = BDPG.regionVariance.committed;
+    if (!c || !hasOwn(c, r)) return 0;
+    var n = Number(c[r]);
+    return isFinite(n) ? n : 0;
+  };
+
   BDPG.adminPanelHtml = function () {
     var s = BDPG.state;
     var v = BDPG.effectiveRegionVariance();
-    var regions = ['west', 'southwest', 'midwest', 'northeast', 'southeast'];
-    var labels = { west: 'West', southwest: 'Southwest', midwest: 'Midwest', northeast: 'Northeast', southeast: 'Southeast' };
 
     var banner = !BDPG.regionVarianceIsSet()
       ? '<div class="bdpg-box" style="border-color:var(--yellow);margin-top:14px">Region variance not set — estimates use 0% region adjustment.</div>'
@@ -647,9 +657,37 @@ function getCentroid(pathStr, axis){
       ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Your saved region override was from the old 5-region layout and could not be carried forward — it has been cleared. Please re-enter your region percentages.</div>'
       : '';
 
-    var inputs = regions.map(function (r) {
-      return '<div class="fg"><label style="font-size:.72em">' + labels[r] + ' %</label>' +
-        '<input id="bdpg-admin-' + r + '" type="number" step="0.1" value="' + BDPG.escHtml(v[r]) + '" style="width:90px"></div>';
+    // Per region: a +/-10% slider (today's engine input), its live readout,
+    // a Reset that snaps back to the committed region_variance.json value
+    // (never the network figure below it -- see BDPG_NETWORK_BASELINES'
+    // comment for why those two numbers must never be conflated), and the
+    // read-only network-data context line. Texas alone carries a
+    // lowSample/n pair in config; nothing here hardcodes that it's Texas.
+    var sliders = BDPG.REGION_KEYS.map(function (r, i) {
+      var slug = BDPG.regionSlug(r);
+      var sliderId = 'bdpg-admin-' + slug;
+      var curVal = Number(v[r]) || 0;
+      var baseline = hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, r) ? BDPG_CONFIG.BDPG_NETWORK_BASELINES[r] : null;
+      var netLine = baseline
+        ? ('<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
+            BDPG.fmtGal(baseline.avgGalMo) + ' gal/mo &middot; ' +
+            (baseline.pctVsNetwork >= 0 ? '+' : '') + (baseline.pctVsNetwork * 100).toFixed(1) + '%' +
+            (baseline.lowSample
+              ? ' <span style="color:var(--yellow)">&#9888; low sample confidence (n=' + BDPG.escHtml(String(baseline.n)) + ')</span>'
+              : '') +
+          '</div>')
+        : '';
+      return '<div class="fg">' +
+        '<label style="font-size:.72em">' + BDPG.escHtml(r) + ' %</label>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input id="' + sliderId + '" type="range" min="-10" max="10" step="0.1" style="flex:1" ' +
+            'value="' + curVal + '" oninput="BDPG.onRegionSliderInput(' + i + ', this.value)">' +
+          '<span id="' + sliderId + '-val" style="font-family:var(--ff);font-weight:700;min-width:3.6em;text-align:right">' +
+            curVal.toFixed(1) + '%</span>' +
+          '<button type="button" class="btn" style="font-size:.66em" onclick="BDPG.onResetRegionSlider(' + i + ')">Reset</button>' +
+        '</div>' +
+        netLine +
+      '</div>';
     }).join('');
 
     return banner + resetNotice +
@@ -657,7 +695,7 @@ function getCentroid(pathStr, axis){
         '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleAdmin()">▸ Region % — Admin ' + (s.adminOpen ? '▾' : '▸') + '</div>' +
         (s.adminOpen ? (
           overrideNotice +
-          '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">' + inputs + '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px">' + sliders + '</div>' +
           '<div class="fg" style="margin-top:10px;max-width:180px"><label>As of (month)</label>' +
           '<input id="bdpg-admin-asof" value="' + BDPG.escHtml(v.asOf) + '" placeholder="e.g. 2026-09"></div>' +
           '<button class="btn btn-accent" style="margin-top:10px" onclick="BDPG.onSaveRegionOverride()">Save locally</button>' +
@@ -670,10 +708,36 @@ function getCentroid(pathStr, axis){
 
   BDPG.toggleAdmin = function () { BDPG.state.adminOpen = !BDPG.state.adminOpen; BDPG.render(); };
 
+  // Same-rule-as-every-other-continuous-control: patch the readout span
+  // directly on `input` rather than calling BDPG.render(), which would tear
+  // down and rebuild the very slider the user is dragging. Nothing is
+  // committed here -- the value isn't read back until Save.
+  BDPG.onRegionSliderInput = function (i, value) {
+    var r = BDPG.REGION_KEYS[i];
+    var val = document.getElementById('bdpg-admin-' + BDPG.regionSlug(r) + '-val');
+    if (val) val.textContent = Number(value).toFixed(1) + '%';
+  };
+
+  // Snaps one region's slider back to the committed region_variance.json
+  // value -- NOT the network-data figure shown below it, which is display
+  // context outside the +/-10% range this slider even allows. Nothing is
+  // persisted until Save; only the in-progress form value moves.
+  BDPG.onResetRegionSlider = function (i) {
+    var r = BDPG.REGION_KEYS[i];
+    var committed = BDPG.committedRegionPct(r);
+    var slug = BDPG.regionSlug(r);
+    var slider = document.getElementById('bdpg-admin-' + slug);
+    var val = document.getElementById('bdpg-admin-' + slug + '-val');
+    if (slider) slider.value = committed;
+    if (val) val.textContent = committed.toFixed(1) + '%';
+  };
+
   BDPG.onSaveRegionOverride = function () {
-    var regions = ['west', 'southwest', 'midwest', 'northeast', 'southeast'];
     var out = {};
-    regions.forEach(function (r) { out[r] = Number(document.getElementById('bdpg-admin-' + r).value) || 0; });
+    BDPG.REGION_KEYS.forEach(function (r) {
+      var el = document.getElementById('bdpg-admin-' + BDPG.regionSlug(r));
+      out[r] = el ? (Number(el.value) || 0) : 0;
+    });
     out.asOf = document.getElementById('bdpg-admin-asof').value.trim();
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
     BDPG.regionVariance.override = out;
