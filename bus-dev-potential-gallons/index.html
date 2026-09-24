@@ -500,15 +500,41 @@ function getCentroid(pathStr, axis){
     }
   };
 
+  // Source of truth for the region key set -- derived from the config's
+  // BDPG_REGION_MAP rather than hardcoded, so the variance lookup, the
+  // "is it set" check and the override-diff check can never drift out of
+  // sync with the 8-region model in busDevGallonsConfig.js.
+  BDPG.REGION_KEYS = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP);
+
   BDPG.regionVariance = { committed: null, override: null };
   BDPG._regionVarianceLoaded = false;
+  // Set true when a stored override was discarded for not matching the
+  // current 8-key region shape (see loadRegionVariance below). Read by
+  // the admin panel to show a one-line notice.
+  BDPG.regionOverrideWasReset = false;
 
   BDPG.loadRegionVariance = function (onDone) {
     if (BDPG._regionVarianceLoaded) { if (onDone) onDone(); return; }
     BDPG._regionVarianceLoaded = true;
 
     var raw = localStorage.getItem('roadysBDPGRegionOverride');
-    if (raw) { try { BDPG.regionVariance.override = JSON.parse(raw); } catch (e) { /* corrupt value, ignore */ } }
+    if (raw) {
+      try {
+        var parsed = JSON.parse(raw);
+        var ok = parsed && typeof parsed === 'object' &&
+          BDPG.REGION_KEYS.every(function (k) { return hasOwn(parsed, k); });
+        if (ok) { BDPG.regionVariance.override = parsed; }
+        else {
+          // A 5-region override cannot be carried forward: old "West" covered
+          // WA/OR/ID/MT/WY as well as CA/NV/UT/CO, so its number describes a
+          // different set of states than any new region. Applying it to the
+          // new "West" would silently attribute Pacific-Northwest performance
+          // to California. Discarded whole and reported.
+          localStorage.removeItem('roadysBDPGRegionOverride');
+          BDPG.regionOverrideWasReset = true;
+        }
+      } catch (e) { localStorage.removeItem('roadysBDPGRegionOverride'); BDPG.regionOverrideWasReset = true; }
+    }
 
     fetch('../region_variance.json').then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) { BDPG.regionVariance.committed = json; if (onDone) onDone(); })
@@ -527,14 +553,24 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.effectiveRegionVariance = function () {
-    return BDPG.regionVariance.override || BDPG.regionVariance.committed || { west: 0, southwest: 0, midwest: 0, northeast: 0, southeast: 0, asOf: '' };
+    if (BDPG.regionVariance.override) return BDPG.regionVariance.override;
+    if (BDPG.regionVariance.committed) return BDPG.regionVariance.committed;
+    // Built from BDPG.REGION_KEYS rather than a hardcoded literal so the
+    // zero-fallback shape always matches the current region map.
+    var fallback = { asOf: '' };
+    BDPG.REGION_KEYS.forEach(function (k) { fallback[k] = 0; });
+    return fallback;
   };
 
   BDPG.effectiveRegionPct = function (region) {
     if (!region) return 0;
     var v = BDPG.effectiveRegionVariance();
-    var key = region.toLowerCase();
-    return (Number(v[key]) || 0) / 100;
+    // Exact key, no case transform: region keys now contain spaces
+    // ("Upper Midwest"), and a lowercased space-bearing key is a silent
+    // mismatch that reads as 0% rather than failing.
+    if (!hasOwn(v, region)) return 0;
+    var n = Number(v[region]);
+    return isFinite(n) ? n / 100 : 0;
   };
 
   BDPG.regionVarianceAsOf = function () {
@@ -568,13 +604,13 @@ function getCentroid(pathStr, axis){
 
   BDPG.regionVarianceIsSet = function () {
     var v = BDPG.effectiveRegionVariance();
-    return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(v[k]) !== 0; });
+    return BDPG.REGION_KEYS.some(function (k) { return Number(v[k]) !== 0; });
   };
 
   BDPG.regionVarianceOverrideDiffers = function () {
     if (!BDPG.regionVariance.override || !BDPG.regionVariance.committed) return false;
     var o = BDPG.regionVariance.override, c = BDPG.regionVariance.committed;
-    return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(o[k]) !== Number(c[k]); });
+    return BDPG.REGION_KEYS.some(function (k) { return Number(o[k]) !== Number(c[k]); });
   };
 
   BDPG.state.adminOpen = false;
@@ -596,13 +632,19 @@ function getCentroid(pathStr, axis){
       ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Using a local override that differs from the committed region_variance.json — ' +
         '<button class="btn" onclick="BDPG.onClearRegionOverride()">Clear override</button></div>'
       : '';
+    // A stored override from the old 5-region shape can't be carried forward
+    // (see loadRegionVariance) -- it was discarded on load, so tell the admin
+    // rather than let the reset happen silently.
+    var resetNotice = BDPG.regionOverrideWasReset
+      ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Your saved region override was from the old 5-region layout and could not be carried forward — it has been cleared. Please re-enter your region percentages.</div>'
+      : '';
 
     var inputs = regions.map(function (r) {
       return '<div class="fg"><label style="font-size:.72em">' + labels[r] + ' %</label>' +
         '<input id="bdpg-admin-' + r + '" type="number" step="0.1" value="' + BDPG.escHtml(v[r]) + '" style="width:90px"></div>';
     }).join('');
 
-    return banner +
+    return banner + resetNotice +
       '<div class="bdpg-box" style="margin-top:14px">' +
         '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleAdmin()">▸ Region % — Admin ' + (s.adminOpen ? '▾' : '▸') + '</div>' +
         (s.adminOpen ? (
