@@ -215,9 +215,14 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
   body.bdpg-print-mode > *:not(#bdpg-content) { display: none !important; }
   /* html carries its own background:var(--bg) (see the :root block), so body's
      white does NOT propagate to the print canvas -- everything past the first
-     viewport-height prints on the dark app background. :has() keeps this on
-     the same body.bdpg-print-mode gate as every other rule here. */
-  html:has(body.bdpg-print-mode) { background: #fff !important; }
+     viewport-height prints on the dark app background.
+     This needs a class ON html, not html:has(body.bdpg-print-mode): a missing
+     :has() would make the selector no-op silently, and the failure mode is a
+     packet printed on a dark ground with no error to notice. onExportPdf()
+     and the 'afterprint' handler already toggle body.bdpg-print-mode, so they
+     set and clear this one in the same two places -- same gate, one mechanism,
+     no selector-support question. */
+  html.bdpg-print-mode { background: #fff !important; }
   /* #bdpg-print-only is built by resultsWrapHtml(), so it lives one level
      down inside #bdpg-results-wrap -- not as a direct child of #bdpg-content.
      Hiding every #bdpg-content child except #bdpg-print-only therefore hid
@@ -1852,7 +1857,7 @@ function getCentroid(pathStr, axis){
       mkchart('bdpg-waterfall', {
         type: 'bar',
         data: { labels: w.labels, datasets: [{ label: 'gal/mo', data: w.data, backgroundColor: w.colors, borderRadius: 3 }] },
-        // animation:{duration:0} -- Export PDF grabs this canvas via toBase64Image()
+        // animation:{duration:0} -- Export Pitch Summary grabs this canvas via toBase64Image()
         // for the print packet. Chart.js's default 1000ms grow-in animation means a
         // rep clicking Generate then Export within about a second (verified: calling
         // chart.update('none') right before the capture does NOT reliably jump an
@@ -2100,7 +2105,15 @@ function getCentroid(pathStr, axis){
       ? '<div style="margin-top:14px"><img src="' + BDPG.printChartImg + '" alt="Adjustment waterfall chart" style="width:100%;max-width:560px;border:1px solid #999"></div>'
       : '';
 
-    var today = new Date().toISOString().slice(0, 10);
+    // The rep's local calendar date, NOT toISOString().slice(0,10) -- that is
+    // UTC, so for everyone west of it the last hours of every working day
+    // stamp a document handed to a customer with tomorrow's date. (The
+    // tracker's savedAt stays ISO/UTC on purpose: it is a lexicographic sort
+    // key, not a date a human reads. Different job, different rule.)
+    var now = new Date();
+    var today = now.getFullYear() + '-' +
+      ('0' + (now.getMonth() + 1)).slice(-2) + '-' +
+      ('0' + now.getDate()).slice(-2);
     // Omitted entirely when unset, so the header closes on the date with no
     // blank line where a name would have been.
     var preparedBy = BDPG.state.prospect.gsName
@@ -2147,9 +2160,14 @@ function getCentroid(pathStr, axis){
     var printOnly = document.getElementById('bdpg-print-only');
     if (printOnly) printOnly.outerHTML = BDPG.exportPdfHtml();
 
-    // body.bdpg-print-mode is what the @media print rules key off of (see <style>),
+    // bdpg-print-mode is what the @media print rules key off of (see <style>),
     // so a plain browser File > Print on some other page never gets caught by
     // these rules — only a print triggered through this button does.
+    // It goes on BOTH elements: body gates every rule about what is shown,
+    // and html gates the one rule that has to reach the print canvas's
+    // background (body's own background does not propagate past an html that
+    // sets its own). They are set and cleared together, always.
+    document.documentElement.classList.add('bdpg-print-mode');
     document.body.classList.add('bdpg-print-mode');
     window.print();
   };
@@ -2157,6 +2175,7 @@ function getCentroid(pathStr, axis){
   if (!BDPG._printModeCleanupBound) {
     BDPG._printModeCleanupBound = true;
     window.addEventListener('afterprint', function () {
+      document.documentElement.classList.remove('bdpg-print-mode');
       document.body.classList.remove('bdpg-print-mode');
     });
   }
@@ -2376,7 +2395,7 @@ function getCentroid(pathStr, axis){
       '<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-title" style="font-size:.85em">About the Roady\'s Network</div></div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:34px">' +
         stats.map(function (s) {
-          return '<div><div class="bdpg-pitch-stat" style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
+          return '<div><div style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
             s[0] + '</div><div style="font-size:.78em;color:var(--muted);margin-top:3px;max-width:200px">' + s[1] + '</div></div>';
         }).join('') +
       '</div>' +
@@ -2857,7 +2876,7 @@ function getCentroid(pathStr, axis){
   // state.result (see its comment) -- but onLoadProfile also replaces the
   // *entire* BDPG.state wholesale. A REFUSED export must not do that: if a
   // rep has an in-progress, not-yet-saved profile on the Potential Gallons
-  // tab and clicks Export PDF on some other tracker row that turns out to
+  // tab and clicks Export Pitch Summary on some other tracker row that turns out to
   // be ungeneratable, the toast must be the only effect -- their unsaved
   // work has to survive. So the profile/roadway check has to run against
   // the *saved record itself* (via getSavedProfiles(), same as
@@ -2874,12 +2893,12 @@ function getCentroid(pathStr, axis){
     // and the tracker can show a clear toast instead of an empty print
     // dialog -- all before BDPG.state is touched.
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
-      toast('This saved prospect is missing a Location Profile/Roadway and can\'t generate a PDF.', 'err');
+      toast('This saved prospect is missing a Location Profile/Roadway and can\'t produce an Export Pitch Summary.', 'err');
       return;
     }
 
     // Only now, once the export is known to be possible, is anything about
-    // to be discarded. "Export PDF" does not read as "throw away what I am
+    // to be discarded. "Export Pitch Summary" does not read as "throw away what I am
     // working on", so the rep has to be told that it does -- there is no
     // prompt, no toast and no undo on the other side of this.
     if (!BDPG.confirmDiscard(
