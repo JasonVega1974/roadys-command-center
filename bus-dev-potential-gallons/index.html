@@ -901,6 +901,15 @@ function getCentroid(pathStr, axis){
 
   BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
 
+  // Prospect-facing copy uses the long display name ("Heartland / Central
+  // Plains"); internal surfaces keep the short key, which matches the config
+  // and the admin panel. Falls back to the key so an unmapped value degrades
+  // to something readable rather than empty.
+  BDPG.regionDisplayName = function (key) {
+    return hasOwn(BDPG_CONFIG.BDPG_REGION_DISPLAY, key)
+      ? BDPG_CONFIG.BDPG_REGION_DISPLAY[key] : (key || '');
+  };
+
   // Step cards are built by every step-rendering function; keeping the chrome in
   // one helper is what stops the three cards from drifting apart visually.
   BDPG.stepCardOpen = function (num, title, isDone) {
@@ -2138,6 +2147,29 @@ function getCentroid(pathStr, axis){
       '</div>';
   };
 
+  // Facts about the network, not projections about this prospect -- display
+  // context only, and must never enter the formula. BDPG_NETWORK_BASELINES
+  // carries percentages from -43.3% to +76.1%, far outside the +/-10% region
+  // slider that actually feeds calculateEstimate(); wiring it into the math
+  // would change official gallons for every saved profile. Omitted entirely
+  // (never dashed) when the region is unresolved or absent from the
+  // baselines map -- a dash in a credibility block shown to a customer reads
+  // as a broken page.
+  BDPG.networkAverageLineHtml = function () {
+    var r = BDPG.state.result;
+    var key = r && r.region;
+    if (!key || !hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, key)) return '';
+    var b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[key];
+    var meta = BDPG_CONFIG.NETWORK_BASELINE_META;
+    return '<div style="margin-top:6px;font-size:.85em">' +
+      '<span class="bdpg-lbl" style="display:inline">Roady\'s Network Average (your region):</span> ' +
+      '<b>' + BDPG.fmtGal(b.avgGalMo) + ' gal/mo</b>' +
+      '<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
+        BDPG.escHtml(BDPG.regionDisplayName(key)) + ' · 12mo avg, ' + meta.locations +
+        ' locations, as of ' + BDPG.escHtml(meta.asOf) + '</div>' +
+    '</div>';
+  };
+
   // Prospect-facing hero. Extracted so the Export Pitch Summary renders the
   // identical block rather than a hand-maintained second copy that could
   // drift from what the rep saw on screen.
@@ -2167,6 +2199,7 @@ function getCentroid(pathStr, axis){
         '<b style="font-size:1.15em">' + BDPG.fmtGal(e.officialSubtotal) + ' gal/mo</b>' +
         '<div style="font-size:.72em;color:var(--muted);margin-top:3px">' +
           'Matches Roady\'s published prospective-member calculator.</div>' +
+        BDPG.networkAverageLineHtml() +
       '</div>' +
     '</div>';
   };
@@ -2511,7 +2544,7 @@ function getCentroid(pathStr, axis){
       out.push('Your Highway location sits on a steady regional freight corridor.');
     }
     if (e.regionPct > 0) {
-      out.push('The ' + s.result.region + ' region runs ' + (e.regionPct * 100).toFixed(1) +
+      out.push('The ' + BDPG.regionDisplayName(s.result.region) + ' region runs ' + (e.regionPct * 100).toFixed(1) +
         '% above the network average — your geography works in your favor.');
     }
     if (e.amenityPct > 0) {
@@ -2650,7 +2683,7 @@ function getCentroid(pathStr, axis){
       stats.push([BDPG.fmtGal(nc.activeTotal), 'active locations across the Roady\'s network']);
     }
     if (typeof rd.total === 'number') {
-      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + r.region + ')']);
+      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + BDPG.regionDisplayName(r.region) + ')']);
     }
     // byType keys come from the source CSV's Type column while locationType
     // comes from the ⓪ card's own list; they do not always match, which is why
