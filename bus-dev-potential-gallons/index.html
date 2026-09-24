@@ -288,6 +288,12 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
   <div class="bdpg-subtabs">
     <button id="bdpg-tab-calc" class="impl-sub-tab active" onclick="BDPG.switchTab('calc')">⛽ Potential Gallons</button>
     <button id="bdpg-tab-prospects" class="impl-sub-tab" onclick="BDPG.switchTab('prospects')">📋 Prospects</button>
+    <!-- The admin home: grade weights, region %, the network-context
+         generator. The weights sliders inside it render only when the admin
+         PIN is unlocked, but the tab button itself is always present -- it is
+         the only place to set, enter or change that PIN, so hiding it while
+         locked would leave no way back in. -->
+    <button id="bdpg-tab-weights" class="impl-sub-tab" onclick="BDPG.switchTab('weights')">⚙ Weights</button>
   </div>
   <div class="container" id="bdpg-content"></div>
   <div class="toast" id="toast"></div>
@@ -484,6 +490,14 @@ function getCentroid(pathStr, axis){
         el.innerHTML = BDPG.tutorialCardHtml() + BDPG.prospectsHtml();
         return;
       }
+      if (BDPG.activeTab === 'weights') {
+        // Every admin control lives here now -- grade weights, the region %
+        // sliders and the network-context generator -- so the calculator tab
+        // below carries none of them. See BDPG.adminTabHtml(), which decides
+        // between the admin controls and the PIN gate.
+        el.innerHTML = BDPG.tutorialCardHtml() + BDPG.adminTabHtml();
+        return;
+      }
       el.innerHTML =
         // Visible on every tab, collapsed by default, above the ⓪ card --
         // see BDPG.tutorialCardHtml(). Toggling it or switching its five
@@ -496,7 +510,10 @@ function getCentroid(pathStr, axis){
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(3, 'Step 3 — Supporting Details', false) + BDPG.supportingDetailsHtml() + BDPG.stepCardClose() +
-        BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() +
+        // No admin control appears on this tab. The region % panel and the
+        // network-context generator used to sit right here, between Step 3
+        // and Generate; both moved to the ⚙ Weights tab (spec §5.3) so the
+        // rep's calculator is only the calculator.
         BDPG.generateButtonHtml() +
         // One container for "the results, or the notice that they were
         // cleared", so BDPG.invalidateResult() can swap between them with a
@@ -1002,6 +1019,322 @@ function getCentroid(pathStr, axis){
     var resultEl = document.getElementById('bdpg-csv-result');
     if (resultEl) resultEl.textContent = 'Computed and saved locally: ' + JSON.stringify(out);
     BDPG.render();
+  };
+
+  // ── Admin PIN gate ─────────────────────────────────────────────────────
+  //
+  // NOT security. The page is public, the stored PIN sits in localStorage where
+  // anyone can read or delete it, and every value it guards is editable there
+  // directly. It exists so a rep cannot change grade weights by wandering into
+  // the wrong panel -- an accident guard, nothing more.
+  //
+  // The default state is deliberately UNSET: with no PIN stored the admin tab
+  // is fully open. There is no constant default PIN anywhere in this file and
+  // there must never be one -- a hardcoded code would be both a lie about what
+  // this gate is and a secret nobody was told, locking the next owner out of
+  // their own tool. Clearing the key below always returns the page to the
+  // open, unset state.
+  BDPG.ADMIN_PIN_KEY = 'roadysBDPGAdminPin';
+  BDPG.ADMIN_PIN_RE = /^[0-9]{4}$/;
+
+  // Session-only, and on BDPG rather than BDPG.state so it is never
+  // serialized into a saved record or seen by stateSig(). A reload re-locks.
+  BDPG.adminUnlocked = false;
+
+  BDPG.storedAdminPin = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(BDPG.ADMIN_PIN_KEY); } catch (e) { return null; }
+    if (raw === null) return null;
+    // Anything that is not exactly four digits can only have come from a hand
+    // edit. Treating it as "a PIN nobody can type" would lock the panel
+    // permanently with no way back; the contract is the opposite -- a cleared
+    // or corrupted key reopens the controls. So it is discarded like a
+    // cleared one.
+    if (!BDPG.ADMIN_PIN_RE.test(raw)) {
+      try { localStorage.removeItem(BDPG.ADMIN_PIN_KEY); } catch (e2) {}
+      return null;
+    }
+    return raw;
+  };
+
+  BDPG.adminPinIsSet = function () { return BDPG.storedAdminPin() !== null; };
+
+  // The single question every admin surface asks. No PIN set => open.
+  BDPG.adminAccessible = function () { return !BDPG.adminPinIsSet() || BDPG.adminUnlocked; };
+
+  // PIN feedback is patched into #bdpg-pin-msg rather than routed through
+  // render(), which would wipe whatever is half-typed in the sibling fields.
+  BDPG.pinMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-pin-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  BDPG.pinFieldValue = function (id) {
+    var el = document.getElementById(id);
+    return el ? String(el.value).trim() : '';
+  };
+
+  BDPG.clearPinFields = function (ids) {
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  };
+
+  BDPG.onSetAdminPin = function () {
+    var a = BDPG.pinFieldValue('bdpg-pin-new');
+    var b = BDPG.pinFieldValue('bdpg-pin-new2');
+    // Every rejection returns BEFORE the setItem below, so a bad entry can
+    // never half-set a PIN -- the key is either absent or exactly four digits.
+    if (!BDPG.ADMIN_PIN_RE.test(a)) {
+      BDPG.pinMsg('PIN must be exactly 4 digits (0-9). Nothing was saved.', true);
+      return;
+    }
+    if (a !== b) { BDPG.pinMsg('The two PINs do not match. Nothing was saved.', true); return; }
+    try { localStorage.setItem(BDPG.ADMIN_PIN_KEY, a); }
+    catch (e) { BDPG.pinMsg('Could not save the PIN in this browser.', true); return; }
+    // Whoever just set it is standing in the panel: setting a PIN must not
+    // lock you out of the thing you are in the middle of configuring.
+    BDPG.adminUnlocked = true;
+    BDPG.render();
+    BDPG.pinMsg('PIN set. These controls lock on the next reload.', false);
+  };
+
+  BDPG.onChangeAdminPin = function () {
+    var stored = BDPG.storedAdminPin();
+    if (stored === null) { BDPG.pinMsg('No PIN is set yet — use Set PIN.', true); return; }
+    var cur = BDPG.pinFieldValue('bdpg-pin-cur');
+    var a = BDPG.pinFieldValue('bdpg-pin-new');
+    var b = BDPG.pinFieldValue('bdpg-pin-new2');
+    if (cur !== stored) { BDPG.pinMsg('Current PIN is incorrect. Nothing was changed.', true); return; }
+    if (!BDPG.ADMIN_PIN_RE.test(a)) { BDPG.pinMsg('New PIN must be exactly 4 digits (0-9). Nothing was changed.', true); return; }
+    if (a !== b) { BDPG.pinMsg('The two new PINs do not match. Nothing was changed.', true); return; }
+    try { localStorage.setItem(BDPG.ADMIN_PIN_KEY, a); }
+    catch (e) { BDPG.pinMsg('Could not save the PIN in this browser.', true); return; }
+    BDPG.clearPinFields(['bdpg-pin-cur', 'bdpg-pin-new', 'bdpg-pin-new2']);
+    BDPG.pinMsg('PIN changed.', false);
+  };
+
+  BDPG.onUnlockAdmin = function () {
+    var stored = BDPG.storedAdminPin();
+    // The key can be cleared in another tab while this one shows the gate;
+    // there is nothing left to check against, so the controls simply reopen.
+    if (stored === null) { BDPG.adminUnlocked = true; BDPG.render(); return; }
+    if (BDPG.pinFieldValue('bdpg-pin-unlock') !== stored) { BDPG.pinMsg('Incorrect PIN.', true); return; }
+    BDPG.adminUnlocked = true;
+    BDPG.render();
+  };
+
+  BDPG.onLockAdmin = function () {
+    BDPG.adminUnlocked = false;
+    BDPG.render();
+  };
+
+  BDPG.adminLockedHtml = function () {
+    return '<div class="bdpg-box" style="margin-top:14px;max-width:560px">' +
+      '<div style="font-weight:700;margin-bottom:6px">🔒 Admin controls are locked</div>' +
+      '<div style="font-size:.82em;color:var(--muted);margin-bottom:10px">Grade weights, region percentages and the network-context generator are behind the admin PIN set on this browser.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;max-width:300px">' +
+        '<input id="bdpg-pin-unlock" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" ' +
+          'onkeydown="if(event.key===\'Enter\'){BDPG.onUnlockAdmin();}">' +
+        '<button class="btn btn-accent" onclick="BDPG.onUnlockAdmin()">Unlock</button>' +
+      '</div>' +
+      '<div id="bdpg-pin-msg" style="font-size:.8em;margin-top:8px"></div>' +
+      '<div style="font-size:.74em;color:var(--muted);margin-top:10px">Forgotten it? This is an accident guard, not access control — the PIN is stored in plain text in this browser under <code>' +
+        BDPG.escHtml(BDPG.ADMIN_PIN_KEY) + '</code>, and deleting that key reopens these controls.</div>' +
+    '</div>';
+  };
+
+  BDPG.adminPinCardHtml = function () {
+    var field = ' type="password" inputmode="numeric" maxlength="4" style="max-width:150px"';
+    var body;
+    if (!BDPG.adminPinIsSet()) {
+      body = '<div style="font-size:.82em;color:var(--muted);margin-bottom:10px">No admin PIN is set, so these controls are open to anyone using this browser. Setting one keeps a rep from changing grade weights by wandering in here.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input id="bdpg-pin-new"' + field + ' placeholder="New 4-digit PIN">' +
+          '<input id="bdpg-pin-new2"' + field + ' placeholder="Repeat it">' +
+          '<button class="btn btn-accent" onclick="BDPG.onSetAdminPin()">Set PIN</button>' +
+        '</div>';
+    } else {
+      body = '<div style="font-size:.82em;color:var(--muted);margin-bottom:10px">Unlocked for this browser session only — a reload locks these controls again.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input id="bdpg-pin-cur"' + field + ' placeholder="Current PIN">' +
+          '<input id="bdpg-pin-new"' + field + ' placeholder="New PIN">' +
+          '<input id="bdpg-pin-new2"' + field + ' placeholder="Repeat new PIN">' +
+          '<button class="btn" onclick="BDPG.onChangeAdminPin()">Change PIN</button>' +
+          '<button class="btn" onclick="BDPG.onLockAdmin()">Lock now</button>' +
+        '</div>';
+    }
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="font-weight:700;margin-bottom:6px">🔒 Admin PIN</div>' + body +
+      '<div id="bdpg-pin-msg" style="font-size:.8em;margin-top:8px"></div>' +
+      '<div style="font-size:.72em;color:var(--muted);margin-top:8px">Accident guard, not security: the PIN is stored in plain text in this browser\'s localStorage, and everything it guards can be edited there directly.</div>' +
+    '</div>';
+  };
+
+  // ── Grade weights (admin) ──────────────────────────────────────────────
+  BDPG.ADMIN_WEIGHTS_KEY = 'roadysBDPGWeights';
+  // Order and spelling must match the engine's WEIGHT_KEYS / WEIGHT_CONFIG.
+  BDPG.WEIGHT_KEYS = ['rangePosition', 'condition', 'hours', 'distance', 'corridor', 'competition'];
+  BDPG.WEIGHT_LABELS = {
+    rangePosition: 'Range position', condition: 'Condition', hours: 'Hours',
+    distance: 'Distance to Interstate', corridor: 'Corridor', competition: 'Competition'
+  };
+
+  BDPG.storedWeights = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(BDPG.ADMIN_WEIGHTS_KEY); } catch (e) { return null; }
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  };
+
+  // The one place the page decides which weight set the grade runs under.
+  // resolveWeights() is the engine's own validator -- six finite numbers in
+  // 0..100 summing to exactly 100 -- so a hand-edited, partial or
+  // string-valued stored set falls back to WEIGHT_CONFIG here rather than
+  // corrupting a grade. onGenerate() hands the result straight back to
+  // resolveWeights(), which re-validates regardless; the sliders render from
+  // this too, so what the admin sees is always what the calculation uses.
+  BDPG.effectiveWeights = function () {
+    return BusDevGallonsCalc.resolveWeights(BDPG.storedWeights());
+  };
+
+  // True when something IS stored but the engine threw it out. Identity
+  // comparison is exact: resolveWeights() returns its argument when the set is
+  // valid and the shared WEIGHT_CONFIG object when it is not, and a parsed
+  // JSON object is never that object.
+  BDPG.storedWeightsWereDiscarded = function () {
+    var stored = BDPG.storedWeights();
+    return stored !== null && BusDevGallonsCalc.resolveWeights(stored) === BDPG_CONFIG.WEIGHT_CONFIG;
+  };
+
+  BDPG.weightsCardHtml = function () {
+    var w = BDPG.effectiveWeights();
+    var total = 0;
+    BDPG.WEIGHT_KEYS.forEach(function (k) { total += Number(w[k]) || 0; });
+
+    var discarded = BDPG.storedWeightsWereDiscarded()
+      ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">The weight set saved in this browser is not six numbers in 0–100 totalling 100, so it was discarded — the grade is using the defaults shown below. Save a valid set to replace it.</div>'
+      : '';
+
+    var sliders = BDPG.WEIGHT_KEYS.map(function (k, i) {
+      var val = Number(w[k]) || 0;
+      return '<div class="fg">' +
+        '<label style="font-size:.72em">' + BDPG.escHtml(BDPG.WEIGHT_LABELS[k]) + '</label>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input id="bdpg-w-' + k + '" type="range" min="0" max="100" step="5" style="flex:1" ' +
+            'value="' + val + '" oninput="BDPG.onWeightSliderInput(' + i + ', this.value)">' +
+          '<span id="bdpg-w-' + k + '-val" style="font-family:var(--ff);font-weight:700;min-width:3.2em;text-align:right">' +
+            val + '%</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="font-weight:700">⚙ Network Fit Grade weights</div>' +
+      '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">These six weights decide the Network Fit Grade only. They never touch the Official Calculator subtotal or Final Potential Gallons — no saved prospect\'s gallons can move because of a change here.</div>' +
+      discarded +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">' + sliders + '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
+        '<span id="bdpg-w-total" style="font-weight:700;color:' + (total === 100 ? 'var(--green)' : 'var(--red)') + '">Total: ' + total + '%</span>' +
+        '<span style="font-size:.78em;color:var(--muted)">must be exactly 100% to save</span>' +
+        '<button class="btn btn-accent" onclick="BDPG.onSaveWeights()">Save Weights</button>' +
+        '<button class="btn" onclick="BDPG.onResetWeights()">Reset to defaults</button>' +
+      '</div>' +
+      '<div id="bdpg-w-msg" style="font-size:.8em;margin-top:8px"></div>' +
+    '</div>';
+  };
+
+  // Continuous control: patch the readout and the running total in place. A
+  // render() here would tear down the slider being dragged -- same rule as
+  // BDPG.onRegionSliderInput.
+  BDPG.onWeightSliderInput = function (i, value) {
+    var k = BDPG.WEIGHT_KEYS[i];
+    var val = document.getElementById('bdpg-w-' + k + '-val');
+    if (val) val.textContent = Math.round(Number(value)) + '%';
+    BDPG.refreshWeightTotal();
+  };
+
+  BDPG.readWeightForm = function () {
+    var out = {};
+    BDPG.WEIGHT_KEYS.forEach(function (k) {
+      var el = document.getElementById('bdpg-w-' + k);
+      var n = el ? Number(el.value) : NaN;
+      out[k] = isFinite(n) ? n : 0;
+    });
+    return out;
+  };
+
+  BDPG.weightFormTotal = function () {
+    var w = BDPG.readWeightForm(), total = 0;
+    BDPG.WEIGHT_KEYS.forEach(function (k) { total += w[k]; });
+    return total;
+  };
+
+  BDPG.refreshWeightTotal = function () {
+    var el = document.getElementById('bdpg-w-total');
+    if (!el) return;
+    var total = BDPG.weightFormTotal();
+    el.textContent = 'Total: ' + total + '%';
+    // Red is the whole signal that Save will refuse -- it must be driven by
+    // the same number readWeightForm() gives onSaveWeights, not a parallel tally.
+    el.style.color = total === 100 ? 'var(--green)' : 'var(--red)';
+  };
+
+  BDPG.weightsMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-w-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  // Moves the form only; nothing is persisted until Save, matching
+  // BDPG.onResetRegionSlider.
+  BDPG.onResetWeights = function () {
+    var d = BDPG_CONFIG.WEIGHT_CONFIG;
+    BDPG.WEIGHT_KEYS.forEach(function (k) {
+      var slider = document.getElementById('bdpg-w-' + k);
+      var val = document.getElementById('bdpg-w-' + k + '-val');
+      if (slider) slider.value = d[k];
+      if (val) val.textContent = d[k] + '%';
+    });
+    BDPG.refreshWeightTotal();
+    BDPG.weightsMsg('Sliders reset to the defaults — click Save Weights to store them.', false);
+  };
+
+  BDPG.onSaveWeights = function () {
+    var out = BDPG.readWeightForm();
+    var total = 0;
+    BDPG.WEIGHT_KEYS.forEach(function (k) { total += out[k]; });
+    if (total !== 100) {
+      // resolveWeights() discards any set that does not sum to 100, so storing
+      // one would leave the admin looking at sliders the grade ignores -- a
+      // silent disagreement between this panel and the calculation. Refused
+      // outright, not rounded and not stored.
+      BDPG.weightsMsg('Weights must total exactly 100% — currently ' + total + '%. Nothing was saved.', true);
+      return;
+    }
+    try { localStorage.setItem(BDPG.ADMIN_WEIGHTS_KEY, JSON.stringify(out)); }
+    catch (e) { BDPG.weightsMsg('Could not save the weights in this browser.', true); return; }
+    // The grade is computed from these, so any result on screen was computed
+    // under the old set and is stale the moment this lands -- same rule as the
+    // region % writers above.
+    BDPG.invalidateResult();
+    BDPG.render();
+    BDPG.weightsMsg('Weights saved. Re-run Generate to see them in the grade.', false);
+  };
+
+  // The admin tab's body: either every admin control, or just the gate.
+  // Nothing in between -- a locked panel that still shows the region sliders
+  // "read only" would be a gate in name only.
+  BDPG.adminTabHtml = function () {
+    if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
+    return BDPG.weightsCardHtml() +
+      BDPG.adminPanelHtml() +
+      BDPG.networkContextGeneratorHtml() +
+      BDPG.adminPinCardHtml();
   };
 
   BDPG.escHtml = function (s) {
@@ -2308,7 +2641,14 @@ function getCentroid(pathStr, axis){
     if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return; }
 
     var grade = BusDevGallonsCalc.calculateNetworkFitGrade({
-      profile: s.profile, officialSubtotal: estimate.officialSubtotal, supportingDetails: s.supportingDetails
+      profile: s.profile, officialSubtotal: estimate.officialSubtotal, supportingDetails: s.supportingDetails,
+      // Weights reach the grade and nothing else -- estimate.officialSubtotal
+      // above was already computed without them. effectiveWeights() has
+      // validated the stored set through resolveWeights(), and
+      // calculateNetworkFitGrade() puts it through resolveWeights() again, so
+      // a broken localStorage value degrades to the defaults twice over
+      // rather than producing a grade nobody configured.
+      weights: BDPG.effectiveWeights()
     });
     var conditionAdjusted = BusDevGallonsCalc.conditionAdjustedGallons(estimate.finalGallons, s.supportingDetails.condition);
     var membership = BusDevGallonsCalc.calculateMembershipFit(estimate.finalGallons);
@@ -3304,8 +3644,13 @@ function getCentroid(pathStr, axis){
   BDPG.activeTab = 'calc';
   BDPG.switchTab = function (name) {
     BDPG.activeTab = name;
-    document.getElementById('bdpg-tab-calc').classList.toggle('active', name === 'calc');
-    document.getElementById('bdpg-tab-prospects').classList.toggle('active', name === 'prospects');
+    // Driven off one list rather than a line per tab, so a fourth tab can
+    // never be added to the markup and forgotten here (which would leave two
+    // buttons looking active at once).
+    ['calc', 'prospects', 'weights'].forEach(function (t) {
+      var btn = document.getElementById('bdpg-tab-' + t);
+      if (btn) btn.classList.toggle('active', t === name);
+    });
     BDPG.render();
   };
 
