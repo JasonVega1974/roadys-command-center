@@ -51,6 +51,14 @@
   // into the formula is not possible without changing what the tool computes
   // for every saved profile. A later task displays these figures; nothing
   // should ever pass BDPG_NETWORK_BASELINES into calculateEstimate().
+  //
+  // avgGalMo and pctVsNetwork both come from the same unrounded 12-month
+  // source report, but each was rounded independently for display (gallons
+  // to the nearest whole number, percent to one decimal). Re-deriving pct
+  // from the rounded avgGalMo will NOT exactly reproduce the stored pct in
+  // general -- measured slack across all eight regions is ~0.0001-0.0005.
+  // Do not "fix" a pct that looks off by a thousandth against that
+  // derivation; the stored value is the more accurate one.
   var BDPG_NETWORK_BASELINES = {
     'Northwest':     { avgGalMo: 11153, pctVsNetwork: -0.097 },
     'West':          { avgGalMo: 10883, pctVsNetwork: -0.119 },
@@ -58,7 +66,7 @@
     'Texas':         { avgGalMo:  7003, pctVsNetwork: -0.433, lowSample: true, n: 13 },
     'Upper Midwest': { avgGalMo:  8820, pctVsNetwork: -0.286 },
     'Midwest':       { avgGalMo: 21737, pctVsNetwork:  0.761 },
-    'Northeast':     { avgGalMo: 13205, pctVsNetwork:  0.069 },
+    'Northeast':     { avgGalMo: 13205, pctVsNetwork:  0.070 },
     'Southeast':     { avgGalMo: 10373, pctVsNetwork: -0.160 }
   };
 

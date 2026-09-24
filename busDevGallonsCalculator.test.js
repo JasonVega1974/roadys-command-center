@@ -89,13 +89,21 @@ test('display, baseline and region maps share exactly the same 8 keys', () => {
   assert.deepEqual(Object.keys(BDPG_CONFIG.BDPG_NETWORK_BASELINES).sort(), r);
 });
 
-test('each network baseline pct matches its own avg over the overall avg', () => {
+test('each network baseline pct is consistent with its own avg over the overall avg', () => {
   const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
   const overall = BDPG_CONFIG.NETWORK_BASELINE_META.overallAvgGalMo;
   Object.keys(BDPG_CONFIG.BDPG_NETWORK_BASELINES).forEach(r => {
     const b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[r];
-    const derived = Math.round(((b.avgGalMo / overall) - 1) * 1000) / 1000;
-    assert.equal(Math.round(b.pctVsNetwork * 1000) / 1000, derived, r);
+    const derived = (b.avgGalMo / overall) - 1;
+    // Tolerance, not exact equality: avgGalMo and pctVsNetwork were each
+    // rounded independently from the same unrounded 12-month report (gallons
+    // to whole numbers, pct to one decimal), so the stored pct need not
+    // exactly reproduce a pct re-derived from the rounded gallons. Measured
+    // slack across all eight regions is 0.00012..0.00051; 0.001 accepts every
+    // real value while still catching a transposed digit or a pct pasted
+    // against the wrong region, which would be off by >= 0.01.
+    assert.ok(Math.abs(b.pctVsNetwork - derived) < 0.001,
+      r + ': stored ' + b.pctVsNetwork + ' vs derived ' + derived.toFixed(5));
   });
 });
 
