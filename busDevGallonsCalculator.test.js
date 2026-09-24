@@ -62,6 +62,59 @@ test('every state in BDPG_REGION_MAP resolves to exactly one region', () => {
   });
 });
 
+test('BDPG_REGION_MAP has exactly 8 regions covering all 50 states once', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const keys = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP);
+  assert.equal(keys.length, 8);
+  const seen = {};
+  keys.forEach(r => BDPG_CONFIG.BDPG_REGION_MAP[r].forEach(st => {
+    assert.ok(!seen[st], st + ' appears in two regions');
+    seen[st] = r;
+  }));
+  assert.equal(Object.keys(seen).length, 50, 'expected 50 states, got ' + Object.keys(seen).length);
+  assert.ok(!seen.DC, 'DC must stay unmapped');
+});
+
+test('new region assignments resolve correctly', () => {
+  const m = { AK:'Northwest', HI:'West', WA:'Northwest', CA:'West', TX:'Texas',
+              OK:'Southwest', MI:'Upper Midwest', IA:'Upper Midwest',
+              OH:'Midwest', NE:'Midwest', MD:'Northeast', WV:'Southeast' };
+  Object.keys(m).forEach(st => assert.equal(BusDevGallonsCalc.resolveRegion(st), m[st], st));
+});
+
+test('display, baseline and region maps share exactly the same 8 keys', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const r = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP).sort();
+  assert.deepEqual(Object.keys(BDPG_CONFIG.BDPG_REGION_DISPLAY).sort(), r);
+  assert.deepEqual(Object.keys(BDPG_CONFIG.BDPG_NETWORK_BASELINES).sort(), r);
+});
+
+test('each network baseline pct is consistent with its own avg over the overall avg', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const overall = BDPG_CONFIG.NETWORK_BASELINE_META.overallAvgGalMo;
+  Object.keys(BDPG_CONFIG.BDPG_NETWORK_BASELINES).forEach(r => {
+    const b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[r];
+    const derived = (b.avgGalMo / overall) - 1;
+    // Tolerance, not exact equality: avgGalMo and pctVsNetwork were each
+    // rounded independently from the same unrounded 12-month report (gallons
+    // to whole numbers, pct to one decimal), so the stored pct need not
+    // exactly reproduce a pct re-derived from the rounded gallons. Measured
+    // slack across all eight regions is 0.00012..0.00051; 0.001 accepts every
+    // real value while still catching a transposed digit or a pct pasted
+    // against the wrong region, which would be off by >= 0.01.
+    assert.ok(Math.abs(b.pctVsNetwork - derived) < 0.001,
+      r + ': stored ' + b.pctVsNetwork + ' vs derived ' + derived.toFixed(5));
+  });
+});
+
+test('WEIGHT_CONFIG has six pillars summing to 100', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const w = BDPG_CONFIG.WEIGHT_CONFIG;
+  const keys = ['rangePosition','condition','hours','distance','corridor','competition'];
+  assert.deepEqual(Object.keys(w).sort(), keys.slice().sort());
+  assert.equal(keys.reduce((s,k) => s + w[k], 0), 100);
+});
+
 test('amenityAdjustment returns the exact configured percentage', () => {
   assert.equal(BusDevGallonsCalc.amenityAdjustment('Very limited'), -0.05);
   assert.equal(BusDevGallonsCalc.amenityAdjustment('Average'), 0);
@@ -428,4 +481,70 @@ test('rewards does not widen profileRange, so the Network Fit Grade is unaffecte
   });
   assert.equal(r.rangeLo, 6750);
   assert.equal(r.rangeHi, 13000);
+});
+
+test('default weights reproduce the pre-change grade exactly', () => {
+  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Medium truck stop', officialSubtotal: 9000,
+    supportingDetails: { condition:'Average', hours:'24/7', distance:'On exit',
+                         corridor:'Regional', competition:'1 within 15 mi' }
+  });
+  // 0.5*rangePosition + 0.5*mean(50,100,100,50,50) === same under 50/10/10/10/10/10
+  assert.equal(Math.round(r.overallScore * 1000) / 1000,
+               Math.round((0.5 * r.rangePositionPct + 0.5 * r.signalAvg) * 1000) / 1000);
+});
+
+test('resolveWeights falls back to defaults for a set that does not sum to 100', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  assert.deepEqual(BusDevGallonsCalc.resolveWeights({ rangePosition: 90, condition: 90,
+    hours: 10, distance: 10, corridor: 10, competition: 10 }), BDPG_CONFIG.WEIGHT_CONFIG);
+  assert.deepEqual(BusDevGallonsCalc.resolveWeights({ rangePosition: 'x', condition: 10,
+    hours: 10, distance: 10, corridor: 10, competition: 60 }), BDPG_CONFIG.WEIGHT_CONFIG);
+  assert.deepEqual(BusDevGallonsCalc.resolveWeights(null), BDPG_CONFIG.WEIGHT_CONFIG);
+});
+
+test('resolveWeights rejects a valid six-key set carrying extra keys', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const valid = { rangePosition: 50, condition: 10, hours: 10, distance: 10, corridor: 10, competition: 10 };
+  // The same six values, summing to 100, plus strays. Whole-set rejection.
+  const withExtras = Object.assign({}, valid, { fuelBrand: 'x', rangePositionn: 99 });
+  assert.equal(BusDevGallonsCalc.resolveWeights(withExtras), BDPG_CONFIG.WEIGHT_CONFIG,
+    'an object with extra keys must fall back, not pass through');
+  // Proves the assertion above is not vacuous: strip the extras and the very
+  // same values are accepted, so it is the extra keys doing the rejecting.
+  assert.equal(BusDevGallonsCalc.resolveWeights(valid), valid);
+  // And the strays must not reach grade.weights (where the tracker stamps them).
+  const g = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Medium truck stop', officialSubtotal: 9000,
+    supportingDetails: {}, weights: withExtras
+  });
+  assert.equal(Object.keys(g.weights).length, 6);
+  assert.equal(Object.prototype.hasOwnProperty.call(g.weights, 'fuelBrand'), false);
+});
+
+test('WEIGHT_CONFIG is frozen, so a caller cannot corrupt the shared defaults', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  assert.equal(Object.isFrozen(BDPG_CONFIG.WEIGHT_CONFIG), true);
+  // resolveWeights() hands this exact object back on every fallback, and the
+  // page's discard notice depends on that identity -- so the freeze, not a
+  // defensive copy, is what has to make the write below impossible.
+  const handedBack = BusDevGallonsCalc.resolveWeights({ rangePosition: 1 });
+  assert.equal(handedBack, BDPG_CONFIG.WEIGHT_CONFIG);
+  assert.throws(() => { handedBack.rangePosition = 0; }, TypeError);
+  assert.equal(BDPG_CONFIG.WEIGHT_CONFIG.rangePosition, 50);
+});
+
+test('a valid custom weight set changes the grade but never officialSubtotal', () => {
+  const inputs = { profile: 'Medium truck stop', officialSubtotal: 9000,
+    supportingDetails: { condition:'New or remodeled', hours:'24/7', distance:'On exit',
+                         corridor:'Major', competition:'None within 15 mi' } };
+  const base = BusDevGallonsCalc.calculateNetworkFitGrade(inputs);
+  const tilted = BusDevGallonsCalc.calculateNetworkFitGrade(Object.assign({}, inputs,
+    { weights: { rangePosition: 0, condition: 20, hours: 20, distance: 20, corridor: 20, competition: 20 } }));
+  assert.notEqual(base.overallScore, tilted.overallScore);
+  assert.equal(tilted.overallScore, 100, 'all five signals maxed with no range weight');
+  const est = BusDevGallonsCalc.calculateEstimate({ profile:'Medium truck stop', roadway:'Interstate',
+    regionPct: 0.06, amenityLevel:'Good / full service', reviewRating: 3.8,
+    pricingLevel:'Standard / moderate', rewardsLevel:'Undecided / unknown' });
+  assert.equal(est.officialSubtotal, 13750, 'weights must never touch the official figure');
 });

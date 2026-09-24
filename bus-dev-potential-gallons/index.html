@@ -26,6 +26,29 @@ body.day-mode{
 body.day-mode ::-webkit-scrollbar-track{background:#E8EBF0;}
 body.day-mode ::-webkit-scrollbar-thumb{background:#C0C7D3;}
 body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3;}
+/* Pre-existing bug (from the original ab77820 standalone-page commit) fixed
+   here because it blocks the Task 4 contrast gate: the rule above (0-1-1-2)
+   outranked #bdpg-usa-svg path.sel's stroke (0-1-1-1 at line ~110), so the
+   selected state's ring silently fell back to the same grey as every
+   unselected border in day mode, for every region, not just teal. This rule
+   (0-1-2-2) restores the accent ring; stroke-width still comes from path.sel
+   below, and the glow colour from the rule immediately after this one. */
+body.day-mode #bdpg-usa-svg path.sel{stroke:var(--accent);}
+/* path.sel's drop-shadow (line ~118) is hardcoded rgba(0,200,255,.7) -- dark
+   mode's own --accent, spelled literally because a CSS colour cannot be
+   interpolated into a filter's rgba(). In day mode the ring therefore resolved
+   to #0078D4 while its halo stayed night-cyan: two different blues on one
+   outline, and the light theme leaning on a value that only means anything at
+   night. Same 0-1-2-2 specificity as the stroke rule above, so it beats
+   path.sel's 0-1-1-1 regardless of source order. rgba(0,120,212,.7) is the day
+   --accent (#0078D4) at the same alpha, so ring and halo are now one colour in
+   both themes.
+   What this does NOT fix: the ring itself is still 1.23:1 against the teal
+   Northwest fill, unchanged, because the stroke colour is untouched. It does
+   roughly double the halo's contrast against the light day-mode background it
+   actually spills onto (1.70:1 -> 3.92:1 vs #F0F2F5). See FOLLOW-UPS.md #1
+   options 2 and 3 for the ring-vs-fill half, which is still the user's call. */
+body.day-mode #bdpg-usa-svg path.sel{filter:drop-shadow(0 0 7px rgba(0,120,212,.7));}
 body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3;color:#1A1D24;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{color-scheme:dark;}
@@ -109,7 +132,9 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
 #bdpg-usa-svg path.sel{stroke:var(--accent);stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(0,200,255,.7));}
 #bdpg-usa-svg path.nomap{cursor:default;}
-/* .nomap paths (AK, HI, DC -- states with no network region) would otherwise
+/* .nomap paths (DC alone today -- anything BDPG_REGION_MAP does not cover;
+   AK and HI were in this set until the 8-region model mapped them to
+   Northwest and West) would otherwise
    inherit the generic path:hover glow above, which reads as "clickable" even
    though onclick is a no-op for them. Opt them back out of the hover styling
    while leaving the tooltip in place -- it usefully explains why nothing
@@ -274,11 +299,18 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
   <div class="bdpg-page-hd">
     <div class="bdpg-page-title">⛽ Bus Dev Potential Gallons</div>
     <div style="flex:1"></div>
+    <button class="btn" title="How this calculator works" onclick="BDPG.toggleTutorial()">?</button>
     <button class="btn" onclick="BDPG.toggleTheme()">🌙</button>
   </div>
   <div class="bdpg-subtabs">
     <button id="bdpg-tab-calc" class="impl-sub-tab active" onclick="BDPG.switchTab('calc')">⛽ Potential Gallons</button>
     <button id="bdpg-tab-prospects" class="impl-sub-tab" onclick="BDPG.switchTab('prospects')">📋 Prospects</button>
+    <!-- The admin home: grade weights, region %, the network-context
+         generator. The weights sliders inside it render only when the admin
+         PIN is unlocked, but the tab button itself is always present -- it is
+         the only place to set, enter or change that PIN, so hiding it while
+         locked would leave no way back in. -->
+    <button id="bdpg-tab-weights" class="impl-sub-tab" onclick="BDPG.switchTab('weights')">⚙ Weights</button>
   </div>
   <div class="container" id="bdpg-content"></div>
   <div class="toast" id="toast"></div>
@@ -452,7 +484,12 @@ function getCentroid(pathStr, axis){
       // BDPG.invalidateResult(). Never serialized into a saved record.
       resultStale: false,
       supportingOpen: false,
-      preEvalOpen: true
+      preEvalOpen: true,
+      // "How this calculator works" tutorial widget -- a disclosure toggle
+      // and a tab selector, not prospect data. Both live in SIG_SKIP below
+      // so opening the tutorial or flipping tabs never reads as unsaved work.
+      tutorialOpen: false,
+      tutorialTab: 'overview'
     },
 
     render: function () {
@@ -467,16 +504,33 @@ function getCentroid(pathStr, axis){
         // so it has to call it directly -- otherwise this is the one route
         // that can leave the signal stale while the tracker reads it.
         BDPG.updatePreEvalSignal();
-        el.innerHTML = BDPG.prospectsHtml();
+        el.innerHTML = BDPG.tutorialCardHtml() + BDPG.prospectsHtml();
+        return;
+      }
+      if (BDPG.activeTab === 'weights') {
+        // Every admin control lives here now -- grade weights, the region %
+        // sliders and the network-context generator -- so the calculator tab
+        // below carries none of them. See BDPG.adminTabHtml(), which decides
+        // between the admin controls and the PIN gate.
+        el.innerHTML = BDPG.tutorialCardHtml() + BDPG.adminTabHtml();
         return;
       }
       el.innerHTML =
+        // Visible on every tab, collapsed by default, above the ⓪ card --
+        // see BDPG.tutorialCardHtml(). Toggling it or switching its five
+        // tabs never comes back through here (BDPG.refreshTutorialCard()
+        // patches #bdpg-tutorial-card directly), so this line only matters
+        // for the initial render and for tab switches between calc/prospects.
+        BDPG.tutorialCardHtml() +
         BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
         BDPG.preEvalCardHtml() +
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(3, 'Step 3 — Supporting Details', false) + BDPG.supportingDetailsHtml() + BDPG.stepCardClose() +
-        BDPG.adminPanelHtml() + BDPG.networkContextGeneratorHtml() +
+        // No admin control appears on this tab. The region % panel and the
+        // network-context generator used to sit right here, between Step 3
+        // and Generate; both moved to the ⚙ Weights tab (spec §5.3) so the
+        // rep's calculator is only the calculator.
         BDPG.generateButtonHtml() +
         // One container for "the results, or the notice that they were
         // cleared", so BDPG.invalidateResult() can swap between them with a
@@ -500,15 +554,55 @@ function getCentroid(pathStr, axis){
     }
   };
 
+  // Source of truth for the region key set -- derived from the config's
+  // BDPG_REGION_MAP rather than hardcoded, so the variance lookup, the
+  // "is it set" check and the override-diff check can never drift out of
+  // sync with the 8-region model in busDevGallonsConfig.js.
+  BDPG.REGION_KEYS = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP);
+
+  // The formula's contract: region % is a manual +/-REGION_PCT_BOUND nudge,
+  // not a re-statement of network performance (BDPG_NETWORK_BASELINES runs
+  // from -43.3% to +76.1%, which is exactly why it stays display-only). One
+  // constant so the slider's min/max attributes, the formula-side clamp, and
+  // the rendered readout can't drift apart -- widening the range later means
+  // changing this line, not hunting three call sites.
+  BDPG.REGION_PCT_BOUND = 10;
+
+  BDPG.clampRegionPct = function (n) {
+    n = Number(n);
+    if (!isFinite(n)) return 0;
+    return Math.max(-BDPG.REGION_PCT_BOUND, Math.min(BDPG.REGION_PCT_BOUND, n));
+  };
+
   BDPG.regionVariance = { committed: null, override: null };
   BDPG._regionVarianceLoaded = false;
+  // Set true when a stored override was discarded for not matching the
+  // current 8-key region shape (see loadRegionVariance below). Read by
+  // the admin panel to show a one-line notice.
+  BDPG.regionOverrideWasReset = false;
 
   BDPG.loadRegionVariance = function (onDone) {
     if (BDPG._regionVarianceLoaded) { if (onDone) onDone(); return; }
     BDPG._regionVarianceLoaded = true;
 
     var raw = localStorage.getItem('roadysBDPGRegionOverride');
-    if (raw) { try { BDPG.regionVariance.override = JSON.parse(raw); } catch (e) { /* corrupt value, ignore */ } }
+    if (raw) {
+      try {
+        var parsed = JSON.parse(raw);
+        var ok = parsed && typeof parsed === 'object' &&
+          BDPG.REGION_KEYS.every(function (k) { return hasOwn(parsed, k); });
+        if (ok) { BDPG.regionVariance.override = parsed; }
+        else {
+          // A 5-region override cannot be carried forward: old "West" covered
+          // WA/OR/ID/MT/WY as well as CA/NV/UT/CO, so its number describes a
+          // different set of states than any new region. Applying it to the
+          // new "West" would silently attribute Pacific-Northwest performance
+          // to California. Discarded whole and reported.
+          localStorage.removeItem('roadysBDPGRegionOverride');
+          BDPG.regionOverrideWasReset = true;
+        }
+      } catch (e) { localStorage.removeItem('roadysBDPGRegionOverride'); BDPG.regionOverrideWasReset = true; }
+    }
 
     fetch('../region_variance.json').then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) { BDPG.regionVariance.committed = json; if (onDone) onDone(); })
@@ -527,14 +621,29 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.effectiveRegionVariance = function () {
-    return BDPG.regionVariance.override || BDPG.regionVariance.committed || { west: 0, southwest: 0, midwest: 0, northeast: 0, southeast: 0, asOf: '' };
+    if (BDPG.regionVariance.override) return BDPG.regionVariance.override;
+    if (BDPG.regionVariance.committed) return BDPG.regionVariance.committed;
+    // Built from BDPG.REGION_KEYS rather than a hardcoded literal so the
+    // zero-fallback shape always matches the current region map.
+    var fallback = { asOf: '' };
+    BDPG.REGION_KEYS.forEach(function (k) { fallback[k] = 0; });
+    return fallback;
   };
 
   BDPG.effectiveRegionPct = function (region) {
     if (!region) return 0;
     var v = BDPG.effectiveRegionVariance();
-    var key = region.toLowerCase();
-    return (Number(v[key]) || 0) / 100;
+    // Exact key, no case transform: region keys now contain spaces
+    // ("Upper Midwest"), and a lowercased space-bearing key is a silent
+    // mismatch that reads as 0% rather than failing.
+    if (!hasOwn(v, region)) return 0;
+    var n = Number(v[region]);
+    if (!isFinite(n)) return 0;
+    // Clamped regardless of how a bigger number got into regionVariance --
+    // a hand-edited localStorage value, a stale override, a CSV-computed
+    // figure -- because the formula's contract is +/-REGION_PCT_BOUND
+    // (see the constant above), not whatever happens to be stored.
+    return BDPG.clampRegionPct(n) / 100;
   };
 
   BDPG.regionVarianceAsOf = function () {
@@ -568,13 +677,13 @@ function getCentroid(pathStr, axis){
 
   BDPG.regionVarianceIsSet = function () {
     var v = BDPG.effectiveRegionVariance();
-    return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(v[k]) !== 0; });
+    return BDPG.REGION_KEYS.some(function (k) { return Number(v[k]) !== 0; });
   };
 
   BDPG.regionVarianceOverrideDiffers = function () {
     if (!BDPG.regionVariance.override || !BDPG.regionVariance.committed) return false;
     var o = BDPG.regionVariance.override, c = BDPG.regionVariance.committed;
-    return ['west', 'southwest', 'midwest', 'northeast', 'southeast'].some(function (k) { return Number(o[k]) !== Number(c[k]); });
+    return BDPG.REGION_KEYS.some(function (k) { return Number(o[k]) !== Number(c[k]); });
   };
 
   BDPG.state.adminOpen = false;
@@ -583,11 +692,21 @@ function getCentroid(pathStr, axis){
   // this block hidden/empty every render unless it has saved text to show).
   BDPG.state.adminSavedJson = null;
 
+  // "region-a" style id fragment for a region key that may contain spaces
+  // ("Upper Midwest") -- shared by the slider render and the Save/Reset
+  // handlers so the three can never look up mismatched element ids.
+  BDPG.regionSlug = function (r) { return String(r).replace(/\s+/g, '-').toLowerCase(); };
+
+  BDPG.committedRegionPct = function (r) {
+    var c = BDPG.regionVariance.committed;
+    if (!c || !hasOwn(c, r)) return 0;
+    var n = Number(c[r]);
+    return isFinite(n) ? n : 0;
+  };
+
   BDPG.adminPanelHtml = function () {
     var s = BDPG.state;
     var v = BDPG.effectiveRegionVariance();
-    var regions = ['west', 'southwest', 'midwest', 'northeast', 'southeast'];
-    var labels = { west: 'West', southwest: 'Southwest', midwest: 'Midwest', northeast: 'Northeast', southeast: 'Southeast' };
 
     var banner = !BDPG.regionVarianceIsSet()
       ? '<div class="bdpg-box" style="border-color:var(--yellow);margin-top:14px">Region variance not set — estimates use 0% region adjustment.</div>'
@@ -596,34 +715,109 @@ function getCentroid(pathStr, axis){
       ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Using a local override that differs from the committed region_variance.json — ' +
         '<button class="btn" onclick="BDPG.onClearRegionOverride()">Clear override</button></div>'
       : '';
+    // A stored override from the old 5-region shape can't be carried forward
+    // (see loadRegionVariance) -- it was discarded on load, so tell the admin
+    // rather than let the reset happen silently.
+    var resetNotice = BDPG.regionOverrideWasReset
+      ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Your saved region override was from the old 5-region layout and could not be carried forward — it has been cleared. Please re-enter your region percentages.</div>'
+      : '';
 
-    var inputs = regions.map(function (r) {
-      return '<div class="fg"><label style="font-size:.72em">' + labels[r] + ' %</label>' +
-        '<input id="bdpg-admin-' + r + '" type="number" step="0.1" value="' + BDPG.escHtml(v[r]) + '" style="width:90px"></div>';
+    // Per region: a +/-10% slider (today's engine input), its live readout,
+    // a Reset that snaps back to the committed region_variance.json value
+    // (never the network figure below it -- see BDPG_NETWORK_BASELINES'
+    // comment for why those two numbers must never be conflated), and the
+    // read-only network-data context line. Texas alone carries a
+    // lowSample/n pair in config; nothing here hardcodes that it's Texas.
+    var sliders = BDPG.REGION_KEYS.map(function (r, i) {
+      var slug = BDPG.regionSlug(r);
+      var sliderId = 'bdpg-admin-' + slug;
+      // Clamped before it ever reaches the slider's value= attribute or the
+      // readout text, so an out-of-contract stored number (hand-edited
+      // localStorage, a stale override) can't leave the handle sitting at
+      // the native-clamped bound while the readout beside it still claims
+      // the raw figure.
+      var curVal = BDPG.clampRegionPct(Number(v[r]) || 0);
+      var baseline = hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, r) ? BDPG_CONFIG.BDPG_NETWORK_BASELINES[r] : null;
+      // Labeled "Network data" and suffixed "vs network" (spec §3) so this
+      // line can never be mistaken for the slider's own value -- the two
+      // numbers are never allowed to be conflated (see BDPG_NETWORK_BASELINES'
+      // comment) and a bare, unlabeled figure invites exactly that mistake.
+      var netLine = baseline
+        ? ('<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
+            'Network data: ' + BDPG.fmtGal(baseline.avgGalMo) + ' gal/mo &middot; ' +
+            (baseline.pctVsNetwork >= 0 ? '+' : '') + (baseline.pctVsNetwork * 100).toFixed(1) + '% vs network' +
+            (baseline.lowSample
+              ? ' <span style="color:var(--yellow)">&#9888; low sample confidence (n=' + BDPG.escHtml(String(baseline.n)) + ')</span>'
+              : '') +
+          '</div>')
+        : '';
+      return '<div class="fg">' +
+        '<label style="font-size:.72em">' + BDPG.escHtml(r) + ' %</label>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input id="' + sliderId + '" type="range" min="' + (-BDPG.REGION_PCT_BOUND) + '" max="' + BDPG.REGION_PCT_BOUND + '" step="0.1" style="flex:1" ' +
+            'value="' + curVal + '" oninput="BDPG.onRegionSliderInput(' + i + ', this.value)">' +
+          '<span id="' + sliderId + '-val" style="font-family:var(--ff);font-weight:700;min-width:3.6em;text-align:right">' +
+            curVal.toFixed(1) + '%</span>' +
+          '<button type="button" class="btn" style="font-size:.66em" onclick="BDPG.onResetRegionSlider(' + i + ')">Reset</button>' +
+        '</div>' +
+        netLine +
+      '</div>';
     }).join('');
 
-    return banner +
+    return banner + resetNotice +
       '<div class="bdpg-box" style="margin-top:14px">' +
         '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleAdmin()">▸ Region % — Admin ' + (s.adminOpen ? '▾' : '▸') + '</div>' +
         (s.adminOpen ? (
           overrideNotice +
-          '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">' + inputs + '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px">' + sliders + '</div>' +
           '<div class="fg" style="margin-top:10px;max-width:180px"><label>As of (month)</label>' +
           '<input id="bdpg-admin-asof" value="' + BDPG.escHtml(v.asOf) + '" placeholder="e.g. 2026-09"></div>' +
           '<button class="btn btn-accent" style="margin-top:10px" onclick="BDPG.onSaveRegionOverride()">Save locally</button>' +
           '<div id="bdpg-admin-json" style="margin-top:10px;font-family:monospace;font-size:.75em;white-space:pre-wrap;background:var(--bg2,#111);padding:8px;border-radius:6px;' +
-            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>' +
-          BDPG.regionCsvHtml()
+            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>'
         ) : '') +
       '</div>';
   };
 
   BDPG.toggleAdmin = function () { BDPG.state.adminOpen = !BDPG.state.adminOpen; BDPG.render(); };
 
+  // Same-rule-as-every-other-continuous-control: patch the readout span
+  // directly on `input` rather than calling BDPG.render(), which would tear
+  // down and rebuild the very slider the user is dragging. Nothing is
+  // committed here -- the value isn't read back until Save.
+  BDPG.onRegionSliderInput = function (i, value) {
+    var r = BDPG.REGION_KEYS[i];
+    var val = document.getElementById('bdpg-admin-' + BDPG.regionSlug(r) + '-val');
+    if (val) val.textContent = Number(value).toFixed(1) + '%';
+  };
+
+  // Snaps one region's slider back to the committed region_variance.json
+  // value -- NOT the network-data figure shown below it, which is display
+  // context outside the +/-10% range this slider even allows. Nothing is
+  // persisted until Save; only the in-progress form value moves.
+  BDPG.onResetRegionSlider = function (i) {
+    var r = BDPG.REGION_KEYS[i];
+    // Clamped for the same reason the render path is: region_variance.json
+    // is meant to stay in-contract, but nothing stops a hand-edit there
+    // either, and a clamped handle next to an unclamped readout is the
+    // exact mismatch this fix exists to close everywhere, not just on load.
+    var committed = BDPG.clampRegionPct(BDPG.committedRegionPct(r));
+    var slug = BDPG.regionSlug(r);
+    var slider = document.getElementById('bdpg-admin-' + slug);
+    var val = document.getElementById('bdpg-admin-' + slug + '-val');
+    if (slider) slider.value = committed;
+    if (val) val.textContent = committed.toFixed(1) + '%';
+  };
+
   BDPG.onSaveRegionOverride = function () {
-    var regions = ['west', 'southwest', 'midwest', 'northeast', 'southeast'];
     var out = {};
-    regions.forEach(function (r) { out[r] = Number(document.getElementById('bdpg-admin-' + r).value) || 0; });
+    BDPG.REGION_KEYS.forEach(function (r) {
+      var el = document.getElementById('bdpg-admin-' + BDPG.regionSlug(r));
+      // The native range input already clamps el.value to the rendered
+      // min/max, but clamping again here means Save doesn't depend on that
+      // browser behaviour to keep an out-of-contract number out of storage.
+      out[r] = el ? BDPG.clampRegionPct(Number(el.value) || 0) : 0;
+    });
     out.asOf = document.getElementById('bdpg-admin-asof').value.trim();
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
     BDPG.regionVariance.override = out;
@@ -681,7 +875,7 @@ function getCentroid(pathStr, axis){
       group: h.indexOf('Group'), state: h.indexOf('State'), status: h.indexOf('Status')
     };
     var byRegion = {};
-    ['West', 'Southwest', 'Midwest', 'Northeast', 'Southeast'].forEach(function (r) {
+    Object.keys(BDPG_CONFIG.BDPG_REGION_MAP).forEach(function (r) {
       byRegion[r] = { total: 0, byType: {}, byGroup: {}, byTypeGroup: {} };
     });
 
@@ -712,19 +906,20 @@ function getCentroid(pathStr, axis){
     if (el) el.textContent = JSON.stringify(out, null, 2) + '\n\n// Paste this into network-context.json to make it the new committed default.';
 
     // Rows live only for the duration of this compute step (see the comment
-    // above BDPG.ncCsv) -- reset now that the result is rendered, matching
-    // the sibling BDPG.onRegionCsvCompute reset below.
+    // above BDPG.ncCsv) -- reset now that the result is rendered.
     BDPG.ncCsv = { rows: null, headers: [] };
   };
 
   // Minimal CSV line parser (no library). Handles a quoted field containing a
   // comma or an escaped `""` inside quotes; not a full RFC 4180 parser (no
   // embedded newlines inside a quoted field), which is fine for the simple
-  // per-location gallons/state exports this feeds.
+  // per-location exports this feeds. Sole consumer today is the
+  // network-context generator above; it was shared with the region-variance
+  // CSV tool until that tool was retired.
   BDPG.parseCsv = function (text) {
     // Strip a leading UTF-8 BOM -- an Excel export otherwise makes the first
-    // header read as "﻿Company", which breaks exact indexOf() header
-    // matching in both CSV consumers (network-context generator, region CSV).
+    // header read as "﻿Company", which breaks the exact indexOf() header
+    // matching onNetworkContextCsvCompute() does.
     text = text.replace(/^﻿/, '');
     var lines = text.replace(/\r\n/g, '\n').split('\n').filter(function (l) { return l.length; });
     return lines.map(function (line) {
@@ -744,95 +939,383 @@ function getCentroid(pathStr, axis){
     });
   };
 
-  // Uploaded rows live only in memory for the duration of the mapping +
-  // compute step. They are never written to localStorage or sent anywhere —
-  // only the five resulting percentages (plus asOf) are persisted, and this
-  // object is reset back to empty immediately after BDPG.onRegionCsvCompute
-  // finishes, win or lose. See CLAUDE.md privacy note for gs-travel-planner-
-  // style handling of anything that could be internal business data.
-  BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
+  // ── Admin PIN gate ─────────────────────────────────────────────────────
+  //
+  // NOT security. The page is public, the stored PIN sits in localStorage where
+  // anyone can read or delete it, and every value it guards is editable there
+  // directly. It exists so a rep cannot change grade weights by wandering into
+  // the wrong panel -- an accident guard, nothing more.
+  //
+  // The default state is deliberately UNSET: with no PIN stored the admin tab
+  // is fully open. There is no constant default PIN anywhere in this file and
+  // there must never be one -- a hardcoded code would be both a lie about what
+  // this gate is and a secret nobody was told, locking the next owner out of
+  // their own tool. Clearing the key below always returns the page to the
+  // open, unset state.
+  BDPG.ADMIN_PIN_KEY = 'roadysBDPGAdminPin';
+  BDPG.ADMIN_PIN_RE = /^[0-9]{4}$/;
 
-  BDPG.regionCsvHtml = function () {
-    if (!BDPG.regionCsv.headers.length) {
-      return '<div class="fg" style="margin-top:14px"><label>Optional: compute Region % from an Interstate export (per-location gallons + state)</label>' +
-        '<input type="file" accept=".csv" onchange="BDPG.onRegionCsvFile(this)"></div>';
+  // Session-only, and on BDPG rather than BDPG.state so it is never
+  // serialized into a saved record or seen by stateSig(). A reload re-locks.
+  BDPG.adminUnlocked = false;
+
+  BDPG.storedAdminPin = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(BDPG.ADMIN_PIN_KEY); } catch (e) { return null; }
+    if (raw === null) return null;
+    // Anything that is not exactly four digits can only have come from a hand
+    // edit. Treating it as "a PIN nobody can type" would lock the panel
+    // permanently with no way back; the contract is the opposite -- a cleared
+    // or corrupted key reopens the controls. So it is discarded like a
+    // cleared one.
+    if (!BDPG.ADMIN_PIN_RE.test(raw)) {
+      try { localStorage.removeItem(BDPG.ADMIN_PIN_KEY); } catch (e2) {}
+      return null;
     }
-    var h = BDPG.regionCsv.headers;
-    function opt(v, selected) { return '<option value="' + BDPG.escHtml(v) + '"' + (selected ? ' selected' : '') + '>' + BDPG.escHtml(v) + '</option>'; }
-    return '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">' +
-      '<div style="font-size:.8em;margin-bottom:6px">Which column is <b>State</b>? ' +
-        '<select id="bdpg-csv-state-col" onchange="BDPG.regionCsv.stateCol=this.value">' +
-          h.map(function (col) { return opt(col, col === BDPG.regionCsv.stateCol); }).join('') + '</select></div>' +
-      '<div style="font-size:.8em;margin-bottom:6px">Which column is <b>Gallons</b>? ' +
-        '<select id="bdpg-csv-gal-col" onchange="BDPG.regionCsv.gallonsCol=this.value">' +
-          h.map(function (col) { return opt(col, col === BDPG.regionCsv.gallonsCol); }).join('') + '</select></div>' +
-      '<button class="btn btn-accent" onclick="BDPG.onRegionCsvCompute()">Compute Region %</button>' +
-      '<div id="bdpg-csv-result" style="margin-top:8px;font-size:.8em"></div>' +
+    return raw;
+  };
+
+  BDPG.adminPinIsSet = function () { return BDPG.storedAdminPin() !== null; };
+
+  // The single question every admin surface asks. No PIN set => open.
+  BDPG.adminAccessible = function () { return !BDPG.adminPinIsSet() || BDPG.adminUnlocked; };
+
+  // PIN feedback is patched into #bdpg-pin-msg rather than routed through
+  // render(), which would wipe whatever is half-typed in the sibling fields.
+  BDPG.pinMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-pin-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  BDPG.pinFieldValue = function (id) {
+    var el = document.getElementById(id);
+    return el ? String(el.value).trim() : '';
+  };
+
+  BDPG.clearPinFields = function (ids) {
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  };
+
+  BDPG.onSetAdminPin = function () {
+    var a = BDPG.pinFieldValue('bdpg-pin-new');
+    var b = BDPG.pinFieldValue('bdpg-pin-new2');
+    // Every rejection returns BEFORE the setItem below, so a bad entry can
+    // never half-set a PIN -- the key is either absent or exactly four digits.
+    if (!BDPG.ADMIN_PIN_RE.test(a)) {
+      BDPG.pinMsg('PIN must be exactly 4 digits (0-9). Nothing was saved.', true);
+      return;
+    }
+    if (a !== b) { BDPG.pinMsg('The two PINs do not match. Nothing was saved.', true); return; }
+    try { localStorage.setItem(BDPG.ADMIN_PIN_KEY, a); }
+    catch (e) { BDPG.pinMsg('Could not save the PIN in this browser.', true); return; }
+    // Whoever just set it is standing in the panel: setting a PIN must not
+    // lock you out of the thing you are in the middle of configuring.
+    BDPG.adminUnlocked = true;
+    BDPG.render();
+    BDPG.pinMsg('PIN set. These controls lock on the next reload.', false);
+  };
+
+  BDPG.onChangeAdminPin = function () {
+    var stored = BDPG.storedAdminPin();
+    if (stored === null) { BDPG.pinMsg('No PIN is set yet — use Set PIN.', true); return; }
+    var cur = BDPG.pinFieldValue('bdpg-pin-cur');
+    var a = BDPG.pinFieldValue('bdpg-pin-new');
+    var b = BDPG.pinFieldValue('bdpg-pin-new2');
+    if (cur !== stored) { BDPG.pinMsg('Current PIN is incorrect. Nothing was changed.', true); return; }
+    if (!BDPG.ADMIN_PIN_RE.test(a)) { BDPG.pinMsg('New PIN must be exactly 4 digits (0-9). Nothing was changed.', true); return; }
+    if (a !== b) { BDPG.pinMsg('The two new PINs do not match. Nothing was changed.', true); return; }
+    try { localStorage.setItem(BDPG.ADMIN_PIN_KEY, a); }
+    catch (e) { BDPG.pinMsg('Could not save the PIN in this browser.', true); return; }
+    BDPG.clearPinFields(['bdpg-pin-cur', 'bdpg-pin-new', 'bdpg-pin-new2']);
+    BDPG.pinMsg('PIN changed.', false);
+  };
+
+  BDPG.onUnlockAdmin = function () {
+    var stored = BDPG.storedAdminPin();
+    // The key can be cleared in another tab while this one shows the gate;
+    // there is nothing left to check against, so the controls simply reopen.
+    if (stored === null) { BDPG.adminUnlocked = true; BDPG.render(); return; }
+    if (BDPG.pinFieldValue('bdpg-pin-unlock') !== stored) { BDPG.pinMsg('Incorrect PIN.', true); return; }
+    BDPG.adminUnlocked = true;
+    BDPG.render();
+  };
+
+  BDPG.onLockAdmin = function () {
+    BDPG.adminUnlocked = false;
+    BDPG.render();
+  };
+
+  BDPG.adminLockedHtml = function () {
+    return '<div class="bdpg-box" style="margin-top:14px;max-width:560px">' +
+      '<div style="font-weight:700;margin-bottom:6px">🔒 Admin controls are locked</div>' +
+      '<div style="font-size:.82em;color:var(--muted);margin-bottom:10px">Grade weights, region percentages and the network-context generator are behind the admin PIN set on this browser.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;max-width:300px">' +
+        '<input id="bdpg-pin-unlock" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" ' +
+          'onkeydown="if(event.key===\'Enter\'){BDPG.onUnlockAdmin();}">' +
+        '<button class="btn btn-accent" onclick="BDPG.onUnlockAdmin()">Unlock</button>' +
+      '</div>' +
+      '<div id="bdpg-pin-msg" style="font-size:.8em;margin-top:8px"></div>' +
+      '<div style="font-size:.74em;color:var(--muted);margin-top:10px">Forgotten it? This is an accident guard, not access control — the PIN is stored in plain text in this browser under <code>' +
+        BDPG.escHtml(BDPG.ADMIN_PIN_KEY) + '</code>, and deleting that key reopens these controls.</div>' +
     '</div>';
   };
 
-  BDPG.onRegionCsvFile = function (input) {
-    var file = input.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function () {
-      var rows = BDPG.parseCsv(String(reader.result));
-      if (!rows.length) return;
-      BDPG.regionCsv.headers = rows[0];
-      BDPG.regionCsv.rows = rows.slice(1);
-      BDPG.regionCsv.stateCol = rows[0].filter(function (col) { return /state/i.test(col); })[0] || rows[0][0];
-      BDPG.regionCsv.gallonsCol = rows[0].filter(function (col) { return /gallon/i.test(col); })[0] || rows[0][0];
-      BDPG.render();
-    };
-    reader.readAsText(file);
+  BDPG.adminPinCardHtml = function () {
+    var field = ' type="password" inputmode="numeric" maxlength="4" style="max-width:150px"';
+    var body;
+    if (!BDPG.adminPinIsSet()) {
+      body = '<div style="font-size:.82em;color:var(--muted);margin-bottom:10px">No admin PIN is set, so these controls are open to anyone using this browser. Setting one keeps a rep from changing grade weights by wandering in here.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input id="bdpg-pin-new"' + field + ' placeholder="New 4-digit PIN">' +
+          '<input id="bdpg-pin-new2"' + field + ' placeholder="Repeat it">' +
+          '<button class="btn btn-accent" onclick="BDPG.onSetAdminPin()">Set PIN</button>' +
+        '</div>';
+    } else {
+      body = '<div style="font-size:.82em;color:var(--muted);margin-bottom:10px">Unlocked for this browser session only — a reload locks these controls again.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input id="bdpg-pin-cur"' + field + ' placeholder="Current PIN">' +
+          '<input id="bdpg-pin-new"' + field + ' placeholder="New PIN">' +
+          '<input id="bdpg-pin-new2"' + field + ' placeholder="Repeat new PIN">' +
+          '<button class="btn" onclick="BDPG.onChangeAdminPin()">Change PIN</button>' +
+          '<button class="btn" onclick="BDPG.onLockAdmin()">Lock now</button>' +
+        '</div>';
+    }
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="font-weight:700;margin-bottom:6px">🔒 Admin PIN</div>' + body +
+      '<div id="bdpg-pin-msg" style="font-size:.8em;margin-top:8px"></div>' +
+      '<div style="font-size:.72em;color:var(--muted);margin-top:8px">Accident guard, not security: the PIN is stored in plain text in this browser\'s localStorage, and everything it guards can be edited there directly.</div>' +
+    '</div>';
   };
 
-  BDPG.onRegionCsvCompute = function () {
-    var headers = BDPG.regionCsv.headers;
-    var stateIdx = headers.indexOf(BDPG.regionCsv.stateCol);
-    var galIdx = headers.indexOf(BDPG.regionCsv.gallonsCol);
-    var sums = {}, counts = {};
-    var netSum = 0, netCount = 0;
+  // ── Grade weights (admin) ──────────────────────────────────────────────
+  BDPG.ADMIN_WEIGHTS_KEY = 'roadysBDPGWeights';
+  // Order and spelling must match the engine's WEIGHT_KEYS / WEIGHT_CONFIG.
+  BDPG.WEIGHT_KEYS = ['rangePosition', 'condition', 'hours', 'distance', 'corridor', 'competition'];
+  BDPG.WEIGHT_LABELS = {
+    rangePosition: 'Range position', condition: 'Condition', hours: 'Hours',
+    distance: 'Distance to Interstate', corridor: 'Corridor', competition: 'Competition'
+  };
 
-    BDPG.regionCsv.rows.forEach(function (row) {
-      var st = (row[stateIdx] || '').trim().toUpperCase();
-      var gal = Number(row[galIdx]);
-      var region = BusDevGallonsCalc.resolveRegion(st);
-      if (!region || !isFinite(gal)) return;
-      sums[region] = (sums[region] || 0) + gal;
-      counts[region] = (counts[region] || 0) + 1;
-      netSum += gal;
-      netCount += 1;
+  // Absent and invalid are different facts and must not collapse into one
+  // return value. storedWeights() answers null for both (nothing usable came
+  // back), so the "was it thrown out?" question is asked of the RAW value
+  // instead: null here means the key genuinely is not there, and anything
+  // else -- including '' and unparseable text -- means somebody stored
+  // something. Without this split an admin whose saved set was corrupted saw
+  // the defaults with no warning and would reasonably conclude their save had
+  // never worked.
+  BDPG.storedWeightsRaw = function () {
+    try { return localStorage.getItem(BDPG.ADMIN_WEIGHTS_KEY); } catch (e) { return null; }
+  };
+
+  BDPG.storedWeights = function () {
+    var raw = BDPG.storedWeightsRaw();
+    if (raw === null) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  };
+
+  // The one place the page decides which weight set the grade runs under.
+  // resolveWeights() is the engine's own validator -- six finite numbers in
+  // 0..100 summing to exactly 100 -- so a hand-edited, partial or
+  // string-valued stored set falls back to WEIGHT_CONFIG here rather than
+  // corrupting a grade. onGenerate() hands the result straight back to
+  // resolveWeights(), which re-validates regardless; the sliders render from
+  // this too, so what the admin sees is always what the calculation uses.
+  BDPG.effectiveWeights = function () {
+    return BusDevGallonsCalc.resolveWeights(BDPG.storedWeights());
+  };
+
+  // True when something IS stored but the engine threw it out -- including the
+  // shapes that parse to nothing at all ('', 'wat', 'null'), which is why the
+  // presence test reads the raw string rather than storedWeights(). Identity
+  // comparison is exact: resolveWeights() returns its argument when the set is
+  // valid and the shared WEIGHT_CONFIG object when it is not, and a parsed
+  // JSON object is never that object.
+  BDPG.storedWeightsWereDiscarded = function () {
+    if (BDPG.storedWeightsRaw() === null) return false;
+    return BusDevGallonsCalc.resolveWeights(BDPG.storedWeights()) === BDPG_CONFIG.WEIGHT_CONFIG;
+  };
+
+  // A saved record's grade is a letter computed under whatever weights were in
+  // force at that moment. Weights are editable now, so the tracker has to be
+  // able to say "this letter came off a different scale" -- two prospects
+  // saved either side of a weight change otherwise sit in one table looking
+  // directly comparable. The stamp is just the six values in WEIGHT_KEYS
+  // order: nothing is hashed, so an old record's scale stays readable by eye.
+  //
+  // Stored grades are NEVER recomputed to match a new weight set. Silently
+  // rewriting a figure a rep has already read and quoted is the defect this
+  // project guards against everywhere else (see the officialSubtotal ruling).
+  // Stamp and mark; never rewrite.
+  BDPG.weightStamp = function (w) {
+    if (!w) return '';
+    var parts = [], i, v;
+    for (i = 0; i < BDPG.WEIGHT_KEYS.length; i++) {
+      v = Number(w[BDPG.WEIGHT_KEYS[i]]);
+      // A set missing a key, or holding something non-numeric, cannot describe
+      // a scale -- an empty stamp reads as "unknown", which is the honest
+      // answer, rather than a stamp with holes in it that could accidentally
+      // match another broken one.
+      if (!isFinite(v)) return '';
+      parts.push(v);
+    }
+    return parts.join('/');
+  };
+
+  // Same pattern as weightStamp(), for the other admin-editable input that a
+  // stored figure was computed under: the region %. It deserves the guard more
+  // than the grade did -- the grade is an internal letter, while the region %
+  // scales officialSubtotal, the one number the packet advertises as
+  // reproducing Roady's published calculator. This branch made it more
+  // volatile in two ways at once (a drag-anywhere slider replaced a number
+  // input, and the 5->8 re-partition moved TX/MI/OR records into different
+  // region buckets), so a row saved this morning and a row saved after an
+  // admin nudged a slider are not the same measurement.
+  //
+  // Stored gallons are NEVER recomputed to match a new region %. Stamp and
+  // mark; never rewrite -- the same ruling that settled officialSubtotal on
+  // the previous branch and the grade weights on this one.
+  //
+  // Percentage points to one decimal, which is exactly what every surface
+  // renders (the slider readout, the waterfall row, the admin panel), so an
+  // old record's scale stays readable by eye rather than being hashed. ''
+  // means "no evidence", and must never be filled in with today's value.
+  BDPG.regionPctStamp = function (pct) {
+    var n = Number(pct);
+    if (!isFinite(n)) return '';
+    return (n * 100).toFixed(1);
+  };
+
+  BDPG.weightsCardHtml = function () {
+    var w = BDPG.effectiveWeights();
+    var total = 0;
+    BDPG.WEIGHT_KEYS.forEach(function (k) { total += Number(w[k]) || 0; });
+
+    var discarded = BDPG.storedWeightsWereDiscarded()
+      ? '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">The weight set saved in this browser is not six numbers in 0–100 totalling 100, so it was discarded — the grade is using the defaults shown below. Save a valid set to replace it.</div>'
+      : '';
+
+    var sliders = BDPG.WEIGHT_KEYS.map(function (k, i) {
+      var val = Number(w[k]) || 0;
+      return '<div class="fg">' +
+        '<label style="font-size:.72em">' + BDPG.escHtml(BDPG.WEIGHT_LABELS[k]) + '</label>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input id="bdpg-w-' + k + '" type="range" min="0" max="100" step="5" style="flex:1" ' +
+            'value="' + val + '" oninput="BDPG.onWeightSliderInput(' + i + ', this.value)">' +
+          '<span id="bdpg-w-' + k + '-val" style="font-family:var(--ff);font-weight:700;min-width:3.2em;text-align:right">' +
+            val + '%</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="font-weight:700">⚙ Network Fit Grade weights</div>' +
+      '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">These six weights decide the Network Fit Grade only. They never touch the Official Calculator subtotal or Final Potential Gallons — no saved prospect\'s gallons can move because of a change here.</div>' +
+      discarded +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">' + sliders + '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
+        '<span id="bdpg-w-total" style="font-weight:700;color:' + (total === 100 ? 'var(--green)' : 'var(--red)') + '">Total: ' + total + '%</span>' +
+        '<span style="font-size:.78em;color:var(--muted)">must be exactly 100% to save</span>' +
+        '<button class="btn btn-accent" onclick="BDPG.onSaveWeights()">Save Weights</button>' +
+        '<button class="btn" onclick="BDPG.onResetWeights()">Reset to defaults</button>' +
+      '</div>' +
+      '<div id="bdpg-w-msg" style="font-size:.8em;margin-top:8px"></div>' +
+    '</div>';
+  };
+
+  // Continuous control: patch the readout and the running total in place. A
+  // render() here would tear down the slider being dragged -- same rule as
+  // BDPG.onRegionSliderInput.
+  BDPG.onWeightSliderInput = function (i, value) {
+    var k = BDPG.WEIGHT_KEYS[i];
+    var val = document.getElementById('bdpg-w-' + k + '-val');
+    if (val) val.textContent = Math.round(Number(value)) + '%';
+    BDPG.refreshWeightTotal();
+  };
+
+  BDPG.readWeightForm = function () {
+    var out = {};
+    BDPG.WEIGHT_KEYS.forEach(function (k) {
+      var el = document.getElementById('bdpg-w-' + k);
+      var n = el ? Number(el.value) : NaN;
+      out[k] = isFinite(n) ? n : 0;
     });
+    return out;
+  };
 
-    if (!netCount) {
-      document.getElementById('bdpg-csv-result').textContent = 'No usable rows found — check the column mapping.';
+  BDPG.weightFormTotal = function () {
+    var w = BDPG.readWeightForm(), total = 0;
+    BDPG.WEIGHT_KEYS.forEach(function (k) { total += w[k]; });
+    return total;
+  };
+
+  BDPG.refreshWeightTotal = function () {
+    var el = document.getElementById('bdpg-w-total');
+    if (!el) return;
+    var total = BDPG.weightFormTotal();
+    el.textContent = 'Total: ' + total + '%';
+    // Red is the whole signal that Save will refuse -- it must be driven by
+    // the same number readWeightForm() gives onSaveWeights, not a parallel tally.
+    el.style.color = total === 100 ? 'var(--green)' : 'var(--red)';
+  };
+
+  BDPG.weightsMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-w-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  // Moves the form only; nothing is persisted until Save, matching
+  // BDPG.onResetRegionSlider.
+  BDPG.onResetWeights = function () {
+    var d = BDPG_CONFIG.WEIGHT_CONFIG;
+    BDPG.WEIGHT_KEYS.forEach(function (k) {
+      var slider = document.getElementById('bdpg-w-' + k);
+      var val = document.getElementById('bdpg-w-' + k + '-val');
+      if (slider) slider.value = d[k];
+      if (val) val.textContent = d[k] + '%';
+    });
+    BDPG.refreshWeightTotal();
+    BDPG.weightsMsg('Sliders reset to the defaults — click Save Weights to store them.', false);
+  };
+
+  BDPG.onSaveWeights = function () {
+    var out = BDPG.readWeightForm();
+    var total = 0;
+    BDPG.WEIGHT_KEYS.forEach(function (k) { total += out[k]; });
+    if (total !== 100) {
+      // resolveWeights() discards any set that does not sum to 100, so storing
+      // one would leave the admin looking at sliders the grade ignores -- a
+      // silent disagreement between this panel and the calculation. Refused
+      // outright, not rounded and not stored.
+      BDPG.weightsMsg('Weights must total exactly 100% — currently ' + total + '%. Nothing was saved.', true);
       return;
     }
-
-    var networkAvg = netSum / netCount;
-    var out = { west: 0, southwest: 0, midwest: 0, northeast: 0, southeast: 0, asOf: (new Date()).toISOString().slice(0, 7) };
-    Object.keys(sums).forEach(function (region) {
-      var regionAvg = sums[region] / counts[region];
-      var pct = Math.round(((regionAvg / networkAvg) - 1) * 1000) / 10;
-      out[region.toLowerCase()] = pct;
-    });
-
-    localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
-    BDPG.regionVariance.override = out;
-    // Third writer of the region % set (with onSaveRegionOverride and
-    // onClearRegionOverride) -- same reason it has to invalidate.
+    try { localStorage.setItem(BDPG.ADMIN_WEIGHTS_KEY, JSON.stringify(out)); }
+    catch (e) { BDPG.weightsMsg('Could not save the weights in this browser.', true); return; }
+    // The grade is computed from these, so any result on screen was computed
+    // under the old set and is stale the moment this lands -- same rule as the
+    // region % writers above.
     BDPG.invalidateResult();
-    BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
-    // BDPG.render() rebuilds adminPanelHtml()'s innerHTML wholesale, and with
-    // regionCsv.headers now empty it reverts to the plain file-input markup
-    // (no #bdpg-csv-result element in it) — that's the whole point, it's the
-    // proof the uploaded rows were discarded rather than left mapped on
-    // screen. So the confirmation message has to be set on the OLD DOM
-    // before render() replaces it; setting it after would hit a null element.
-    var resultEl = document.getElementById('bdpg-csv-result');
-    if (resultEl) resultEl.textContent = 'Computed and saved locally: ' + JSON.stringify(out);
     BDPG.render();
+    BDPG.weightsMsg('Weights saved. Re-run Generate to see them in the grade.', false);
+  };
+
+  // The admin tab's body: either every admin control, or just the gate.
+  // Nothing in between -- a locked panel that still shows the region sliders
+  // "read only" would be a gate in name only.
+  BDPG.adminTabHtml = function () {
+    if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
+    return BDPG.weightsCardHtml() +
+      BDPG.adminPanelHtml() +
+      BDPG.networkContextGeneratorHtml() +
+      BDPG.adminPinCardHtml();
   };
 
   BDPG.escHtml = function (s) {
@@ -842,6 +1325,15 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
+
+  // Prospect-facing copy uses the long display name ("Heartland / Central
+  // Plains"); internal surfaces keep the short key, which matches the config
+  // and the admin panel. Falls back to the key so an unmapped value degrades
+  // to something readable rather than empty.
+  BDPG.regionDisplayName = function (key) {
+    return hasOwn(BDPG_CONFIG.BDPG_REGION_DISPLAY, key)
+      ? BDPG_CONFIG.BDPG_REGION_DISPLAY[key] : (key || '');
+  };
 
   // Step cards are built by every step-rendering function; keeping the chrome in
   // one helper is what stops the three cards from drifting apart visually.
@@ -1131,6 +1623,240 @@ function getCentroid(pathStr, axis){
     card.outerHTML = BDPG.preEvalCardHtml();
   };
 
+  // ── "How this calculator works" tutorial widget ─────────────────────────
+  // Visible to everyone (not admin-gated), collapsed by default, toggled by
+  // the ? button in the static page header. Five tabs inside one card; a tab
+  // click swaps only the body. Every percentage/threshold quoted in the copy
+  // below is read out of BDPG_CONFIG (or BDPG.REGION_PCT_BOUND) at render
+  // time rather than typed as a literal, so a future band change can't leave
+  // this widget quietly lying to the person using it to learn the tool.
+
+  BDPG.TUTORIAL_TABS = [
+    { key: 'overview', tab: 'Overview',  title: 'Overview' },
+    { key: 'step1',    tab: 'Step 1',    title: 'Step 1 — Location Profile' },
+    { key: 'step2',    tab: 'Step 2',    title: 'Step 2 — Adjustments' },
+    { key: 'results',  tab: 'Results',   title: 'Results' },
+    { key: 'saving',   tab: 'Saving',    title: 'Saving & Tracking' }
+  ];
+
+  // Shared by every section below so "+5.0%" / "-5.0%" / "+0.0%" always read
+  // the same way as the rest of the page's percentage formatting (see the
+  // waterfall table above).
+  BDPG.tutorialPct = function (n) {
+    n = Number(n) || 0;
+    return (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%';
+  };
+
+  // REVIEW_BANDS stores each band's inclusive max, not its lower bound, and
+  // the config comment documents why the bands abut with no gap: Trucker
+  // Path ratings are one-decimal, so the next band always starts one tenth
+  // above the previous band's max. Deriving "3.6+" (etc.) here means a band
+  // edit changes this display automatically instead of leaving a stale
+  // "3.6+" sitting next to a config that now says something else.
+  BDPG.tutorialReviewBandRows = function () {
+    var bands = BDPG_CONFIG.REVIEW_BANDS;
+    var STEP = 0.1;
+    var rows = [];
+    var prevMax = null;
+    bands.forEach(function (b, i) {
+      var label;
+      if (i === 0) label = b.max.toFixed(1) + ' or below';
+      else if (i === bands.length - 1) label = (prevMax + STEP).toFixed(1) + '+';
+      else label = (prevMax + STEP).toFixed(1) + '–' + b.max.toFixed(1);
+      rows.push({ label: label, pct: b.pct });
+      prevMax = b.max;
+    });
+    return rows;
+  };
+
+  BDPG.toggleTutorial = function () {
+    BDPG.state.tutorialOpen = !BDPG.state.tutorialOpen;
+    BDPG.refreshTutorialCard();
+  };
+
+  BDPG.setTutorialTab = function (key) {
+    BDPG.state.tutorialTab = key;
+    BDPG.refreshTutorialCard();
+  };
+
+  // Targeted DOM patch -- mirrors BDPG.refreshPreEvalCard() above. Neither
+  // the ? header button nor a tab click may ever route through a full
+  // BDPG.render(): that would blow away caret position in any field the rep
+  // is mid-edit elsewhere on the page and re-run the map draw for no reason.
+  BDPG.refreshTutorialCard = function () {
+    var card = document.getElementById('bdpg-tutorial-card');
+    if (!card) return;
+    card.outerHTML = BDPG.tutorialCardHtml();
+  };
+
+  BDPG.tutorialCardHtml = function () {
+    var open = BDPG.state.tutorialOpen;
+    var tab = BDPG.state.tutorialTab || 'overview';
+    var active = null, i;
+    for (i = 0; i < BDPG.TUTORIAL_TABS.length; i++) {
+      if (BDPG.TUTORIAL_TABS[i].key === tab) { active = BDPG.TUTORIAL_TABS[i]; break; }
+    }
+    if (!active) { active = BDPG.TUTORIAL_TABS[0]; tab = active.key; }
+
+    var tabBtns = BDPG.TUTORIAL_TABS.map(function (t) {
+      var on = (t.key === tab);
+      return '<button class="' + (on ? 'on' : '') + '"' + (on ? ' style="background:var(--accent)"' : '') +
+        ' onclick="BDPG.setTutorialTab(' + JSON.stringify(t.key) + ')">' + BDPG.escHtml(t.tab) + '</button>';
+    }).join('');
+
+    return '<div class="bdpg-step" id="bdpg-tutorial-card">' +
+      '<div class="bdpg-step-hd" style="cursor:pointer" onclick="BDPG.toggleTutorial()">' +
+        '<div class="bdpg-badge">' + (open ? '▾' : '▸') + '</div>' +
+        '<div class="bdpg-step-title">How This Calculator Works</div>' +
+      '</div>' +
+      (open ?
+        '<div class="bdpg-seg" style="margin-bottom:12px">' + tabBtns + '</div>' +
+        '<div class="cc-lbl" style="margin-bottom:6px">' + BDPG.escHtml(active.title) + '</div>' +
+        BDPG.tutorialTabBodyHtml(tab)
+      : '') +
+    '</div>';
+  };
+
+  BDPG.tutorialTabBodyHtml = function (key) {
+    if (key === 'step1') return BDPG.tutorialStep1Html();
+    if (key === 'step2') return BDPG.tutorialStep2Html();
+    if (key === 'results') return BDPG.tutorialResultsHtml();
+    if (key === 'saving') return BDPG.tutorialSavingHtml();
+    return BDPG.tutorialOverviewHtml();
+  };
+
+  BDPG.tutorialOverviewHtml = function () {
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'This calculator estimates how many diesel gallons per month Roady’s could realistically drive to a prospective ' +
+      'truck stop. It starts from a published baseline looked up by the location’s physical profile, then layers on ' +
+      'adjustments for region, amenities, Trucker Path review score, pricing posture and Rewards participation to produce ' +
+      'a client-ready pitch number plus an internal-only breakdown of how it was built.' +
+    '</p>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> Pick the location’s Profile / Roadway / Lanes in Step 1, tune the five adjustments in Step 2, fill ' +
+      'in Step 3’s Supporting Details, then Generate — the Results panel shows both the Official Calculator figure ' +
+      'and Final Potential Gallons, and Save Profile keeps it for later on the Prospects tab.' +
+    '</div>';
+  };
+
+  BDPG.tutorialStep1Html = function () {
+    var baselines = BDPG_CONFIG.BASELINE_TABLE.map(function (r) { return r.baseline; });
+    var blMin = Math.min.apply(null, baselines);
+    var blMax = Math.max.apply(null, baselines);
+    var headerRow = '<tr style="color:var(--muted);font-size:.72em;text-transform:uppercase;letter-spacing:.06em">' +
+      '<td>Profile</td><td>Roadway</td><td>Lanes</td><td style="text-align:right">Baseline</td></tr>';
+    var rows = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
+      return '<tr><td>' + BDPG.escHtml(r.profile) + '</td><td>' + BDPG.escHtml(r.roadway) + '</td>' +
+        '<td>' + BDPG.escHtml(r.lanes) + '</td><td style="text-align:right">' + BDPG.fmtGal(r.baseline) + ' gal/mo</td></tr>';
+    }).join('');
+    // Picked from the table itself rather than hand-copied, so an edited
+    // BASELINE_TABLE keeps this example in sync for free.
+    var exRow = BDPG_CONFIG.BASELINE_TABLE[4];
+
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'Every prospect starts from a baseline in gallons/month, looked up in Roady’s published table by three inputs: ' +
+      '<b>Profile</b> (the size/class of location), <b>Roadway</b> (Backroad, Highway or Interstate) and <b>Lanes</b> ' +
+      '(how many fuel lanes it has). Baselines across the table range from ' + BDPG.fmtGal(blMin) + ' to ' + BDPG.fmtGal(blMax) + ' gal/mo.' +
+    '</p>' +
+    '<table class="dt" style="width:100%;font-size:.8em;margin-bottom:10px"><tbody>' + headerRow + rows + '</tbody></table>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> A ' + BDPG.escHtml(exRow.profile) + ' on a ' + BDPG.escHtml(exRow.roadway) + ' with ' + BDPG.escHtml(exRow.lanes) +
+      ' lanes starts at ' + BDPG.fmtGal(exRow.baseline) + ' gal/mo, before any Step 2 adjustments.' +
+    '</div>';
+  };
+
+  BDPG.tutorialStep2Html = function () {
+    var amenityRows = BDPG_CONFIG.AMENITY_LEVELS.map(function (lvl) {
+      return { label: lvl, pct: BDPG_CONFIG.AMENITY_ADJUST[lvl] };
+    });
+    var reviewRows = BDPG.tutorialReviewBandRows();
+    var pricingRows = BDPG_CONFIG.PRICING_LEVELS.map(function (lvl) {
+      return { label: lvl, pct: BDPG_CONFIG.PRICING_ADJUST[lvl] };
+    });
+    var rewardsRows = BDPG_CONFIG.REWARDS_LEVELS.map(function (lvl) {
+      return { label: lvl, pct: BDPG_CONFIG.REWARDS_ADJUST[lvl] };
+    });
+
+    function termBlock(title, note, rows) {
+      var lines = rows.map(function (r) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px">' +
+          '<span>' + BDPG.escHtml(r.label) + '</span><span style="font-weight:700">' + BDPG.tutorialPct(r.pct) + '</span></div>';
+      }).join('');
+      return '<div class="bdpg-callout" style="margin-top:10px">' +
+        '<div style="font-weight:700;margin-bottom:4px">' + BDPG.escHtml(title) + '</div>' +
+        '<div style="font-size:.78em;color:var(--muted);margin-bottom:6px">' + note + '</div>' +
+        '<div style="font-size:.82em">' + lines + '</div>' +
+      '</div>';
+    }
+
+    var body = '<p style="font-size:.85em;color:var(--text);margin:0 0 4px">' +
+      'Five terms move the baseline. <b>Region</b> and <b>Amenities</b> (plus the <b>Trucker Path</b> review score) are ' +
+      'folded into the Official Calculator figure; <b>Pricing Strategy</b> and <b>Rewards</b> participation are applied ' +
+      'afterward, on top of that figure, to produce Final Potential Gallons.' +
+    '</p>';
+
+    body += '<div class="bdpg-callout" style="margin-top:10px">' +
+      '<div style="font-weight:700;margin-bottom:4px">1. Region</div>' +
+      '<div style="font-size:.82em">A manual, admin-set slider bounded to ±' + BDPG.REGION_PCT_BOUND + '% — a manual ' +
+      'nudge only, never derived from the network-average figures shown alongside it.</div>' +
+    '</div>';
+    body += termBlock('2. Amenities', 'Set from the location’s amenity level.', amenityRows);
+    body += termBlock('3. Trucker Path (review score)', 'Banded by the location’s Trucker Path rating.', reviewRows);
+    body += termBlock('4. Pricing Strategy', 'Applied outside the Official Calculator figure.', pricingRows);
+    body += termBlock('5. Rewards participation', 'Applied outside the Official Calculator figure, alongside Pricing.', rewardsRows);
+
+    var exAmenity = amenityRows[amenityRows.length - 1];
+    var exReview = reviewRows[reviewRows.length - 1];
+    var exRewards = rewardsRows[0];
+    body += '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted);margin-top:10px">' +
+      '<b>Example:</b> ' + BDPG.escHtml(exAmenity.label) + ' amenities (' + BDPG.tutorialPct(exAmenity.pct) + ') and a ' +
+      BDPG.escHtml(exReview.label) + ' Trucker Path score (' + BDPG.tutorialPct(exReview.pct) + ') both land inside the ' +
+      'Official Calculator figure; ' + BDPG.escHtml(exRewards.label) + ' (' + BDPG.tutorialPct(exRewards.pct) + ') is added ' +
+      'afterward, on Final Potential Gallons only.' +
+    '</div>';
+
+    return body;
+  };
+
+  BDPG.tutorialResultsHtml = function () {
+    var pDefaultPct = hasOwn(BDPG_CONFIG.PRICING_ADJUST, BDPG_CONFIG.PRICING_DEFAULT) ? BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT] : 0;
+    var rDefaultPct = hasOwn(BDPG_CONFIG.REWARDS_ADJUST, BDPG_CONFIG.REWARDS_DEFAULT) ? BDPG_CONFIG.REWARDS_ADJUST[BDPG_CONFIG.REWARDS_DEFAULT] : 0;
+    // Derived, not asserted: only claim the two figures match at default
+    // settings when the defaults themselves actually net to 0%. If a future
+    // config ever ships a nonzero default, this stops claiming an equality
+    // that would no longer be true.
+    var bothZero = (pDefaultPct === 0 && rDefaultPct === 0);
+    var divergeLine = bothZero
+      ? 'Leave both at their defaults and Final Potential Gallons matches the Official Calculator figure exactly; move either one and the two numbers diverge.'
+      : 'Even at their defaults, Final Potential Gallons already differs from the Official Calculator figure by these two adjustments.';
+
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'Generate produces two numbers. The <b>Official Calculator figure</b> is the baseline adjusted only by Region, ' +
+      'Amenities and the Trucker Path review score — it matches Roady’s published calculator. ' +
+      '<b>Final Potential Gallons</b> takes that figure and layers on Pricing Strategy and Rewards, and is the headline ' +
+      'number used in the pitch. Everything above the INTERNAL divider is written for the prospect and mirrors the Export ' +
+      'Pitch Summary; everything below it (the adjustment waterfall, Network Fit Grade, amenity chart) is internal-only ' +
+      'and never leaves the tool.' +
+    '</p>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> Pricing Strategy defaults to “' + BDPG.escHtml(BDPG_CONFIG.PRICING_DEFAULT) + '” (' + BDPG.tutorialPct(pDefaultPct) +
+      ') and Rewards defaults to “' + BDPG.escHtml(BDPG_CONFIG.REWARDS_DEFAULT) + '” (' + BDPG.tutorialPct(rDefaultPct) + '). ' + divergeLine +
+    '</div>';
+  };
+
+  BDPG.tutorialSavingHtml = function () {
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'Save Profile stores everything on this page — the prospect’s info, every adjustment, and any generated ' +
+      'result — as one record kept in this browser. The Prospects tab lists every saved location side by side with ' +
+      'its Official Calculator figure and Final Potential Gallons, and reopening a row loads it back into the calculator ' +
+      'to keep refining or to re-export its Pitch Summary.' +
+    '</p>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> Fill in a prospect, hit Generate, then Save Profile — switch to the Prospects tab and the new ' +
+      'row is there immediately, ready to reopen or export any time, even after closing the browser.' +
+    '</div>';
+  };
+
   // Keeps BDPG.state.prospect.preEvalSignal in sync with the four
   // prerequisites and BDPG.preEval() *regardless of whether the card is
   // currently rendered open* -- Task 7 saves this value into the record,
@@ -1234,9 +1960,20 @@ function getCentroid(pathStr, axis){
 
   // BDPG region fills. Cyan (--accent) is deliberately NOT here: it is reserved
   // for the selected-state highlight, which must read against every region color.
+  // Teal (Northwest, #0891B2) is the closest hue to cyan of the eight and is
+  // the worst case for the selection ring. Dark mode is clean: ring #00C8FF
+  // (L 0.485) on the 0.85-alpha teal fill. Day mode is NOT -- ring #0078D4
+  // (L 0.1819) against that fill (L 0.2352) measures 1.23:1, and no amount of
+  // theme-scoping the ring's own colour changes that, because both are
+  // mid-blue-green. The two body.day-mode path.sel rules near the top of the
+  // stylesheet make the ring and its halo agree with each other and with the
+  // light background; making the ring legible against the teal itself needs a
+  // wider stroke or a different Northwest hue -- FOLLOW-UPS.md #1, the user's
+  // call, deliberately not taken by an implementer.
   BDPG.REGION_COLORS = {
     West: '#00D68F', Southwest: '#FF6B35', Midwest: '#FFD60A',
-    Northeast: '#7C3AED', Southeast: '#FF4757'
+    Northeast: '#7C3AED', Southeast: '#FF4757',
+    Northwest: '#0891B2', Texas: '#E0218A', 'Upper Midwest': '#8BC34A'
   };
 
   BDPG.mapHtml = function () {
@@ -1312,11 +2049,20 @@ function getCentroid(pathStr, axis){
   BDPG.regionChipsHtml = function () {
     var active = BDPG.state.state ? BusDevGallonsCalc.resolveRegion(BDPG.state.state) : null;
     var nc = BDPG.networkContext;
-    return '<div class="bdpg-chips">' + Object.keys(BDPG.REGION_COLORS).map(function (r) {
+    // Ordered from BDPG.REGION_KEYS (the config's own BDPG_REGION_MAP order),
+    // like the admin sliders and every other region surface. Iterating
+    // REGION_COLORS instead put the original five first and the three new ones
+    // last, so the legend listed regions in an order that matched nothing else
+    // in the tool -- and left region order defined in two places.
+    return '<div class="bdpg-chips">' + BDPG.REGION_KEYS.map(function (r) {
       var pct = BDPG.effectiveRegionPct(r) * 100;
       var count = (nc && nc.byRegion && nc.byRegion[r]) ? nc.byRegion[r].total : null;
+      // Colour map and key list are both config-derived and carry the same
+      // eight keys, but a plain lookup would emit "background:undefined" if a
+      // future region were added to one and not the other.
+      var dot = hasOwn(BDPG.REGION_COLORS, r) ? BDPG.REGION_COLORS[r] : 'var(--muted)';
       return '<div class="bdpg-chip' + (r === active ? ' on' : '') + '">' +
-        '<span class="bdpg-chip-dot" style="background:' + BDPG.REGION_COLORS[r] + '"></span>' +
+        '<span class="bdpg-chip-dot" style="background:' + dot + '"></span>' +
         '<span class="bdpg-chip-name">' + BDPG.escHtml(r) + '</span>' +
         '<span class="bdpg-chip-meta">' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% · ' +
           (count === null ? '—' : count + ' loc') + '</span>' +
@@ -1464,8 +2210,8 @@ function getCentroid(pathStr, axis){
           '⚠ <b>No amenity details entered — the level below is an assumption, not an observation of this site.</b><br>' +
           'With all six cards untouched the calculator falls back to <b>' + BDPG.escHtml(suggestion.level) + '</b>, and that ' +
           '<b>' + assumedPctTxt + '</b> is being applied inside the Roady\'s Published Calculator Figure shown on the results ' +
-          'and in the printed packet. Tap the six cards above, or pick a Confirmed Amenity Level below, before handing the ' +
-          'packet to an owner.' +
+          'and in the printed packet. Tap the six cards above, then pick a Confirmed Amenity Level below — Generate is ' +
+          'disabled until that level is explicitly confirmed, even if it ends up matching this assumption.' +
         '</div>'
       : '';
     // The suggestion's own reason string ("No showers, no truck parking, and no
@@ -1758,10 +2504,28 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
+  // An explicit confirmation, not merely a suggestion that was adopted by
+  // default. Tapping the six amenity cards produces real data and therefore a
+  // real suggestion, but the rep still has to confirm it -- that final click
+  // is what turns an assumption into a decision, and it is the only thing
+  // that distinguishes "surveyed and genuinely sparse" from "nobody asked
+  // yet". A rep who taps all six cards and stops has real data feeding
+  // suggestAmenityLevel(), but has not confirmed anything -- amenityConfirmed()
+  // must still read false, or the gate would be a proxy for "any amenity
+  // interaction happened" rather than the deliberate sign-off it exists to
+  // require.
+  BDPG.amenityConfirmed = function () {
+    return !!BDPG.state.amenityOverridden &&
+      BDPG_CONFIG.AMENITY_LEVELS.indexOf(BDPG.state.amenityLevel) >= 0;
+  };
+
   BDPG.generateButtonHtml = function () {
     var s = BDPG.state;
-    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state);
-    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled title="Complete Prospect Profile, Steps 1 and 2 to generate."') +
+    var amenityOk = BDPG.amenityConfirmed();
+    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state && amenityOk);
+    var title = can ? '' :
+      ' title="Complete Prospect Profile, Steps 1 and 2, and confirm an Amenity Level to generate."';
+    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled' + title) +
       ' onclick="BDPG.onGenerate()">🚛 Generate Value Profile</button>';
   };
 
@@ -1841,9 +2605,17 @@ function getCentroid(pathStr, axis){
   // records saved before its removal still carry the key in their snapshot,
   // and onLoadProfile copies the snapshot into BDPG.state wholesale. Skipping
   // it keeps a legacy record's signature comparable with a fresh one.
+  // csvResultMsg was listed here too, for the retired region-variance CSV
+  // tool's confirmation line; it went out with the tool, since a SIG_SKIP key
+  // for state that no longer exists is just a name nobody can check. The rule
+  // it was added under stands for anything new on BDPG.state: if a saved
+  // record would not be wrong without it, it belongs in this list, or running
+  // an admin tool will make hasUnsavedWork() true and prompt a rep to discard
+  // changes they never made.
   BDPG.SIG_SKIP = {
     result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
-    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1
+    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1,
+    tutorialOpen: 1, tutorialTab: 1
   };
   BDPG.stateSig = function () {
     var s = BDPG.state, out = {};
@@ -1869,8 +2641,28 @@ function getCentroid(pathStr, axis){
   // BDPG.state, so it is never serialized into a snapshot.
   BDPG.currentProfileId = null;
 
+  // Returns true when a result was computed and written to state, false on
+  // every bail -- so a caller other than the button (BDPG.onTrackerExport()
+  // is the one that exists today, but this is the one place that protects
+  // any future one too) can tell a real bail apart from success without
+  // re-deriving the reason itself, and never has to guess from state.result
+  // alone whether the attempt even ran.
   BDPG.onGenerate = function () {
     var s = BDPG.state;
+    // The amenity confirmation gate (Task 11) belongs HERE, not only in
+    // generateButtonHtml()'s `can` check. The disabled attribute only stops a
+    // click on the visible button -- it does nothing for BDPG.onTrackerExport(),
+    // which calls this function directly, or for any future caller that does
+    // the same. The harm the gate exists to prevent (an unsurveyed site's
+    // suggestAmenityLevel({}) -5% presented to an owner as an observed fact)
+    // reaches the customer through whichever path gets to window.print(), and
+    // onExportPdf() -- the only caller of window.print() -- gates on nothing
+    // but BDPG.state.result being set. So this is the one chokepoint that
+    // actually protects every route to that result, current and future.
+    if (!BDPG.amenityConfirmed()) {
+      alert('Pick a Confirmed Amenity Level in Step 2 before generating -- the suggested level is an assumption, not a confirmed observation of this site, until it is explicitly confirmed.');
+      return false;
+    }
     // Before anything reads them: the estimate below, and the pitch builders
     // that read s.pricingLevel / s.rewardsLevel live off state once a result
     // exists, must all see the same in-list value. See BDPG.normalizeLevels().
@@ -1884,10 +2676,17 @@ function getCentroid(pathStr, axis){
       pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT,
       rewardsLevel: s.rewardsLevel || BDPG_CONFIG.REWARDS_DEFAULT
     });
-    if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return; }
+    if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return false; }
 
     var grade = BusDevGallonsCalc.calculateNetworkFitGrade({
-      profile: s.profile, officialSubtotal: estimate.officialSubtotal, supportingDetails: s.supportingDetails
+      profile: s.profile, officialSubtotal: estimate.officialSubtotal, supportingDetails: s.supportingDetails,
+      // Weights reach the grade and nothing else -- estimate.officialSubtotal
+      // above was already computed without them. effectiveWeights() has
+      // validated the stored set through resolveWeights(), and
+      // calculateNetworkFitGrade() puts it through resolveWeights() again, so
+      // a broken localStorage value degrades to the defaults twice over
+      // rather than producing a grade nobody configured.
+      weights: BDPG.effectiveWeights()
     });
     var conditionAdjusted = BusDevGallonsCalc.conditionAdjustedGallons(estimate.finalGallons, s.supportingDetails.condition);
     var membership = BusDevGallonsCalc.calculateMembershipFit(estimate.finalGallons);
@@ -1897,6 +2696,7 @@ function getCentroid(pathStr, axis){
     // notice must go with them.
     s.resultStale = false;
     BDPG.render();
+    return true;
   };
 
   // Mirrors the six rows of the on-screen waterfall table exactly, so the chart
@@ -2072,6 +2872,60 @@ function getCentroid(pathStr, axis){
       '</div>';
   };
 
+  // Facts about the network, not projections about this prospect -- display
+  // context only, and must never enter the formula. BDPG_NETWORK_BASELINES
+  // carries percentages from -43.3% to +76.1%, far outside the +/-10% region
+  // slider that actually feeds calculateEstimate(); wiring it into the math
+  // would change official gallons for every saved profile. Omitted entirely
+  // (never dashed) when the region is unresolved or absent from the
+  // baselines map -- a dash in a credibility block shown to a customer reads
+  // as a broken page.
+  BDPG.networkAverageLineHtml = function () {
+    var r = BDPG.state.result;
+    var key = r && r.region;
+    if (!key || !hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, key)) return '';
+    var b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[key];
+    var meta = BDPG_CONFIG.NETWORK_BASELINE_META;
+
+    // The caption has to describe THIS region's sample, not the network's.
+    // meta.locations (227) is the size of the whole 12-month network report;
+    // captioning a per-region average with it told an owner the figure was far
+    // better evidenced than it is -- Texas' 7,003 gal/mo comes from 13
+    // locations, and the config says so (lowSample/n), but that caveat only
+    // ever reached the admin panel.
+    //
+    // Two shapes, and the second must never borrow the first's number:
+    //   n known   -> caption the region's own count, plus the low-sample
+    //                caveat when the config flags it.
+    //   n unknown -> say what IS known (the figure comes out of the
+    //                227-location network report) and attribute 227 to the
+    //                REPORT, never to the region.
+    // Nothing here hardcodes Texas or 13; both come from the config entry.
+    var hasN = isFinite(Number(b.n)) && Number(b.n) > 0;
+    var sample = hasN
+      ? ('12mo avg of ' + BDPG.escHtml(String(Number(b.n))) + ' Roady\'s locations in this region, as of ' +
+         BDPG.escHtml(meta.asOf))
+      : ('12mo avg, as of ' + BDPG.escHtml(meta.asOf) + ' · from Roady\'s ' +
+         BDPG.escHtml(String(meta.locations)) + '-location network report');
+
+    // var(--muted), not var(--yellow): inside #bdpg-print-only the @media print
+    // block re-points --muted to #555 but leaves --yellow alone, so a yellow
+    // caveat would print illegibly on white and break the packet's
+    // everything-is-black-ink property. The glyph carries the signal.
+    var lowSampleLine = b.lowSample
+      ? '<div style="font-size:.72em;color:var(--muted);margin-top:2px">&#9888; Small sample — this regional average is drawn from ' +
+        (hasN ? (BDPG.escHtml(String(Number(b.n))) + ' locations') : 'a small number of locations') + '.</div>'
+      : '';
+
+    return '<div style="margin-top:6px;font-size:.85em">' +
+      '<span class="bdpg-lbl" style="display:inline">Roady\'s Network Average (your region):</span> ' +
+      '<b>' + BDPG.fmtGal(b.avgGalMo) + ' gal/mo</b>' +
+      '<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
+        BDPG.escHtml(BDPG.regionDisplayName(key)) + ' · ' + sample + '</div>' +
+      lowSampleLine +
+    '</div>';
+  };
+
   // Prospect-facing hero. Extracted so the Export Pitch Summary renders the
   // identical block rather than a hand-maintained second copy that could
   // drift from what the rep saw on screen.
@@ -2101,6 +2955,7 @@ function getCentroid(pathStr, axis){
         '<b style="font-size:1.15em">' + BDPG.fmtGal(e.officialSubtotal) + ' gal/mo</b>' +
         '<div style="font-size:.72em;color:var(--muted);margin-top:3px">' +
           'Matches Roady\'s published prospective-member calculator.</div>' +
+        BDPG.networkAverageLineHtml() +
       '</div>' +
     '</div>';
   };
@@ -2170,9 +3025,25 @@ function getCentroid(pathStr, axis){
         '<tr style="font-weight:700;border-top:1px solid var(--border)"><td>6. Final Potential Gallons</td><td style="text-align:right">' + BDPG.fmtGal(e.finalGallons) + '</td></tr>' +
       '</tbody></table></div>';
 
+    // The caption told the rep what does NOT move the grade but, since weights
+    // became admin-editable, stopped naming the thing that does. The tracker
+    // row carries a weightStamp; the screen the rep actually reads during the
+    // call carried nothing, so a letter scored under a hand-tuned set looked
+    // identical to one scored under the defaults. Stamped from the grade's OWN
+    // resolved weights -- the set that produced the letter beside it -- not
+    // from a second read of effectiveWeights(). This sits BELOW the INTERNAL
+    // divider (see resultsHtml's return), so it never reaches the packet.
+    var gradeWeightStamp = BDPG.weightStamp(g.weights);
+    var weightsAreDefault = g.weights === BDPG_CONFIG.WEIGHT_CONFIG;
+    var weightNote = gradeWeightStamp
+      ? ' Scored under grade weights ' + BDPG.escHtml(gradeWeightStamp) + ' (' +
+        (weightsAreDefault ? 'defaults' : 'admin-set') +
+        ') — changing those weights in Admin moves the letter.'
+      : '';
     var rangeSection = '<div class="bdpg-hero" style="margin-top:14px">' +
       '<div class="cc"><div class="cc-lbl">Position in Network Range</div>' + BDPG.rangeBarHtml(e) +
-        '<div style="font-size:.68em;color:var(--muted);margin-top:6px">Grade is scored from the official subtotal and is never affected by Pricing Strategy.</div></div>' +
+        '<div style="font-size:.68em;color:var(--muted);margin-top:6px">Grade is scored from the official subtotal and is never affected by Pricing Strategy.' +
+        weightNote + '</div></div>' +
       BDPG.gradeBadgeHtml(g) +
     '</div>';
 
@@ -2444,9 +3315,23 @@ function getCentroid(pathStr, axis){
     } else if (s.roadway === 'Highway') {
       out.push('Your Highway location sits on a steady regional freight corridor.');
     }
+    // e.regionPct is the ADMIN'S +/-10% manual slider, not a measurement. This
+    // bullet used to read "the <region> region runs X% above the network
+    // average", which describes it as a comparison against network
+    // performance -- a claim it has never been entitled to make, and one the
+    // packet now visibly contradicts: networkAverageLineHtml() prints the real
+    // 12-month regional figure a few centimetres above this list (Midwest
+    // 21,737 gal/mo, +76.1% vs the 12,347 network average), so a +7.5% slider
+    // described as the same quantity is wrong by an order of magnitude on a
+    // sheet handed to the owner. The network-average line is the only surface
+    // entitled to a "vs network" claim; this one names the adjustment as an
+    // adjustment. Do not reintroduce a network comparison here -- if one is
+    // ever wanted in this list it must come from
+    // BDPG_NETWORK_BASELINES[region].pctVsNetwork, never from regionPct.
     if (e.regionPct > 0) {
-      out.push('The ' + s.result.region + ' region runs ' + (e.regionPct * 100).toFixed(1) +
-        '% above the network average — your geography works in your favor.');
+      out.push('Your baseline carries a +' + (e.regionPct * 100).toFixed(1) +
+        '% regional adjustment for the ' + BDPG.regionDisplayName(s.result.region) +
+        ' region — your geography works in your favor.');
     }
     if (e.amenityPct > 0) {
       out.push('Your amenity level — ' + s.amenityLevel + ' — already places you above the network average for driver satisfaction.');
@@ -2584,7 +3469,11 @@ function getCentroid(pathStr, axis){
       stats.push([BDPG.fmtGal(nc.activeTotal), 'active locations across the Roady\'s network']);
     }
     if (typeof rd.total === 'number') {
-      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + r.region + ')']);
+      // escHtml for the same reason as the byType label below: this string is
+      // interpolated into HTML. region is a trusted config key today, so this
+      // is consistency rather than a live fix -- but the escaping convention
+      // is what makes "is this value trusted?" a question nobody has to ask.
+      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + BDPG.escHtml(BDPG.regionDisplayName(r.region)) + ')']);
     }
     // byType keys come from the source CSV's Type column while locationType
     // comes from the ⓪ card's own list; they do not always match, which is why
@@ -2633,6 +3522,17 @@ function getCentroid(pathStr, axis){
       officialSubtotal: e ? e.officialSubtotal : null,
       finalGallons: e ? e.finalGallons : null,
       grade: r && r.grade ? r.grade.grade : '', gradeLabel: r && r.grade ? r.grade.gradeLabel : '',
+      // The scale that letter was computed on. Taken from the grade's OWN
+      // resolved weight set -- what calculateNetworkFitGrade() actually used --
+      // never from a second read of effectiveWeights() here: if those two ever
+      // disagreed, the stamp has to describe the letter sitting beside it.
+      weightStamp: r && r.grade ? BDPG.weightStamp(r.grade.weights) : '',
+      // The region scale those gallons were computed on. Taken from the
+      // estimate's OWN regionPct -- what calculateEstimate() actually used --
+      // never from a second read of effectiveRegionPct() here, for the same
+      // reason weightStamp reads the grade's own weights: the stamp has to
+      // describe the figure sitting beside it, not today's slider.
+      regionPctStamp: e ? BDPG.regionPctStamp(e.regionPct) : '',
       preEvalSignal: s.prospect.preEvalSignal || '',
       amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || '',
       rewardsLevel: s.rewardsLevel || ''
@@ -2664,11 +3564,29 @@ function getCentroid(pathStr, axis){
       locationType: str(sum.locationType) || str(pr.locationType),
       city: str(sum.city) || str(pr.city),
       stateCode: stateCode,
-      region: str(sum.region) || (stateCode ? str(BusDevGallonsCalc.resolveRegion(stateCode)) : ''),
+      // Region is DERIVED from the stored state code, never read from the
+      // stored region string. The 5->8 split is not a rename: old "West"
+      // covered WA/OR/ID/MT/WY as well as CA/NV/UT/CO, so a stored "West"
+      // cannot be mapped to a new region without guessing which half it meant.
+      // The state code is unambiguous and every record has one (State is
+      // required before Generate). str() coerces resolveRegion()'s null (no
+      // state code, or a code the 8-region map doesn't cover) to '', which
+      // trackerRowHtml() and onLoadProfile() both treat as "needs re-select".
+      region: stateCode ? str(BusDevGallonsCalc.resolveRegion(stateCode)) : '',
       profile: str(sum.profile) || str(st.profile), roadway: str(sum.roadway) || str(st.roadway),
       officialSubtotal: (sum.officialSubtotal === 0 || sum.officialSubtotal) ? sum.officialSubtotal : null,
       finalGallons: (sum.finalGallons === 0 || sum.finalGallons) ? sum.finalGallons : null,
       grade: str(sum.grade), gradeLabel: str(sum.gradeLabel),
+      // No fallback chain and no default: a record saved before stamping has
+      // no evidence of its scale, and '' must keep meaning "unknown" rather
+      // than being quietly filled in with today's weights.
+      weightStamp: str(sum.weightStamp),
+      // Same no-fallback rule as weightStamp: a record saved before region
+      // stamping has no evidence of the scale its gallons were computed on,
+      // and '' must keep meaning "unknown". str() also turns a hand-edited
+      // number or object into '' rather than letting it be compared as a
+      // stamp.
+      regionPctStamp: str(sum.regionPctStamp),
       preEvalSignal: str(sum.preEvalSignal) || str(pr.preEvalSignal),
       amenityLevel: str(sum.amenityLevel) || str(st.amenityLevel),
       pricingLevel: str(sum.pricingLevel) || str(st.pricingLevel),
@@ -2817,6 +3735,16 @@ function getCentroid(pathStr, axis){
     // it so the field renders empty rather than the literal "undefined", and
     // so summaryText()'s Prepared-by line stays absent instead of printing it.
     if (typeof BDPG.state.prospect.gsName !== 'string') BDPG.state.prospect.gsName = '';
+    // Same "needs re-select" case trackerRowHtml() flags for this record's
+    // row: readSummary() derives region from the state code, not from
+    // whatever this record's summary.region says, and here that came back
+    // empty even though the record has a real city/state to show. One toast
+    // per load, worded identically to the tracker badge so the rep sees the
+    // same fact in both places.
+    var loadedSum = BDPG.readSummary(found);
+    if (!loadedSum.region && (loadedSum.city || loadedSum.stateCode)) {
+      toast('region updated — re-select state', 'err');
+    }
     BDPG.render();
     BDPG.savedSig = BDPG.stateSig();
     return true;
@@ -2841,8 +3769,13 @@ function getCentroid(pathStr, axis){
   BDPG.activeTab = 'calc';
   BDPG.switchTab = function (name) {
     BDPG.activeTab = name;
-    document.getElementById('bdpg-tab-calc').classList.toggle('active', name === 'calc');
-    document.getElementById('bdpg-tab-prospects').classList.toggle('active', name === 'prospects');
+    // Driven off one list rather than a line per tab, so a fourth tab can
+    // never be added to the markup and forgotten here (which would leave two
+    // buttons looking active at once).
+    ['calc', 'prospects', 'weights'].forEach(function (t) {
+      var btn = document.getElementById('bdpg-tab-' + t);
+      if (btn) btn.classList.toggle('active', t === name);
+    });
     BDPG.render();
   };
 
@@ -2906,16 +3839,26 @@ function getCentroid(pathStr, axis){
 
     var cityState = (!sum.city && !sum.stateCode) ? '—' :
       BDPG.escHtml(sum.city || '') + (sum.city && sum.stateCode ? ', ' : '') + BDPG.escHtml(sum.stateCode || '');
-    // Only append the region chip when there's a real city/state to append it
+    // Only append a region badge when there's a real city/state to append it
     // to -- otherwise the cell could read "— Southeast", which defeats the
-    // sort handler's exact `=== '—'` "dashes sort last" check (currently
-    // unreachable since readSummary derives region from the same state field
-    // as stateCode, but one line of defence costs nothing).
+    // sort handler's exact `=== '—'` "dashes sort last" check.
+    //
+    // Within that guard, two outcomes: readSummary() resolved a region from
+    // the stored state code (normal chip), or it couldn't -- no state code
+    // at all, or one the 8-region map doesn't cover (a typo, or a code that
+    // predates this split and was never revisited). That second case is
+    // reachable now that readSummary() derives instead of trusting a stored
+    // region name, so it gets its own flag instead of silently showing no
+    // badge (which would look identical to "not evaluated for region yet").
     var regionChip = '';
-    if (cityState !== '—' && sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
-      var rc = BDPG.REGION_COLORS[sum.region];
-      regionChip = ' <span class="badge" style="background:' + hexToRgba(rc, 0.18) + ';color:' + rc + '">' +
-        BDPG.escHtml(sum.region) + '</span>';
+    if (cityState !== '—') {
+      if (sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
+        var rc = BDPG.REGION_COLORS[sum.region];
+        regionChip = ' <span class="badge" style="background:' + hexToRgba(rc, 0.18) + ';color:' + rc + '">' +
+          BDPG.escHtml(sum.region) + '</span>';
+      } else {
+        regionChip = ' <span class="badge tag-yellow">region updated — re-select state</span>';
+      }
     }
     var locationCell = cityState + regionChip;
 
@@ -2923,6 +3866,45 @@ function getCentroid(pathStr, axis){
       ? BDPG.escHtml(sum.profile) + ' · ' + BDPG.escHtml(sum.roadway) : '—';
 
     var officialCell = isNum(sum.officialSubtotal) ? BDPG.fmtGal(sum.officialSubtotal) : '—';
+    // The region % is admin-editable, so a stored subtotal is only comparable
+    // with the rest of this table -- and with what this row's own Export Pitch
+    // Summary will print, since that recomputes from today's slider -- if it
+    // was computed on the same region scale. Exactly the three cases the Grade
+    // cell's weight marker uses, for exactly the same reason, and "unknown" is
+    // again NOT folded into "matches": a record saved before stamping carries
+    // no evidence either way.
+    //
+    // Deliberately TWO markers on this row rather than one combined
+    // "different basis" badge. The two inputs move two different numbers: the
+    // weights move only the letter, the region % moves only the gallons, and
+    // they move independently. A single badge would have to sit in one cell
+    // and implicate the other -- marking the Grade when only the region slider
+    // moved says the letter is off-scale when it is not, and vice versa. Each
+    // marker instead names the figure it describes, and the two share one
+    // visual vocabulary (same glyph, same tag-yellow badge) so they still read
+    // as one family of provenance warnings.
+    //
+    // Appended AFTER the number, never before: the delegated sort handler
+    // parseFloat()s the cell text, which takes the leading number and stops --
+    // "7,650 ! other region %" still sorts as 7650, the same way the Final
+    // cell's arrows already do. A badge in front would break numeric sort.
+    //
+    // Skipped entirely when the region could not be resolved: the row already
+    // carries the louder "region updated — re-select state" flag, and
+    // effectiveRegionPct('') is 0, so comparing against it would assert a
+    // scale nobody chose.
+    if (isNum(sum.officialSubtotal) && sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
+      var curRegionStamp = BDPG.regionPctStamp(BDPG.effectiveRegionPct(sum.region));
+      if (!sum.regionPctStamp) {
+        officialCell += ' <span class="badge tag-yellow" title="Saved before the region adjustment was recorded, so the region % behind these gallons is unknown. The current ' +
+          BDPG.escHtml(sum.region) + ' adjustment is ' + BDPG.escHtml(curRegionStamp) +
+          '%. Both stored figures are left exactly as they were saved — re-run Generate and save to restamp them.">&#9888; region scale unknown</span>';
+      } else if (sum.regionPctStamp !== curRegionStamp) {
+        officialCell += ' <span class="badge tag-yellow" title="Computed under a ' + BDPG.escHtml(sum.regionPctStamp) +
+          '% region adjustment; the current ' + BDPG.escHtml(sum.region) + ' adjustment is ' + BDPG.escHtml(curRegionStamp) +
+          '%, so this figure and the Final Gallons beside it are not directly comparable with rows computed on the current scale — and this row\'s Export Pitch Summary, which recomputes, will print different numbers. The stored figures are left exactly as they were saved — re-run Generate and save to recompute them.">&#9888; other region %</span>';
+      }
+    }
 
     var finalCell = isNum(sum.finalGallons) ? BDPG.fmtGal(sum.finalGallons) : '—';
     if (isNum(sum.finalGallons) && isNum(sum.officialSubtotal)) {
@@ -2987,6 +3969,23 @@ function getCentroid(pathStr, axis){
       var gcol = hasOwn(BDPG.GRADE_COLORS, sum.grade) ? BDPG.GRADE_COLORS[sum.grade] : 'var(--muted)';
       gradeCell = '<span class="badge" title="' + BDPG.escHtml(sum.gradeLabel || '') + '" style="background:rgba(255,255,255,.08);color:' +
         gcol + ';border:1px solid ' + gcol + '">' + BDPG.escHtml(sum.grade) + '</span>';
+      // Grade weights are admin-editable, so a stored letter is only
+      // comparable with the rest of this table if it was computed on the same
+      // scale -- and comparison between prospects is the whole point of the
+      // tracker. Three cases, and "unknown" is deliberately NOT folded into
+      // "matches": a record saved before stamping carries no evidence either
+      // way, and treating that as agreement would be a claim the data does not
+      // support. Neither marker alters the stored letter; both say the scale
+      // differs and leave regrading to a deliberate Generate + Save.
+      var curStamp = BDPG.weightStamp(BDPG.effectiveWeights());
+      if (!sum.weightStamp) {
+        gradeCell += ' <span class="badge tag-yellow" title="Saved before grade weights were recorded, so the scale behind this letter is unknown. Current weights: ' +
+          BDPG.escHtml(curStamp) + '. Re-run Generate and save to restamp it.">&#9888; weights unknown</span>';
+      } else if (sum.weightStamp !== curStamp) {
+        gradeCell += ' <span class="badge tag-yellow" title="Computed under different grade weights (' + BDPG.escHtml(sum.weightStamp) +
+          ') than the current set (' + BDPG.escHtml(curStamp) + '), so it is not directly comparable with rows graded on the current scale. ' +
+          'The stored letter is left exactly as it was saved — re-run Generate and save to regrade it.">&#9888; other weights</span>';
+      }
     }
 
     var signalCell = '—';
@@ -3196,6 +4195,19 @@ function getCentroid(pathStr, axis){
     // dialog -- all before BDPG.state is touched.
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
       toast('This saved prospect is missing a Location Profile/Roadway and can\'t produce an Export Pitch Summary.', 'err');
+      return;
+    }
+    // Same mirror-the-internal-check idea as the baseline-row check just
+    // above, this time for BDPG.onGenerate()'s amenity confirmation gate
+    // (Task 11): BDPG.amenityConfirmed() reads BDPG.state, which does not yet
+    // hold this record (onLoadProfile() has not run), so the saved record's
+    // own fields are read the same way here. Without this, an unconfirmed
+    // legacy profile would fail silently-ish inside the try/catch below and
+    // surface only the generic "Could not generate" toast -- true, but it
+    // does not tell the rep the one thing they can actually do about it:
+    // open the profile and confirm an Amenity Level in Step 2.
+    if (!(st.amenityOverridden && BDPG_CONFIG.AMENITY_LEVELS.indexOf(st.amenityLevel) >= 0)) {
+      toast('This saved prospect has no Confirmed Amenity Level -- open it and confirm one in Step 2 before exporting.', 'err');
       return;
     }
 

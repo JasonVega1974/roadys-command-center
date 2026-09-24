@@ -14,13 +14,87 @@
 
   // Geographic-variance regions for the calculator only. Not the GS-territory
   // REGIONS map already in index.html — different partition, different purpose.
+  // 8-region model (was 5): West split into Northwest/West, Southwest split
+  // into Southwest/Texas, Midwest split into Upper Midwest/Midwest. This is a
+  // re-partition, not a rename -- a record with an old stored region string
+  // must be re-derived from its state code, never name-mapped.
   var BDPG_REGION_MAP = {
-    West:      ['WA', 'OR', 'CA', 'NV', 'ID', 'MT', 'WY', 'UT', 'CO'],
-    Southwest: ['AZ', 'NM', 'TX', 'OK'],
-    Midwest:   ['ND', 'SD', 'NE', 'KS', 'MN', 'IA', 'MO', 'WI', 'IL', 'MI', 'IN', 'OH'],
-    Northeast: ['ME', 'NH', 'VT', 'MA', 'RI', 'CT', 'NY', 'NJ', 'PA', 'DE', 'MD'],
-    Southeast: ['WV', 'VA', 'KY', 'TN', 'NC', 'SC', 'GA', 'FL', 'AL', 'MS', 'AR', 'LA']
+    'Northwest':     ['WA', 'OR', 'ID', 'MT', 'WY', 'AK'],
+    'West':          ['CA', 'NV', 'UT', 'CO', 'HI'],
+    'Southwest':     ['AZ', 'NM', 'OK'],
+    'Texas':         ['TX'],
+    'Upper Midwest': ['ND', 'SD', 'MN', 'WI', 'MI', 'IA'],
+    'Midwest':       ['NE', 'KS', 'MO', 'IL', 'IN', 'OH'],
+    'Northeast':     ['ME', 'NH', 'VT', 'MA', 'RI', 'CT', 'NY', 'NJ', 'PA', 'DE', 'MD'],
+    'Southeast':     ['VA', 'WV', 'KY', 'TN', 'NC', 'SC', 'GA', 'FL', 'AL', 'MS', 'LA', 'AR']
   };
+
+  // Display names for prospect-facing surfaces (pitch bullets, network
+  // credibility strip, exported packet). Internal surfaces show the short
+  // key above, with this name added where space allows.
+  var BDPG_REGION_DISPLAY = {
+    'Northwest':     'Pacific Northwest / Northern Rockies',
+    'West':          'Pacific West / Mountain West',
+    'Southwest':     'Desert Southwest',
+    'Texas':         'Lone Star',
+    'Upper Midwest': 'Great Lakes & Northern Plains',
+    'Midwest':       'Heartland / Central Plains',
+    'Northeast':     'New England & Mid-Atlantic',
+    'Southeast':     'Southeast / Gulf States'
+  };
+
+  // Real 12-month contributed-gallon averages from the Roady's network.
+  // DISPLAY CONTEXT ONLY -- never an input to calculateEstimate(). The
+  // formula's region term is the admin slider (region_variance.json / the
+  // local override), which is a +/-10% manual adjustment. Five of these eight
+  // values fall outside that range (from -43.3% to +76.1%), so wiring them
+  // into the formula is not possible without changing what the tool computes
+  // for every saved profile. A later task displays these figures; nothing
+  // should ever pass BDPG_NETWORK_BASELINES into calculateEstimate().
+  //
+  // avgGalMo and pctVsNetwork both come from the same unrounded 12-month
+  // source report, but each was rounded independently for display (gallons
+  // to the nearest whole number, percent to one decimal). Re-deriving pct
+  // from the rounded avgGalMo will NOT exactly reproduce the stored pct in
+  // general -- measured slack across all eight regions is ~0.0001-0.0005.
+  // Do not "fix" a pct that looks off by a thousandth against that
+  // derivation; the stored value is the more accurate one.
+  var BDPG_NETWORK_BASELINES = {
+    'Northwest':     { avgGalMo: 11153, pctVsNetwork: -0.097 },
+    'West':          { avgGalMo: 10883, pctVsNetwork: -0.119 },
+    'Southwest':     { avgGalMo: 12933, pctVsNetwork:  0.047 },
+    'Texas':         { avgGalMo:  7003, pctVsNetwork: -0.433, lowSample: true, n: 13 },
+    'Upper Midwest': { avgGalMo:  8820, pctVsNetwork: -0.286 },
+    'Midwest':       { avgGalMo: 21737, pctVsNetwork:  0.761 },
+    'Northeast':     { avgGalMo: 13205, pctVsNetwork:  0.070 },
+    'Southeast':     { avgGalMo: 10373, pctVsNetwork: -0.160 }
+  };
+
+  var NETWORK_BASELINE_META = {
+    overallAvgGalMo: 12347, locations: 227, asOf: '2026-09',
+    label: "From Roady's network data (12mo avg, 227 locations, as of 2026-09)"
+  };
+
+  // Default pillar weights for calculateNetworkFitGrade(). These exactly
+  // reproduce the pre-existing hardcoded behaviour: the function used to
+  // compute 0.5 x rangePositionPct + 0.5 x mean(5 signals), i.e. 50% on
+  // range position and 10% each on the five signals below. Do not change
+  // these defaults without re-verifying every existing grade assertion.
+  //
+  // Frozen, and it has to stay frozen rather than being copied at the point of
+  // use. resolveWeights() returns THIS object on every fallback, so without the
+  // freeze one caller writing to the set it was handed would silently re-scale
+  // every future grade in the session. Freezing is the fix that keeps the
+  // object's identity intact: the page's storedWeightsWereDiscarded() asks
+  // "did the engine hand back the shared defaults?" with `=== WEIGHT_CONFIG`,
+  // and that question is what makes the "your saved weight set was discarded"
+  // notice fire. Returning a defensive copy instead would answer false for
+  // every corrupt set and kill the notice, so: freeze, do not clone. Page and
+  // engine are both strict-mode, so a write here throws instead of no-opping.
+  var WEIGHT_CONFIG = Object.freeze({
+    rangePosition: 50, condition: 10, hours: 10,
+    distance: 10, corridor: 10, competition: 10
+  });
 
   var AMENITY_LEVELS = ['Very limited', 'Average', 'Good / full service'];
 
@@ -136,6 +210,10 @@
   var BDPG_CONFIG = {
     BASELINE_TABLE: BASELINE_TABLE,
     BDPG_REGION_MAP: BDPG_REGION_MAP,
+    BDPG_REGION_DISPLAY: BDPG_REGION_DISPLAY,
+    BDPG_NETWORK_BASELINES: BDPG_NETWORK_BASELINES,
+    NETWORK_BASELINE_META: NETWORK_BASELINE_META,
+    WEIGHT_CONFIG: WEIGHT_CONFIG,
     AMENITY_LEVELS: AMENITY_LEVELS,
     AMENITY_ADJUST: AMENITY_ADJUST,
     REVIEW_BANDS: REVIEW_BANDS,

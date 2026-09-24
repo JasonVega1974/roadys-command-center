@@ -187,6 +187,35 @@
     return band || BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS[BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS.length - 1];
   }
 
+  var WEIGHT_KEYS = ['rangePosition', 'condition', 'hours', 'distance', 'corridor', 'competition'];
+
+  // A weight set reaches here from localStorage, so it can be anything. A set
+  // that is not six finite numbers in 0..100 summing to exactly 100 is not
+  // "close enough" -- it would silently produce a grade nobody configured, so
+  // it is discarded whole rather than patched. Same stance as isNum/hasOwn
+  // elsewhere in this project.
+  function resolveWeights(w) {
+    if (!w) return BDPG_CONFIG.WEIGHT_CONFIG;
+    var total = 0;
+    for (var i = 0; i < WEIGHT_KEYS.length; i++) {
+      var v = w[WEIGHT_KEYS[i]];
+      if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 100) return BDPG_CONFIG.WEIGHT_CONFIG;
+      total += v;
+    }
+    // Exactly the six keys, not "at least" them. An object carrying a seventh
+    // key is not a valid set with harmless extras -- it is evidence the value
+    // came from something other than this tool's own six sliders (a hand edit,
+    // an older or newer shape, another product's config). Accepting it would
+    // pass the strays straight through into grade.weights and, from there,
+    // into a saved record's weight stamp. Own enumerable keys only, which is
+    // all JSON.parse can produce; the six are already known present, so a
+    // count is the whole test. Runs after the loop so a non-object argument
+    // has already fallen back on the typeof check above rather than reaching
+    // Object.keys().
+    if (Object.keys(w).length !== WEIGHT_KEYS.length) return BDPG_CONFIG.WEIGHT_CONFIG;
+    return total === 100 ? w : BDPG_CONFIG.WEIGHT_CONFIG;
+  }
+
   function calculateNetworkFitGrade(opts) {
     var range = profileRange(opts.profile);
     var d = opts.supportingDetails || {};
@@ -208,7 +237,13 @@
     var signalKeys = Object.keys(signalScores);
     var signalAvg = signalKeys.reduce(function (sum, k) { return sum + signalScores[k]; }, 0) / signalKeys.length;
 
-    var overallScore = 0.5 * rangePositionPct + 0.5 * signalAvg;
+    var w = resolveWeights(opts.weights);
+    var overallScore = (w.rangePosition * rangePositionPct +
+                        w.condition * signalScores.condition +
+                        w.hours * signalScores.hours +
+                        w.distance * signalScores.distance +
+                        w.corridor * signalScores.corridor +
+                        w.competition * signalScores.competition) / 100;
     var band = gradeForScore(overallScore);
 
     return {
@@ -217,6 +252,7 @@
       rangePositionPct: rangePositionPct,
       signalScores: signalScores,
       signalAvg: signalAvg,
+      weights: w,
       overallScore: overallScore,
       grade: band.grade,
       gradeLabel: band.label
@@ -260,6 +296,7 @@
     suggestAmenityLevel: suggestAmenityLevel,
     calculateEstimate: calculateEstimate,
     calculateNetworkFitGrade: calculateNetworkFitGrade,
+    resolveWeights: resolveWeights,
     conditionAdjustedGallons: conditionAdjustedGallons,
     calculateMembershipFit: calculateMembershipFit
   };
