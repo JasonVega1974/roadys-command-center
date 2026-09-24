@@ -197,11 +197,11 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .impl-sub-tab:hover{color:var(--text);}
 .bdpg-subtabs{display:flex;gap:4px;padding:0 22px;border-bottom:2px solid var(--border);background:var(--surface);}
 
-/* Bus Dev Potential Gallons — Export PDF.
+/* Bus Dev Potential Gallons — Export Pitch Summary.
    Gated on body.bdpg-print-mode (set by BDPG.onExportPdf, cleared on
    'afterprint') rather than unconditionally, so a plain browser File > Print
-   keeps behaving normally -- only a print triggered through the Export PDF
-   button gets caught by these rules.
+   keeps behaving normally -- only a print triggered through the Export Pitch
+   Summary button gets caught by these rules.
    The dashboard-only selectors this block used to carry (.sidebar, .topbar,
    .page, #pg-bus-dev-potential-gallons) came over verbatim with the
    extraction and match 0 elements on this standalone page; they were removed
@@ -209,33 +209,57 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
    have one. */
 @media print {
   body.bdpg-print-mode #toast { display: none !important; }
-  body.bdpg-print-mode #bdpg-content > *:not(#bdpg-print-only) { display: none !important; }
+  /* The app chrome (page title bar, Potential Gallons / Prospects tabs) sits
+     outside #bdpg-content, so the rules below never reached it and it printed
+     as a navigation band across the top of a document handed to a prospect. */
+  body.bdpg-print-mode > *:not(#bdpg-content) { display: none !important; }
+  /* html carries its own background:var(--bg) (see the :root block), so body's
+     white does NOT propagate to the print canvas -- everything past the first
+     viewport-height prints on the dark app background. :has() keeps this on
+     the same body.bdpg-print-mode gate as every other rule here. */
+  html:has(body.bdpg-print-mode) { background: #fff !important; }
+  /* #bdpg-print-only is built by resultsWrapHtml(), so it lives one level
+     down inside #bdpg-results-wrap -- not as a direct child of #bdpg-content.
+     Hiding every #bdpg-content child except #bdpg-print-only therefore hid
+     the wrap, and display:block on a descendant cannot resurrect a hidden
+     ancestor: the packet printed as a blank page. Both levels have to be
+     walked -- exempt the wrap here, then hide the on-screen results inside
+     it below. The #bdpg-print-only exemption is kept in the first rule so
+     the block still prints if it is ever hoisted to the top level. */
+  body.bdpg-print-mode #bdpg-content > *:not(#bdpg-print-only):not(#bdpg-results-wrap) { display: none !important; }
+  body.bdpg-print-mode #bdpg-results-wrap > *:not(#bdpg-print-only) { display: none !important; }
+  body.bdpg-print-mode #bdpg-results-wrap { display: block !important; }
   body.bdpg-print-mode #bdpg-print-only { display: block !important; }
   body.bdpg-print-mode { background: #fff !important; color: #000 !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-box { border: 1px solid #999 !important; page-break-inside: avoid; }
-  /* Hero cards, grade badge and range bar reuse the on-screen classes so the
-     print layout stays in lockstep with Task 7's markup, but the glow/accent
-     styling those classes carry on-screen (box-shadow, var(--accent) text)
-     has to become plain black-on-white with a border for a leave-behind. */
+  /* The hero card reuses the on-screen classes so the print layout stays in
+     lockstep with the pitch markup, but the glow/accent styling those classes
+     carry on-screen (box-shadow, var(--accent) text) has to become plain
+     black-on-white with a border for a leave-behind.
+     The grade-badge and network-range rules this block used to carry were
+     removed with Task 10: the packet is prospect-facing and no longer renders
+     .bdpg-grade or .bdpg-nrange at all, so those selectors matched nothing. */
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-card { background: #fff !important; border: 1px solid #999 !important; page-break-inside: avoid; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-card::before { display: none !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-num,
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-math,
   body.bdpg-print-mode #bdpg-print-only .bdpg-lbl { color: #000 !important; }
-  body.bdpg-print-mode #bdpg-print-only .bdpg-grade { border: 2px solid #000 !important; page-break-inside: avoid; }
-  body.bdpg-print-mode #bdpg-print-only .bdpg-grade-l,
-  body.bdpg-print-mode #bdpg-print-only .bdpg-grade-lbl { color: #000 !important; }
-  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange { background: #fff !important; border: 1px solid #999 !important; }
-  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-m { box-shadow: none !important; border: 1px solid #000 !important; }
-  /* The key's "Official" swatch is inline-styled background:var(--text), which
-     resolves to #E8EDF8 -- effectively invisible on the print packet's white
-     page. Force it dark to match the border treatment the marker itself
-     already gets above. Final's swatch (var(--accent), cyan) already reads
-     fine on white so it's left alone. The muted key/endpoint labels are
-     forced to #000 too for consistency with every other label on this page. */
-  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-key-sw.official { background: #000 !important; }
-  body.bdpg-print-mode #bdpg-print-only .bdpg-nrange-key,
-  body.bdpg-print-mode #bdpg-print-only .bdpg-rangebar-ends { color: #000 !important; }
+  /* The pitch sections come from BDPG.pitchSectionsHtml(), which is written
+     for the dark UI and carries inline color:var(--accent) / var(--muted) /
+     var(--border). On white those resolve to #00C8FF (under 2:1) and #6B7A99
+     -- a pale smear on the largest numbers an owner is meant to read. An
+     inline style can only be beaten by !important, and there is no selector
+     for "elements whose inline style mentions --accent", so re-point the
+     tokens themselves for the duration of the packet. Repainting the palette
+     rather than the rules is also what keeps this from having to be updated
+     every time a pitch section adds a colored element.
+     Only the color tokens are re-pointed: --ff / --fb are fonts and must
+     survive. */
+  body.bdpg-print-mode #bdpg-print-only {
+    --accent: #000; --text: #000; --muted: #555;
+    --bg: #fff; --surface: #fff; --surface2: #fff;
+    --border: #999; --border2: #999;
+  }
 }
 #bdpg-print-only { display: none; }
 </style>
@@ -410,7 +434,7 @@ function getCentroid(pathStr, axis){
       profile: '', roadway: '',
       state: '', amenityDetails: {}, amenityLevel: '', amenityOverridden: false,
       truckerPathRating: '', pricingLevel: '', rewardsLevel: '',
-      prospect: { name: '', street: '', city: '', locationType: '', notes: '' },
+      prospect: { name: '', street: '', city: '', locationType: '', notes: '', gsName: '' },
       autoSetNote: '', suggestProfiles: [],
       supportingDetails: {
         condition: '', hours: '', distance: '', corridor: '', competition: '',
@@ -1155,6 +1179,14 @@ function getCentroid(pathStr, axis){
         '<div class="fg"><label>State' + req + '</label>' +
           '<input id="bdpg-prospect-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(BDPG.state.state) + '" ' +
           'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
+        // Display-only: it names the rep on the Export Pitch Summary and in
+        // Copy Summary and feeds no calculation, so it deliberately routes
+        // through onProspectInput (no render(), no invalidateResult()) --
+        // typing a name must never throw away a generated result. Placed
+        // after State rather than mid-address so the four address fields
+        // (name / street / city / state) stay contiguous in the 3-up grid.
+        '<div class="fg"><label>Prepared by (GS Name)</label>' +
+          '<input id="bdpg-prospect-gsname" value="' + BDPG.escHtml(p.gsName || '') + '" oninput="BDPG.onProspectInput(\'gsName\', this.value)"></div>' +
       '</div>' +
       '<div class="fg" style="margin-top:12px"><label>Location Type</label><div class="bdpg-seg">' + segs + '</div></div>' +
       '<div class="fg" style="margin-top:12px"><label>Notes</label>' +
@@ -1674,7 +1706,7 @@ function getCentroid(pathStr, axis){
   BDPG.resultsWrapHtml = function () {
     if (BDPG.state.result) {
       return BDPG.resultsHtml() +
-        '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export PDF</button> ' +
+        '<button class="btn btn-accent" onclick="BDPG.onExportPdf()">Export Pitch Summary</button> ' +
         '<button class="btn" onclick="BDPG.onCopySummary()">Copy Summary</button>' +
         BDPG.exportPdfHtml();
     }
@@ -2048,47 +2080,47 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
+  // The prospect's leave-behind. Everything below resultsHtml()'s INTERNAL
+  // divider -- the Network Fit Grade, the network range bar, the
+  // condition-adjusted view, the amenity chart, the network-context table and
+  // the Analysis block -- is deliberately absent: an owner reading a grade
+  // letter or the word "non-official" about their own site loses the room.
+  // The pitch itself comes from BDPG.pitchSectionsHtml(), the same call
+  // resultsHtml() makes, so the page and the packet cannot drift. That
+  // function returns '' when there is no result, and pitchDriversHtml() /
+  // pitchOpportunitiesHtml() each legitimately return '' on their own (a
+  // top-band prospect has no opportunities, a weak one has no drivers), so
+  // nothing here may assume a fixed section count.
   BDPG.exportPdfHtml = function () {
     var r = BDPG.state.result;
     if (!r) return '';
-    var e = r.estimate, g = r.grade, loc = BDPG.displayLocation();
-    var membershipLine = r.membership.valuePerGallonConfigured && r.membership.plans.some(function (p) { return p.configured; })
-      ? BDPG.membershipFitHtml()
-      : '';
-
-    var heroPrint = '<div class="bdpg-hero" style="margin:14px 0">' +
-      '<div class="bdpg-hero-card final"><div class="bdpg-lbl">Final Potential Gallons</div>' +
-        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.finalGallons) + '</div>' +
-        '<div style="font-size:.8em;color:#333;margin-top:4px">gal/mo</div>' +
-        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.finalMathLine) + '</div>' +
-      '</div>' +
-      '<div class="bdpg-hero-card official"><div class="bdpg-lbl">Official Calculator Subtotal</div>' +
-        '<div class="bdpg-hero-num">' + BDPG.fmtGal(e.officialSubtotal) + '</div>' +
-        '<div style="font-size:.8em;color:#333;margin-top:4px">gal/mo · traces to the printed calculator</div>' +
-        '<div class="bdpg-hero-math">' + BDPG.escHtml(e.officialMathLine) + '</div>' +
-      '</div>' +
-    '</div>';
+    var e = r.estimate, loc = BDPG.displayLocation();
 
     var chartImg = BDPG.printChartImg
       ? '<div style="margin-top:14px"><img src="' + BDPG.printChartImg + '" alt="Adjustment waterfall chart" style="width:100%;max-width:560px;border:1px solid #999"></div>'
       : '';
 
-    var gradeSection = '<div class="bdpg-hero" style="margin-top:14px">' +
-      '<div class="bdpg-box"><div class="bdpg-lbl">Position in Network Range</div>' + BDPG.rangeBarHtml(e) + '</div>' +
-      BDPG.gradeBadgeHtml(g) +
-    '</div>';
+    var today = new Date().toISOString().slice(0, 10);
+    // Omitted entirely when unset, so the header closes on the date with no
+    // blank line where a name would have been.
+    var preparedBy = BDPG.state.prospect.gsName
+      ? '<p style="font-size:.9em">Prepared by ' + BDPG.escHtml(BDPG.state.prospect.gsName) + '</p>' : '';
 
     return '<div id="bdpg-print-only">' +
-      '<h1>Roady\'s Prospective Member Gallons Calculator</h1>' +
-      '<h2>' + BDPG.escHtml(BDPG.displayName()) + (loc ? ' — ' + BDPG.escHtml(loc) : '') + '</h2>' +
-      '<h3>Step 1</h3><p>' + BDPG.escHtml(BDPG.state.profile) + ' / ' + BDPG.escHtml(BDPG.state.roadway) + ' — Baseline ' + BDPG.fmtGal(e.baseline) + ' gal/mo</p>' +
-      '<h3>Step 2 — Official Calculator</h3><p>' + BDPG.escHtml(e.officialMathLine) + '</p>' +
+      '<h1>Roady\'s Fuel Network — Value Proposition for ' + BDPG.escHtml(BDPG.displayName()) + '</h1>' +
+      (loc ? '<h2>' + BDPG.escHtml(loc) + '</h2>' : '') +
+      '<p style="font-size:.9em">' + today + '</p>' + preparedBy +
+      // Exactly the sections shown above the INTERNAL divider on screen --
+      // same function, not a second copy, so the two cannot drift.
+      BDPG.pitchSectionsHtml() +
+      '<h3>How the number is built</h3>' +
+      '<p>' + BDPG.escHtml(BDPG.state.profile) + ' / ' + BDPG.escHtml(BDPG.state.roadway) +
+        ' — Baseline ' + BDPG.fmtGal(e.baseline) + ' gal/mo</p>' +
+      '<p>Official calculator: ' + BDPG.escHtml(e.officialMathLine) + '</p>' +
+      '<p>With pricing: ' + BDPG.escHtml(e.pricingMathLine) + '</p>' +
+      '<p>With Roady\'s Rewards (' + BDPG.escHtml(BDPG.state.rewardsLevel) + '): ' + BDPG.escHtml(e.finalMathLine) + '</p>' +
       '<p style="font-size:.85em;color:#666">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</p>' +
-      '<h3>Official Calculator Subtotal: ' + BDPG.fmtGal(e.officialSubtotal) + '</h3>' +
-      '<h3>Step 3 — Pricing Strategy: ' + BDPG.escHtml(BDPG.state.pricingLevel) + '</h3><p>' + BDPG.escHtml(e.finalMathLine) + '</p>' +
-      '<h3>Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons) + '</h3>' +
-      heroPrint + chartImg + gradeSection +
-      membershipLine +
+      chartImg +
     '</div>';
   };
 
@@ -2131,23 +2163,33 @@ function getCentroid(pathStr, axis){
 
   BDPG.summaryText = function () {
     var r = BDPG.state.result, e = r.estimate, loc = BDPG.displayLocation();
+    // This gets pasted into prospect-facing email, so it follows the same
+    // pitch-only rule as the Export Pitch Summary packet: no Network Fit
+    // Grade line. The grade is an internal score and reads to an owner as a
+    // report card on their own site.
     var lines = [
-      'Roady\'s Prospective Member Gallons Calculator',
-      BDPG.displayName() + (loc ? ' — ' + loc : ''),
+      'Roady\'s Fuel Network — Value Proposition for ' + BDPG.displayName(),
+      loc || '',
+      BDPG.state.prospect.gsName ? 'Prepared by ' + BDPG.state.prospect.gsName : '',
+      '',
+      'Roady\'s can drive ' + BDPG.fmtGal(e.finalGallons) + ' gal/mo — ' + BDPG.fmtGal(e.finalGallons * 12) + ' gal/yr.',
       '',
       'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
       'Official calculator math: ' + e.officialMathLine,
-      'Official Calculator Subtotal: ' + BDPG.fmtGal(e.officialSubtotal),
+      'Roady\'s Published Calculator Figure: ' + BDPG.fmtGal(e.officialSubtotal),
       'Pricing Strategy: ' + BDPG.state.pricingLevel,
+      'Roady\'s Rewards: ' + BDPG.state.rewardsLevel,
       'Final Potential Gallons math: ' + e.finalMathLine,
-      'Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons),
-      'Network Fit Grade: ' + r.grade.grade + ' (' + r.grade.gradeLabel + ')'
+      'Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons)
     ];
     if (r.membership.valuePerGallonConfigured && r.membership.plans.some(function (p) { return p.configured; })) {
       var best = r.membership.plans.filter(function (p) { return p.configured; }).sort(function (a, b) { return b.coverageMultiple - a.coverageMultiple; })[0];
       lines.push('Membership pays for itself at ' + BDPG.fmtGal(best.breakevenGallons) + ' gal/mo (' + best.coverageMultiple + '× coverage).');
     }
-    return lines.join('\n');
+    // An absent location or GS name leaves its slot as '' next to the
+    // deliberate blank separator below it. Collapse only those runs -- the
+    // single blanks that structure the message stay.
+    return lines.filter(function (l, i) { return !(l === '' && lines[i - 1] === ''); }).join('\n');
   };
 
   BDPG.onCopySummary = function () {
@@ -2334,7 +2376,7 @@ function getCentroid(pathStr, axis){
       '<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-title" style="font-size:.85em">About the Roady\'s Network</div></div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:34px">' +
         stats.map(function (s) {
-          return '<div><div style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
+          return '<div><div class="bdpg-pitch-stat" style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
             s[0] + '</div><div style="font-size:.78em;color:var(--muted);margin-top:3px;max-width:200px">' + s[1] + '</div></div>';
         }).join('') +
       '</div>' +
@@ -2507,8 +2549,12 @@ function getCentroid(pathStr, axis){
     // code (the Step 0 card, the badge, trackerSummary) never throws on
     // a pre-Task-4 record.
     if (!BDPG.state.prospect) {
-      BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '' };
+      BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '', gsName: '' };
     }
+    // A profile saved before Task 10 has a `prospect` but no gsName. Default
+    // it so the field renders empty rather than the literal "undefined", and
+    // so summaryText()'s Prepared-by line stays absent instead of printing it.
+    if (BDPG.state.prospect.gsName === undefined) BDPG.state.prospect.gsName = '';
     BDPG.render();
     BDPG.savedSig = BDPG.stateSig();
     return true;
@@ -2668,7 +2714,7 @@ function getCentroid(pathStr, axis){
       var idJs = JSON.stringify(pid).replace(/"/g, '&quot;');
       actionsCell =
         '<button class="btn btn-accent" onclick="BDPG.onTrackerLoad(' + idJs + ')">Load</button> ' +
-        '<button class="btn" onclick="BDPG.onTrackerExport(' + idJs + ')">Export PDF</button> ' +
+        '<button class="btn" onclick="BDPG.onTrackerExport(' + idJs + ')">Export Pitch Summary</button> ' +
         '<button class="btn" onclick="BDPG.onDeleteProfile(' + idJs + ')">Delete</button>';
     } else {
       actionsCell = '<span style="color:var(--muted);font-size:.8em">No id — can’t act</span>';
