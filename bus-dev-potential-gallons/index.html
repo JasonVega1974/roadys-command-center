@@ -861,11 +861,19 @@ function getCentroid(pathStr, axis){
     }
 
     var networkAvg = netSum / netCount;
-    var out = { west: 0, southwest: 0, midwest: 0, northeast: 0, southeast: 0, asOf: (new Date()).toISOString().slice(0, 7) };
+    // Seeded from BDPG.REGION_KEYS (all zero) rather than a hardcoded 5-key
+    // literal, and keyed by the resolved region name exactly -- no
+    // toLowerCase(). This object is written straight into
+    // BDPG.regionVariance.override below, so a lowercased or partial key
+    // here would reproduce the same silent-0% bug effectiveRegionPct()
+    // was fixed against, except live and mid-session rather than caught
+    // only on the next reload.
+    var out = { asOf: (new Date()).toISOString().slice(0, 7) };
+    BDPG.REGION_KEYS.forEach(function (region) { out[region] = 0; });
     Object.keys(sums).forEach(function (region) {
       var regionAvg = sums[region] / counts[region];
       var pct = Math.round(((regionAvg / networkAvg) - 1) * 1000) / 10;
-      out[region.toLowerCase()] = pct;
+      out[region] = pct;
     });
 
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
