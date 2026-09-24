@@ -2737,10 +2737,20 @@ function getCentroid(pathStr, axis){
   // records saved before its removal still carry the key in their snapshot,
   // and onLoadProfile copies the snapshot into BDPG.state wholesale. Skipping
   // it keeps a legacy record's signature comparable with a fresh one.
+  // csvResultMsg is the Compute Region % confirmation line. It is admin-tool
+  // feedback, not prospect data -- but it became state-resident when the
+  // message was moved off the live DOM so it could survive render(), and
+  // anything on BDPG.state is in this signature unless it is listed here.
+  // Left out, running the CSV tool wrote a non-null string into the signature
+  // and hasUnsavedWork() went true, so the next Load (or tracker Export, which
+  // also gates on confirmDiscard) asked an admin to discard changes they never
+  // made. Exactly the spurious-prompt failure tutorialOpen/tutorialTab were
+  // added here to avoid. Rule for anything added to BDPG.state from now on: if
+  // a saved record would not be wrong without it, it belongs in this list.
   BDPG.SIG_SKIP = {
     result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
     ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1,
-    tutorialOpen: 1, tutorialTab: 1
+    tutorialOpen: 1, tutorialTab: 1, csvResultMsg: 1
   };
   BDPG.stateSig = function () {
     var s = BDPG.state, out = {};
