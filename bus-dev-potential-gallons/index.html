@@ -1980,6 +1980,42 @@ function getCentroid(pathStr, axis){
       '<table class="dt" style="width:100%;font-size:.85em"><tbody>' + rows + '</tbody></table>' + recommendation + '</div>';
   };
 
+  // Prospect-facing business case. Mirrors membershipFitHtml()'s payback math
+  // but never shows the internal "Membership pricing not configured" notice --
+  // MEMBERSHIP_CONFIG ships all zeros today, so this line simply does not
+  // render. That is the expected state, not a bug; the internal Membership
+  // Fit panel above keeps the notice for the rep.
+  BDPG.pitchBusinessCaseHtml = function () {
+    var r = BDPG.state.result, e = r.estimate, m = r.membership;
+    var annual = e.finalGallons * 12;
+
+    var payback = '';
+    var best = m.valuePerGallonConfigured
+      ? m.plans.filter(function (p) { return p.configured; })
+               .sort(function (a, b) { return b.coverageMultiple - a.coverageMultiple; })[0]
+      : null;
+    if (best) {
+      payback = '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:.9em">' +
+        'At the <b>' + BDPG.escHtml(best.name) + '</b> membership, your membership pays for itself at ' +
+        BDPG.fmtGal(best.breakevenGallons) + ' gal/mo — your projection is <b>' + best.coverageMultiple +
+        '×</b> that.</div>';
+    }
+
+    var stat = 'font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px';
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:4px"><div class="sec-title" style="font-size:.85em">What This Means For Your Business</div></div>' +
+      '<div style="font-size:.82em;color:var(--muted);margin-bottom:12px">Join Roady\'s and here\'s what your first year looks like.</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:34px">' +
+        '<div><div style="' + stat + '">Monthly potential</div>' +
+          '<div style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
+          BDPG.fmtGal(e.finalGallons) + '<span style="font-size:.4em;color:var(--muted);margin-left:6px">gal/mo</span></div></div>' +
+        '<div><div style="' + stat + '">Annual potential</div>' +
+          '<div style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
+          BDPG.fmtGal(annual) + '<span style="font-size:.4em;color:var(--muted);margin-left:6px">gal/yr</span></div></div>' +
+      '</div>' + payback +
+    '</div>';
+  };
+
   BDPG.exportPdfHtml = function () {
     var r = BDPG.state.result;
     if (!r) return '';
@@ -2232,6 +2268,45 @@ function getCentroid(pathStr, axis){
       '<div style="font-size:.85em;margin-bottom:8px">' + regionData.total + ' active locations in this region ' +
       '(as of ' + BDPG.escHtml(BDPG.networkContext.asOf) + ')</div>' +
       '<table class="dt" style="width:100%;font-size:.82em"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody>' + typeRows + '</tbody></table>' +
+    '</div>';
+  };
+
+  // Facts about the network, not projections about this prospect -- the point
+  // is to establish Roady's scale. A missing figure is OMITTED, never rendered
+  // as "—": a dash in a credibility strip shown to a customer reads as a
+  // broken page. If there is no network data or no resolved region at all,
+  // the whole strip is dropped.
+  BDPG.pitchNetworkStripHtml = function () {
+    var nc = BDPG.networkContext, r = BDPG.state.result;
+    if (!nc || !r.region || !nc.byRegion) return '';
+    var rd = nc.byRegion[r.region];
+    if (!rd) return '';
+
+    var stats = [];
+    if (typeof nc.activeTotal === 'number') {
+      stats.push([BDPG.fmtGal(nc.activeTotal), 'active locations across the Roady\'s network']);
+    }
+    if (typeof rd.total === 'number') {
+      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + r.region + ')']);
+    }
+    // byType keys come from the source CSV's Type column while locationType
+    // comes from the ⓪ card's own list; they do not always match, which is why
+    // this is a hasOwnProperty check and not a plain lookup.
+    var lt = BDPG.state.prospect.locationType;
+    if (lt && rd.byType && Object.prototype.hasOwnProperty.call(rd.byType, lt)) {
+      stats.push([BDPG.fmtGal(rd.byType[lt]), BDPG.escHtml(lt) + ' locations like yours already in the network']);
+    }
+    if (!stats.length) return '';
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-title" style="font-size:.85em">About the Roady\'s Network</div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:34px">' +
+        stats.map(function (s) {
+          return '<div><div style="font-family:var(--ff);font-size:1.9em;font-weight:800;color:var(--accent);line-height:1">' +
+            s[0] + '</div><div style="font-size:.78em;color:var(--muted);margin-top:3px;max-width:200px">' + s[1] + '</div></div>';
+        }).join('') +
+      '</div>' +
+      (nc.asOf ? '<div style="font-size:.68em;color:var(--muted);margin-top:10px">Network figures as of ' + BDPG.escHtml(nc.asOf) + '.</div>' : '') +
     '</div>';
   };
 
