@@ -1910,13 +1910,37 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
+  // The single definition of "what the prospect sees". resultsHtml() renders
+  // it above the divider and the export renders exactly this -- so the
+  // leave-behind can never drift from what the rep showed on screen. Guarded
+  // here (rather than trusting every caller) because this is the function
+  // that decides when the pitch block renders at all -- Task 10 adds a
+  // second caller, and neither one should be able to invoke the builders
+  // below against a null result.
+  BDPG.pitchSectionsHtml = function () {
+    if (!BDPG.state.result) return '';
+    return BDPG.pitchHeroHtml() +
+      BDPG.pitchDriversHtml() +
+      BDPG.pitchOpportunitiesHtml() +
+      BDPG.pitchBusinessCaseHtml() +
+      BDPG.pitchNetworkStripHtml();
+  };
+
+  // Unmistakably "internal, not for the prospect" -- the Network Fit Grade,
+  // amenity chart, network-context table, condition-adjusted view and
+  // analysis all live below this and would actively damage a sales call if
+  // shown to the owner (a grade letter, "non-official", deficiency framing).
+  BDPG.internalDividerHtml = function () {
+    return '<div style="margin:26px 0 14px;padding-top:12px;border-top:2px dashed var(--border2);' +
+      'display:flex;align-items:center;gap:10px">' +
+      '<span class="badge tag-yellow">INTERNAL</span>' +
+      '<span style="font-size:.8em;color:var(--muted)">Not shown to the prospect — excluded from the Export Pitch Summary.</span>' +
+    '</div>';
+  };
+
   BDPG.resultsHtml = function () {
     var r = BDPG.state.result, e = r.estimate, g = r.grade;
     var regionAdjusted = Math.round(e.baseline * (1 + e.regionPct));
-
-    var hero = BDPG.pitchHeroHtml() +
-    '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
-    (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '');
 
     var waterfall = '<div class="cc" style="margin-top:14px"><div class="cc-lbl">Adjustment Waterfall</div>' +
       '<div class="cw" style="height:220px"><canvas id="bdpg-waterfall"></canvas></div>' +
@@ -1945,7 +1969,15 @@ function getCentroid(pathStr, axis){
 
     var netCtx = BDPG.networkContextHtml();
 
-    return '<div class="bdpg-results">' + hero + waterfall + rangeSection + amenitySection + netCtx + BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() + '</div>';
+    return '<div class="bdpg-results">' +
+      BDPG.pitchSectionsHtml() +
+      '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
+      (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '') +
+      waterfall +
+      BDPG.internalDividerHtml() +
+      rangeSection + amenitySection + netCtx +
+      BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() +
+    '</div>';
   };
 
   BDPG.conditionAdjustedHtml = function () {
