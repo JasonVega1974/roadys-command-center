@@ -282,6 +282,7 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
   <div class="bdpg-page-hd">
     <div class="bdpg-page-title">⛽ Bus Dev Potential Gallons</div>
     <div style="flex:1"></div>
+    <button class="btn" title="How this calculator works" onclick="BDPG.toggleTutorial()">?</button>
     <button class="btn" onclick="BDPG.toggleTheme()">🌙</button>
   </div>
   <div class="bdpg-subtabs">
@@ -460,7 +461,12 @@ function getCentroid(pathStr, axis){
       // BDPG.invalidateResult(). Never serialized into a saved record.
       resultStale: false,
       supportingOpen: false,
-      preEvalOpen: true
+      preEvalOpen: true,
+      // "How this calculator works" tutorial widget -- a disclosure toggle
+      // and a tab selector, not prospect data. Both live in SIG_SKIP below
+      // so opening the tutorial or flipping tabs never reads as unsaved work.
+      tutorialOpen: false,
+      tutorialTab: 'overview'
     },
 
     render: function () {
@@ -475,10 +481,16 @@ function getCentroid(pathStr, axis){
         // so it has to call it directly -- otherwise this is the one route
         // that can leave the signal stale while the tracker reads it.
         BDPG.updatePreEvalSignal();
-        el.innerHTML = BDPG.prospectsHtml();
+        el.innerHTML = BDPG.tutorialCardHtml() + BDPG.prospectsHtml();
         return;
       }
       el.innerHTML =
+        // Visible on every tab, collapsed by default, above the ⓪ card --
+        // see BDPG.tutorialCardHtml(). Toggling it or switching its five
+        // tabs never comes back through here (BDPG.refreshTutorialCard()
+        // patches #bdpg-tutorial-card directly), so this line only matters
+        // for the initial render and for tab switches between calc/prospects.
+        BDPG.tutorialCardHtml() +
         BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
         BDPG.preEvalCardHtml() +
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.stepCardClose() +
@@ -1297,6 +1309,240 @@ function getCentroid(pathStr, axis){
     card.outerHTML = BDPG.preEvalCardHtml();
   };
 
+  // ── "How this calculator works" tutorial widget ─────────────────────────
+  // Visible to everyone (not admin-gated), collapsed by default, toggled by
+  // the ? button in the static page header. Five tabs inside one card; a tab
+  // click swaps only the body. Every percentage/threshold quoted in the copy
+  // below is read out of BDPG_CONFIG (or BDPG.REGION_PCT_BOUND) at render
+  // time rather than typed as a literal, so a future band change can't leave
+  // this widget quietly lying to the person using it to learn the tool.
+
+  BDPG.TUTORIAL_TABS = [
+    { key: 'overview', tab: 'Overview',  title: 'Overview' },
+    { key: 'step1',    tab: 'Step 1',    title: 'Step 1 — Location Profile' },
+    { key: 'step2',    tab: 'Step 2',    title: 'Step 2 — Adjustments' },
+    { key: 'results',  tab: 'Results',   title: 'Results' },
+    { key: 'saving',   tab: 'Saving',    title: 'Saving & Tracking' }
+  ];
+
+  // Shared by every section below so "+5.0%" / "-5.0%" / "+0.0%" always read
+  // the same way as the rest of the page's percentage formatting (see the
+  // waterfall table above).
+  BDPG.tutorialPct = function (n) {
+    n = Number(n) || 0;
+    return (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%';
+  };
+
+  // REVIEW_BANDS stores each band's inclusive max, not its lower bound, and
+  // the config comment documents why the bands abut with no gap: Trucker
+  // Path ratings are one-decimal, so the next band always starts one tenth
+  // above the previous band's max. Deriving "3.6+" (etc.) here means a band
+  // edit changes this display automatically instead of leaving a stale
+  // "3.6+" sitting next to a config that now says something else.
+  BDPG.tutorialReviewBandRows = function () {
+    var bands = BDPG_CONFIG.REVIEW_BANDS;
+    var STEP = 0.1;
+    var rows = [];
+    var prevMax = null;
+    bands.forEach(function (b, i) {
+      var label;
+      if (i === 0) label = b.max.toFixed(1) + ' or below';
+      else if (i === bands.length - 1) label = (prevMax + STEP).toFixed(1) + '+';
+      else label = (prevMax + STEP).toFixed(1) + '–' + b.max.toFixed(1);
+      rows.push({ label: label, pct: b.pct });
+      prevMax = b.max;
+    });
+    return rows;
+  };
+
+  BDPG.toggleTutorial = function () {
+    BDPG.state.tutorialOpen = !BDPG.state.tutorialOpen;
+    BDPG.refreshTutorialCard();
+  };
+
+  BDPG.setTutorialTab = function (key) {
+    BDPG.state.tutorialTab = key;
+    BDPG.refreshTutorialCard();
+  };
+
+  // Targeted DOM patch -- mirrors BDPG.refreshPreEvalCard() above. Neither
+  // the ? header button nor a tab click may ever route through a full
+  // BDPG.render(): that would blow away caret position in any field the rep
+  // is mid-edit elsewhere on the page and re-run the map draw for no reason.
+  BDPG.refreshTutorialCard = function () {
+    var card = document.getElementById('bdpg-tutorial-card');
+    if (!card) return;
+    card.outerHTML = BDPG.tutorialCardHtml();
+  };
+
+  BDPG.tutorialCardHtml = function () {
+    var open = BDPG.state.tutorialOpen;
+    var tab = BDPG.state.tutorialTab || 'overview';
+    var active = null, i;
+    for (i = 0; i < BDPG.TUTORIAL_TABS.length; i++) {
+      if (BDPG.TUTORIAL_TABS[i].key === tab) { active = BDPG.TUTORIAL_TABS[i]; break; }
+    }
+    if (!active) { active = BDPG.TUTORIAL_TABS[0]; tab = active.key; }
+
+    var tabBtns = BDPG.TUTORIAL_TABS.map(function (t) {
+      var on = (t.key === tab);
+      return '<button class="' + (on ? 'on' : '') + '"' + (on ? ' style="background:var(--accent)"' : '') +
+        ' onclick="BDPG.setTutorialTab(' + JSON.stringify(t.key) + ')">' + BDPG.escHtml(t.tab) + '</button>';
+    }).join('');
+
+    return '<div class="bdpg-step" id="bdpg-tutorial-card">' +
+      '<div class="bdpg-step-hd" style="cursor:pointer" onclick="BDPG.toggleTutorial()">' +
+        '<div class="bdpg-badge">' + (open ? '▾' : '▸') + '</div>' +
+        '<div class="bdpg-step-title">How This Calculator Works</div>' +
+      '</div>' +
+      (open ?
+        '<div class="bdpg-seg" style="margin-bottom:12px">' + tabBtns + '</div>' +
+        '<div class="cc-lbl" style="margin-bottom:6px">' + BDPG.escHtml(active.title) + '</div>' +
+        BDPG.tutorialTabBodyHtml(tab)
+      : '') +
+    '</div>';
+  };
+
+  BDPG.tutorialTabBodyHtml = function (key) {
+    if (key === 'step1') return BDPG.tutorialStep1Html();
+    if (key === 'step2') return BDPG.tutorialStep2Html();
+    if (key === 'results') return BDPG.tutorialResultsHtml();
+    if (key === 'saving') return BDPG.tutorialSavingHtml();
+    return BDPG.tutorialOverviewHtml();
+  };
+
+  BDPG.tutorialOverviewHtml = function () {
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'This calculator estimates how many diesel gallons per month Roady’s could realistically drive to a prospective ' +
+      'truck stop. It starts from a published baseline looked up by the location’s physical profile, then layers on ' +
+      'adjustments for region, amenities, Trucker Path review score, pricing posture and Rewards participation to produce ' +
+      'a client-ready pitch number plus an internal-only breakdown of how it was built.' +
+    '</p>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> Pick the location’s Profile / Roadway / Lanes in Step 1, tune the five adjustments in Step 2, fill ' +
+      'in Step 3’s Supporting Details, then Generate — the Results panel shows both the Official Calculator figure ' +
+      'and Final Potential Gallons, and Save Profile keeps it for later on the Prospects tab.' +
+    '</div>';
+  };
+
+  BDPG.tutorialStep1Html = function () {
+    var baselines = BDPG_CONFIG.BASELINE_TABLE.map(function (r) { return r.baseline; });
+    var blMin = Math.min.apply(null, baselines);
+    var blMax = Math.max.apply(null, baselines);
+    var headerRow = '<tr style="color:var(--muted);font-size:.72em;text-transform:uppercase;letter-spacing:.06em">' +
+      '<td>Profile</td><td>Roadway</td><td>Lanes</td><td style="text-align:right">Baseline</td></tr>';
+    var rows = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
+      return '<tr><td>' + BDPG.escHtml(r.profile) + '</td><td>' + BDPG.escHtml(r.roadway) + '</td>' +
+        '<td>' + BDPG.escHtml(r.lanes) + '</td><td style="text-align:right">' + BDPG.fmtGal(r.baseline) + ' gal/mo</td></tr>';
+    }).join('');
+    // Picked from the table itself rather than hand-copied, so an edited
+    // BASELINE_TABLE keeps this example in sync for free.
+    var exRow = BDPG_CONFIG.BASELINE_TABLE[4];
+
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'Every prospect starts from a baseline in gallons/month, looked up in Roady’s published table by three inputs: ' +
+      '<b>Profile</b> (the size/class of location), <b>Roadway</b> (Backroad, Highway or Interstate) and <b>Lanes</b> ' +
+      '(how many fuel lanes it has). Baselines across the table range from ' + BDPG.fmtGal(blMin) + ' to ' + BDPG.fmtGal(blMax) + ' gal/mo.' +
+    '</p>' +
+    '<table class="dt" style="width:100%;font-size:.8em;margin-bottom:10px"><tbody>' + headerRow + rows + '</tbody></table>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> A ' + BDPG.escHtml(exRow.profile) + ' on a ' + BDPG.escHtml(exRow.roadway) + ' with ' + BDPG.escHtml(exRow.lanes) +
+      ' lanes starts at ' + BDPG.fmtGal(exRow.baseline) + ' gal/mo, before any Step 2 adjustments.' +
+    '</div>';
+  };
+
+  BDPG.tutorialStep2Html = function () {
+    var amenityRows = BDPG_CONFIG.AMENITY_LEVELS.map(function (lvl) {
+      return { label: lvl, pct: BDPG_CONFIG.AMENITY_ADJUST[lvl] };
+    });
+    var reviewRows = BDPG.tutorialReviewBandRows();
+    var pricingRows = BDPG_CONFIG.PRICING_LEVELS.map(function (lvl) {
+      return { label: lvl, pct: BDPG_CONFIG.PRICING_ADJUST[lvl] };
+    });
+    var rewardsRows = BDPG_CONFIG.REWARDS_LEVELS.map(function (lvl) {
+      return { label: lvl, pct: BDPG_CONFIG.REWARDS_ADJUST[lvl] };
+    });
+
+    function termBlock(title, note, rows) {
+      var lines = rows.map(function (r) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px">' +
+          '<span>' + BDPG.escHtml(r.label) + '</span><span style="font-weight:700">' + BDPG.tutorialPct(r.pct) + '</span></div>';
+      }).join('');
+      return '<div class="bdpg-callout" style="margin-top:10px">' +
+        '<div style="font-weight:700;margin-bottom:4px">' + BDPG.escHtml(title) + '</div>' +
+        '<div style="font-size:.78em;color:var(--muted);margin-bottom:6px">' + note + '</div>' +
+        '<div style="font-size:.82em">' + lines + '</div>' +
+      '</div>';
+    }
+
+    var body = '<p style="font-size:.85em;color:var(--text);margin:0 0 4px">' +
+      'Five terms move the baseline. <b>Region</b> and <b>Amenities</b> (plus the <b>Trucker Path</b> review score) are ' +
+      'folded into the Official Calculator figure; <b>Pricing Strategy</b> and <b>Rewards</b> participation are applied ' +
+      'afterward, on top of that figure, to produce Final Potential Gallons.' +
+    '</p>';
+
+    body += '<div class="bdpg-callout" style="margin-top:10px">' +
+      '<div style="font-weight:700;margin-bottom:4px">1. Region</div>' +
+      '<div style="font-size:.82em">A manual, admin-set slider bounded to ±' + BDPG.REGION_PCT_BOUND + '% — a manual ' +
+      'nudge only, never derived from the network-average figures shown alongside it.</div>' +
+    '</div>';
+    body += termBlock('2. Amenities', 'Set from the location’s amenity level.', amenityRows);
+    body += termBlock('3. Trucker Path (review score)', 'Banded by the location’s Trucker Path rating.', reviewRows);
+    body += termBlock('4. Pricing Strategy', 'Applied outside the Official Calculator figure.', pricingRows);
+    body += termBlock('5. Rewards participation', 'Applied outside the Official Calculator figure, alongside Pricing.', rewardsRows);
+
+    var exAmenity = amenityRows[amenityRows.length - 1];
+    var exReview = reviewRows[reviewRows.length - 1];
+    var exRewards = rewardsRows[0];
+    body += '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted);margin-top:10px">' +
+      '<b>Example:</b> ' + BDPG.escHtml(exAmenity.label) + ' amenities (' + BDPG.tutorialPct(exAmenity.pct) + ') and a ' +
+      BDPG.escHtml(exReview.label) + ' Trucker Path score (' + BDPG.tutorialPct(exReview.pct) + ') both land inside the ' +
+      'Official Calculator figure; ' + BDPG.escHtml(exRewards.label) + ' (' + BDPG.tutorialPct(exRewards.pct) + ') is added ' +
+      'afterward, on Final Potential Gallons only.' +
+    '</div>';
+
+    return body;
+  };
+
+  BDPG.tutorialResultsHtml = function () {
+    var pDefaultPct = hasOwn(BDPG_CONFIG.PRICING_ADJUST, BDPG_CONFIG.PRICING_DEFAULT) ? BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT] : 0;
+    var rDefaultPct = hasOwn(BDPG_CONFIG.REWARDS_ADJUST, BDPG_CONFIG.REWARDS_DEFAULT) ? BDPG_CONFIG.REWARDS_ADJUST[BDPG_CONFIG.REWARDS_DEFAULT] : 0;
+    // Derived, not asserted: only claim the two figures match at default
+    // settings when the defaults themselves actually net to 0%. If a future
+    // config ever ships a nonzero default, this stops claiming an equality
+    // that would no longer be true.
+    var bothZero = (pDefaultPct === 0 && rDefaultPct === 0);
+    var divergeLine = bothZero
+      ? 'Leave both at their defaults and Final Potential Gallons matches the Official Calculator figure exactly; move either one and the two numbers diverge.'
+      : 'Even at their defaults, Final Potential Gallons already differs from the Official Calculator figure by these two adjustments.';
+
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'Generate produces two numbers. The <b>Official Calculator figure</b> is the baseline adjusted only by Region, ' +
+      'Amenities and the Trucker Path review score — it matches Roady’s published calculator. ' +
+      '<b>Final Potential Gallons</b> takes that figure and layers on Pricing Strategy and Rewards, and is the headline ' +
+      'number used in the pitch. Everything above the INTERNAL divider is written for the prospect and mirrors the Export ' +
+      'Pitch Summary; everything below it (the adjustment waterfall, Network Fit Grade, amenity chart) is internal-only ' +
+      'and never leaves the tool.' +
+    '</p>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> Pricing Strategy defaults to “' + BDPG.escHtml(BDPG_CONFIG.PRICING_DEFAULT) + '” (' + BDPG.tutorialPct(pDefaultPct) +
+      ') and Rewards defaults to “' + BDPG.escHtml(BDPG_CONFIG.REWARDS_DEFAULT) + '” (' + BDPG.tutorialPct(rDefaultPct) + '). ' + divergeLine +
+    '</div>';
+  };
+
+  BDPG.tutorialSavingHtml = function () {
+    return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
+      'Save Profile stores everything on this page — the prospect’s info, every adjustment, and any generated ' +
+      'result — as one record kept in this browser. The Prospects tab lists every saved location side by side with ' +
+      'its Official Calculator figure and Final Potential Gallons, and reopening a row loads it back into the calculator ' +
+      'to keep refining or to re-export its Pitch Summary.' +
+    '</p>' +
+    '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
+      '<b>Example:</b> Fill in a prospect, hit Generate, then Save Profile — switch to the Prospects tab and the new ' +
+      'row is there immediately, ready to reopen or export any time, even after closing the browser.' +
+    '</div>';
+  };
+
   // Keeps BDPG.state.prospect.preEvalSignal in sync with the four
   // prerequisites and BDPG.preEval() *regardless of whether the card is
   // currently rendered open* -- Task 7 saves this value into the record,
@@ -2017,7 +2263,8 @@ function getCentroid(pathStr, axis){
   // it keeps a legacy record's signature comparable with a fresh one.
   BDPG.SIG_SKIP = {
     result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
-    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1
+    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1,
+    tutorialOpen: 1, tutorialTab: 1
   };
   BDPG.stateSig = function () {
     var s = BDPG.state, out = {};
