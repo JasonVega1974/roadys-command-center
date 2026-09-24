@@ -1183,10 +1183,21 @@ function getCentroid(pathStr, axis){
     distance: 'Distance to Interstate', corridor: 'Corridor', competition: 'Competition'
   };
 
+  // Absent and invalid are different facts and must not collapse into one
+  // return value. storedWeights() answers null for both (nothing usable came
+  // back), so the "was it thrown out?" question is asked of the RAW value
+  // instead: null here means the key genuinely is not there, and anything
+  // else -- including '' and unparseable text -- means somebody stored
+  // something. Without this split an admin whose saved set was corrupted saw
+  // the defaults with no warning and would reasonably conclude their save had
+  // never worked.
+  BDPG.storedWeightsRaw = function () {
+    try { return localStorage.getItem(BDPG.ADMIN_WEIGHTS_KEY); } catch (e) { return null; }
+  };
+
   BDPG.storedWeights = function () {
-    var raw = null;
-    try { raw = localStorage.getItem(BDPG.ADMIN_WEIGHTS_KEY); } catch (e) { return null; }
-    if (!raw) return null;
+    var raw = BDPG.storedWeightsRaw();
+    if (raw === null) return null;
     try { return JSON.parse(raw); } catch (e) { return null; }
   };
 
@@ -1201,13 +1212,41 @@ function getCentroid(pathStr, axis){
     return BusDevGallonsCalc.resolveWeights(BDPG.storedWeights());
   };
 
-  // True when something IS stored but the engine threw it out. Identity
+  // True when something IS stored but the engine threw it out -- including the
+  // shapes that parse to nothing at all ('', 'wat', 'null'), which is why the
+  // presence test reads the raw string rather than storedWeights(). Identity
   // comparison is exact: resolveWeights() returns its argument when the set is
   // valid and the shared WEIGHT_CONFIG object when it is not, and a parsed
   // JSON object is never that object.
   BDPG.storedWeightsWereDiscarded = function () {
-    var stored = BDPG.storedWeights();
-    return stored !== null && BusDevGallonsCalc.resolveWeights(stored) === BDPG_CONFIG.WEIGHT_CONFIG;
+    if (BDPG.storedWeightsRaw() === null) return false;
+    return BusDevGallonsCalc.resolveWeights(BDPG.storedWeights()) === BDPG_CONFIG.WEIGHT_CONFIG;
+  };
+
+  // A saved record's grade is a letter computed under whatever weights were in
+  // force at that moment. Weights are editable now, so the tracker has to be
+  // able to say "this letter came off a different scale" -- two prospects
+  // saved either side of a weight change otherwise sit in one table looking
+  // directly comparable. The stamp is just the six values in WEIGHT_KEYS
+  // order: nothing is hashed, so an old record's scale stays readable by eye.
+  //
+  // Stored grades are NEVER recomputed to match a new weight set. Silently
+  // rewriting a figure a rep has already read and quoted is the defect this
+  // project guards against everywhere else (see the officialSubtotal ruling).
+  // Stamp and mark; never rewrite.
+  BDPG.weightStamp = function (w) {
+    if (!w) return '';
+    var parts = [], i, v;
+    for (i = 0; i < BDPG.WEIGHT_KEYS.length; i++) {
+      v = Number(w[BDPG.WEIGHT_KEYS[i]]);
+      // A set missing a key, or holding something non-numeric, cannot describe
+      // a scale -- an empty stamp reads as "unknown", which is the honest
+      // answer, rather than a stamp with holes in it that could accidentally
+      // match another broken one.
+      if (!isFinite(v)) return '';
+      parts.push(v);
+    }
+    return parts.join('/');
   };
 
   BDPG.weightsCardHtml = function () {
@@ -3418,6 +3457,11 @@ function getCentroid(pathStr, axis){
       officialSubtotal: e ? e.officialSubtotal : null,
       finalGallons: e ? e.finalGallons : null,
       grade: r && r.grade ? r.grade.grade : '', gradeLabel: r && r.grade ? r.grade.gradeLabel : '',
+      // The scale that letter was computed on. Taken from the grade's OWN
+      // resolved weight set -- what calculateNetworkFitGrade() actually used --
+      // never from a second read of effectiveWeights() here: if those two ever
+      // disagreed, the stamp has to describe the letter sitting beside it.
+      weightStamp: r && r.grade ? BDPG.weightStamp(r.grade.weights) : '',
       preEvalSignal: s.prospect.preEvalSignal || '',
       amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || '',
       rewardsLevel: s.rewardsLevel || ''
@@ -3462,6 +3506,10 @@ function getCentroid(pathStr, axis){
       officialSubtotal: (sum.officialSubtotal === 0 || sum.officialSubtotal) ? sum.officialSubtotal : null,
       finalGallons: (sum.finalGallons === 0 || sum.finalGallons) ? sum.finalGallons : null,
       grade: str(sum.grade), gradeLabel: str(sum.gradeLabel),
+      // No fallback chain and no default: a record saved before stamping has
+      // no evidence of its scale, and '' must keep meaning "unknown" rather
+      // than being quietly filled in with today's weights.
+      weightStamp: str(sum.weightStamp),
       preEvalSignal: str(sum.preEvalSignal) || str(pr.preEvalSignal),
       amenityLevel: str(sum.amenityLevel) || str(st.amenityLevel),
       pricingLevel: str(sum.pricingLevel) || str(st.pricingLevel),
@@ -3805,6 +3853,23 @@ function getCentroid(pathStr, axis){
       var gcol = hasOwn(BDPG.GRADE_COLORS, sum.grade) ? BDPG.GRADE_COLORS[sum.grade] : 'var(--muted)';
       gradeCell = '<span class="badge" title="' + BDPG.escHtml(sum.gradeLabel || '') + '" style="background:rgba(255,255,255,.08);color:' +
         gcol + ';border:1px solid ' + gcol + '">' + BDPG.escHtml(sum.grade) + '</span>';
+      // Grade weights are admin-editable, so a stored letter is only
+      // comparable with the rest of this table if it was computed on the same
+      // scale -- and comparison between prospects is the whole point of the
+      // tracker. Three cases, and "unknown" is deliberately NOT folded into
+      // "matches": a record saved before stamping carries no evidence either
+      // way, and treating that as agreement would be a claim the data does not
+      // support. Neither marker alters the stored letter; both say the scale
+      // differs and leave regrading to a deliberate Generate + Save.
+      var curStamp = BDPG.weightStamp(BDPG.effectiveWeights());
+      if (!sum.weightStamp) {
+        gradeCell += ' <span class="badge tag-yellow" title="Saved before grade weights were recorded, so the scale behind this letter is unknown. Current weights: ' +
+          BDPG.escHtml(curStamp) + '. Re-run Generate and save to restamp it.">&#9888; weights unknown</span>';
+      } else if (sum.weightStamp !== curStamp) {
+        gradeCell += ' <span class="badge tag-yellow" title="Computed under different grade weights (' + BDPG.escHtml(sum.weightStamp) +
+          ') than the current set (' + BDPG.escHtml(curStamp) + '), so it is not directly comparable with rows graded on the current scale. ' +
+          'The stored letter is left exactly as it was saved — re-run Generate and save to regrade it.">&#9888; other weights</span>';
+      }
     }
 
     var signalCell = '—';
