@@ -808,6 +808,11 @@ function getCentroid(pathStr, axis){
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
     BDPG.regionVariance.override = out;
     BDPG.state.adminSavedJson = JSON.stringify(out, null, 2) + '\n\n// Paste this into region_variance.json to make it the new team-wide default.';
+    // The CSV confirmation now survives renders (see state.csvResultMsg), so
+    // it has to be retired by whatever replaces the numbers it describes --
+    // otherwise a hand-saved override sits under a message quoting the
+    // CSV-computed figures it just overwrote.
+    BDPG.state.csvResultMsg = null;
     // The region % set is an engine input too -- it just lives outside
     // BDPG.state. Changing it strands any result computed under the old one.
     BDPG.invalidateResult();
@@ -818,6 +823,9 @@ function getCentroid(pathStr, axis){
     localStorage.removeItem('roadysBDPGRegionOverride');
     BDPG.regionVariance.override = null;
     BDPG.state.adminSavedJson = null;
+    // Same reason as in onSaveRegionOverride: the override the message
+    // describes no longer exists.
+    BDPG.state.csvResultMsg = null;
     BDPG.invalidateResult();
     BDPG.render();
   };
@@ -932,10 +940,30 @@ function getCentroid(pathStr, axis){
   // style handling of anything that could be internal business data.
   BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
 
+  // Holds the Compute Region % confirmation (or error) text so it survives the
+  // BDPG.render() that follows. The old code wrote straight into
+  // #bdpg-csv-result and then called render(), which replaces
+  // #bdpg-content's innerHTML wholesale -- destroying the element it had just
+  // written to. The message rendered for zero frames and an admin got no
+  // textual confirmation at all; the only feedback was the sliders moving.
+  // Same mechanism as state.adminSavedJson: keep it in state, re-emit it on
+  // every render until something clears it.
+  BDPG.state.csvResultMsg = null;
+
+  // Emitted by BOTH branches of regionCsvHtml() below, so the message survives
+  // the render whether the mapping UI is still up (error path) or has reverted
+  // to the bare file input (success path, where regionCsv was reset).
+  BDPG.csvResultHtml = function () {
+    var msg = BDPG.state.csvResultMsg;
+    return '<div id="bdpg-csv-result" style="margin-top:8px;font-size:.8em"' +
+      (msg ? '' : ' hidden') + '>' + (msg ? BDPG.escHtml(msg) : '') + '</div>';
+  };
+
   BDPG.regionCsvHtml = function () {
     if (!BDPG.regionCsv.headers.length) {
       return '<div class="fg" style="margin-top:14px"><label>Optional: compute Region % from an Interstate export (per-location gallons + state)</label>' +
-        '<input type="file" accept=".csv" onchange="BDPG.onRegionCsvFile(this)"></div>';
+        '<input type="file" accept=".csv" onchange="BDPG.onRegionCsvFile(this)">' +
+        BDPG.csvResultHtml() + '</div>';
     }
     var h = BDPG.regionCsv.headers;
     function opt(v, selected) { return '<option value="' + BDPG.escHtml(v) + '"' + (selected ? ' selected' : '') + '>' + BDPG.escHtml(v) + '</option>'; }
@@ -947,7 +975,7 @@ function getCentroid(pathStr, axis){
         '<select id="bdpg-csv-gal-col" onchange="BDPG.regionCsv.gallonsCol=this.value">' +
           h.map(function (col) { return opt(col, col === BDPG.regionCsv.gallonsCol); }).join('') + '</select></div>' +
       '<button class="btn btn-accent" onclick="BDPG.onRegionCsvCompute()">Compute Region %</button>' +
-      '<div id="bdpg-csv-result" style="margin-top:8px;font-size:.8em"></div>' +
+      BDPG.csvResultHtml() +
     '</div>';
   };
 
@@ -962,6 +990,9 @@ function getCentroid(pathStr, axis){
       BDPG.regionCsv.rows = rows.slice(1);
       BDPG.regionCsv.stateCol = rows[0].filter(function (col) { return /state/i.test(col); })[0] || rows[0][0];
       BDPG.regionCsv.gallonsCol = rows[0].filter(function (col) { return /gallon/i.test(col); })[0] || rows[0][0];
+      // A new upload starts a new attempt -- the previous run's confirmation
+      // describes numbers that are no longer on screen.
+      BDPG.state.csvResultMsg = null;
       BDPG.render();
     };
     reader.readAsText(file);
@@ -986,7 +1017,8 @@ function getCentroid(pathStr, axis){
     });
 
     if (!netCount) {
-      document.getElementById('bdpg-csv-result').textContent = 'No usable rows found — check the column mapping.';
+      BDPG.state.csvResultMsg = 'No usable rows found — check the column mapping.';
+      BDPG.render();
       return;
     }
 
@@ -1000,10 +1032,23 @@ function getCentroid(pathStr, axis){
     // only on the next reload.
     var out = { asOf: (new Date()).toISOString().slice(0, 7) };
     BDPG.REGION_KEYS.forEach(function (region) { out[region] = 0; });
+    // A real per-location CSV legitimately produces figures far outside the
+    // formula's +/-REGION_PCT_BOUND contract (measured: +85.2 / -97.9 from a
+    // five-row fixture). Every READER already clamps, so the formula was never
+    // at risk -- but the raw values were being persisted to
+    // roadysBDPGRegionOverride, so storage held numbers the contract forbids
+    // and the file on disk disagreed with every surface that reads it. Clamp
+    // at the write too: what is stored is what will be used, and if
+    // REGION_PCT_BOUND is ever widened an old out-of-contract value cannot
+    // silently go live. Same clamp onSaveRegionOverride() applies, from the
+    // same single constant.
+    var clamped = 0;
     Object.keys(sums).forEach(function (region) {
       var regionAvg = sums[region] / counts[region];
       var pct = Math.round(((regionAvg / networkAvg) - 1) * 1000) / 10;
-      out[region] = pct;
+      var kept = BDPG.clampRegionPct(pct);
+      if (kept !== pct) clamped++;
+      out[region] = kept;
     });
 
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
@@ -1012,14 +1057,20 @@ function getCentroid(pathStr, axis){
     // onClearRegionOverride) -- same reason it has to invalidate.
     BDPG.invalidateResult();
     BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
-    // BDPG.render() rebuilds adminPanelHtml()'s innerHTML wholesale, and with
-    // regionCsv.headers now empty it reverts to the plain file-input markup
-    // (no #bdpg-csv-result element in it) — that's the whole point, it's the
-    // proof the uploaded rows were discarded rather than left mapped on
-    // screen. So the confirmation message has to be set on the OLD DOM
-    // before render() replaces it; setting it after would hit a null element.
-    var resultEl = document.getElementById('bdpg-csv-result');
-    if (resultEl) resultEl.textContent = 'Computed and saved locally: ' + JSON.stringify(out);
+    // Into state, then render: BDPG.render() rebuilds adminPanelHtml()'s
+    // innerHTML wholesale, so a message written into the live element here
+    // would be destroyed a line later (it used to be, every time). Reverting
+    // to the bare file input is still the point -- it is the proof the
+    // uploaded rows were discarded rather than left mapped on screen -- and
+    // csvResultHtml() re-emits the message into that markup too.
+    //
+    // The figures printed are the CLAMPED ones now stored, so the message, the
+    // sliders and the calculation all state the same numbers; the count says
+    // outright when something was truncated rather than leaving the admin to
+    // notice a slider that did not go where the message said.
+    BDPG.state.csvResultMsg = 'Computed and saved locally: ' + JSON.stringify(out) +
+      (clamped ? (' (' + clamped + ' region' + (clamped === 1 ? '' : 's') + ' clamped to the ±' +
+        BDPG.REGION_PCT_BOUND + '% limit)') : '');
     BDPG.render();
   };
 
@@ -1249,6 +1300,30 @@ function getCentroid(pathStr, axis){
       parts.push(v);
     }
     return parts.join('/');
+  };
+
+  // Same pattern as weightStamp(), for the other admin-editable input that a
+  // stored figure was computed under: the region %. It deserves the guard more
+  // than the grade did -- the grade is an internal letter, while the region %
+  // scales officialSubtotal, the one number the packet advertises as
+  // reproducing Roady's published calculator. This branch made it more
+  // volatile in two ways at once (a drag-anywhere slider replaced a number
+  // input, and the 5->8 re-partition moved TX/MI/OR records into different
+  // region buckets), so a row saved this morning and a row saved after an
+  // admin nudged a slider are not the same measurement.
+  //
+  // Stored gallons are NEVER recomputed to match a new region %. Stamp and
+  // mark; never rewrite -- the same ruling that settled officialSubtotal on
+  // the previous branch and the grade weights on this one.
+  //
+  // Percentage points to one decimal, which is exactly what every surface
+  // renders (the slider readout, the waterfall row, the admin panel), so an
+  // old record's scale stays readable by eye rather than being hashed. ''
+  // means "no evidence", and must never be filled in with today's value.
+  BDPG.regionPctStamp = function (pct) {
+    var n = Number(pct);
+    if (!isFinite(n)) return '';
+    return (n * 100).toFixed(1);
   };
 
   BDPG.weightsCardHtml = function () {
@@ -2106,11 +2181,20 @@ function getCentroid(pathStr, axis){
   BDPG.regionChipsHtml = function () {
     var active = BDPG.state.state ? BusDevGallonsCalc.resolveRegion(BDPG.state.state) : null;
     var nc = BDPG.networkContext;
-    return '<div class="bdpg-chips">' + Object.keys(BDPG.REGION_COLORS).map(function (r) {
+    // Ordered from BDPG.REGION_KEYS (the config's own BDPG_REGION_MAP order),
+    // like the admin sliders and every other region surface. Iterating
+    // REGION_COLORS instead put the original five first and the three new ones
+    // last, so the legend listed regions in an order that matched nothing else
+    // in the tool -- and left region order defined in two places.
+    return '<div class="bdpg-chips">' + BDPG.REGION_KEYS.map(function (r) {
       var pct = BDPG.effectiveRegionPct(r) * 100;
       var count = (nc && nc.byRegion && nc.byRegion[r]) ? nc.byRegion[r].total : null;
+      // Colour map and key list are both config-derived and carry the same
+      // eight keys, but a plain lookup would emit "background:undefined" if a
+      // future region were added to one and not the other.
+      var dot = hasOwn(BDPG.REGION_COLORS, r) ? BDPG.REGION_COLORS[r] : 'var(--muted)';
       return '<div class="bdpg-chip' + (r === active ? ' on' : '') + '">' +
-        '<span class="bdpg-chip-dot" style="background:' + BDPG.REGION_COLORS[r] + '"></span>' +
+        '<span class="bdpg-chip-dot" style="background:' + dot + '"></span>' +
         '<span class="bdpg-chip-name">' + BDPG.escHtml(r) + '</span>' +
         '<span class="bdpg-chip-meta">' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% · ' +
           (count === null ? '—' : count + ' loc') + '</span>' +
@@ -2927,12 +3011,43 @@ function getCentroid(pathStr, axis){
     if (!key || !hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, key)) return '';
     var b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[key];
     var meta = BDPG_CONFIG.NETWORK_BASELINE_META;
+
+    // The caption has to describe THIS region's sample, not the network's.
+    // meta.locations (227) is the size of the whole 12-month network report;
+    // captioning a per-region average with it told an owner the figure was far
+    // better evidenced than it is -- Texas' 7,003 gal/mo comes from 13
+    // locations, and the config says so (lowSample/n), but that caveat only
+    // ever reached the admin panel.
+    //
+    // Two shapes, and the second must never borrow the first's number:
+    //   n known   -> caption the region's own count, plus the low-sample
+    //                caveat when the config flags it.
+    //   n unknown -> say what IS known (the figure comes out of the
+    //                227-location network report) and attribute 227 to the
+    //                REPORT, never to the region.
+    // Nothing here hardcodes Texas or 13; both come from the config entry.
+    var hasN = isFinite(Number(b.n)) && Number(b.n) > 0;
+    var sample = hasN
+      ? ('12mo avg of ' + BDPG.escHtml(String(Number(b.n))) + ' Roady\'s locations in this region, as of ' +
+         BDPG.escHtml(meta.asOf))
+      : ('12mo avg, as of ' + BDPG.escHtml(meta.asOf) + ' · from Roady\'s ' +
+         BDPG.escHtml(String(meta.locations)) + '-location network report');
+
+    // var(--muted), not var(--yellow): inside #bdpg-print-only the @media print
+    // block re-points --muted to #555 but leaves --yellow alone, so a yellow
+    // caveat would print illegibly on white and break the packet's
+    // everything-is-black-ink property. The glyph carries the signal.
+    var lowSampleLine = b.lowSample
+      ? '<div style="font-size:.72em;color:var(--muted);margin-top:2px">&#9888; Small sample — this regional average is drawn from ' +
+        (hasN ? (BDPG.escHtml(String(Number(b.n))) + ' locations') : 'a small number of locations') + '.</div>'
+      : '';
+
     return '<div style="margin-top:6px;font-size:.85em">' +
       '<span class="bdpg-lbl" style="display:inline">Roady\'s Network Average (your region):</span> ' +
       '<b>' + BDPG.fmtGal(b.avgGalMo) + ' gal/mo</b>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
-        BDPG.escHtml(BDPG.regionDisplayName(key)) + ' · 12mo avg, ' + meta.locations +
-        ' locations, as of ' + BDPG.escHtml(meta.asOf) + '</div>' +
+        BDPG.escHtml(BDPG.regionDisplayName(key)) + ' · ' + sample + '</div>' +
+      lowSampleLine +
     '</div>';
   };
 
@@ -3035,9 +3150,25 @@ function getCentroid(pathStr, axis){
         '<tr style="font-weight:700;border-top:1px solid var(--border)"><td>6. Final Potential Gallons</td><td style="text-align:right">' + BDPG.fmtGal(e.finalGallons) + '</td></tr>' +
       '</tbody></table></div>';
 
+    // The caption told the rep what does NOT move the grade but, since weights
+    // became admin-editable, stopped naming the thing that does. The tracker
+    // row carries a weightStamp; the screen the rep actually reads during the
+    // call carried nothing, so a letter scored under a hand-tuned set looked
+    // identical to one scored under the defaults. Stamped from the grade's OWN
+    // resolved weights -- the set that produced the letter beside it -- not
+    // from a second read of effectiveWeights(). This sits BELOW the INTERNAL
+    // divider (see resultsHtml's return), so it never reaches the packet.
+    var gradeWeightStamp = BDPG.weightStamp(g.weights);
+    var weightsAreDefault = g.weights === BDPG_CONFIG.WEIGHT_CONFIG;
+    var weightNote = gradeWeightStamp
+      ? ' Scored under grade weights ' + BDPG.escHtml(gradeWeightStamp) + ' (' +
+        (weightsAreDefault ? 'defaults' : 'admin-set') +
+        ') — changing those weights in Admin moves the letter.'
+      : '';
     var rangeSection = '<div class="bdpg-hero" style="margin-top:14px">' +
       '<div class="cc"><div class="cc-lbl">Position in Network Range</div>' + BDPG.rangeBarHtml(e) +
-        '<div style="font-size:.68em;color:var(--muted);margin-top:6px">Grade is scored from the official subtotal and is never affected by Pricing Strategy.</div></div>' +
+        '<div style="font-size:.68em;color:var(--muted);margin-top:6px">Grade is scored from the official subtotal and is never affected by Pricing Strategy.' +
+        weightNote + '</div></div>' +
       BDPG.gradeBadgeHtml(g) +
     '</div>';
 
@@ -3309,9 +3440,23 @@ function getCentroid(pathStr, axis){
     } else if (s.roadway === 'Highway') {
       out.push('Your Highway location sits on a steady regional freight corridor.');
     }
+    // e.regionPct is the ADMIN'S +/-10% manual slider, not a measurement. This
+    // bullet used to read "the <region> region runs X% above the network
+    // average", which describes it as a comparison against network
+    // performance -- a claim it has never been entitled to make, and one the
+    // packet now visibly contradicts: networkAverageLineHtml() prints the real
+    // 12-month regional figure a few centimetres above this list (Midwest
+    // 21,737 gal/mo, +76.1% vs the 12,347 network average), so a +7.5% slider
+    // described as the same quantity is wrong by an order of magnitude on a
+    // sheet handed to the owner. The network-average line is the only surface
+    // entitled to a "vs network" claim; this one names the adjustment as an
+    // adjustment. Do not reintroduce a network comparison here -- if one is
+    // ever wanted in this list it must come from
+    // BDPG_NETWORK_BASELINES[region].pctVsNetwork, never from regionPct.
     if (e.regionPct > 0) {
-      out.push('The ' + BDPG.regionDisplayName(s.result.region) + ' region runs ' + (e.regionPct * 100).toFixed(1) +
-        '% above the network average — your geography works in your favor.');
+      out.push('Your baseline carries a +' + (e.regionPct * 100).toFixed(1) +
+        '% regional adjustment for the ' + BDPG.regionDisplayName(s.result.region) +
+        ' region — your geography works in your favor.');
     }
     if (e.amenityPct > 0) {
       out.push('Your amenity level — ' + s.amenityLevel + ' — already places you above the network average for driver satisfaction.');
@@ -3507,6 +3652,12 @@ function getCentroid(pathStr, axis){
       // never from a second read of effectiveWeights() here: if those two ever
       // disagreed, the stamp has to describe the letter sitting beside it.
       weightStamp: r && r.grade ? BDPG.weightStamp(r.grade.weights) : '',
+      // The region scale those gallons were computed on. Taken from the
+      // estimate's OWN regionPct -- what calculateEstimate() actually used --
+      // never from a second read of effectiveRegionPct() here, for the same
+      // reason weightStamp reads the grade's own weights: the stamp has to
+      // describe the figure sitting beside it, not today's slider.
+      regionPctStamp: e ? BDPG.regionPctStamp(e.regionPct) : '',
       preEvalSignal: s.prospect.preEvalSignal || '',
       amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || '',
       rewardsLevel: s.rewardsLevel || ''
@@ -3555,6 +3706,12 @@ function getCentroid(pathStr, axis){
       // no evidence of its scale, and '' must keep meaning "unknown" rather
       // than being quietly filled in with today's weights.
       weightStamp: str(sum.weightStamp),
+      // Same no-fallback rule as weightStamp: a record saved before region
+      // stamping has no evidence of the scale its gallons were computed on,
+      // and '' must keep meaning "unknown". str() also turns a hand-edited
+      // number or object into '' rather than letting it be compared as a
+      // stamp.
+      regionPctStamp: str(sum.regionPctStamp),
       preEvalSignal: str(sum.preEvalSignal) || str(pr.preEvalSignal),
       amenityLevel: str(sum.amenityLevel) || str(st.amenityLevel),
       pricingLevel: str(sum.pricingLevel) || str(st.pricingLevel),
@@ -3834,6 +3991,45 @@ function getCentroid(pathStr, axis){
       ? BDPG.escHtml(sum.profile) + ' · ' + BDPG.escHtml(sum.roadway) : '—';
 
     var officialCell = isNum(sum.officialSubtotal) ? BDPG.fmtGal(sum.officialSubtotal) : '—';
+    // The region % is admin-editable, so a stored subtotal is only comparable
+    // with the rest of this table -- and with what this row's own Export Pitch
+    // Summary will print, since that recomputes from today's slider -- if it
+    // was computed on the same region scale. Exactly the three cases the Grade
+    // cell's weight marker uses, for exactly the same reason, and "unknown" is
+    // again NOT folded into "matches": a record saved before stamping carries
+    // no evidence either way.
+    //
+    // Deliberately TWO markers on this row rather than one combined
+    // "different basis" badge. The two inputs move two different numbers: the
+    // weights move only the letter, the region % moves only the gallons, and
+    // they move independently. A single badge would have to sit in one cell
+    // and implicate the other -- marking the Grade when only the region slider
+    // moved says the letter is off-scale when it is not, and vice versa. Each
+    // marker instead names the figure it describes, and the two share one
+    // visual vocabulary (same glyph, same tag-yellow badge) so they still read
+    // as one family of provenance warnings.
+    //
+    // Appended AFTER the number, never before: the delegated sort handler
+    // parseFloat()s the cell text, which takes the leading number and stops --
+    // "7,650 ! other region %" still sorts as 7650, the same way the Final
+    // cell's arrows already do. A badge in front would break numeric sort.
+    //
+    // Skipped entirely when the region could not be resolved: the row already
+    // carries the louder "region updated — re-select state" flag, and
+    // effectiveRegionPct('') is 0, so comparing against it would assert a
+    // scale nobody chose.
+    if (isNum(sum.officialSubtotal) && sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
+      var curRegionStamp = BDPG.regionPctStamp(BDPG.effectiveRegionPct(sum.region));
+      if (!sum.regionPctStamp) {
+        officialCell += ' <span class="badge tag-yellow" title="Saved before the region adjustment was recorded, so the region % behind these gallons is unknown. The current ' +
+          BDPG.escHtml(sum.region) + ' adjustment is ' + BDPG.escHtml(curRegionStamp) +
+          '%. Both stored figures are left exactly as they were saved — re-run Generate and save to restamp them.">&#9888; region scale unknown</span>';
+      } else if (sum.regionPctStamp !== curRegionStamp) {
+        officialCell += ' <span class="badge tag-yellow" title="Computed under a ' + BDPG.escHtml(sum.regionPctStamp) +
+          '% region adjustment; the current ' + BDPG.escHtml(sum.region) + ' adjustment is ' + BDPG.escHtml(curRegionStamp) +
+          '%, so this figure and the Final Gallons beside it are not directly comparable with rows computed on the current scale — and this row\'s Export Pitch Summary, which recomputes, will print different numbers. The stored figures are left exactly as they were saved — re-run Generate and save to recompute them.">&#9888; other region %</span>';
+      }
+    }
 
     var finalCell = isNum(sum.finalGallons) ? BDPG.fmtGal(sum.finalGallons) : '—';
     if (isNum(sum.finalGallons) && isNum(sum.officialSubtotal)) {

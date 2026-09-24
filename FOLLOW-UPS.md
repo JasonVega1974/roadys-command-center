@@ -57,20 +57,38 @@ network average from an uploaded per-location CSV. That is the same quantity
 12-month network report (227 locations) rather than from whatever CSV happens
 to be to hand. And since the ±10 clamp landed in `effectiveRegionPct()`, its
 output no longer reaches the formula as computed: a fixture producing
-Northwest +85.2% and West −97.9% stores those figures verbatim in
-`roadysBDPGRegionOverride`, but every reader clamps them to +10.0 / −10.0.
+Northwest +85.2% and West −97.9% is truncated to +10.0 / −10.0 before it can
+affect anything.
 
-**Symptom:** the tool's own confirmation line prints the **raw** object
-(`'Computed and saved locally: ' + JSON.stringify(out)`), so an admin reads
-"Northwest: 85.2" in the message while the slider beside it sits at 10.0 and
-the calculation uses 10.0. Nothing is wrong with the number; the disagreement
-between the three surfaces is what will be misread.
+**Symptom (corrected 2026-09-24 — the earlier description of this entry was
+wrong):** this entry used to say an admin "reads 'Northwest: 85.2' in the
+message" while the slider sat at 10.0. That could never happen. The
+confirmation line was written into `#bdpg-csv-result` and then `BDPG.render()`
+replaced `#bdpg-content`'s `innerHTML` wholesale, destroying the element it had
+just been written to — the message rendered for **zero frames** and the only
+feedback an admin ever got was the sliders visibly moving. So option 1 below
+would have fixed nothing on its own.
+
+Both halves are now fixed (final fix round, whole-branch review M-1/M-2):
+
+- The confirmation lives in `BDPG.state.csvResultMsg` and is re-emitted by
+  `BDPG.csvResultHtml()` on every render, so it survives and is actually read.
+  It is cleared by a new upload and by Save/Clear override, so it can never
+  describe numbers that are no longer in force.
+- `onRegionCsvCompute()` now clamps **at the write** as well as the read, so
+  `roadysBDPGRegionOverride` never holds an out-of-contract value, and the
+  message states how many regions were truncated.
+
+That makes **option 1 done**. The remaining question — options 2 and 3 — is
+still open and still a product call.
 
 **Why it was not decided here:** retiring or redirecting a working admin tool
 is a product call. Three options, all coherent:
 
-1. **Leave it truncating** and make the confirmation line print the clamped
-   values (and say they were clamped), so the three surfaces agree.
+1. ~~**Leave it truncating** and make the confirmation line print the clamped
+   values (and say they were clamped), so the three surfaces agree.~~
+   **Implemented 2026-09-24.** The message, the stored file, the sliders and
+   the calculation now all state the same clamped numbers.
 2. **Redirect it to write context** — have it produce `BDPG_NETWORK_BASELINES`-
    shaped display figures instead of a formula override, which is what the
    unclamped range −43.3%…+76.1% is actually good for.
@@ -289,6 +307,49 @@ time to it.
 (Unrelated to the calculator's own admin PIN, which is deliberately **unset**
 by default and has no hardcoded value anywhere — see
 `BDPG.ADMIN_PIN_KEY` / `BDPG.storedAdminPin()`.)
+
+---
+
+## 13. Tracker Summary's Grade Distribution aggregates across weight scales without a marker
+
+**Where:** `bus-dev-potential-gallons/index.html` — `BDPG.trackerStatsHtml()`
+(≈line 4195): the `Avg Official Subtotal` stat (≈4247) and the
+`Grade Distribution` chips (≈4251).
+
+**Symptom:** every tracker *row* honestly marks a letter computed under other
+weights (`⚠ other weights` / `⚠ weights unknown`), but the summary chips
+(`A ×1  B ×1  C ×1  D ×1`) count those letters together with nothing saying they
+are not on one scale. The same argument now applies to the `Avg Official
+Subtotal` figure, since the final fix round added a per-row `⚠ other region %`
+marker for stored gallons computed under a different region adjustment.
+
+**Why it was deferred (final whole-branch review, M-4):** it is the aggregate
+form of the per-row stamping this branch already built twice (grade weights,
+then region %), and it wants its own decision about what a mixed-scale
+distribution should *display* — count only same-scale rows, split the chip, or
+caption the block — rather than a marker bolted on as a last commit. No data is
+wrong; the roll-up is simply less qualified than the rows beneath it.
+
+---
+
+## 14. "Region performance" can never read green out of the box, so Pre-Eval can never say "Strong candidate"
+
+**Where:** `bus-dev-potential-gallons/index.html` — the Pre-Evaluation region
+chip (`c2`, ≈line 1673) and the `judged` chip set (≈1736–1738).
+
+**Symptom:** `region_variance.json` ships all zeros, so the region-performance
+chip reads "0% (not configured)" — yellow — for every prospect, and because
+chips 1–4 are the judged set the **Overall signal can never reach "Strong
+candidate"** on a fresh install. Verified: the same prospect flipped Moderate →
+Strong only after an admin set +7.5%.
+
+**Why it is recorded rather than fixed (final whole-branch review, M-5):** the
+chip is honest — there genuinely is no configured variance — so this is a
+product observation, not a defect. It is worth the user's attention because
+this branch has just added the real per-region 12-month figures
+(`BDPG_NETWORK_BASELINES`), which would make that chip meaningful as display
+context without touching the formula. That would be a deliberate design change
+to what the chip measures, not a bug fix.
 
 ---
 
