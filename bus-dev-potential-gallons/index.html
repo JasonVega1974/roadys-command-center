@@ -2680,8 +2680,28 @@ function getCentroid(pathStr, axis){
   // BDPG.state, so it is never serialized into a snapshot.
   BDPG.currentProfileId = null;
 
+  // Returns true when a result was computed and written to state, false on
+  // every bail -- so a caller other than the button (BDPG.onTrackerExport()
+  // is the one that exists today, but this is the one place that protects
+  // any future one too) can tell a real bail apart from success without
+  // re-deriving the reason itself, and never has to guess from state.result
+  // alone whether the attempt even ran.
   BDPG.onGenerate = function () {
     var s = BDPG.state;
+    // The amenity confirmation gate (Task 11) belongs HERE, not only in
+    // generateButtonHtml()'s `can` check. The disabled attribute only stops a
+    // click on the visible button -- it does nothing for BDPG.onTrackerExport(),
+    // which calls this function directly, or for any future caller that does
+    // the same. The harm the gate exists to prevent (an unsurveyed site's
+    // suggestAmenityLevel({}) -5% presented to an owner as an observed fact)
+    // reaches the customer through whichever path gets to window.print(), and
+    // onExportPdf() -- the only caller of window.print() -- gates on nothing
+    // but BDPG.state.result being set. So this is the one chokepoint that
+    // actually protects every route to that result, current and future.
+    if (!BDPG.amenityConfirmed()) {
+      alert('Pick a Confirmed Amenity Level in Step 2 before generating -- the suggested level is an assumption, not a confirmed observation of this site, until it is explicitly confirmed.');
+      return false;
+    }
     // Before anything reads them: the estimate below, and the pitch builders
     // that read s.pricingLevel / s.rewardsLevel live off state once a result
     // exists, must all see the same in-list value. See BDPG.normalizeLevels().
@@ -2695,7 +2715,7 @@ function getCentroid(pathStr, axis){
       pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT,
       rewardsLevel: s.rewardsLevel || BDPG_CONFIG.REWARDS_DEFAULT
     });
-    if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return; }
+    if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return false; }
 
     var grade = BusDevGallonsCalc.calculateNetworkFitGrade({
       profile: s.profile, officialSubtotal: estimate.officialSubtotal, supportingDetails: s.supportingDetails,
@@ -2715,6 +2735,7 @@ function getCentroid(pathStr, axis){
     // notice must go with them.
     s.resultStale = false;
     BDPG.render();
+    return true;
   };
 
   // Mirrors the six rows of the on-screen waterfall table exactly, so the chart
@@ -4097,6 +4118,19 @@ function getCentroid(pathStr, axis){
     // dialog -- all before BDPG.state is touched.
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
       toast('This saved prospect is missing a Location Profile/Roadway and can\'t produce an Export Pitch Summary.', 'err');
+      return;
+    }
+    // Same mirror-the-internal-check idea as the baseline-row check just
+    // above, this time for BDPG.onGenerate()'s amenity confirmation gate
+    // (Task 11): BDPG.amenityConfirmed() reads BDPG.state, which does not yet
+    // hold this record (onLoadProfile() has not run), so the saved record's
+    // own fields are read the same way here. Without this, an unconfirmed
+    // legacy profile would fail silently-ish inside the try/catch below and
+    // surface only the generic "Could not generate" toast -- true, but it
+    // does not tell the rep the one thing they can actually do about it:
+    // open the profile and confirm an Amenity Level in Step 2.
+    if (!(st.amenityOverridden && BDPG_CONFIG.AMENITY_LEVELS.indexOf(st.amenityLevel) >= 0)) {
+      toast('This saved prospect has no Confirmed Amenity Level -- open it and confirm one in Step 2 before exporting.', 'err');
       return;
     }
 
