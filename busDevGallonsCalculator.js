@@ -202,6 +202,17 @@
       if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 100) return BDPG_CONFIG.WEIGHT_CONFIG;
       total += v;
     }
+    // Exactly the six keys, not "at least" them. An object carrying a seventh
+    // key is not a valid set with harmless extras -- it is evidence the value
+    // came from something other than this tool's own six sliders (a hand edit,
+    // an older or newer shape, another product's config). Accepting it would
+    // pass the strays straight through into grade.weights and, from there,
+    // into a saved record's weight stamp. Own enumerable keys only, which is
+    // all JSON.parse can produce; the six are already known present, so a
+    // count is the whole test. Runs after the loop so a non-object argument
+    // has already fallen back on the typeof check above rather than reaching
+    // Object.keys().
+    if (Object.keys(w).length !== WEIGHT_KEYS.length) return BDPG_CONFIG.WEIGHT_CONFIG;
     return total === 100 ? w : BDPG_CONFIG.WEIGHT_CONFIG;
   }
 

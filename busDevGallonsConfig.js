@@ -80,10 +80,21 @@
   // compute 0.5 x rangePositionPct + 0.5 x mean(5 signals), i.e. 50% on
   // range position and 10% each on the five signals below. Do not change
   // these defaults without re-verifying every existing grade assertion.
-  var WEIGHT_CONFIG = {
+  //
+  // Frozen, and it has to stay frozen rather than being copied at the point of
+  // use. resolveWeights() returns THIS object on every fallback, so without the
+  // freeze one caller writing to the set it was handed would silently re-scale
+  // every future grade in the session. Freezing is the fix that keeps the
+  // object's identity intact: the page's storedWeightsWereDiscarded() asks
+  // "did the engine hand back the shared defaults?" with `=== WEIGHT_CONFIG`,
+  // and that question is what makes the "your saved weight set was discarded"
+  // notice fire. Returning a defensive copy instead would answer false for
+  // every corrupt set and kill the notice, so: freeze, do not clone. Page and
+  // engine are both strict-mode, so a write here throws instead of no-opping.
+  var WEIGHT_CONFIG = Object.freeze({
     rangePosition: 50, condition: 10, hours: 10,
     distance: 10, corridor: 10, competition: 10
-  };
+  });
 
   var AMENITY_LEVELS = ['Very limited', 'Average', 'Good / full service'];
 

@@ -503,6 +503,37 @@ test('resolveWeights falls back to defaults for a set that does not sum to 100',
   assert.deepEqual(BusDevGallonsCalc.resolveWeights(null), BDPG_CONFIG.WEIGHT_CONFIG);
 });
 
+test('resolveWeights rejects a valid six-key set carrying extra keys', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const valid = { rangePosition: 50, condition: 10, hours: 10, distance: 10, corridor: 10, competition: 10 };
+  // The same six values, summing to 100, plus strays. Whole-set rejection.
+  const withExtras = Object.assign({}, valid, { fuelBrand: 'x', rangePositionn: 99 });
+  assert.equal(BusDevGallonsCalc.resolveWeights(withExtras), BDPG_CONFIG.WEIGHT_CONFIG,
+    'an object with extra keys must fall back, not pass through');
+  // Proves the assertion above is not vacuous: strip the extras and the very
+  // same values are accepted, so it is the extra keys doing the rejecting.
+  assert.equal(BusDevGallonsCalc.resolveWeights(valid), valid);
+  // And the strays must not reach grade.weights (where the tracker stamps them).
+  const g = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Medium truck stop', officialSubtotal: 9000,
+    supportingDetails: {}, weights: withExtras
+  });
+  assert.equal(Object.keys(g.weights).length, 6);
+  assert.equal(Object.prototype.hasOwnProperty.call(g.weights, 'fuelBrand'), false);
+});
+
+test('WEIGHT_CONFIG is frozen, so a caller cannot corrupt the shared defaults', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  assert.equal(Object.isFrozen(BDPG_CONFIG.WEIGHT_CONFIG), true);
+  // resolveWeights() hands this exact object back on every fallback, and the
+  // page's discard notice depends on that identity -- so the freeze, not a
+  // defensive copy, is what has to make the write below impossible.
+  const handedBack = BusDevGallonsCalc.resolveWeights({ rangePosition: 1 });
+  assert.equal(handedBack, BDPG_CONFIG.WEIGHT_CONFIG);
+  assert.throws(() => { handedBack.rangePosition = 0; }, TypeError);
+  assert.equal(BDPG_CONFIG.WEIGHT_CONFIG.rangePosition, 50);
+});
+
 test('a valid custom weight set changes the grade but never officialSubtotal', () => {
   const inputs = { profile: 'Medium truck stop', officialSubtotal: 9000,
     supportingDetails: { condition:'New or remodeled', hours:'24/7', distance:'On exit',

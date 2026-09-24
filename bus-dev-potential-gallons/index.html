@@ -117,7 +117,9 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
 #bdpg-usa-svg path.sel{stroke:var(--accent);stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(0,200,255,.7));}
 #bdpg-usa-svg path.nomap{cursor:default;}
-/* .nomap paths (AK, HI, DC -- states with no network region) would otherwise
+/* .nomap paths (DC alone today -- anything BDPG_REGION_MAP does not cover;
+   AK and HI were in this set until the 8-region model mapped them to
+   Northwest and West) would otherwise
    inherit the generic path:hover glow above, which reads as "clickable" even
    though onclick is a no-op for them. Opt them back out of the hover styling
    while leaving the tooltip in place -- it usefully explains why nothing
@@ -3447,7 +3449,11 @@ function getCentroid(pathStr, axis){
       stats.push([BDPG.fmtGal(nc.activeTotal), 'active locations across the Roady\'s network']);
     }
     if (typeof rd.total === 'number') {
-      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + BDPG.regionDisplayName(r.region) + ')']);
+      // escHtml for the same reason as the byType label below: this string is
+      // interpolated into HTML. region is a trusted config key today, so this
+      // is consistency rather than a live fix -- but the escaping convention
+      // is what makes "is this value trusted?" a question nobody has to ask.
+      stats.push([BDPG.fmtGal(rd.total), 'locations in your region (' + BDPG.escHtml(BDPG.regionDisplayName(r.region)) + ')']);
     }
     // byType keys come from the source CSV's Type column while locationType
     // comes from the ⓪ card's own list; they do not always match, which is why

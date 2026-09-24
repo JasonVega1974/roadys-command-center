@@ -2,11 +2,141 @@
 
 Defects found during development and deliberately deferred, with the evidence
 behind the decision. None is a blocker; each was proven not to affect data a
-real user already has. Newest first.
+real user already has. Newest first. Items closed by later work move to
+**Resolved** at the bottom rather than being deleted, so the evidence that
+produced them stays findable.
+
+Entries 1 and 2 are **awaiting a decision from the user**, not implementation
+work waiting for a slot.
 
 ---
 
-## 1. The headline gallons figure and its ×12 annual math are built in three places
+## 1. Awaiting a decision: the day-mode map selection ring is rescued by a night-mode artifact
+
+**Where:** `bus-dev-potential-gallons/index.html` — `#bdpg-usa-svg path.sel`
+(≈line 118) sets `stroke:var(--accent); stroke-width:2.2;
+filter:drop-shadow(0 0 7px rgba(0,200,255,.7))`, and the day-mode override
+(≈line 36) re-points **only** the stroke colour:
+`body.day-mode #bdpg-usa-svg path.sel{stroke:var(--accent);}`.
+
+**Symptom:** in day mode `--accent` is `#0078D4` and the Northwest fill is
+`#0891B2`. Computed relative luminances are 0.1819 and 0.2352, giving a
+contrast ratio of **1.23:1** between the selection ring and the shape it is
+supposed to outline — well under any legibility threshold. Dark mode is clean
+(ring `rgb(0,200,255)` on `rgba(8,145,178,.85)`). What keeps day mode usable
+is the `drop-shadow` glow, which is hardcoded cyan and **not theme-scoped**:
+the light theme is leaning on a dark-theme value that nothing guarantees will
+stay.
+
+**Why it is not being fixed here:** the teal is the user's own colour choice
+and the 8-region palette shipped with their conditional approval, so which
+remedy to take is theirs. All three are cheap and none needs the other:
+
+1. **Theme-scope the glow** — add a `body.day-mode …path.sel{filter:…}` rule
+   using a day-appropriate colour, so the ring stops depending on a cyan value
+   that only makes sense at night. Smallest change, keeps every hue.
+2. **Thicken the day-mode `.sel` stroke** — raise `stroke-width` in the
+   day-mode block so the ring reads by width rather than by contrast. Also
+   keeps every hue.
+3. **Change the Northwest hue** — move `#0891B2` far enough from `#0078D4`
+   that the ring contrasts on its own. Largest blast radius: the colour is
+   also used by the region chips and the map legend.
+
+Not blocking, and deliberately not decided by an implementer.
+
+---
+
+## 2. Open decision: `onRegionCsvCompute()` is now largely redundant and is silently truncated
+
+**Where:** `bus-dev-potential-gallons/index.html` — `BDPG.onRegionCsvCompute()`
+(≈line 970), the ⚙ Weights tab's "Compute Region %" tool.
+
+**What changed:** the tool computes each region's average gallons against the
+network average from an uploaded per-location CSV. That is the same quantity
+`BDPG_NETWORK_BASELINES` now encodes as committed config, from the real
+12-month network report (227 locations) rather than from whatever CSV happens
+to be to hand. And since the ±10 clamp landed in `effectiveRegionPct()`, its
+output no longer reaches the formula as computed: a fixture producing
+Northwest +85.2% and West −97.9% stores those figures verbatim in
+`roadysBDPGRegionOverride`, but every reader clamps them to +10.0 / −10.0.
+
+**Symptom:** the tool's own confirmation line prints the **raw** object
+(`'Computed and saved locally: ' + JSON.stringify(out)`), so an admin reads
+"Northwest: 85.2" in the message while the slider beside it sits at 10.0 and
+the calculation uses 10.0. Nothing is wrong with the number; the disagreement
+between the three surfaces is what will be misread.
+
+**Why it was not decided here:** retiring or redirecting a working admin tool
+is a product call. Three options, all coherent:
+
+1. **Leave it truncating** and make the confirmation line print the clamped
+   values (and say they were clamped), so the three surfaces agree.
+2. **Redirect it to write context** — have it produce `BDPG_NETWORK_BASELINES`-
+   shaped display figures instead of a formula override, which is what the
+   unclamped range −43.3%…+76.1% is actually good for.
+3. **Retire it** — `BDPG_NETWORK_BASELINES` already carries the committed
+   numbers, and the ±10 slider already covers manual nudges.
+
+Whichever is chosen, do not simply widen the clamp: `REGION_PCT_BOUND` is the
+formula's contract, and the previous branch's packet read "the West region
+runs 163.2% above the network average" precisely because that contract was not
+enforced (see **Resolved B**).
+
+---
+
+## 3. `resolveRegion()` does not trim whitespace
+
+**Where:** `busDevGallonsCalculator.js` — `resolveRegion()` (≈lines 34–42)
+uppercases its argument but never trims it, so `' TX '` matches no region and
+returns `null`.
+
+**Symptom:** a saved record whose `stateCode` carries surrounding whitespace
+resolves to no region at all: the tracker shows the `—` flag, the region term
+contributes 0% and the prospect-facing region bullet is omitted. Nothing
+throws and no gallons move.
+
+**Why it was deferred:** unreachable through the UI. Both state inputs are
+`maxlength="2"`, so a two-character value plus a space cannot be typed, and
+`onRegionCsvCompute()` trims its own CSV cells before calling in. Reaching it
+needs a hand-edited `localStorage` record or a caller that does not exist yet.
+It is also an engine change, and the review that found it was scoped to an
+`index.html`-only polish task.
+
+**Fix when picked up:** `String(stateAbbr).trim().toUpperCase()`. Add a test
+for `' tx '`, `'TX\n'` and `''` at the same time — `''` must keep returning
+`null`, not match something.
+
+---
+
+## 4. Step 3's diesel-lane field re-renders on blur and throws away focus on the field you just moved to
+
+**Where:** `bus-dev-potential-gallons/index.html` — `supportingDetailsHtml()`,
+the `#bdpg-sd-lanes` input: `oninput="…actualLanes=this.value"
+onblur="BDPG.render()"`.
+
+**Symptom:** tab or click from "Actual Diesel Lanes Observed" into the next
+field and the blur fires a full `BDPG.render()`, which replaces the whole Step
+3 card — including the element that just took focus. Measured: focus
+`#bdpg-sd-lanes`, then focus `#bdpg-sd-name`; 80 ms later `#bdpg-sd-name` is a
+different DOM node and `document.activeElement` is `<body>`. The next
+keystroke goes nowhere. `#bdpg-sd-name`'s own handler is blameless — typing
+into it in isolation keeps focus and the caret across repeated keystrokes.
+
+**Why it was deferred:** pre-existing and unchanged by this branch — the same
+line is present at `main:bus-dev-potential-gallons/index.html:1735`, byte for
+byte. The `render()` is there on purpose (the lane-count warning below the
+field is computed during render), so this is not a stray call to delete.
+Surfaced by the Task 12 focus-preservation sweep, which found every other
+continuous input on the page — all ten text fields, the six weight sliders and
+the eight region sliders — preserving focus correctly.
+
+**Fix when picked up:** record `document.activeElement.id` before the render
+and restore focus (and `selectionStart`) after it, or narrow the blur handler
+to patching just the lane-warning element instead of a full render.
+
+---
+
+## 5. The headline gallons figure and its ×12 annual math are built in three places
 
 **Where:** `bus-dev-potential-gallons/index.html` — `pitchHeroHtml()` (the
 `finalGallons` headline and the `finalGallons * 12` line beneath it),
@@ -33,72 +163,7 @@ the same pair of numbers.
 
 ---
 
-## 2. The region-variance percentage is printed verbatim to a prospect with no plausibility bound
-
-**Where:** `bus-dev-potential-gallons/index.html` — `pitchDrivers()` renders
-"The {region} region runs {x}% above the network average — your geography works
-in your favor." straight from `effectiveRegionPct()`. The override that feeds it
-is written by `onRegionCsvCompute()`, which applies no clamp before putting the
-value in `localStorage`.
-
-**Symptom:** reproduced during the final review by running the region CSV
-generator over a small synthetic location list: the packet read **"The West
-region runs 163.2% above the network average"** and the packet's own math line
-read `2,500 × (1 + 1.632 - 0.05 + 0.00) = 6,455`. Nothing between the CSV upload
-and the printed handout sanity-checks the figure.
-
-**Why it was deferred:** unreachable with the data actually shipped — the
-committed `region_variance.json` is all zeros, so the bullet never fires in
-production. It is a data-quality guard against an implausible input, not a
-defect in this branch's work, and the only path that turns it on is a GS
-uploading their own CSV.
-
-**Fix when picked up:** bound the value where it is *produced*
-(`onRegionCsvCompute`), not where it is printed, so the internal region chips and
-the official math line are protected too — and decide what an out-of-band result
-should do: refuse the CSV, clamp with a visible warning, or store it but suppress
-the prospect-facing bullet. Silently clamping a number the rep then quotes in a
-call would be a worse failure than the one being fixed.
-
----
-
-## 3. Open question: should Generate be gated on an explicit amenity confirmation?
-
-**Where:** `bus-dev-potential-gallons/index.html` — `step2Html()` adopts
-`suggestAmenityLevel()`'s result whenever `amenityOverridden` is false, and
-`suggestAmenityLevel({})` returns the bottom band, "Very limited" (−5%). Nothing
-requires the rep to touch the six amenity cards before Generate.
-
-**Symptom:** an unsurveyed prospect takes −5% inside `officialSubtotal` — the
-figure the packet advertises as reproducing Roady's published calculator — and
-the leave-behind presents them as bottom-band. Measured: baseline 5,000 → official
-4,750, with the packet also offering "Reaching a 'Good / full service' amenity
-level moves your projection by 7.0% — about 350 gal/mo."
-
-**What was done instead:** Step 2 now says so, unmistakably, whenever no amenity
-detail has been entered and no level has been confirmed — a yellow notice naming
-the assumed level, the exact percentage (read from `AMENITY_ADJUST`, not a
-literal), and the fact that it lands inside the Published Calculator Figure; the
-"Suggested: … — No showers, no truck parking, and no real food service." line is
-replaced with "Assumed with no data", because that reason string is a statement
-of fact about a site nobody has looked at.
-
-**Why the gate itself was deferred:** blocking Generate is a behavioural change
-larger than the round that surfaced this, and a rep may legitimately know the
-site is sparse without having filled the cards — a hard gate would make them
-enter data they do not have in order to record a judgement they do have. Whether
-the tool should insist is the user's call, not the implementer's.
-
-**Fix when picked up:** if gating is wanted, gate on *confirmation* rather than
-on the six cards (`amenityOverridden === true` OR at least one card set), so a
-rep can affirm "Very limited" in one click. Do **not** fix it by changing
-`suggestAmenityLevel()` to return a neutral band for an empty object: that moves
-`officialSubtotal` on every already-saved profile, which silently rewrites a
-number a customer has already been shown.
-
----
-
-## 4. Step 2's state-code input parks the caret at the end after every keystroke
+## 6. Step 2's state-code input parks the caret at the end after every keystroke
 
 **Where:** `bus-dev-potential-gallons/index.html` — `onStateInput()`. The handler
 replaces `#bdpg-step2` wholesale via `outerHTML`, which destroys the focused
@@ -118,7 +183,7 @@ refocus. The field is `maxlength="2"` and uppercase-only, so "end of field" and
 "after the character I just typed" are the same position for every real typing
 sequence; only a deliberate insertion in front of an existing letter differs.
 Pre-existing: the handler and its `setSelectionRange` predate the rewards/pitch
-branch. Recorded because the Task 11 invariant checklist names caret survival in
+branch. Recorded because the invariant checklist names caret survival in
 "both state fields" and this one is a partial pass.
 
 **Fix when picked up:** read `document.activeElement.selectionStart` before the
@@ -128,7 +193,7 @@ two-character code.
 
 ---
 
-## 5. Loading a profile without `amenityDetails` throws and leaves the page inert
+## 7. Loading a profile whose saved `state` snapshot is missing keys throws and leaves the page inert
 
 **Where:** `bus-dev-potential-gallons/index.html` — `step2Html()` reads
 `s.amenityDetails[f]` with no guard; reached via `onLoadProfile()`.
@@ -136,35 +201,39 @@ two-character code.
 **Symptom:** `TypeError: Cannot read properties of undefined (reading 'showers')`.
 The render aborts part-way and the page stops responding — it does not recover
 without a reload. `onTrackerExport()` survives it via its own `try/catch`; the
-tracker's **Load** button does not.
+tracker's **Load** button does not. A record whose entire `state` is `null`
+fails one step earlier and just as hard:
+`TypeError: Cannot set properties of null (setting 'result')` from
+`onLoadProfile()` itself. Both reproduced again in the Task 12 sweep.
 
 **Why it was deferred:** not reachable with any profile a user can actually
 have. The pre-extraction dashboard build (`8e22110`) was served and its own Save
 button driven: every record it writes carries `"amenityDetails":{}`, because
 both builds deep-clone a state literal that contains the key. That exact
 base-written record was then pasted into the current build and opened with the
-new tracker **Load** — it loads cleanly. The crash requires hand-editing
-`localStorage` to delete the key.
+new tracker **Load** — it loads cleanly. So does a realistic 5-region legacy
+record. The crash requires hand-editing `localStorage` to delete the key or to
+null out `state`.
 
 Nor is the path new. Base `8e22110` already had a **Load** button (in the old
 "My Profiles" modal), the same `onLoadProfile()` with no defaulting, and the
 same unguarded access; stripping the key there reproduces the identical error.
 The tracker added a second door to an already-open room.
 
-**Fix when picked up:** default `amenityDetails` to `{}` in `onLoadProfile()`,
-alongside the `prospect` and `preEvalOpen` defaults already there, and guard the
-read in `step2Html()`.
+**Fix when picked up:** default `state` to `{}` and `amenityDetails` to `{}` in
+`onLoadProfile()`, alongside the `prospect` and `preEvalOpen` defaults already
+there, and guard the read in `step2Html()`.
 
 ---
 
-## 6. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
+## 8. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
 
 **Where:** same file, the Step 2 rating display.
 
 **Symptom:** the literal string `NaN` on screen instead of a value or `—`.
 Cosmetic — nothing throws and no stored number is wrong.
 
-**Why it was deferred:** same evidence as #5. The base build always writes
+**Why it was deferred:** same evidence as #7. The base build always writes
 `"truckerPathRating":""`, and a base-written record loaded into the current
 build renders `—` correctly. Only hand-edited storage reaches it.
 
@@ -173,7 +242,7 @@ build renders `—` correctly. Only hand-edited storage reaches it.
 
 ---
 
-## 7. GS Performance Metrics charts never render
+## 9. GS Performance Metrics charts never render
 
 **Where:** `index.html` — `renderGSMetrics()` calls `mkchart('mss-c1')` …
 `mkchart('mss-c4')`, but the canvases in the markup are `gs-c1` … `gs-c4`.
@@ -188,7 +257,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 8. Unterminated HTML comment renders stray `═══ -->`
+## 10. Unterminated HTML comment renders stray `═══ -->`
 
 **Where:** `index.html`, near line 2199.
 
@@ -198,7 +267,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 9. Dashboard Overview territory map is unreachable through the UI
+## 11. Dashboard Overview territory map is unreachable through the UI
 
 **Where:** `index.html` — the panel holding the territory map has no visible tab
 button, and neither map auto-renders from nav in a data-less environment. Both
@@ -210,9 +279,73 @@ with identical behaviour. Out of scope for the extraction work.
 
 ---
 
-## 10. Dashboard MASTER LOCK defaults to locked
+## 12. Dashboard MASTER LOCK defaults to locked
 
 **Where:** `index.html`. PIN `1234`. Noted only because it makes automated
 probes of the dashboard read as empty until unlocked — expected behaviour, not a
 defect. Recorded so the next person debugging a blank dashboard does not lose
 time to it.
+
+(Unrelated to the calculator's own admin PIN, which is deliberately **unset**
+by default and has no hardcoded value anywhere — see
+`BDPG.ADMIN_PIN_KEY` / `BDPG.storedAdminPin()`.)
+
+---
+
+# Resolved
+
+Kept for the evidence, not as work. Nothing below needs doing.
+
+## A. (was #3) Open question: should Generate be gated on an explicit amenity confirmation?
+
+**The question:** `step2Html()` adopted `suggestAmenityLevel()`'s result
+whenever `amenityOverridden` was false, and `suggestAmenityLevel({})` returns
+the bottom band, "Very limited" (−5%). Nothing required the rep to touch the
+six amenity cards before Generate, so an unsurveyed prospect took −5% inside
+`officialSubtotal` — the figure the packet advertises as reproducing Roady's
+published calculator. Measured: baseline 5,000 → official 4,750.
+
+**Resolved:** the user answered **yes**, and the gate was implemented on the
+`feat/bdpg-8-regions-admin-tools` branch in commits `c5bd3da` (the gate) and
+`cd1335f` (moving it to the chokepoint). It is gated on *confirmation* —
+`BDPG.amenityConfirmed()` requires `amenityOverridden === true` **and** a level
+from `AMENITY_LEVELS` — exactly as this entry recommended, so a rep can affirm
+"Very limited" in one click without inventing data. `suggestAmenityLevel()` was
+left alone, so no already-saved profile's `officialSubtotal` moved.
+
+The gate lives as the **first statement of `BDPG.onGenerate()`**, not only on
+the button's `disabled` attribute. That matters: `BDPG.onTrackerExport()` calls
+`onGenerate()` directly, and the first version of the fix guarded the button
+only — an unconfirmed legacy profile still produced the −5% figure and reached
+`window.print()` by the one route that hands paper to a customer.
+`onTrackerExport()` also pre-checks the saved record's own fields so the rep
+gets "open it and confirm one in Step 2" rather than a generic failure.
+Re-verified in the Task 12 checklist: button disabled while unconfirmed,
+direct `onGenerate()` returns false with `state.result` still null, and the
+tracker Export path reaches `print()` zero times.
+
+## B. (was #2) The region-variance percentage was printed verbatim to a prospect with no plausibility bound
+
+**The defect:** `pitchDrivers()` rendered "The {region} region runs {x}% above
+the network average" straight from `effectiveRegionPct()`, and the override
+feeding it was written by `onRegionCsvCompute()` with no clamp. Reproduced on
+the previous branch: the packet read **"The West region runs 163.2% above the
+network average"** with a math line of
+`2,500 × (1 + 1.632 − 0.05 + 0.00) = 6,455`.
+
+**Resolved:** by the ±10 clamp added in Task 7 of the
+`feat/bdpg-8-regions-admin-tools` branch (commit `993084d`). A single
+`BDPG.REGION_PCT_BOUND = 10` plus `BDPG.clampRegionPct()` now bounds the value
+at every point it can reach the formula or the screen — the slider's
+`min`/`max`, the rendered readout, `effectiveRegionPct()`, Reset and Save — so
+no stored number, however it got there, can produce a percentage outside ±10.
+Verified in the Task 12 checklist against a hand-edited override of +500/−500
+and against a CSV fixture computing +85.2%/−97.9%: every one of the eight
+regions read back within ±10 through `effectiveRegionPct()`, the sliders and
+the internal chips, and `estimate.regionPct` reached the formula as 0.1.
+
+This entry recommended bounding the value *where it is produced*. It is bounded
+on read instead, which protects strictly more callers, but it does mean
+`onRegionCsvCompute()` still stores and still displays the raw figure — the
+remaining half of this entry's "decide what an out-of-band result should do"
+now lives on as open entry **#2** above.
