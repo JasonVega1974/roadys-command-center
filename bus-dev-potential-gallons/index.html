@@ -2763,7 +2763,15 @@ function getCentroid(pathStr, axis){
       locationType: str(sum.locationType) || str(pr.locationType),
       city: str(sum.city) || str(pr.city),
       stateCode: stateCode,
-      region: str(sum.region) || (stateCode ? str(BusDevGallonsCalc.resolveRegion(stateCode)) : ''),
+      // Region is DERIVED from the stored state code, never read from the
+      // stored region string. The 5->8 split is not a rename: old "West"
+      // covered WA/OR/ID/MT/WY as well as CA/NV/UT/CO, so a stored "West"
+      // cannot be mapped to a new region without guessing which half it meant.
+      // The state code is unambiguous and every record has one (State is
+      // required before Generate). str() coerces resolveRegion()'s null (no
+      // state code, or a code the 8-region map doesn't cover) to '', which
+      // trackerRowHtml() and onLoadProfile() both treat as "needs re-select".
+      region: stateCode ? str(BusDevGallonsCalc.resolveRegion(stateCode)) : '',
       profile: str(sum.profile) || str(st.profile), roadway: str(sum.roadway) || str(st.roadway),
       officialSubtotal: (sum.officialSubtotal === 0 || sum.officialSubtotal) ? sum.officialSubtotal : null,
       finalGallons: (sum.finalGallons === 0 || sum.finalGallons) ? sum.finalGallons : null,
@@ -2916,6 +2924,16 @@ function getCentroid(pathStr, axis){
     // it so the field renders empty rather than the literal "undefined", and
     // so summaryText()'s Prepared-by line stays absent instead of printing it.
     if (typeof BDPG.state.prospect.gsName !== 'string') BDPG.state.prospect.gsName = '';
+    // Same "needs re-select" case trackerRowHtml() flags for this record's
+    // row: readSummary() derives region from the state code, not from
+    // whatever this record's summary.region says, and here that came back
+    // empty even though the record has a real city/state to show. One toast
+    // per load, worded identically to the tracker badge so the rep sees the
+    // same fact in both places.
+    var loadedSum = BDPG.readSummary(found);
+    if (!loadedSum.region && (loadedSum.city || loadedSum.stateCode)) {
+      toast('region updated — re-select state', 'err');
+    }
     BDPG.render();
     BDPG.savedSig = BDPG.stateSig();
     return true;
@@ -3005,16 +3023,26 @@ function getCentroid(pathStr, axis){
 
     var cityState = (!sum.city && !sum.stateCode) ? '—' :
       BDPG.escHtml(sum.city || '') + (sum.city && sum.stateCode ? ', ' : '') + BDPG.escHtml(sum.stateCode || '');
-    // Only append the region chip when there's a real city/state to append it
+    // Only append a region badge when there's a real city/state to append it
     // to -- otherwise the cell could read "— Southeast", which defeats the
-    // sort handler's exact `=== '—'` "dashes sort last" check (currently
-    // unreachable since readSummary derives region from the same state field
-    // as stateCode, but one line of defence costs nothing).
+    // sort handler's exact `=== '—'` "dashes sort last" check.
+    //
+    // Within that guard, two outcomes: readSummary() resolved a region from
+    // the stored state code (normal chip), or it couldn't -- no state code
+    // at all, or one the 8-region map doesn't cover (a typo, or a code that
+    // predates this split and was never revisited). That second case is
+    // reachable now that readSummary() derives instead of trusting a stored
+    // region name, so it gets its own flag instead of silently showing no
+    // badge (which would look identical to "not evaluated for region yet").
     var regionChip = '';
-    if (cityState !== '—' && sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
-      var rc = BDPG.REGION_COLORS[sum.region];
-      regionChip = ' <span class="badge" style="background:' + hexToRgba(rc, 0.18) + ';color:' + rc + '">' +
-        BDPG.escHtml(sum.region) + '</span>';
+    if (cityState !== '—') {
+      if (sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
+        var rc = BDPG.REGION_COLORS[sum.region];
+        regionChip = ' <span class="badge" style="background:' + hexToRgba(rc, 0.18) + ';color:' + rc + '">' +
+          BDPG.escHtml(sum.region) + '</span>';
+      } else {
+        regionChip = ' <span class="badge tag-yellow">region updated — re-select state</span>';
+      }
     }
     var locationCell = cityState + regionChip;
 
