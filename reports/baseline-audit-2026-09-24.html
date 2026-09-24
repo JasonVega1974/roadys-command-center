@@ -1,0 +1,526 @@
+<title>BDPG Baseline Audit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ink: #1b2229;
+    --ink-soft: #4b545e;
+    --paper: #f2f3f0;
+    --surface: #ffffff;
+    --surface-alt: #eceee9;
+    --border: #d8dbd3;
+    --accent: #b5661f;
+    --accent-soft: #f0dcc4;
+    --good: #3f7d5c;
+    --good-soft: #dcece2;
+    --flag: #a83b2e;
+    --flag-soft: #f6dcd8;
+    --insufficient: #6b6459;
+    --insufficient-soft: #e9e5db;
+    --link: #8a4a15;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e9e8e3;
+      --ink-soft: #a9aca6;
+      --paper: #15181b;
+      --surface: #1d2125;
+      --surface-alt: #23272b;
+      --border: #33383c;
+      --accent: #e0954b;
+      --accent-soft: #3a2d1c;
+      --good: #6fbf94;
+      --good-soft: #1c3327;
+      --flag: #e08277;
+      --flag-soft: #3a2220;
+      --insufficient: #9a958a;
+      --insufficient-soft: #2a2b26;
+      --link: #e0954b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e9e8e3;
+    --ink-soft: #a9aca6;
+    --paper: #15181b;
+    --surface: #1d2125;
+    --surface-alt: #23272b;
+    --border: #33383c;
+    --accent: #e0954b;
+    --accent-soft: #3a2d1c;
+    --good: #6fbf94;
+    --good-soft: #1c3327;
+    --flag: #e08277;
+    --flag-soft: #3a2220;
+    --insufficient: #9a958a;
+    --insufficient-soft: #2a2b26;
+    --link: #e0954b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+
+  h1, h2, h3 { font-family: "Barlow Condensed", system-ui, sans-serif; font-weight: 600; letter-spacing: 0.01em; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.1rem); font-weight: 700; }
+  h2 { font-size: 1.6rem; color: var(--ink); margin-bottom: 0.25rem; }
+  h3 { font-size: 1.15rem; font-weight: 600; }
+
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  header.masthead {
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.72rem;
+    color: var(--accent);
+    margin-bottom: 0.6rem;
+    display: block;
+  }
+  .dek { color: var(--ink-soft); font-size: 1.05rem; max-width: 62ch; margin-top: 0.9rem; }
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 1.5rem;
+    margin-top: 1.4rem; font-size: 0.85rem; color: var(--ink-soft);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .meta-row b { color: var(--ink); font-weight: 500; }
+
+  section { margin: 3rem 0; }
+  section > h2 { margin-bottom: 0.4rem; }
+  .section-note { color: var(--ink-soft); font-size: 0.95rem; max-width: 68ch; margin: 0.5rem 0 1.5rem; }
+
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 1px; background: var(--border);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    margin-top: 1.25rem;
+  }
+  .stat-card { background: var(--surface); padding: 1.1rem 1.2rem; }
+  .stat-card .num { font-family: "Barlow Condensed", sans-serif; font-size: 2.1rem; font-weight: 700; line-height: 1; }
+  .stat-card .lbl { font-size: 0.78rem; color: var(--ink-soft); margin-top: 0.35rem; }
+  .stat-card.warn .num { color: var(--flag); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  th, td { text-align: left; padding: 0.65rem 0.8rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th {
+    background: var(--surface-alt); font-family: "IBM Plex Mono", monospace;
+    text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.07em; color: var(--ink-soft);
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { background: var(--surface); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-family: "IBM Plex Mono", monospace; }
+  td.profile-name { white-space: normal; min-width: 220px; }
+  .profile-name .idx { color: var(--accent); font-family: "IBM Plex Mono", monospace; margin-right: 0.4em; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 0.35em;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; font-weight: 500;
+    padding: 0.22em 0.65em; border-radius: 99px; white-space: nowrap;
+  }
+  .pill.flag { background: var(--flag-soft); color: var(--flag); }
+  .pill.good { background: var(--good-soft); color: var(--good); }
+  .pill.insufficient { background: var(--insufficient-soft); color: var(--insufficient); }
+
+  details.profile-detail {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    margin-top: 0.75rem; overflow: hidden;
+  }
+  details.profile-detail > summary {
+    cursor: pointer; padding: 0.85rem 1.1rem; font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem; color: var(--ink-soft); list-style: none; display: flex;
+    align-items: center; justify-content: space-between; gap: 1rem;
+  }
+  details.profile-detail > summary::-webkit-details-marker { display: none; }
+  details.profile-detail > summary::after { content: "+"; font-size: 1.1rem; color: var(--accent); }
+  details.profile-detail[open] > summary::after { content: "\2212"; }
+  details.profile-detail > summary:hover { color: var(--ink); }
+  .detail-body { padding: 0 1.1rem 1rem; }
+  .detail-body table { font-size: 0.85rem; }
+
+  .roadway-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-top: 1.25rem; }
+  .roadway-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; }
+  .roadway-card h3 { display: flex; align-items: baseline; justify-content: space-between; }
+  .roadway-card .count { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-size: 1.1rem; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem; }
+  .chip {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; background: var(--surface-alt);
+    border: 1px solid var(--border); color: var(--ink-soft); padding: 0.2em 0.55em; border-radius: 5px;
+  }
+
+  .callout {
+    background: var(--surface-alt); border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; font-size: 0.92rem; color: var(--ink-soft);
+  }
+  .callout b { color: var(--ink); }
+  .callout.thin { border-left-color: var(--insufficient); }
+
+  ul.finding-list { margin: 0.75rem 0 0; padding-left: 1.2rem; color: var(--ink-soft); font-size: 0.92rem; }
+  ul.finding-list li { margin-bottom: 0.5rem; }
+  ul.finding-list b { color: var(--ink); font-weight: 500; }
+
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--ink-soft); font-family: "IBM Plex Mono", monospace; }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <span class="eyebrow">Interstate DB Audit &middot; Read-only &middot; db_prerelease.roadys.com</span>
+    <h1>Does the Prospective Member Gallons PDF still match the network?</h1>
+    <p class="dek">A field-by-field audit of what Interstate actually stores against the 8 baseline profiles in the Roady&rsquo;s Prospective Member Gallons Calculator, joined to 12 months of real contributed-gallons data, to see which PDF figures hold up and which don&rsquo;t.</p>
+    <div class="meta-row">
+      <span><b>405</b> active locations audited</span>
+      <span><b>69</b> classified into one of the 8 profiles</span>
+      <span><b>67</b> with contributed-gallons data</span>
+      <span>Gallons source: <b>gallon-report-all-12mo-20260924.csv</b> (2025-09 &ndash; 2026-08)</span>
+    </div>
+  </header>
+
+  <section id="top-finding">
+    <div class="callout">
+      <b>Bottom line:</b> only 2 of the 8 profiles have enough real locations (n&ge;5) to say anything statistically &mdash; and one of those two, Profile&nbsp;3, is a real candidate for adjustment: the PDF&rsquo;s 5,000&nbsp;gal/mo sits above the entire P25&ndash;P75 band of actual locations. Profile&nbsp;4 also falls outside its band but its sample (n=7) is thin enough to treat as a lean, not a verdict. The other six profiles are too data-poor to touch &mdash; two (Fuel stop, Large&middot;Highway) have <b>zero</b> classifiable locations in the network at all.
+    </div>
+  </section>
+
+  <section id="coverage">
+    <h2>Step 1 &mdash; what Interstate actually stores</h2>
+    <p class="section-note">None of the calculator&rsquo;s three inputs (lane count, size, roadway type) exist as a purpose-built field. Each is reconstructed from an adjacent field, and each reconstruction loses locations along the way.</p>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="num">405</div><div class="lbl">active locations (locationinactivedate IS NULL)</div></div>
+      <div class="stat-card"><div class="num">232</div><div class="lbl">have a usable Truck Stop / Fuel Stop type</div></div>
+      <div class="stat-card"><div class="num">202</div><div class="lbl">have a numeric lane-count proxy</div></div>
+      <div class="stat-card"><div class="num">163</div><div class="lbl">have a numeric size proxy (truck stops only)</div></div>
+      <div class="stat-card warn"><div class="num">69</div><div class="lbl">classify into one of the 8 profiles</div></div>
+    </div>
+
+    <div class="table-scroll" style="margin-top:1.5rem;">
+      <table>
+        <thead><tr><th>Calculator input</th><th>Stored where</th><th>Coverage</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Truck Stop / Fuel Stop / C-Store</td>
+            <td class="mono">tbllocations.locationtype</td>
+            <td class="num">232 / 405</td>
+            <td>The char(1) column, not the FK <span class="mono">locationtypeid</span> &mdash; that one is 52% unset (212 rows = 0) and has zero active &ldquo;Fuel Stop&rdquo; rows. <span class="mono">locationtype</span> is the live field: R=Truck Stop (215), P=PPO (120), V=Service Center (25), C=C-Store (24), <b>F=Fuel Stop (11)</b>, S=Truck Stop/Service Center (6).</td>
+          </tr>
+          <tr>
+            <td>Diesel lane count</td>
+            <td class="mono">tbllocationsamenities</td>
+            <td class="num">247 / 405</td>
+            <td>No field is named &ldquo;lanes.&rdquo; Amenity id&nbsp;43, &ldquo;Diesel Pumps,&rdquo; is the closest real proxy &mdash; 227 of those 247 rows are numeric (2&ndash;19, avg 5.4); the rest are literal &ldquo;yes&rdquo;/&ldquo;Yes&rdquo; text and unusable.</td>
+          </tr>
+          <tr>
+            <td>Small / Medium / Large</td>
+            <td class="mono">tbllocationsamenities</td>
+            <td class="num">223 / 405</td>
+            <td><b>Not stored at all.</b> No field on any table encodes truck-stop size. Amenity id&nbsp;24, &ldquo;Parking Spaces,&rdquo; is the best available proxy (179 numeric, 2&ndash;275, median 50) &mdash; used here as a tertile split, flagged low-confidence throughout.</td>
+          </tr>
+          <tr>
+            <td>Roadway type</td>
+            <td class="mono">tbllocations.locationlocation</td>
+            <td class="num">199 / 405 with text</td>
+            <td>The &ldquo;Exit/Highway&rdquo; field on the Details tab. Free text, no controlled vocabulary. Derived per Step 4 below; 204 locations have no value at all (defaults to Backroad per the spec&rsquo;s own fallback rule).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="section-note" style="margin-top:1.5rem;">Net: of 405 active locations, <b>69</b> have all three inputs populated well enough to land in one of the 8 profiles &mdash; a 17% classification rate. The size proxy is the biggest single bottleneck.</p>
+  </section>
+
+  <section id="comparison">
+    <h2>Steps 2&ndash;3 &mdash; PDF baseline vs. real network</h2>
+    <p class="section-note">Avg monthly contributed gallons per location, averaged over the 12 months in the submitted CSV (Sept 2025&ndash;Aug 2026), matching the Aggregator Gallon Report&rsquo;s own definition &mdash; fleet/aggregator gallons only, not the known-inaccurate Aggregator Dashboard.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Profile</th>
+            <th class="num">PDF baseline</th>
+            <th class="num">Network avg</th>
+            <th class="num">Median</th>
+            <th class="num">P25</th>
+            <th class="num">P75</th>
+            <th class="num">n</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="profile-name"><span class="idx">1</span>Fuel stop &middot; any roadway &middot; 1&ndash;2 lanes</td>
+            <td class="num">2,500</td>
+            <td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td>
+            <td class="num">0</td>
+            <td><span class="pill insufficient">no data &middot; keep PDF</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">2</span>Small truck stop &middot; Backroad &middot; 1&ndash;2 lanes</td>
+            <td class="num">3,000</td>
+            <td class="num">3,202</td><td class="num">3,202</td><td class="num">2,477</td><td class="num">3,927</td>
+            <td class="num">2</td>
+            <td><span class="pill insufficient">n&lt;5 &middot; keep PDF</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">3</span>Small truck stop &middot; Highway &middot; 3&ndash;5 lanes</td>
+            <td class="num">5,000</td>
+            <td class="num">3,966</td><td class="num">1,946</td><td class="num">1,285</td><td class="num">4,517</td>
+            <td class="num">12</td>
+            <td><span class="pill flag">PDF above P75 &middot; review</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">4</span>Small truck stop &middot; Interstate &middot; 6+ lanes</td>
+            <td class="num">7,500</td>
+            <td class="num">5,867</td><td class="num">3,621</td><td class="num">92</td><td class="num">6,849</td>
+            <td class="num">7</td>
+            <td><span class="pill flag">PDF above P75 &middot; thin (n=7)</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">5</span>Medium truck stop &middot; Highway &middot; 3&ndash;5 lanes</td>
+            <td class="num">7,500</td>
+            <td class="num">21,751</td><td class="num">12,809</td><td class="num">6,405</td><td class="num">32,626</td>
+            <td class="num">3</td>
+            <td><span class="pill insufficient">n&lt;5 &middot; keep PDF</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">6</span>Medium truck stop &middot; Interstate &middot; 6+ lanes</td>
+            <td class="num">12,500</td>
+            <td class="num">15,650</td><td class="num">12,824</td><td class="num">367</td><td class="num">19,722</td>
+            <td class="num">15</td>
+            <td><span class="pill good">within P25&ndash;P75</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">7</span>Large truck stop &middot; Highway &middot; 3&ndash;5 lanes</td>
+            <td class="num">10,000</td>
+            <td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td>
+            <td class="num">0</td>
+            <td><span class="pill insufficient">structurally empty</span></td>
+          </tr>
+          <tr>
+            <td class="profile-name"><span class="idx">8</span>Large truck stop &middot; Interstate &middot; 6+ lanes</td>
+            <td class="num">15,000</td>
+            <td class="num">36,301</td><td class="num">21,704</td><td class="num">7,811</td><td class="num">46,626</td>
+            <td class="num">28</td>
+            <td><span class="pill good">within P25&ndash;P75</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout" style="margin-top:1.5rem;">
+      <b>On the two &ldquo;good&rdquo; verdicts:</b> Profiles 6 and 8 pass the P25&ndash;P75 test, but both have medians well above the PDF figure (12,824 vs 12,500; 21,704 vs 15,000) and very wide P25&ndash;P75 bands (up to 6&times; spread). The network isn&rsquo;t contradicting the PDF here so much as sitting on top of a lot of variance &mdash; a handful of very large contributors (max 252,254 gal/mo at one Ohio location) pull the average well past the median. Read these as &ldquo;not disproven,&rdquo; not &ldquo;confirmed.&rdquo;
+    </div>
+
+    <h3 style="margin-top:2rem;">Per-profile detail</h3>
+    <p class="section-note">Every classified location, for spot-checking before any baseline number moves.</p>
+
+    <details class="profile-detail">
+      <summary><span>Profile 1 &mdash; Fuel stop &middot; any roadway &middot; 1&ndash;2 lanes</span><span>1 classified, 0 with gallons data</span></summary>
+      <div class="detail-body">
+        <p class="section-note">The only qualifying location (On the Go Armour Road, MO, 2 diesel pumps) never appears in the 12-month CSV &mdash; likely too recently onboarded to have a contributed-gallons history yet. There are 11 active Fuel Stop locations total; the other 10 all have 3+ diesel pumps, outside this profile&rsquo;s 1&ndash;2 lane definition.</p>
+      </div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 2 &mdash; Small truck stop &middot; Backroad &middot; 1&ndash;2 lanes</span><span>n=2</span></summary>
+      <div class="detail-body table-scroll"><table>
+        <thead><tr><th>Location</th><th>State</th><th class="num">Pumps</th><th class="num">Parking</th><th class="num">Avg gal/mo</th></tr></thead>
+        <tbody>
+          <tr><td>Battlefield Fuel Stop</td><td>GA</td><td class="num">2</td><td class="num">6</td><td class="num">4,651</td></tr>
+          <tr><td>Longhorn Express</td><td>OK</td><td class="num">2</td><td class="num">18</td><td class="num">1,752</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 3 &mdash; Small truck stop &middot; Highway &middot; 3&ndash;5 lanes</span><span>n=12</span></summary>
+      <div class="detail-body table-scroll"><table>
+        <thead><tr><th>Location</th><th>State</th><th class="num">Pumps</th><th class="num">Parking</th><th class="num">Avg gal/mo</th></tr></thead>
+        <tbody>
+          <tr><td>Fremont T/P-CITGO</td><td>WI</td><td class="num">3</td><td class="num">10</td><td class="num">7,647</td></tr>
+          <tr><td>Lewiston Stinker Store #42</td><td>ID</td><td class="num">3</td><td class="num">20</td><td class="num">6,059</td></tr>
+          <tr><td>FastLane Moberly Truck Plaza (#59)</td><td>MO</td><td class="num">3</td><td class="num">28</td><td class="num">18,487</td></tr>
+          <tr><td>Bravo Travel Center</td><td>MI</td><td class="num">5</td><td class="num">30</td><td class="num">3,582</td></tr>
+          <tr><td>Fast Trac 21</td><td>TX</td><td class="num">3</td><td class="num">14</td><td class="num">4,002</td></tr>
+          <tr><td>Allstar</td><td>KS</td><td class="num">4</td><td class="num">20</td><td class="num">1,480</td></tr>
+          <tr><td>Appleton T/P-CITGO</td><td>WI</td><td class="num">3</td><td class="num">25</td><td class="num">2,387</td></tr>
+          <tr><td>Waco Travel Center</td><td>FL</td><td class="num">5</td><td class="num">30</td><td class="num">1,403</td></tr>
+          <tr><td>Station 177 Food &amp; Fuel</td><td>OH</td><td class="num">5</td><td class="num">30</td><td class="num">930</td></tr>
+          <tr><td>Jefferson Travel Plaza</td><td>WI</td><td class="num">3</td><td class="num">5</td><td class="num">1,504</td></tr>
+          <tr><td>FastLane Center (#27)</td><td>MO</td><td class="num">5</td><td class="num">15</td><td class="num">112</td></tr>
+          <tr><td>Good To Go #45</td><td>IN</td><td class="num">3</td><td class="num">24</td><td class="num">0</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 4 &mdash; Small truck stop &middot; Interstate &middot; 6+ lanes</span><span>n=7</span></summary>
+      <div class="detail-body table-scroll"><table>
+        <thead><tr><th>Location</th><th>State</th><th class="num">Pumps</th><th class="num">Parking</th><th class="num">Avg gal/mo</th></tr></thead>
+        <tbody>
+          <tr><td>BP Pleasant Springs Travel Plaza</td><td>WI</td><td class="num">8</td><td class="num">20</td><td class="num">23,565</td></tr>
+          <tr><td>Refuel Pantry-Sturtevant</td><td>WI</td><td class="num">6</td><td class="num">30</td><td class="num">7,601</td></tr>
+          <tr><td>Cenex Zip Trip #75</td><td>MT</td><td class="num">12</td><td class="num">20</td><td class="num">6,098</td></tr>
+          <tr><td>E-Express at Choctaw</td><td>OK</td><td class="num">6</td><td class="num">25</td><td class="num">3,621</td></tr>
+          <tr><td>Cenex Zip Trip #60</td><td>WY</td><td class="num">8</td><td class="num">30</td><td class="num">185</td></tr>
+          <tr><td>Flatonia Travel Center</td><td>TX</td><td class="num">6</td><td class="num">20</td><td class="num">0</td></tr>
+          <tr><td>Laredo Fuel Stop</td><td>TX</td><td class="num">6</td><td class="num">6</td><td class="num">0</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 5 &mdash; Medium truck stop &middot; Highway &middot; 3&ndash;5 lanes</span><span>n=3</span></summary>
+      <div class="detail-body table-scroll"><table>
+        <thead><tr><th>Location</th><th>State</th><th class="num">Pumps</th><th class="num">Parking</th><th class="num">Avg gal/mo</th></tr></thead>
+        <tbody>
+          <tr><td>FastLane Eolia (#26)</td><td>MO</td><td class="num">3</td><td class="num">40</td><td class="num">52,443</td></tr>
+          <tr><td>Fill Good #802</td><td>NC</td><td class="num">5</td><td class="num">42</td><td class="num">12,809</td></tr>
+          <tr><td>State Oil Fuel Center</td><td>LA</td><td class="num">3</td><td class="num">50</td><td class="num">0</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 6 &mdash; Medium truck stop &middot; Interstate &middot; 6+ lanes</span><span>n=15</span></summary>
+      <div class="detail-body table-scroll"><table>
+        <thead><tr><th>Location</th><th>State</th><th class="num">Pumps</th><th class="num">Parking</th><th class="num">Avg gal/mo</th></tr></thead>
+        <tbody>
+          <tr><td>Truck World - North Jackson</td><td>OH</td><td class="num">8</td><td class="num">55</td><td class="num">60,235</td></tr>
+          <tr><td>Kanza Travel Plaza</td><td>OK</td><td class="num">6</td><td class="num">50</td><td class="num">40,715</td></tr>
+          <tr><td>BP Kenosha Travel Plaza</td><td>WI</td><td class="num">7</td><td class="num">60</td><td class="num">50,232</td></tr>
+          <tr><td>Dilley Truck Stop</td><td>TX</td><td class="num">10</td><td class="num">70</td><td class="num">24,138</td></tr>
+          <tr><td>Stinker's Broken Wheel T/S #218</td><td>WY</td><td class="num">6</td><td class="num">60</td><td class="num">15,305</td></tr>
+          <tr><td>Hot Spot T/S #6004</td><td>SC</td><td class="num">6</td><td class="num">50</td><td class="num">13,701</td></tr>
+          <tr><td>Lucky Deuces Truck Stop</td><td>LA</td><td class="num">8</td><td class="num">53</td><td class="num">13,536</td></tr>
+          <tr><td>J.R.'s Rally Stop</td><td>UT</td><td class="num">6</td><td class="num">65</td><td class="num">12,824</td></tr>
+          <tr><td>Road Trip Oasis</td><td>MI</td><td class="num">6</td><td class="num">57</td><td class="num">1,329</td></tr>
+          <tr><td>Stop N Shop #12</td><td>MO</td><td class="num">6</td><td class="num">50</td><td class="num">2,002</td></tr>
+          <tr><td>Cenex Zip Trip #50</td><td>MT</td><td class="num">16</td><td class="num">70</td><td class="num">632</td></tr>
+          <tr><td>Cenex Zip Trip #59</td><td>MT</td><td class="num">10</td><td class="num">40</td><td class="num">103</td></tr>
+          <tr><td>Mega Stop Holiday #3552</td><td>MN</td><td class="num">10</td><td class="num">50</td><td class="num">0</td></tr>
+          <tr><td>Refuel Pantry-Mauston</td><td>WI</td><td class="num">7</td><td class="num">40</td><td class="num">0</td></tr>
+          <tr><td>Junction Travel Center</td><td>TX</td><td class="num">6</td><td class="num">70</td><td class="num">0</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 7 &mdash; Large truck stop &middot; Highway &middot; 3&ndash;5 lanes</span><span>n=0</span></summary>
+      <div class="detail-body">
+        <p class="section-note">Structurally empty, not a data gap: every active location with parking &gt;70 (this audit&rsquo;s Large threshold) and 3&ndash;5 diesel pumps has &ldquo;I-&rdquo;, an interstate exit pattern, or blank Exit/Highway text &mdash; never a bare highway marker. In this network, large truck stops sit on interstates; the &ldquo;large + non-interstate highway&rdquo; combination the PDF models essentially doesn&rsquo;t occur.</p>
+      </div>
+    </details>
+
+    <details class="profile-detail">
+      <summary><span>Profile 8 &mdash; Large truck stop &middot; Interstate &middot; 6+ lanes</span><span>n=28</span></summary>
+      <div class="detail-body table-scroll"><table>
+        <thead><tr><th>Location</th><th>State</th><th class="num">Pumps</th><th class="num">Parking</th><th class="num">Avg gal/mo</th></tr></thead>
+        <tbody>
+          <tr><td>Truck World - Hubbard</td><td>OH</td><td class="num">18</td><td class="num">200</td><td class="num">252,254</td></tr>
+          <tr><td>Keystop</td><td>KY</td><td class="num">6</td><td class="num">80</td><td class="num">102,220</td></tr>
+          <tr><td>Truck World - Conneaut</td><td>OH</td><td class="num">9</td><td class="num">75</td><td class="num">72,662</td></tr>
+          <tr><td>Morton's Truck Stop</td><td>NV</td><td class="num">9</td><td class="num">225</td><td class="num">69,867</td></tr>
+          <tr><td>Edgerton Travel Plaza</td><td>WI</td><td class="num">9</td><td class="num">250</td><td class="num">61,269</td></tr>
+          <tr><td>Simmons Travel Center-Emporia</td><td>VA</td><td class="num">8</td><td class="num">85</td><td class="num">53,915</td></tr>
+          <tr><td>The Swamp Stop</td><td>LA</td><td class="num">7</td><td class="num">120</td><td class="num">44,700</td></tr>
+          <tr><td>Hot Spot T/S #2013</td><td>SC</td><td class="num">6</td><td class="num">90</td><td class="num">41,701</td></tr>
+          <tr><td>Simmons Travel Center-Bracey</td><td>VA</td><td class="num">8</td><td class="num">100</td><td class="num">45,607</td></tr>
+          <tr><td>Gee Cee's Truck Stop</td><td>WA</td><td class="num">10</td><td class="num">150</td><td class="num">49,683</td></tr>
+          <tr><td>80254 Mr. Gas Boise #21</td><td>ID</td><td class="num">9</td><td class="num">160</td><td class="num">33,928</td></tr>
+          <tr><td>E-Express at Central Truck Stop</td><td>OK</td><td class="num">7</td><td class="num">100</td><td class="num">28,271</td></tr>
+          <tr><td>Space Age Travel Center</td><td>OR</td><td class="num">8</td><td class="num">110</td><td class="num">27,844</td></tr>
+          <tr><td>5R Travel Center</td><td>NM</td><td class="num">6</td><td class="num">150</td><td class="num">23,854</td></tr>
+          <tr><td>Midway Travel Center</td><td>MO</td><td class="num">6</td><td class="num">100</td><td class="num">19,554</td></tr>
+          <tr><td>Stinker's Ghost Town T/S #217</td><td>WY</td><td class="num">6</td><td class="num">120</td><td class="num">18,519</td></tr>
+          <tr><td>Jimmies Auto/Truck Plaza</td><td>FL</td><td class="num">9</td><td class="num">75</td><td class="num">16,898</td></tr>
+          <tr><td>Dancing Eagle Travel Center</td><td>NM</td><td class="num">11</td><td class="num">250</td><td class="num">13,241</td></tr>
+          <tr><td>Beck's #27</td><td>IL</td><td class="num">7</td><td class="num">94</td><td class="num">11,146</td></tr>
+          <tr><td>Baker Truck Corral</td><td>OR</td><td class="num">7</td><td class="num">120</td><td class="num">9,470</td></tr>
+          <tr><td>Route 66 Travel Center</td><td>NM</td><td class="num">10</td><td class="num">275</td><td class="num">7,443</td></tr>
+          <tr><td>Warren Travel Plaza</td><td>IN</td><td class="num">8</td><td class="num">200</td><td class="num">7,934</td></tr>
+          <tr><td>Jonesy's Travel Center</td><td>MO</td><td class="num">6</td><td class="num">100</td><td class="num">2,577</td></tr>
+          <tr><td>Stockmen's Truck Stop</td><td>MN</td><td class="num">7</td><td class="num">100</td><td class="num">1,140</td></tr>
+          <tr><td>Tomahawk Truck Stop</td><td>CO</td><td class="num">6</td><td class="num">125</td><td class="num">735</td></tr>
+          <tr><td>Broadway Travel Center #110</td><td>NV</td><td class="num">6</td><td class="num">100</td><td class="num">0</td></tr>
+          <tr><td>Yreka Truck Stop</td><td>CA</td><td class="num">7</td><td class="num">85</td><td class="num">0</td></tr>
+          <tr><td>Space Age #202</td><td>WA</td><td class="num">9</td><td class="num">100</td><td class="num">0</td></tr>
+        </tbody>
+      </table>
+      <p class="section-note" style="margin-top:0.75rem;">Plus Dukes Mega Truck Stop (PA, 10 pumps, 80 parking) &mdash; classified but absent from the 12-month CSV, excluded from the stats above.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="regional">
+    <h2>Regional breakdown</h2>
+    <div class="callout thin">
+      <b>Skipped as not statistically meaningful.</b> Splitting 69 classified locations across 8 profiles &times; 8 regions leaves almost every cell at n&lt;5 &mdash; only 3 of 64 profile&times;region cells reach n&ge;5 (Profile 8 in Midwest, Northwest, and Southeast, each n=6). Regional figures at this sample size would be noise dressed up as precision. Raw per-region numbers are preserved in the analysis script if useful for directional reading, but none should inform a baseline change.
+    </div>
+  </section>
+
+  <section id="roadway">
+    <h2>Step 4 &mdash; roadway derivation</h2>
+    <p class="section-note">Applied to the 232 active Truck Stop / Fuel Stop locations against <span class="mono">locationlocation</span> (the &ldquo;Exit/Highway&rdquo; field). Interstate checked first, then Highway, everything else &mdash; including no value at all &mdash; falls to Backroad, per the rule as given.</p>
+
+    <div class="roadway-cats">
+      <div class="roadway-card">
+        <h3>Interstate <span class="count">123</span></h3>
+        <p class="section-note" style="margin:0.25rem 0 0;">High confidence &mdash; matches on an explicit <span class="mono">I-##</span> / <span class="mono">IH-##</span> pattern or the word &ldquo;Interstate.&rdquo;</p>
+        <div class="chip-row">
+          <span class="chip">I-44/Exit 145</span><span class="chip">I-87, exit 23</span><span class="chip">I10 Exit 268</span>
+          <span class="chip">Exit 6/I-35</span><span class="chip">Exit #325 / IH-35</span><span class="chip">I-494, Exit 64A</span>
+          <span class="chip">Exit 81 I-35</span><span class="chip">I-10, Exit 340</span><span class="chip">I-15, Exit 59</span><span class="chip">I-43/Exit 107</span>
+        </div>
+      </div>
+      <div class="roadway-card">
+        <h3>Highway <span class="count">47</span></h3>
+        <p class="section-note" style="margin:0.25rem 0 0;">High confidence &mdash; &ldquo;Hwy,&rdquo; &ldquo;US-&rdquo;/&ldquo;US &rdquo;, &ldquo;Route,&rdquo; &ldquo;State,&rdquo; or &ldquo;SR-&rdquo; present.</p>
+        <div class="chip-row">
+          <span class="chip">Hwy 23</span><span class="chip">Hwy 45</span><span class="chip">State Hwy 41</span>
+          <span class="chip">Exit 49A / US-22</span><span class="chip">US 23, Exit 5 (US 223)</span><span class="chip">US 97</span>
+          <span class="chip">US 67 at Parkway Dr.</span><span class="chip">MA 140 / US 20</span><span class="chip">US-33/Exit 177</span>
+          <span class="chip">Hwy 277 &amp; State Hwy 6</span>
+        </div>
+      </div>
+      <div class="roadway-card">
+        <h3>Backroad <span class="count">62</span></h3>
+        <p class="section-note" style="margin:0.25rem 0 0;">58 have no Exit/Highway value at all (blank or the &ldquo;lost&rdquo; column default) &mdash; genuinely low confidence, since &ldquo;never filled in&rdquo; isn&rsquo;t the same claim as &ldquo;confirmed backroad.&rdquo; Only 4 have real text that matched none of the keyword rules:</p>
+        <div class="chip-row">
+          <span class="chip">84</span><span class="chip">ND23 / ND8</span><span class="chip">Exit 350</span><span class="chip">60 &amp; 61</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:1.5rem;">
+      <b>Gap in the given rule set:</b> bare state-route numbers (&ldquo;ND23 / ND8&rdquo;) and standalone exit numbers with no interstate/highway marker (&ldquo;Exit 350&rdquo;) don&rsquo;t match any of the 6 keyword patterns as specified, so they fall through to Backroad by the rule&rsquo;s own &ldquo;everything else&rdquo; clause. That&rsquo;s defensible as written, but worth knowing it&rsquo;s a fallback, not a confirmed classification &mdash; only 4 of 232 locations land here, so the effect on the profile table above is negligible.
+    </div>
+  </section>
+
+  <section id="methodology">
+    <h2>Methodology notes</h2>
+    <ul class="finding-list">
+      <li><b>Location code mapping.</b> The CSV&rsquo;s &ldquo;Location Id&rdquo; column (e.g. <span class="mono">R03596</span>) is <span class="mono">GallonReportService::getAllLocationsGallonAggregate()</span>&rsquo;s own format &mdash; <span class="mono">strtoupper(locationgroup) . str_pad(locationid, 5, '0')</span>. Parsed back to the numeric <span class="mono">locationid</span> by stripping the leading letters.</li>
+      <li><b>Size proxy thresholds.</b> Small/Medium/Large split at the tertiles of Parking Spaces among active Truck Stop (R/S) locations with a numeric value (n=163): &le;30 Small, 31&ndash;70 Medium, &gt;70 Large. This is a modeling choice, not a stored classification &mdash; treat every Small/Medium/Large label in this report as an inferred proxy.</li>
+      <li><b>Lane tiers.</b> Diesel Pumps amenity value: 1&ndash;2 &rarr; &ldquo;1&ndash;2 lanes,&rdquo; 3&ndash;5 &rarr; &ldquo;3&ndash;5 lanes,&rdquo; 6+ &rarr; &ldquo;6+ lanes,&rdquo; matching the PDF&rsquo;s own tier boundaries exactly.</li>
+      <li><b>Gallons averaging.</b> Every location in the CSV has all 12 months present (no partial-year gaps) &mdash; some months are genuine $0 (churn, onboarding gaps within the window), and those zeros are included in the average as instructed, which is why several profiles show P25 near $0 despite a healthy median.</li>
+      <li><b>Region mapping.</b> Supplied directly by the requester, not derived &mdash; Northwest (WA/OR/ID/MT/WY/AK), West (CA/NV/UT/CO/HI), Southwest (AZ/NM/OK), Texas (TX), Upper Midwest (ND/SD/MN/WI/MI/IA), Midwest (NE/KS/MO/IL/IN/OH), Northeast (ME/NH/VT/MA/RI/CT/NY/NJ/PA/DE/MD), Southeast (VA/WV/KY/TN/NC/SC/GA/FL/AL/MS/LA/AR). 2 active locations have <span class="mono">locationstate = '-1'</span> (placeholder) and were excluded from any regional grouping.</li>
+      <li><b>busDevGallonsConfig.js / BDPG_BASELINE_TABLE</b> live in the roadys-command-center repo, not interstate &mdash; confirmed absent here before writing this report rather than assumed. This audit is data-only; applying any baseline change is Command Center&rsquo;s side of the work.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Read-only audit against db_prerelease.roadys.com &middot; no writes, no migrations, no app code touched &middot; classification + join scripts and full location-level JSON preserved in session scratchpad for re-verification.
+  </footer>
+
+</div>
