@@ -6,7 +6,99 @@ real user already has. Newest first.
 
 ---
 
-## 1. Step 2's state-code input parks the caret at the end after every keystroke
+## 1. The headline gallons figure and its ×12 annual math are built in three places
+
+**Where:** `bus-dev-potential-gallons/index.html` — `pitchHeroHtml()` (the
+`finalGallons` headline and the `finalGallons * 12` line beneath it),
+`pitchBusinessCaseHtml()` (Monthly potential / Annual potential), and
+`summaryText()` (the Copy Summary line "Roady's can drive X gal/mo — Z gal/yr").
+
+**Symptom:** none today. All three currently print the same two numbers; they
+already differ in *wording*, which is the visible half of the same split.
+
+**Why it was deferred:** consolidating them is a refactor of working, verified
+code — the three surfaces were each checked number-by-number against the engine
+in the final whole-branch review and all agreed. Landing that refactor as the
+last commit of the branch buys less than it risks. It is recorded because
+`pitchSectionsHtml()` is the single-source guard for the *HTML* surfaces and
+cannot reach `summaryText()` at all: Copy Summary is plain text, and it is the
+one of the three that ends up pasted into a prospect's inbox, where a drifted
+number would be hardest to notice and impossible to retract.
+
+**Fix when picked up:** extract one helper returning `{ monthly, annual }` (or
+the two formatted strings) from `state.result.estimate`, and have all three call
+it. Decide first whether the three wordings should also converge, or whether the
+hero / business case / email each legitimately need their own phrasing around
+the same pair of numbers.
+
+---
+
+## 2. The region-variance percentage is printed verbatim to a prospect with no plausibility bound
+
+**Where:** `bus-dev-potential-gallons/index.html` — `pitchDrivers()` renders
+"The {region} region runs {x}% above the network average — your geography works
+in your favor." straight from `effectiveRegionPct()`. The override that feeds it
+is written by `onRegionCsvCompute()`, which applies no clamp before putting the
+value in `localStorage`.
+
+**Symptom:** reproduced during the final review by running the region CSV
+generator over a small synthetic location list: the packet read **"The West
+region runs 163.2% above the network average"** and the packet's own math line
+read `2,500 × (1 + 1.632 - 0.05 + 0.00) = 6,455`. Nothing between the CSV upload
+and the printed handout sanity-checks the figure.
+
+**Why it was deferred:** unreachable with the data actually shipped — the
+committed `region_variance.json` is all zeros, so the bullet never fires in
+production. It is a data-quality guard against an implausible input, not a
+defect in this branch's work, and the only path that turns it on is a GS
+uploading their own CSV.
+
+**Fix when picked up:** bound the value where it is *produced*
+(`onRegionCsvCompute`), not where it is printed, so the internal region chips and
+the official math line are protected too — and decide what an out-of-band result
+should do: refuse the CSV, clamp with a visible warning, or store it but suppress
+the prospect-facing bullet. Silently clamping a number the rep then quotes in a
+call would be a worse failure than the one being fixed.
+
+---
+
+## 3. Open question: should Generate be gated on an explicit amenity confirmation?
+
+**Where:** `bus-dev-potential-gallons/index.html` — `step2Html()` adopts
+`suggestAmenityLevel()`'s result whenever `amenityOverridden` is false, and
+`suggestAmenityLevel({})` returns the bottom band, "Very limited" (−5%). Nothing
+requires the rep to touch the six amenity cards before Generate.
+
+**Symptom:** an unsurveyed prospect takes −5% inside `officialSubtotal` — the
+figure the packet advertises as reproducing Roady's published calculator — and
+the leave-behind presents them as bottom-band. Measured: baseline 5,000 → official
+4,750, with the packet also offering "Reaching a 'Good / full service' amenity
+level moves your projection by 7.0% — about 350 gal/mo."
+
+**What was done instead:** Step 2 now says so, unmistakably, whenever no amenity
+detail has been entered and no level has been confirmed — a yellow notice naming
+the assumed level, the exact percentage (read from `AMENITY_ADJUST`, not a
+literal), and the fact that it lands inside the Published Calculator Figure; the
+"Suggested: … — No showers, no truck parking, and no real food service." line is
+replaced with "Assumed with no data", because that reason string is a statement
+of fact about a site nobody has looked at.
+
+**Why the gate itself was deferred:** blocking Generate is a behavioural change
+larger than the round that surfaced this, and a rep may legitimately know the
+site is sparse without having filled the cards — a hard gate would make them
+enter data they do not have in order to record a judgement they do have. Whether
+the tool should insist is the user's call, not the implementer's.
+
+**Fix when picked up:** if gating is wanted, gate on *confirmation* rather than
+on the six cards (`amenityOverridden === true` OR at least one card set), so a
+rep can affirm "Very limited" in one click. Do **not** fix it by changing
+`suggestAmenityLevel()` to return a neutral band for an empty object: that moves
+`officialSubtotal` on every already-saved profile, which silently rewrites a
+number a customer has already been shown.
+
+---
+
+## 4. Step 2's state-code input parks the caret at the end after every keystroke
 
 **Where:** `bus-dev-potential-gallons/index.html` — `onStateInput()`. The handler
 replaces `#bdpg-step2` wholesale via `outerHTML`, which destroys the focused
@@ -36,7 +128,7 @@ two-character code.
 
 ---
 
-## 2. Loading a profile without `amenityDetails` throws and leaves the page inert
+## 5. Loading a profile without `amenityDetails` throws and leaves the page inert
 
 **Where:** `bus-dev-potential-gallons/index.html` — `step2Html()` reads
 `s.amenityDetails[f]` with no guard; reached via `onLoadProfile()`.
@@ -65,14 +157,14 @@ read in `step2Html()`.
 
 ---
 
-## 3. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
+## 6. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
 
 **Where:** same file, the Step 2 rating display.
 
 **Symptom:** the literal string `NaN` on screen instead of a value or `—`.
 Cosmetic — nothing throws and no stored number is wrong.
 
-**Why it was deferred:** same evidence as #2. The base build always writes
+**Why it was deferred:** same evidence as #5. The base build always writes
 `"truckerPathRating":""`, and a base-written record loaded into the current
 build renders `—` correctly. Only hand-edited storage reaches it.
 
@@ -81,7 +173,7 @@ build renders `—` correctly. Only hand-edited storage reaches it.
 
 ---
 
-## 4. GS Performance Metrics charts never render
+## 7. GS Performance Metrics charts never render
 
 **Where:** `index.html` — `renderGSMetrics()` calls `mkchart('mss-c1')` …
 `mkchart('mss-c4')`, but the canvases in the markup are `gs-c1` … `gs-c4`.
@@ -96,7 +188,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 5. Unterminated HTML comment renders stray `═══ -->`
+## 8. Unterminated HTML comment renders stray `═══ -->`
 
 **Where:** `index.html`, near line 2199.
 
@@ -106,7 +198,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 6. Dashboard Overview territory map is unreachable through the UI
+## 9. Dashboard Overview territory map is unreachable through the UI
 
 **Where:** `index.html` — the panel holding the territory map has no visible tab
 button, and neither map auto-renders from nav in a data-less environment. Both
@@ -118,7 +210,7 @@ with identical behaviour. Out of scope for the extraction work.
 
 ---
 
-## 7. Dashboard MASTER LOCK defaults to locked
+## 10. Dashboard MASTER LOCK defaults to locked
 
 **Where:** `index.html`. PIN `1234`. Noted only because it makes automated
 probes of the dashboard read as empty until unlocked — expected behaviour, not a

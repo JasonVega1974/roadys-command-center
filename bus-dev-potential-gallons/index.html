@@ -159,17 +159,19 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-hero-num{font-family:var(--ff);font-weight:800;line-height:1;}
 .bdpg-hero-card.final .bdpg-hero-num{font-size:3.2em;color:var(--accent);}
 .bdpg-hero-card.official .bdpg-hero-num{font-size:2.2em;color:var(--text);}
-.bdpg-hero-math{font-family:monospace;font-size:.68em;color:var(--muted);margin-top:8px;word-break:break-word;}
 .bdpg-grade{text-align:center;padding:16px;border-radius:10px;border:1px solid var(--border);}
 .bdpg-grade-l{font-family:var(--ff);font-size:3.4em;font-weight:800;line-height:1;}
 .bdpg-grade-lbl{font-family:var(--ff);font-size:1em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-top:4px;}
 .bdpg-nrange{position:relative;height:30px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin:10px 0 4px;}
 .bdpg-nrange-m{position:absolute;top:-5px;height:40px;width:3px;border-radius:2px;}
-/* When pricing is Standard, officialSubtotal===finalGallons and both markers
-   land at the identical left%. A small opposite-direction nudge keeps both
-   visible edge-to-edge instead of the cyan Final marker fully eclipsing the
-   Official one -- harmless at any other position too, since it's a couple
-   px against a track hundreds of px wide. */
+/* When pricing is Standard AND rewards is Undecided / unknown -- i.e. every
+   adjustment outside the official subtotal is 0% -- officialSubtotal ===
+   finalGallons and both markers land at the identical left%. A small
+   opposite-direction nudge keeps both visible edge-to-edge instead of the
+   cyan Final marker fully eclipsing the Official one -- harmless at any
+   other position too, since it's a couple px against a track hundreds of
+   px wide. (Pricing alone was the whole condition before the rewards term
+   existed; both have to be neutral now.) */
 .bdpg-nrange-m.final{background:var(--accent);box-shadow:0 0 8px rgba(0,200,255,.7);transform:translateX(1.5px);}
 .bdpg-nrange-m.official{background:var(--text);opacity:.85;transform:translateX(-1.5px);}
 .bdpg-nrange-key{display:flex;gap:16px;font-size:.7em;color:var(--muted);margin-top:8px;}
@@ -247,7 +249,6 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-card { background: #fff !important; border: 1px solid #999 !important; page-break-inside: avoid; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-card::before { display: none !important; }
   body.bdpg-print-mode #bdpg-print-only .bdpg-hero-num,
-  body.bdpg-print-mode #bdpg-print-only .bdpg-hero-math,
   body.bdpg-print-mode #bdpg-print-only .bdpg-lbl { color: #000 !important; }
   /* The pitch sections come from BDPG.pitchSectionsHtml(), which is written
      for the dark UI and carries inline color:var(--accent) / var(--muted) /
@@ -940,6 +941,10 @@ function getCentroid(pathStr, axis){
   // full BDPG.render() (that would steal focus mid-word).
   BDPG.onProspectInput = function (field, value) {
     BDPG.state.prospect[field] = value;
+    // The rendered hero names the prospect, and the packet reads live state at
+    // export -- so a name typed after Generate has to reach the already-drawn
+    // hero or the screen and the leave-behind disagree. Targeted patch only.
+    if (field === 'name') BDPG.refreshPitchHero();
     if (field === 'name' || field === 'city') {
       var btn = document.getElementById('bdpg-generate-btn');
       if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
@@ -1085,10 +1090,19 @@ function getCentroid(pathStr, axis){
     // `judged` roll-up below: rewards is a posture the rep sets, not a fact
     // about the prospect's market, and folding it in would let that choice
     // flip a "Strong candidate" verdict.
+    //
+    // The percentage is rendered from rewardsPct itself, never a literal: the
+    // band lives in BDPG_CONFIG.REWARDS_ADJUST, and a hardcoded "+5%" here
+    // would keep saying 5% with no error the day that config changes. Same
+    // drift class as the index-keyed REWARD_COLS Task 5 was sent to fix.
+    // Math.abs + the typographic minus keeps the existing chip typography
+    // (−5%, not -5.0%) while the number itself stays derived.
     var rewardsPct = BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel);
+    var rewardsPctTxt = 'Rewards: ' + (rewardsPct > 0 ? '+' : '−') +
+      (Math.abs(rewardsPct) * 100).toFixed(1).replace(/\.0$/, '') + '%';
     var cRewards;
-    if (rewardsPct > 0) cRewards = { label: 'Rewards signal', text: 'Rewards: +5%', tone: 'green' };
-    else if (rewardsPct < 0) cRewards = { label: 'Rewards signal', text: 'Rewards: −5%', tone: 'red' };
+    if (rewardsPct > 0) cRewards = { label: 'Rewards signal', text: rewardsPctTxt, tone: 'green' };
+    else if (rewardsPct < 0) cRewards = { label: 'Rewards signal', text: rewardsPctTxt, tone: 'red' };
     else cRewards = { label: 'Rewards signal', text: 'Rewards: undecided', tone: 'yellow' };
 
     // #7 Overall signal -- rolled up from #1-4 only; #5/#6/rewards carry no judgement.
@@ -1418,6 +1432,52 @@ function getCentroid(pathStr, axis){
       s.amenityLevel = suggestion.level;
     }
 
+    // suggestAmenityLevel({}) returns the BOTTOM band ("Very limited", -5%):
+    // an empty details object satisfies every "no showers / no truck parking /
+    // no real food" test at once, so *unanswered* reads identically to
+    // *answered badly*. Because the block above adopts the suggestion whenever
+    // the rep hasn't confirmed a level, an unsurveyed prospect used to pick up
+    // that -5% silently -- and amenities are INSIDE officialSubtotal, the one
+    // figure the packet advertises as reproducing Roady's published
+    // calculator. The prospect-facing sheet then asserted they are bottom-band
+    // on the strength of questions nobody had asked yet.
+    //
+    // Deliberately NOT fixed in suggestAmenityLevel(): that function has always
+    // behaved this way, and changing it would move officialSubtotal on every
+    // already-saved profile. Silently shifting a stored customer-facing number
+    // is worse than the defect. So the arithmetic is left exactly as it was and
+    // the fix is visibility -- the rep can still Generate (they may well know
+    // the site is sparse), but not without being told the level is an
+    // assumption and what it is costing.
+    var amenityAnswered = Object.keys(s.amenityDetails || {}).filter(function (f) {
+      return s.amenityDetails[f];
+    }).length;
+    var amenityAssumed = (amenityAnswered === 0 && !s.amenityOverridden);
+    // Read from config, never a literal -5%: this sentence names a number the
+    // rep will compare against the results panel, and AMENITY_ADJUST is where
+    // that number actually lives.
+    var assumedPct = hasOwn(BDPG_CONFIG.AMENITY_ADJUST, suggestion.level)
+      ? BDPG_CONFIG.AMENITY_ADJUST[suggestion.level] : 0;
+    var assumedPctTxt = (assumedPct >= 0 ? '+' : '') + (assumedPct * 100).toFixed(1) + '%';
+    var amenityNotice = amenityAssumed
+      ? '<div class="bdpg-box" style="margin-top:10px;border-color:var(--yellow);color:var(--yellow);font-size:.8em;line-height:1.55">' +
+          '⚠ <b>No amenity details entered — the level below is an assumption, not an observation of this site.</b><br>' +
+          'With all six cards untouched the calculator falls back to <b>' + BDPG.escHtml(suggestion.level) + '</b>, and that ' +
+          '<b>' + assumedPctTxt + '</b> is being applied inside the Roady\'s Published Calculator Figure shown on the results ' +
+          'and in the printed packet. Tap the six cards above, or pick a Confirmed Amenity Level below, before handing the ' +
+          'packet to an owner.' +
+        '</div>'
+      : '';
+    // The suggestion's own reason string ("No showers, no truck parking, and no
+    // real food service.") is a statement of fact about the site. It is only
+    // true when somebody answered -- so it is replaced, not merely annotated,
+    // when nothing was.
+    var suggestLine = amenityAssumed
+      ? '<div style="margin-top:8px;font-size:.82em;color:var(--yellow)">Assumed with no data: <b>' +
+          BDPG.escHtml(suggestion.level) + '</b> (' + assumedPctTxt + ') — not based on anything observed here.</div>'
+      : '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Suggested: <b>' +
+          BDPG.escHtml(suggestion.level) + '</b> — ' + BDPG.escHtml(suggestion.reason) + '</div>';
+
     var left = '<div class="fg">' +
         '<label>State</label>' +
         (region ? ('<div style="margin-bottom:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>') :
@@ -1508,7 +1568,7 @@ function getCentroid(pathStr, axis){
         '<div class="bdpg-seg">' + rsegs + '</div>' +
         '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + acards + '</div>' +
-        '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Suggested: <b>' + BDPG.escHtml(suggestion.level) + '</b> — ' + BDPG.escHtml(suggestion.reason) + '</div>' +
+        amenityNotice + suggestLine +
         '<div class="fg" style="margin-top:6px"><label>Confirmed Amenity Level</label>' +
           selectHtml('bdpg-amenity-confirm', BDPG_CONFIG.AMENITY_LEVELS, s.amenityLevel, 'BDPG.onAmenityConfirm') + '</div>' +
       '</div>';
@@ -1675,7 +1735,10 @@ function getCentroid(pathStr, axis){
           '<input id="bdpg-sd-lanes" type="number" min="0" value="' + BDPG.escHtml(sd.actualLanes) + '" oninput="BDPG.state.supportingDetails.actualLanes=this.value" onblur="BDPG.render()"></div>' +
         laneWarning +
         '<div class="fg"><label style="font-size:.72em">Prospect Name</label>' +
-          '<input id="bdpg-sd-name" value="' + BDPG.escHtml(sd.prospectName) + '" oninput="BDPG.state.supportingDetails.prospectName=this.value"></div>' +
+          // Step 3's duplicate name field is the second half of
+          // resolveProspectName()'s precedence, so it can move the hero too
+          // (whenever the ⓪ card's name is empty) -- same targeted patch.
+          '<input id="bdpg-sd-name" value="' + BDPG.escHtml(sd.prospectName) + '" oninput="BDPG.state.supportingDetails.prospectName=this.value;BDPG.refreshPitchHero()"></div>' +
         '<div class="fg"><label style="font-size:.72em">City</label>' +
           '<input id="bdpg-sd-city" value="' + BDPG.escHtml(sd.prospectCity) + '" oninput="BDPG.state.supportingDetails.prospectCity=this.value"></div>' +
         '<div class="fg"><label style="font-size:.72em">State</label>' +
@@ -1855,7 +1918,13 @@ function getCentroid(pathStr, axis){
     var steps = [
       { label: 'Baseline',    from: 0,                   to: e.baseline,          neutral: true },
       { label: 'Region',      from: e.baseline,          to: regionAdj },
-      { label: 'Amen+Review', from: regionAdj,           to: e.officialSubtotal },
+      // Spelled out: this label used to carry an internal abbreviation, and
+      // onExportPdf() rasterises this canvas straight into the prospect's
+      // leave-behind, so it is customer-facing text. Two-element array rather
+      // than one long string -- Chart.js renders an array tick label as
+      // stacked lines, which keeps it upright (labelRotation 0) and readable
+      // at font-size 9 instead of rotating it.
+      { label: ['Amenities', '+ Review'], from: regionAdj, to: e.officialSubtotal },
       { label: 'Pricing',     from: e.officialSubtotal,  to: e.pricingAdjusted },
       { label: 'Rewards',     from: e.pricingAdjusted,   to: e.finalGallons },
       { label: 'Final',       from: 0,                   to: e.finalGallons,      neutral: true, accent: true }
@@ -2015,9 +2084,16 @@ function getCentroid(pathStr, axis){
     var raw = BDPG.resolveProspectName();
     var who = raw ? BDPG.escHtml(raw) : 'this location';
 
+    // The name sits in its own span so BDPG.refreshPitchHero() can retarget it
+    // after an edit without re-rendering (and without stealing the caret from
+    // the field being typed in). A class, not an id: this same markup is
+    // rendered twice at once -- once on screen and once inside
+    // #bdpg-print-only -- and duplicate ids would be a lie about which one
+    // getElementById returns.
     return '<div class="bdpg-hero-card final" style="margin-bottom:14px">' +
       '<div class="bdpg-hero-num" style="font-size:2.3em;line-height:1.15">' +
-        'Roady\'s can drive ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month to ' + who + '</div>' +
+        'Roady\'s can drive ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month to ' +
+        '<span class="bdpg-hero-who">' + who + '</span></div>' +
       '<div style="font-size:.95em;color:var(--muted);margin-top:8px">That\'s ' + BDPG.fmtGal(annual) +
         ' gallons annually — based on your location profile, region, and network data.</div>' +
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
@@ -2027,6 +2103,24 @@ function getCentroid(pathStr, axis){
           'Matches Roady\'s published prospective-member calculator.</div>' +
       '</div>' +
     '</div>';
+  };
+
+  // Targeted patch for the one piece of the rendered hero that a keystroke can
+  // change: the prospect's name. The name is display-only, so editing it
+  // deliberately does NOT invalidate the result -- but onExportPdf() rebuilds
+  // the packet from live state, so without this the laptop showed one name
+  // while the sheet handed over carried another. Same shape as
+  // refreshPreEvalCard(): patch the node, never BDPG.render(), which would
+  // destroy the input mid-word.
+  //
+  // textContent, not innerHTML: the value comes straight from a text field, so
+  // this is the one write that must not be able to introduce markup. It also
+  // updates the copy inside #bdpg-print-only, so the two can't drift between
+  // renders.
+  BDPG.refreshPitchHero = function () {
+    var who = BDPG.resolveProspectName() || 'this location';
+    var els = document.querySelectorAll('.bdpg-hero-who');
+    for (var i = 0; i < els.length; i++) { els[i].textContent = who; }
   };
 
   // The single definition of "what the prospect sees". resultsHtml() renders
@@ -2703,6 +2797,22 @@ function getCentroid(pathStr, axis){
     if (!BDPG.state.prospect || typeof BDPG.state.prospect !== 'object') {
       BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '', gsName: '' };
     }
+    // ...and then seed the name from the record itself. A pre-Task-4 record
+    // carries the prospect's name at the TOP level (`found.name`) -- which is
+    // exactly what the tracker row prints, via readSummary()'s `str(p.name)`
+    // fallback -- but nothing copied it into the `prospect` shape above, so
+    // resolveProspectName() returned '' and the record loaded anonymous.
+    // Harmless before this branch (the name only appeared in an internal
+    // header); now the hero, the packet <h1> and Copy Summary all read through
+    // resolveProspectName(), so the same record exported a leave-behind headed
+    // "Value Proposition for Prospect" while the row it was launched from said
+    // "Old Record Diner".
+    // `||`-chained, so a record that HAS a prospect.name keeps it -- this only
+    // fills a blank. str-guarded like readSummary(): a hand-edited non-string
+    // `name` must not reach escHtml() as "[object Object]".
+    if (typeof BDPG.state.prospect.name !== 'string' || !BDPG.state.prospect.name) {
+      BDPG.state.prospect.name = (typeof found.name === 'string' ? found.name : '');
+    }
     // A profile saved before Task 10 has a `prospect` but no gsName. Default
     // it so the field renders empty rather than the literal "undefined", and
     // so summaryText()'s Prepared-by line stays absent instead of printing it.
@@ -2816,13 +2926,29 @@ function getCentroid(pathStr, axis){
 
     var finalCell = isNum(sum.finalGallons) ? BDPG.fmtGal(sum.finalGallons) : '—';
     if (isNum(sum.finalGallons) && isNum(sum.officialSubtotal)) {
+      // finalGallons - officialSubtotal was purely the pricing delta before
+      // this branch, and the tooltips said so. It is now pricing AND rewards,
+      // and the two can pull in opposite directions -- measured on a saved row
+      // with Aggressive (+2.5%) and Not participating (-5%), the old wording
+      // read "Pricing posture removes 313 gal/mo" while pricing was in fact
+      // ADDING 313 and rewards removing 626, with the row's own Pricing
+      // Posture column contradicting it two cells to the right.
+      //
+      // Worded for what the number actually is rather than split into its two
+      // components, deliberately: the split would have to come from a stored
+      // pricingAdjusted (which no already-saved record carries) or from
+      // re-multiplying the percentages, and a re-multiplied step can land a
+      // gallon off the independently-rounded engine figures -- the same
+      // rounding seam the waterfall's difference form exists to avoid. This
+      // phrasing is true for every record shape, legacy rows included, with
+      // nothing new to persist.
       var diff = sum.finalGallons - sum.officialSubtotal;
       if (diff > 0) {
-        finalCell += ' <span style="color:var(--green)" title="Pricing posture adds ' + BDPG.fmtGal(diff) + ' gal/mo">▲</span>';
+        finalCell += ' <span style="color:var(--green)" title="Pricing and Rewards together add ' + BDPG.fmtGal(diff) + ' gal/mo above the published figure">▲</span>';
       } else if (diff < 0) {
-        finalCell += ' <span style="color:var(--red)" title="Pricing posture removes ' + BDPG.fmtGal(Math.abs(diff)) + ' gal/mo">▼</span>';
+        finalCell += ' <span style="color:var(--red)" title="Pricing and Rewards together remove ' + BDPG.fmtGal(Math.abs(diff)) + ' gal/mo below the published figure">▼</span>';
       } else {
-        finalCell += ' <span style="color:var(--muted)" title="No pricing adjustment">●</span>';
+        finalCell += ' <span style="color:var(--muted)" title="No pricing or rewards adjustment">●</span>';
       }
     }
 
