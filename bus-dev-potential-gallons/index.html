@@ -2256,8 +2256,8 @@ function getCentroid(pathStr, axis){
           '⚠ <b>No amenity details entered — the level below is an assumption, not an observation of this site.</b><br>' +
           'With all six cards untouched the calculator falls back to <b>' + BDPG.escHtml(suggestion.level) + '</b>, and that ' +
           '<b>' + assumedPctTxt + '</b> is being applied inside the Roady\'s Published Calculator Figure shown on the results ' +
-          'and in the printed packet. Tap the six cards above, or pick a Confirmed Amenity Level below, before handing the ' +
-          'packet to an owner.' +
+          'and in the printed packet. Tap the six cards above, then pick a Confirmed Amenity Level below — Generate is ' +
+          'disabled until that level is explicitly confirmed, even if it ends up matching this assumption.' +
         '</div>'
       : '';
     // The suggestion's own reason string ("No showers, no truck parking, and no
@@ -2550,10 +2550,28 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
+  // An explicit confirmation, not merely a suggestion that was adopted by
+  // default. Tapping the six amenity cards produces real data and therefore a
+  // real suggestion, but the rep still has to confirm it -- that final click
+  // is what turns an assumption into a decision, and it is the only thing
+  // that distinguishes "surveyed and genuinely sparse" from "nobody asked
+  // yet". A rep who taps all six cards and stops has real data feeding
+  // suggestAmenityLevel(), but has not confirmed anything -- amenityConfirmed()
+  // must still read false, or the gate would be a proxy for "any amenity
+  // interaction happened" rather than the deliberate sign-off it exists to
+  // require.
+  BDPG.amenityConfirmed = function () {
+    return !!BDPG.state.amenityOverridden &&
+      BDPG_CONFIG.AMENITY_LEVELS.indexOf(BDPG.state.amenityLevel) >= 0;
+  };
+
   BDPG.generateButtonHtml = function () {
     var s = BDPG.state;
-    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state);
-    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled title="Complete Prospect Profile, Steps 1 and 2 to generate."') +
+    var amenityOk = BDPG.amenityConfirmed();
+    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state && amenityOk);
+    var title = can ? '' :
+      ' title="Complete Prospect Profile, Steps 1 and 2, and confirm an Amenity Level to generate."';
+    return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled' + title) +
       ' onclick="BDPG.onGenerate()">🚛 Generate Value Profile</button>';
   };
 
