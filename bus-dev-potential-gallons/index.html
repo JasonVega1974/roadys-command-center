@@ -26,6 +26,14 @@ body.day-mode{
 body.day-mode ::-webkit-scrollbar-track{background:#E8EBF0;}
 body.day-mode ::-webkit-scrollbar-thumb{background:#C0C7D3;}
 body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3;}
+/* Pre-existing bug (from the original ab77820 standalone-page commit) fixed
+   here because it blocks the Task 4 contrast gate: the rule above (0-1-1-2)
+   outranked #bdpg-usa-svg path.sel's stroke (0-1-1-1 at line ~110), so the
+   selected state's ring silently fell back to the same grey as every
+   unselected border in day mode, for every region, not just teal. This rule
+   (0-1-2-2) restores the accent ring; stroke-width and filter still come
+   from path.sel below since this only sets stroke. */
+body.day-mode #bdpg-usa-svg path.sel{stroke:var(--accent);}
 body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3;color:#1A1D24;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{color-scheme:dark;}
@@ -1276,9 +1284,17 @@ function getCentroid(pathStr, axis){
 
   // BDPG region fills. Cyan (--accent) is deliberately NOT here: it is reserved
   // for the selected-state highlight, which must read against every region color.
+  // Teal (Northwest, #0891B2) is the closest hue to cyan of the eight and was
+  // checked against the selection ring in both themes: dark mode's ring
+  // (#00C8FF) and day mode's ring (#0078D4, day mode only after the
+  // body.day-mode #bdpg-usa-svg path.sel fix near the top of the stylesheet --
+  // see that rule's comment) both read clearly against the teal fill.
+  // Confirmed against a second region (green West) too, so the day-mode fix
+  // is general, not teal-specific.
   BDPG.REGION_COLORS = {
     West: '#00D68F', Southwest: '#FF6B35', Midwest: '#FFD60A',
-    Northeast: '#7C3AED', Southeast: '#FF4757'
+    Northeast: '#7C3AED', Southeast: '#FF4757',
+    Northwest: '#0891B2', Texas: '#E0218A', 'Upper Midwest': '#8BC34A'
   };
 
   BDPG.mapHtml = function () {
