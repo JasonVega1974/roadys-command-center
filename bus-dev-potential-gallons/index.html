@@ -540,11 +540,29 @@ function getCentroid(pathStr, axis){
     return BDPG.effectiveRegionVariance().asOf || null;
   };
 
-  // Spec §6: the effective region-variance "as of" date must be shown on
-  // both the results view and the export -- this is the shared text for both.
+  // Spec §6: the effective region-variance "as of" date must be shown on both
+  // the results view and the export. Two wordings, same disclosure, because
+  // the two surfaces have different audiences -- see the pitch variant below.
+  //
+  // This is the rep-facing one: it names the internal knob and says outright
+  // when it is unset, which is what a rep needs in order to distrust a
+  // region-flat estimate. It renders below the INTERNAL divider.
   BDPG.regionVarianceAsOfLine = function () {
     var asOf = BDPG.regionVarianceAsOf();
     return asOf ? ('Region variance as of: ' + asOf) : 'Region variance: not set (0% adjustment)';
+  };
+
+  // The prospect-facing one, for the pitch block and the exported packet.
+  // "Region variance: not set (0% adjustment)" is an internal data-freshness
+  // note; on a leave-behind an owner reads it as "they quoted me off
+  // incomplete data", and "variance" names a lever they were never shown.
+  // The date itself is a genuine disclosure and is kept, in plain language.
+  // When there is no date there is nothing to disclose, so this renders
+  // nothing at all rather than announcing the gap -- the rep still sees the
+  // internal line below the divider and the admin panel's yellow banner.
+  BDPG.regionVarianceAsOfLinePitch = function () {
+    var asOf = BDPG.regionVarianceAsOf();
+    return asOf ? ('Regional volume figures as of ' + asOf + '.') : '';
   };
 
   BDPG.regionVarianceIsSet = function () {
@@ -1351,13 +1369,40 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
+  // Step 2's Pricing and Rewards controls are segmented buttons driven by a
+  // fixed option list, so a stored value that is not *in* that list has no
+  // segment to light up: the control rendered with nothing selected while the
+  // engine quietly computed at the 0% band, and a Save persisted the orphan
+  // string. Unreachable from the UI itself (every write comes from a button
+  // carrying one of the listed labels) but reachable by a hand-edited record
+  // or a future label rename -- the same class of silent failure this file
+  // already hardens with hasOwn() on every map lookup and isNum() on every
+  // stored gallons value. Snapping an unrecognised value back to the
+  // documented default makes the fallback visible on screen rather than
+  // presenting as "nothing chosen".
+  //
+  // `indexOf(...) < 0` rather than a truthiness test, so it covers the empty
+  // first-render case, an orphan label AND a non-string (a hand-edited object
+  // would otherwise reach the engine and the tracker verbatim).
+  //
+  // Called from the two chokepoints that between them cover every consumer:
+  // step2Html() (so the control always shows the value actually in force) and
+  // onGenerate() (so the pitch builders, which read live state rather than
+  // the estimate's own inputs, can never see an orphan -- an unrecognised
+  // pricingLevel made PRICING_LEVELS.indexOf() return -1 in
+  // pitchOpportunities() and silently dropped the pricing bullet).
+  BDPG.normalizeLevels = function () {
+    var s = BDPG.state;
+    if (BDPG_CONFIG.PRICING_LEVELS.indexOf(s.pricingLevel) < 0) s.pricingLevel = BDPG_CONFIG.PRICING_DEFAULT;
+    if (BDPG_CONFIG.REWARDS_LEVELS.indexOf(s.rewardsLevel) < 0) s.rewardsLevel = BDPG_CONFIG.REWARDS_DEFAULT;
+  };
+
   BDPG.step2Html = function () {
     var s = BDPG.state;
     var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
     var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
 
-    if (!s.pricingLevel) s.pricingLevel = BDPG_CONFIG.PRICING_DEFAULT;
-    if (!s.rewardsLevel) s.rewardsLevel = BDPG_CONFIG.REWARDS_DEFAULT;
+    BDPG.normalizeLevels();
 
     function selectHtml(id, options, current, handler) {
       return '<select id="' + id + '" onchange="' + handler + '(this.value)">' +
@@ -1763,6 +1808,10 @@ function getCentroid(pathStr, axis){
 
   BDPG.onGenerate = function () {
     var s = BDPG.state;
+    // Before anything reads them: the estimate below, and the pitch builders
+    // that read s.pricingLevel / s.rewardsLevel live off state once a result
+    // exists, must all see the same in-list value. See BDPG.normalizeLevels().
+    BDPG.normalizeLevels();
     var region = BusDevGallonsCalc.resolveRegion(s.state);
     var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
 
@@ -1849,25 +1898,58 @@ function getCentroid(pathStr, axis){
     };
   };
 
+  // Two label palettes for one chart. The on-screen one is the app's muted
+  // token (#6B7A99) on the dark shell; the print one is near-black on white,
+  // because Export Pitch Summary rasterises this canvas with toBase64Image()
+  // and an <img> is pixels -- neither the @media print token repaint nor any
+  // CSS rule can reach inside it, so the dark-theme ticks were printing pale
+  // grey next to black body text on a document handed to a prospect.
+  BDPG.CHART_INK_SCREEN = { tick: '#6B7A99', grid: 'rgba(255,255,255,.05)' };
+  BDPG.CHART_INK_PRINT = { tick: '#333333', grid: 'rgba(0,0,0,.15)' };
+
+  // Only the ink changes between the two. The bar colours are deliberately
+  // NOT swapped: they encode up/down/total the same way the waterfall table's
+  // rows do, and the printed chart has to be recognisable as the one the rep
+  // just had on screen.
+  BDPG.waterfallChartConfig = function (e, ink) {
+    var w = BDPG.waterfallData(e);
+    return {
+      type: 'bar',
+      data: { labels: w.labels, datasets: [{ label: 'gal/mo', data: w.data, backgroundColor: w.colors, borderRadius: 3 }] },
+      // animation:{duration:0} -- Export Pitch Summary grabs this canvas via toBase64Image()
+      // for the print packet. Chart.js's default 1000ms grow-in animation means a
+      // rep clicking Generate then Export within about a second (verified: calling
+      // chart.update('none') right before the capture does NOT reliably jump an
+      // already-in-flight animation to its finished values -- toBase64Image() still
+      // returned the mid-animation frame in testing) would otherwise ship a
+      // partially-drawn waterfall to a prospect-facing leave-behind. Disabling the
+      // animation on this one chart removes the race entirely: the canvas is
+      // always fully drawn on the very first frame, whenever it's captured --
+      // which is also what makes the print/screen swap in onExportPdf() safe
+      // to do synchronously.
+      options: Object.assign({}, CDO, {
+        animation: { duration: 0 },
+        plugins: { legend: { display: false } },
+        // Fresh plain-literal scale objects rather than CDO.scales, for the
+        // reason spelled out at length on the amenity chart below: Chart.js
+        // bakes resolved, type-specific config onto whatever scale objects it
+        // is handed, and CDO.scales is shared, mutable state that every other
+        // chart in the app also passes in by reference. This chart now needs
+        // per-render tick colours anyway, which is impossible to express on a
+        // shared object without writing through to every other chart.
+        scales: {
+          x: { ticks: { color: ink.tick, font: { size: 9 } }, grid: { color: ink.grid } },
+          y: { ticks: { color: ink.tick, font: { size: 9 } }, grid: { color: ink.grid } }
+        }
+      })
+    };
+  };
+
   BDPG.drawCharts = function () {
     var r = BDPG.state.result;
     if (!r) return;
     if (document.getElementById('bdpg-waterfall')) {
-      var w = BDPG.waterfallData(r.estimate);
-      mkchart('bdpg-waterfall', {
-        type: 'bar',
-        data: { labels: w.labels, datasets: [{ label: 'gal/mo', data: w.data, backgroundColor: w.colors, borderRadius: 3 }] },
-        // animation:{duration:0} -- Export Pitch Summary grabs this canvas via toBase64Image()
-        // for the print packet. Chart.js's default 1000ms grow-in animation means a
-        // rep clicking Generate then Export within about a second (verified: calling
-        // chart.update('none') right before the capture does NOT reliably jump an
-        // already-in-flight animation to its finished values -- toBase64Image() still
-        // returned the mid-animation frame in testing) would otherwise ship a
-        // partially-drawn waterfall to a prospect-facing leave-behind. Disabling the
-        // animation on this one chart removes the race entirely: the canvas is
-        // always fully drawn on the very first frame, whenever it's captured.
-        options: Object.assign({}, CDO, { animation: { duration: 0 }, plugins: { legend: { display: false } } })
-      });
+      mkchart('bdpg-waterfall', BDPG.waterfallChartConfig(r.estimate, BDPG.CHART_INK_SCREEN));
     }
     if (document.getElementById('bdpg-amenity')) {
       var a = BDPG.amenityProfileData(BDPG.state.amenityDetails);
@@ -2006,14 +2088,24 @@ function getCentroid(pathStr, axis){
 
     var netCtx = BDPG.networkContextHtml();
 
+    // The as-of disclosure appears on both halves, in each half's own voice:
+    // the plain-language date above the divider (and in the packet, which is
+    // built from the same pitch wording), the internal "Region variance ...
+    // not set (0% adjustment)" line below it. '' above the divider when there
+    // is no date, so no empty grey strip is emitted.
+    var asOfPitch = BDPG.regionVarianceAsOfLinePitch();
+    var asOfPitchLine = asOfPitch
+      ? '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(asOfPitch) + '</div>' : '';
+
     return '<div class="bdpg-results">' +
       BDPG.pitchSectionsHtml() +
-      '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
+      asOfPitchLine +
       (e.reviewFlagged ? '<div style="margin-top:6px;color:var(--yellow);font-size:.8em">No Trucker Path rating found — Review% treated as 0%.</div>' : '') +
       waterfall +
       BDPG.internalDividerHtml() +
       rangeSection + amenitySection + netCtx +
       BDPG.conditionAdjustedHtml() + BDPG.membershipFitHtml() + BDPG.analysisNarrativeHtml() +
+      '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</div>' +
     '</div>';
   };
 
@@ -2065,7 +2157,10 @@ function getCentroid(pathStr, axis){
       : null;
     if (best) {
       payback = '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:.9em">' +
-        'At the <b>' + BDPG.escHtml(best.name) + '</b> membership, your membership pays for itself at ' +
+        // "At the X membership, your membership pays for itself" said
+        // membership twice in nine words. The plan is the subject now, so it
+        // is named once.
+        'The <b>' + BDPG.escHtml(best.name) + '</b> membership pays for itself at ' +
         BDPG.fmtGal(best.breakevenGallons) + ' gal/mo — your projection is <b>' + best.coverageMultiple +
         '×</b> that.</div>';
     }
@@ -2118,6 +2213,7 @@ function getCentroid(pathStr, axis){
     // blank line where a name would have been.
     var preparedBy = BDPG.state.prospect.gsName
       ? '<p style="font-size:.9em">Prepared by ' + BDPG.escHtml(BDPG.state.prospect.gsName) + '</p>' : '';
+    var asOfPitch = BDPG.regionVarianceAsOfLinePitch();
 
     return '<div id="bdpg-print-only">' +
       '<h1>Roady\'s Fuel Network — Value Proposition for ' + BDPG.escHtml(BDPG.displayName()) + '</h1>' +
@@ -2132,7 +2228,10 @@ function getCentroid(pathStr, axis){
       '<p>Official calculator: ' + BDPG.escHtml(e.officialMathLine) + '</p>' +
       '<p>With pricing: ' + BDPG.escHtml(e.pricingMathLine) + '</p>' +
       '<p>With Roady\'s Rewards (' + BDPG.escHtml(BDPG.state.rewardsLevel) + '): ' + BDPG.escHtml(e.finalMathLine) + '</p>' +
-      '<p style="font-size:.85em;color:#666">' + BDPG.escHtml(BDPG.regionVarianceAsOfLine()) + '</p>' +
+      // Pitch wording, and omitted entirely when there is no date -- the
+      // internal "not set (0% adjustment)" phrasing is a rep-facing note and
+      // stays below the divider on screen. See regionVarianceAsOfLinePitch().
+      (asOfPitch ? '<p style="font-size:.85em;color:#666">' + BDPG.escHtml(asOfPitch) + '</p>' : '') +
       chartImg +
     '</div>';
   };
@@ -2144,15 +2243,26 @@ function getCentroid(pathStr, axis){
     // has to happen before the #bdpg-print-only rebuild below so exportPdfHtml()
     // can inline it as an <img>; if it fails for any reason the packet still
     // prints, just without the chart image.
-    // The waterfall chart is built with animation:{duration:0} (see drawCharts)
-    // specifically so this capture is always complete no matter how soon after
-    // Generate the rep clicks Export -- see the comment there for why.
+    // The waterfall chart is built with animation:{duration:0} (see
+    // BDPG.waterfallChartConfig) specifically so this capture is always
+    // complete no matter how soon after Generate the rep clicks Export -- see
+    // the comment there for why.
+    // Captured in print ink, then put straight back: see BDPG.CHART_INK_PRINT.
+    // mkchart() destroys and recreates, and this chart is animation:{duration:0},
+    // so both passes are complete on their first frame -- the whole swap
+    // finishes inside this synchronous block and the rep never sees it.
     BDPG.printChartImg = '';
-    try {
-      if (typeof CHS !== 'undefined' && CHS['bdpg-waterfall']) {
+    if (typeof CHS !== 'undefined' && CHS['bdpg-waterfall'] && document.getElementById('bdpg-waterfall')) {
+      try {
+        mkchart('bdpg-waterfall', BDPG.waterfallChartConfig(BDPG.state.result.estimate, BDPG.CHART_INK_PRINT));
         BDPG.printChartImg = CHS['bdpg-waterfall'].toBase64Image();
-      }
-    } catch (err) { BDPG.printChartImg = ''; }
+      } catch (err) { BDPG.printChartImg = ''; }
+      // Unconditional, including after a failed capture -- the rep must never
+      // be left looking at the print-ink chart because the export threw.
+      try {
+        mkchart('bdpg-waterfall', BDPG.waterfallChartConfig(BDPG.state.result.estimate, BDPG.CHART_INK_SCREEN));
+      } catch (err2) { /* screen chart is cosmetic; the packet still prints */ }
+    }
 
     // Rebuild just the print-only block (not a full BDPG.render(), which would
     // tear down and recreate the on-screen charts) so the freshly-captured
@@ -2439,25 +2549,37 @@ function getCentroid(pathStr, axis){
   // Every field falls back to a dash or empty string; nothing here may ever
   // render "undefined", and a legitimate zero (=== 0) must not collapse to
   // the "missing" fallback the way `|| null` would.
+  //
+  // The string fields all read through str(), the third member of this file's
+  // guard set alongside isNum() for stored numbers and hasOwn() for stored
+  // map keys. A hand-edited record holding an object where a label belongs
+  // (e.g. rewardsLevel: {}) is truthy, so every `||` chain below used to pass
+  // it straight to escHtml() and the tracker printed the literal
+  // "[object Object]" -- a string this branch's own constraints forbid
+  // rendering anywhere. Coercing a non-string to '' also lets the chain fall
+  // through to the next source rather than stopping on the corrupt one, and
+  // lands on the same "—" the rest of the table uses for missing data.
+  function str(v) { return typeof v === 'string' ? v : ''; }
   BDPG.readSummary = function (p) {
     var sum = p.summary || {};
     var st = p.state || {};
     var pr = st.prospect || {};
+    var stateCode = str(sum.stateCode) || str(st.state);
     return {
-      name: sum.name || p.name || pr.name || '—',
-      locationType: sum.locationType || pr.locationType || '',
-      city: sum.city || pr.city || '',
-      stateCode: sum.stateCode || st.state || '',
-      region: sum.region || (st.state ? BusDevGallonsCalc.resolveRegion(st.state) : '') || '',
-      profile: sum.profile || st.profile || '', roadway: sum.roadway || st.roadway || '',
+      name: str(sum.name) || str(p.name) || str(pr.name) || '—',
+      locationType: str(sum.locationType) || str(pr.locationType),
+      city: str(sum.city) || str(pr.city),
+      stateCode: stateCode,
+      region: str(sum.region) || (stateCode ? str(BusDevGallonsCalc.resolveRegion(stateCode)) : ''),
+      profile: str(sum.profile) || str(st.profile), roadway: str(sum.roadway) || str(st.roadway),
       officialSubtotal: (sum.officialSubtotal === 0 || sum.officialSubtotal) ? sum.officialSubtotal : null,
       finalGallons: (sum.finalGallons === 0 || sum.finalGallons) ? sum.finalGallons : null,
-      grade: sum.grade || '', gradeLabel: sum.gradeLabel || '',
-      preEvalSignal: sum.preEvalSignal || pr.preEvalSignal || '',
-      amenityLevel: sum.amenityLevel || st.amenityLevel || '',
-      pricingLevel: sum.pricingLevel || st.pricingLevel || '',
-      rewardsLevel: sum.rewardsLevel || st.rewardsLevel || '',
-      savedAt: p.savedAt || ''
+      grade: str(sum.grade), gradeLabel: str(sum.gradeLabel),
+      preEvalSignal: str(sum.preEvalSignal) || str(pr.preEvalSignal),
+      amenityLevel: str(sum.amenityLevel) || str(st.amenityLevel),
+      pricingLevel: str(sum.pricingLevel) || str(st.pricingLevel),
+      rewardsLevel: str(sum.rewardsLevel) || str(st.rewardsLevel),
+      savedAt: str(p.savedAt)
     };
   };
 
@@ -2557,23 +2679,34 @@ function getCentroid(pathStr, axis){
     // snapshot; it must not resurrect a warning about someone else's edit.)
     BDPG.state.resultStale = false;
     BDPG.currentProfileId = found.id;
-    // A profile saved before Task 6 has no preEvalOpen at all -- default it
-    // to open, matching the documented default for every other page load.
-    if (BDPG.state.preEvalOpen === undefined) BDPG.state.preEvalOpen = true;
+    // ── Migration guards for records saved by older builds ───────────────
+    // These used to mix `=== undefined` and `!` from line to line; both were
+    // correct for their own field, but the adjacency made the next one added
+    // a coin flip. One rule now, no exceptions: each guard tests that the
+    // field HAS THE TYPE it must have, never whether it is truthy. That keeps
+    // a legitimate falsy value (preEvalOpen:false means the rep collapsed the
+    // panel; gsName:'' means no name) and still replaces a missing field --
+    // or a hand-edited one of the wrong type, which `=== undefined` would
+    // have waved through into the DOM as "[object Object]".
+    if (typeof BDPG.state.preEvalOpen !== 'boolean') BDPG.state.preEvalOpen = true;
     // A profile saved before the rewards term existed has no rewardsLevel;
-    // default it so it resolves to 0% and its stored numbers stay put.
-    if (!BDPG.state.rewardsLevel) BDPG.state.rewardsLevel = BDPG_CONFIG.REWARDS_DEFAULT;
+    // one saved with a since-renamed label carries an orphan string. Both
+    // resolve to the documented default here (and pricingLevel with it), so
+    // the loaded record's stored numbers stay put and Step 2 shows the value
+    // actually in force. See BDPG.normalizeLevels().
+    BDPG.normalizeLevels();
     // A profile saved before Task 4 has no `prospect` at all -- default it
     // to the same empty shape the page starts with, so prospect-reading
     // code (the Step 0 card, the badge, trackerSummary) never throws on
     // a pre-Task-4 record.
-    if (!BDPG.state.prospect) {
+    // (typeof null === 'object', hence both halves.)
+    if (!BDPG.state.prospect || typeof BDPG.state.prospect !== 'object') {
       BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '', gsName: '' };
     }
     // A profile saved before Task 10 has a `prospect` but no gsName. Default
     // it so the field renders empty rather than the literal "undefined", and
     // so summaryText()'s Prepared-by line stays absent instead of printing it.
-    if (BDPG.state.prospect.gsName === undefined) BDPG.state.prospect.gsName = '';
+    if (typeof BDPG.state.prospect.gsName !== 'string') BDPG.state.prospect.gsName = '';
     BDPG.render();
     BDPG.savedSig = BDPG.stateSig();
     return true;
@@ -2613,6 +2746,19 @@ function getCentroid(pathStr, axis){
   // control's selected-background color (see rcol in step2Html) -- an
   // index-keyed array next to this would just invite the same reordering
   // hazard this map exists to avoid.
+  //
+  // CONSTRAINT ON THE VALUES, which nothing enforces at runtime: each tone
+  // word is used in TWO different grammars and must be valid in both --
+  //   * `var(--<tone>)`  -- the Step 2 segment background (rcol in step2Html)
+  //   * `.tag-<tone>`    -- the tracker's Rewards badge class
+  // and the two vocabularies are NOT the same set. `.tag-gray` exists while
+  // `--gray` does not, which is exactly why the miss fallbacks are written
+  // asymmetrically ('gray' for the class, a hardcoded var(--muted) for the
+  // colour) instead of sharing one word. A fourth level whose tone word has
+  // only one of the two definitions fails silently in the other place -- an
+  // unstyled badge or a transparent segment, no console error. Before adding
+  // one, confirm BOTH `--<tone>` (in :root AND the day-mode block) and
+  // `.tag-<tone>` exist.
   BDPG.REWARDS_TONES = {
     "Participating in Roady's Rewards": 'green',
     'Undecided / unknown': 'yellow',

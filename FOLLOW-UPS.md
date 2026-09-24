@@ -6,7 +6,37 @@ real user already has. Newest first.
 
 ---
 
-## 1. Loading a profile without `amenityDetails` throws and leaves the page inert
+## 1. Step 2's state-code input parks the caret at the end after every keystroke
+
+**Where:** `bus-dev-potential-gallons/index.html` — `onStateInput()`. The handler
+replaces `#bdpg-step2` wholesale via `outerHTML`, which destroys the focused
+`#bdpg-state` input, then refocuses the replacement with
+`input.setSelectionRange(input.value.length, input.value.length)`.
+
+**Symptom:** focus and the typed character both survive, but the caret moves to
+the end of the field rather than staying where it was. Measured: seed `"D"`,
+caret at 0, press `i` → value `"ID"` (correct), `selectionStart` 2, expected 1.
+The other nine text inputs on the page (prospect name / street / city / GS name
+/ notes / Step 0 State, and Step 3's three duplicates) all hold the caret
+exactly, verified in the same pass.
+
+**Why it was deferred:** it is the current deliberate behaviour, not an
+oversight — the line is explicit and the surrounding comment explains the
+refocus. The field is `maxlength="2"` and uppercase-only, so "end of field" and
+"after the character I just typed" are the same position for every real typing
+sequence; only a deliberate insertion in front of an existing letter differs.
+Pre-existing: the handler and its `setSelectionRange` predate the rewards/pitch
+branch. Recorded because the Task 11 invariant checklist names caret survival in
+"both state fields" and this one is a partial pass.
+
+**Fix when picked up:** read `document.activeElement.selectionStart` before the
+`outerHTML` swap and restore `Math.min(saved, input.value.length)` instead of
+jumping to the end. Decide first whether end-of-field is actually wanted for a
+two-character code.
+
+---
+
+## 2. Loading a profile without `amenityDetails` throws and leaves the page inert
 
 **Where:** `bus-dev-potential-gallons/index.html` — `step2Html()` reads
 `s.amenityDetails[f]` with no guard; reached via `onLoadProfile()`.
@@ -35,14 +65,14 @@ read in `step2Html()`.
 
 ---
 
-## 2. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
+## 3. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
 
 **Where:** same file, the Step 2 rating display.
 
 **Symptom:** the literal string `NaN` on screen instead of a value or `—`.
 Cosmetic — nothing throws and no stored number is wrong.
 
-**Why it was deferred:** same evidence as #1. The base build always writes
+**Why it was deferred:** same evidence as #2. The base build always writes
 `"truckerPathRating":""`, and a base-written record loaded into the current
 build renders `—` correctly. Only hand-edited storage reaches it.
 
@@ -51,7 +81,7 @@ build renders `—` correctly. Only hand-edited storage reaches it.
 
 ---
 
-## 3. GS Performance Metrics charts never render
+## 4. GS Performance Metrics charts never render
 
 **Where:** `index.html` — `renderGSMetrics()` calls `mkchart('mss-c1')` …
 `mkchart('mss-c4')`, but the canvases in the markup are `gs-c1` … `gs-c4`.
@@ -66,7 +96,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 4. Unterminated HTML comment renders stray `═══ -->`
+## 5. Unterminated HTML comment renders stray `═══ -->`
 
 **Where:** `index.html`, near line 2199.
 
@@ -76,7 +106,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 5. Dashboard Overview territory map is unreachable through the UI
+## 6. Dashboard Overview territory map is unreachable through the UI
 
 **Where:** `index.html` — the panel holding the territory map has no visible tab
 button, and neither map auto-renders from nav in a data-less environment. Both
@@ -88,7 +118,7 @@ with identical behaviour. Out of scope for the extraction work.
 
 ---
 
-## 6. Dashboard MASTER LOCK defaults to locked
+## 7. Dashboard MASTER LOCK defaults to locked
 
 **Where:** `index.html`. PIN `1234`. Noted only because it makes automated
 probes of the dashboard read as empty until unlocked — expected behaviour, not a
