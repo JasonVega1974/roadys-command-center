@@ -31,9 +31,24 @@ body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3;}
    outranked #bdpg-usa-svg path.sel's stroke (0-1-1-1 at line ~110), so the
    selected state's ring silently fell back to the same grey as every
    unselected border in day mode, for every region, not just teal. This rule
-   (0-1-2-2) restores the accent ring; stroke-width and filter still come
-   from path.sel below since this only sets stroke. */
+   (0-1-2-2) restores the accent ring; stroke-width still comes from path.sel
+   below, and the glow colour from the rule immediately after this one. */
 body.day-mode #bdpg-usa-svg path.sel{stroke:var(--accent);}
+/* path.sel's drop-shadow (line ~118) is hardcoded rgba(0,200,255,.7) -- dark
+   mode's own --accent, spelled literally because a CSS colour cannot be
+   interpolated into a filter's rgba(). In day mode the ring therefore resolved
+   to #0078D4 while its halo stayed night-cyan: two different blues on one
+   outline, and the light theme leaning on a value that only means anything at
+   night. Same 0-1-2-2 specificity as the stroke rule above, so it beats
+   path.sel's 0-1-1-1 regardless of source order. rgba(0,120,212,.7) is the day
+   --accent (#0078D4) at the same alpha, so ring and halo are now one colour in
+   both themes.
+   What this does NOT fix: the ring itself is still 1.23:1 against the teal
+   Northwest fill, unchanged, because the stroke colour is untouched. It does
+   roughly double the halo's contrast against the light day-mode background it
+   actually spills onto (1.70:1 -> 3.92:1 vs #F0F2F5). See FOLLOW-UPS.md #1
+   options 2 and 3 for the ring-vs-fill half, which is still the user's call. */
+body.day-mode #bdpg-usa-svg path.sel{filter:drop-shadow(0 0 7px rgba(0,120,212,.7));}
 body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3;color:#1A1D24;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{color-scheme:dark;}
@@ -759,8 +774,7 @@ function getCentroid(pathStr, axis){
           '<input id="bdpg-admin-asof" value="' + BDPG.escHtml(v.asOf) + '" placeholder="e.g. 2026-09"></div>' +
           '<button class="btn btn-accent" style="margin-top:10px" onclick="BDPG.onSaveRegionOverride()">Save locally</button>' +
           '<div id="bdpg-admin-json" style="margin-top:10px;font-family:monospace;font-size:.75em;white-space:pre-wrap;background:var(--bg2,#111);padding:8px;border-radius:6px;' +
-            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>' +
-          BDPG.regionCsvHtml()
+            (s.adminSavedJson ? '' : 'display:none') + '">' + (s.adminSavedJson ? BDPG.escHtml(s.adminSavedJson) : '') + '</div>'
         ) : '') +
       '</div>';
   };
@@ -808,11 +822,6 @@ function getCentroid(pathStr, axis){
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
     BDPG.regionVariance.override = out;
     BDPG.state.adminSavedJson = JSON.stringify(out, null, 2) + '\n\n// Paste this into region_variance.json to make it the new team-wide default.';
-    // The CSV confirmation now survives renders (see state.csvResultMsg), so
-    // it has to be retired by whatever replaces the numbers it describes --
-    // otherwise a hand-saved override sits under a message quoting the
-    // CSV-computed figures it just overwrote.
-    BDPG.state.csvResultMsg = null;
     // The region % set is an engine input too -- it just lives outside
     // BDPG.state. Changing it strands any result computed under the old one.
     BDPG.invalidateResult();
@@ -823,9 +832,6 @@ function getCentroid(pathStr, axis){
     localStorage.removeItem('roadysBDPGRegionOverride');
     BDPG.regionVariance.override = null;
     BDPG.state.adminSavedJson = null;
-    // Same reason as in onSaveRegionOverride: the override the message
-    // describes no longer exists.
-    BDPG.state.csvResultMsg = null;
     BDPG.invalidateResult();
     BDPG.render();
   };
@@ -900,19 +906,20 @@ function getCentroid(pathStr, axis){
     if (el) el.textContent = JSON.stringify(out, null, 2) + '\n\n// Paste this into network-context.json to make it the new committed default.';
 
     // Rows live only for the duration of this compute step (see the comment
-    // above BDPG.ncCsv) -- reset now that the result is rendered, matching
-    // the sibling BDPG.onRegionCsvCompute reset below.
+    // above BDPG.ncCsv) -- reset now that the result is rendered.
     BDPG.ncCsv = { rows: null, headers: [] };
   };
 
   // Minimal CSV line parser (no library). Handles a quoted field containing a
   // comma or an escaped `""` inside quotes; not a full RFC 4180 parser (no
   // embedded newlines inside a quoted field), which is fine for the simple
-  // per-location gallons/state exports this feeds.
+  // per-location exports this feeds. Sole consumer today is the
+  // network-context generator above; it was shared with the region-variance
+  // CSV tool until that tool was retired.
   BDPG.parseCsv = function (text) {
     // Strip a leading UTF-8 BOM -- an Excel export otherwise makes the first
-    // header read as "﻿Company", which breaks exact indexOf() header
-    // matching in both CSV consumers (network-context generator, region CSV).
+    // header read as "﻿Company", which breaks the exact indexOf() header
+    // matching onNetworkContextCsvCompute() does.
     text = text.replace(/^﻿/, '');
     var lines = text.replace(/\r\n/g, '\n').split('\n').filter(function (l) { return l.length; });
     return lines.map(function (line) {
@@ -930,148 +937,6 @@ function getCentroid(pathStr, axis){
       out.push(cur);
       return out;
     });
-  };
-
-  // Uploaded rows live only in memory for the duration of the mapping +
-  // compute step. They are never written to localStorage or sent anywhere —
-  // only the five resulting percentages (plus asOf) are persisted, and this
-  // object is reset back to empty immediately after BDPG.onRegionCsvCompute
-  // finishes, win or lose. See CLAUDE.md privacy note for gs-travel-planner-
-  // style handling of anything that could be internal business data.
-  BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
-
-  // Holds the Compute Region % confirmation (or error) text so it survives the
-  // BDPG.render() that follows. The old code wrote straight into
-  // #bdpg-csv-result and then called render(), which replaces
-  // #bdpg-content's innerHTML wholesale -- destroying the element it had just
-  // written to. The message rendered for zero frames and an admin got no
-  // textual confirmation at all; the only feedback was the sliders moving.
-  // Same mechanism as state.adminSavedJson: keep it in state, re-emit it on
-  // every render until something clears it.
-  BDPG.state.csvResultMsg = null;
-
-  // Emitted by BOTH branches of regionCsvHtml() below, so the message survives
-  // the render whether the mapping UI is still up (error path) or has reverted
-  // to the bare file input (success path, where regionCsv was reset).
-  BDPG.csvResultHtml = function () {
-    var msg = BDPG.state.csvResultMsg;
-    return '<div id="bdpg-csv-result" style="margin-top:8px;font-size:.8em"' +
-      (msg ? '' : ' hidden') + '>' + (msg ? BDPG.escHtml(msg) : '') + '</div>';
-  };
-
-  BDPG.regionCsvHtml = function () {
-    if (!BDPG.regionCsv.headers.length) {
-      return '<div class="fg" style="margin-top:14px"><label>Optional: compute Region % from an Interstate export (per-location gallons + state)</label>' +
-        '<input type="file" accept=".csv" onchange="BDPG.onRegionCsvFile(this)">' +
-        BDPG.csvResultHtml() + '</div>';
-    }
-    var h = BDPG.regionCsv.headers;
-    function opt(v, selected) { return '<option value="' + BDPG.escHtml(v) + '"' + (selected ? ' selected' : '') + '>' + BDPG.escHtml(v) + '</option>'; }
-    return '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">' +
-      '<div style="font-size:.8em;margin-bottom:6px">Which column is <b>State</b>? ' +
-        '<select id="bdpg-csv-state-col" onchange="BDPG.regionCsv.stateCol=this.value">' +
-          h.map(function (col) { return opt(col, col === BDPG.regionCsv.stateCol); }).join('') + '</select></div>' +
-      '<div style="font-size:.8em;margin-bottom:6px">Which column is <b>Gallons</b>? ' +
-        '<select id="bdpg-csv-gal-col" onchange="BDPG.regionCsv.gallonsCol=this.value">' +
-          h.map(function (col) { return opt(col, col === BDPG.regionCsv.gallonsCol); }).join('') + '</select></div>' +
-      '<button class="btn btn-accent" onclick="BDPG.onRegionCsvCompute()">Compute Region %</button>' +
-      BDPG.csvResultHtml() +
-    '</div>';
-  };
-
-  BDPG.onRegionCsvFile = function (input) {
-    var file = input.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function () {
-      var rows = BDPG.parseCsv(String(reader.result));
-      if (!rows.length) return;
-      BDPG.regionCsv.headers = rows[0];
-      BDPG.regionCsv.rows = rows.slice(1);
-      BDPG.regionCsv.stateCol = rows[0].filter(function (col) { return /state/i.test(col); })[0] || rows[0][0];
-      BDPG.regionCsv.gallonsCol = rows[0].filter(function (col) { return /gallon/i.test(col); })[0] || rows[0][0];
-      // A new upload starts a new attempt -- the previous run's confirmation
-      // describes numbers that are no longer on screen.
-      BDPG.state.csvResultMsg = null;
-      BDPG.render();
-    };
-    reader.readAsText(file);
-  };
-
-  BDPG.onRegionCsvCompute = function () {
-    var headers = BDPG.regionCsv.headers;
-    var stateIdx = headers.indexOf(BDPG.regionCsv.stateCol);
-    var galIdx = headers.indexOf(BDPG.regionCsv.gallonsCol);
-    var sums = {}, counts = {};
-    var netSum = 0, netCount = 0;
-
-    BDPG.regionCsv.rows.forEach(function (row) {
-      var st = (row[stateIdx] || '').trim().toUpperCase();
-      var gal = Number(row[galIdx]);
-      var region = BusDevGallonsCalc.resolveRegion(st);
-      if (!region || !isFinite(gal)) return;
-      sums[region] = (sums[region] || 0) + gal;
-      counts[region] = (counts[region] || 0) + 1;
-      netSum += gal;
-      netCount += 1;
-    });
-
-    if (!netCount) {
-      BDPG.state.csvResultMsg = 'No usable rows found — check the column mapping.';
-      BDPG.render();
-      return;
-    }
-
-    var networkAvg = netSum / netCount;
-    // Seeded from BDPG.REGION_KEYS (all zero) rather than a hardcoded 5-key
-    // literal, and keyed by the resolved region name exactly -- no
-    // toLowerCase(). This object is written straight into
-    // BDPG.regionVariance.override below, so a lowercased or partial key
-    // here would reproduce the same silent-0% bug effectiveRegionPct()
-    // was fixed against, except live and mid-session rather than caught
-    // only on the next reload.
-    var out = { asOf: (new Date()).toISOString().slice(0, 7) };
-    BDPG.REGION_KEYS.forEach(function (region) { out[region] = 0; });
-    // A real per-location CSV legitimately produces figures far outside the
-    // formula's +/-REGION_PCT_BOUND contract (measured: +85.2 / -97.9 from a
-    // five-row fixture). Every READER already clamps, so the formula was never
-    // at risk -- but the raw values were being persisted to
-    // roadysBDPGRegionOverride, so storage held numbers the contract forbids
-    // and the file on disk disagreed with every surface that reads it. Clamp
-    // at the write too: what is stored is what will be used, and if
-    // REGION_PCT_BOUND is ever widened an old out-of-contract value cannot
-    // silently go live. Same clamp onSaveRegionOverride() applies, from the
-    // same single constant.
-    var clamped = 0;
-    Object.keys(sums).forEach(function (region) {
-      var regionAvg = sums[region] / counts[region];
-      var pct = Math.round(((regionAvg / networkAvg) - 1) * 1000) / 10;
-      var kept = BDPG.clampRegionPct(pct);
-      if (kept !== pct) clamped++;
-      out[region] = kept;
-    });
-
-    localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
-    BDPG.regionVariance.override = out;
-    // Third writer of the region % set (with onSaveRegionOverride and
-    // onClearRegionOverride) -- same reason it has to invalidate.
-    BDPG.invalidateResult();
-    BDPG.regionCsv = { rows: null, headers: [], stateCol: '', gallonsCol: '' };
-    // Into state, then render: BDPG.render() rebuilds adminPanelHtml()'s
-    // innerHTML wholesale, so a message written into the live element here
-    // would be destroyed a line later (it used to be, every time). Reverting
-    // to the bare file input is still the point -- it is the proof the
-    // uploaded rows were discarded rather than left mapped on screen -- and
-    // csvResultHtml() re-emits the message into that markup too.
-    //
-    // The figures printed are the CLAMPED ones now stored, so the message, the
-    // sliders and the calculation all state the same numbers; the count says
-    // outright when something was truncated rather than leaving the admin to
-    // notice a slider that did not go where the message said.
-    BDPG.state.csvResultMsg = 'Computed and saved locally: ' + JSON.stringify(out) +
-      (clamped ? (' (' + clamped + ' region' + (clamped === 1 ? '' : 's') + ' clamped to the ±' +
-        BDPG.REGION_PCT_BOUND + '% limit)') : '');
-    BDPG.render();
   };
 
   // ── Admin PIN gate ─────────────────────────────────────────────────────
@@ -2095,13 +1960,16 @@ function getCentroid(pathStr, axis){
 
   // BDPG region fills. Cyan (--accent) is deliberately NOT here: it is reserved
   // for the selected-state highlight, which must read against every region color.
-  // Teal (Northwest, #0891B2) is the closest hue to cyan of the eight and was
-  // checked against the selection ring in both themes: dark mode's ring
-  // (#00C8FF) and day mode's ring (#0078D4, day mode only after the
-  // body.day-mode #bdpg-usa-svg path.sel fix near the top of the stylesheet --
-  // see that rule's comment) both read clearly against the teal fill.
-  // Confirmed against a second region (green West) too, so the day-mode fix
-  // is general, not teal-specific.
+  // Teal (Northwest, #0891B2) is the closest hue to cyan of the eight and is
+  // the worst case for the selection ring. Dark mode is clean: ring #00C8FF
+  // (L 0.485) on the 0.85-alpha teal fill. Day mode is NOT -- ring #0078D4
+  // (L 0.1819) against that fill (L 0.2352) measures 1.23:1, and no amount of
+  // theme-scoping the ring's own colour changes that, because both are
+  // mid-blue-green. The two body.day-mode path.sel rules near the top of the
+  // stylesheet make the ring and its halo agree with each other and with the
+  // light background; making the ring legible against the teal itself needs a
+  // wider stroke or a different Northwest hue -- FOLLOW-UPS.md #1, the user's
+  // call, deliberately not taken by an implementer.
   BDPG.REGION_COLORS = {
     West: '#00D68F', Southwest: '#FF6B35', Midwest: '#FFD60A',
     Northeast: '#7C3AED', Southeast: '#FF4757',
@@ -2737,20 +2605,17 @@ function getCentroid(pathStr, axis){
   // records saved before its removal still carry the key in their snapshot,
   // and onLoadProfile copies the snapshot into BDPG.state wholesale. Skipping
   // it keeps a legacy record's signature comparable with a fresh one.
-  // csvResultMsg is the Compute Region % confirmation line. It is admin-tool
-  // feedback, not prospect data -- but it became state-resident when the
-  // message was moved off the live DOM so it could survive render(), and
-  // anything on BDPG.state is in this signature unless it is listed here.
-  // Left out, running the CSV tool wrote a non-null string into the signature
-  // and hasUnsavedWork() went true, so the next Load (or tracker Export, which
-  // also gates on confirmDiscard) asked an admin to discard changes they never
-  // made. Exactly the spurious-prompt failure tutorialOpen/tutorialTab were
-  // added here to avoid. Rule for anything added to BDPG.state from now on: if
-  // a saved record would not be wrong without it, it belongs in this list.
+  // csvResultMsg was listed here too, for the retired region-variance CSV
+  // tool's confirmation line; it went out with the tool, since a SIG_SKIP key
+  // for state that no longer exists is just a name nobody can check. The rule
+  // it was added under stands for anything new on BDPG.state: if a saved
+  // record would not be wrong without it, it belongs in this list, or running
+  // an admin tool will make hasUnsavedWork() true and prompt a rep to discard
+  // changes they never made.
   BDPG.SIG_SKIP = {
     result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
     ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1,
-    tutorialOpen: 1, tutorialTab: 1, csvResultMsg: 1
+    tutorialOpen: 1, tutorialTab: 1
   };
   BDPG.stateSig = function () {
     var s = BDPG.state, out = {};

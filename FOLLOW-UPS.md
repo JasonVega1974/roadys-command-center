@@ -6,38 +6,56 @@ real user already has. Newest first. Items closed by later work move to
 **Resolved** at the bottom rather than being deleted, so the evidence that
 produced them stays findable.
 
-Entries 1 and 2 are **awaiting a decision from the user**, not implementation
-work waiting for a slot.
+Entry 1 is **awaiting a decision from the user**, not implementation work
+waiting for a slot.
 
 ---
 
-## 1. Awaiting a decision: the day-mode map selection ring is rescued by a night-mode artifact
+## 1. Awaiting a decision: the day-mode map selection ring does not contrast with the teal Northwest fill
 
 **Where:** `bus-dev-potential-gallons/index.html` — `#bdpg-usa-svg path.sel`
-(≈line 118) sets `stroke:var(--accent); stroke-width:2.2;
-filter:drop-shadow(0 0 7px rgba(0,200,255,.7))`, and the day-mode override
-(≈line 36) re-points **only** the stroke colour:
-`body.day-mode #bdpg-usa-svg path.sel{stroke:var(--accent);}`.
+(line 133) sets `stroke:var(--accent); stroke-width:2.2;
+filter:drop-shadow(0 0 7px rgba(0,200,255,.7))`, with two day-mode overrides
+near the top of the stylesheet (lines 36 and 51) re-pointing the stroke and
+the glow to the day `--accent`.
 
 **Symptom:** in day mode `--accent` is `#0078D4` and the Northwest fill is
 `#0891B2`. Computed relative luminances are 0.1819 and 0.2352, giving a
 contrast ratio of **1.23:1** between the selection ring and the shape it is
-supposed to outline — well under any legibility threshold. Dark mode is clean
-(ring `rgb(0,200,255)` on `rgba(8,145,178,.85)`). What keeps day mode usable
-is the `drop-shadow` glow, which is hardcoded cyan and **not theme-scoped**:
-the light theme is leaning on a dark-theme value that nothing guarantees will
-stay.
+supposed to outline — well under any legibility threshold. Dark mode is clean:
+ring `rgb(0,200,255)` on `rgba(8,145,178,.85)`, 1.88:1 and far brighter.
 
-**Why it is not being fixed here:** the teal is the user's own colour choice
-and the 8-region palette shipped with their conditional approval, so which
-remedy to take is theirs. All three are cheap and none needs the other:
+**Option 1 below was taken on `feat/bdpg-8-regions-admin-tools`** (the
+branch's final commit). Measured on the same page and the same rendering
+engine, HEAD bytes vs working-tree bytes, Northwest (`WA`) selected:
 
-1. **Theme-scope the glow** — add a `body.day-mode …path.sel{filter:…}` rule
-   using a day-appropriate colour, so the ring stops depending on a cyan value
-   that only makes sense at night. Smallest change, keeps every hue.
+| day mode | before | after |
+|---|---|---|
+| ring stroke | `rgb(0,120,212)` | `rgb(0,120,212)` |
+| glow | `rgba(0,200,255,.7)` | `rgba(0,120,212,.7)` |
+| **ring vs teal fill** | **1.23:1** | **1.23:1** |
+| ring vs its own glow | 2.31:1 | 1.00:1 |
+| glow vs page background `#F0F2F5` | 1.75:1 | 4.04:1 |
+
+Dark mode is unchanged in every measured value. **Read that table honestly:
+the ring-versus-fill number did not move, and could not have** — the fix never
+touches the stroke colour, and both colours are mid blue-green. What it does
+fix is the two-different-blues mismatch (a light theme depending on a value
+that only means anything at night), and it roughly doubles the halo's contrast
+against the light background the drop-shadow actually spills onto. It also
+removes the bright cyan that was visually propping day mode up, so the ring
+now reads as the marginal outline it has always been rather than being rescued
+by an artifact.
+
+**Still open**, and still the user's call — the teal is their own colour choice
+and the 8-region palette shipped with their conditional approval:
+
+1. ~~**Theme-scope the glow** — add a `body.day-mode …path.sel{filter:…}` rule
+   using a day-appropriate colour.~~ **Implemented 2026-09-24.** A correctness
+   fix; it does not move the 1.23:1.
 2. **Thicken the day-mode `.sel` stroke** — raise `stroke-width` in the
-   day-mode block so the ring reads by width rather than by contrast. Also
-   keeps every hue.
+   day-mode block so the ring reads by width rather than by contrast. Keeps
+   every hue.
 3. **Change the Northwest hue** — move `#0891B2` far enough from `#0078D4`
    that the ring contrasts on its own. Largest blast radius: the colour is
    also used by the region chips and the map legend.
@@ -46,63 +64,7 @@ Not blocking, and deliberately not decided by an implementer.
 
 ---
 
-## 2. Open decision: `onRegionCsvCompute()` is now largely redundant and is silently truncated
-
-**Where:** `bus-dev-potential-gallons/index.html` — `BDPG.onRegionCsvCompute()`
-(≈line 970), the ⚙ Weights tab's "Compute Region %" tool.
-
-**What changed:** the tool computes each region's average gallons against the
-network average from an uploaded per-location CSV. That is the same quantity
-`BDPG_NETWORK_BASELINES` now encodes as committed config, from the real
-12-month network report (227 locations) rather than from whatever CSV happens
-to be to hand. And since the ±10 clamp landed in `effectiveRegionPct()`, its
-output no longer reaches the formula as computed: a fixture producing
-Northwest +85.2% and West −97.9% is truncated to +10.0 / −10.0 before it can
-affect anything.
-
-**Symptom (corrected 2026-09-24 — the earlier description of this entry was
-wrong):** this entry used to say an admin "reads 'Northwest: 85.2' in the
-message" while the slider sat at 10.0. That could never happen. The
-confirmation line was written into `#bdpg-csv-result` and then `BDPG.render()`
-replaced `#bdpg-content`'s `innerHTML` wholesale, destroying the element it had
-just been written to — the message rendered for **zero frames** and the only
-feedback an admin ever got was the sliders visibly moving. So option 1 below
-would have fixed nothing on its own.
-
-Both halves are now fixed (final fix round, whole-branch review M-1/M-2):
-
-- The confirmation lives in `BDPG.state.csvResultMsg` and is re-emitted by
-  `BDPG.csvResultHtml()` on every render, so it survives and is actually read.
-  It is cleared by a new upload and by Save/Clear override, so it can never
-  describe numbers that are no longer in force.
-- `onRegionCsvCompute()` now clamps **at the write** as well as the read, so
-  `roadysBDPGRegionOverride` never holds an out-of-contract value, and the
-  message states how many regions were truncated.
-
-That makes **option 1 done**. The remaining question — options 2 and 3 — is
-still open and still a product call.
-
-**Why it was not decided here:** retiring or redirecting a working admin tool
-is a product call. Three options, all coherent:
-
-1. ~~**Leave it truncating** and make the confirmation line print the clamped
-   values (and say they were clamped), so the three surfaces agree.~~
-   **Implemented 2026-09-24.** The message, the stored file, the sliders and
-   the calculation now all state the same clamped numbers.
-2. **Redirect it to write context** — have it produce `BDPG_NETWORK_BASELINES`-
-   shaped display figures instead of a formula override, which is what the
-   unclamped range −43.3%…+76.1% is actually good for.
-3. **Retire it** — `BDPG_NETWORK_BASELINES` already carries the committed
-   numbers, and the ±10 slider already covers manual nudges.
-
-Whichever is chosen, do not simply widen the clamp: `REGION_PCT_BOUND` is the
-formula's contract, and the previous branch's packet read "the West region
-runs 163.2% above the network average" precisely because that contract was not
-enforced (see **Resolved B**).
-
----
-
-## 3. `resolveRegion()` does not trim whitespace
+## 2. `resolveRegion()` does not trim whitespace
 
 **Where:** `busDevGallonsCalculator.js` — `resolveRegion()` (≈lines 34–42)
 uppercases its argument but never trims it, so `' TX '` matches no region and
@@ -114,11 +76,15 @@ contributes 0% and the prospect-facing region bullet is omitted. Nothing
 throws and no gallons move.
 
 **Why it was deferred:** unreachable through the UI. Both state inputs are
-`maxlength="2"`, so a two-character value plus a space cannot be typed, and
-`onRegionCsvCompute()` trims its own CSV cells before calling in. Reaching it
-needs a hand-edited `localStorage` record or a caller that does not exist yet.
-It is also an engine change, and the review that found it was scoped to an
-`index.html`-only polish task.
+`maxlength="2"`, so a two-character value plus a space cannot be typed. The
+one bulk caller that fed it untyped data — the region-variance CSV tool — has
+since been retired (**Resolved C**); the surviving CSV consumer,
+`onNetworkContextCsvCompute()`, passes raw cells straight through, so a
+location export with a padded `State` column would silently drop those rows
+from `network-context.json`. Reaching the defect otherwise needs a hand-edited
+`localStorage` record or a caller that does not exist yet. It is also an engine
+change, and the review that found it was scoped to an `index.html`-only polish
+task.
 
 **Fix when picked up:** `String(stateAbbr).trim().toUpperCase()`. Add a test
 for `' tx '`, `'TX\n'` and `''` at the same time — `''` must keep returning
@@ -126,7 +92,7 @@ for `' tx '`, `'TX\n'` and `''` at the same time — `''` must keep returning
 
 ---
 
-## 4. Step 3's diesel-lane field re-renders on blur and throws away focus on the field you just moved to
+## 3. Step 3's diesel-lane field re-renders on blur and throws away focus on the field you just moved to
 
 **Where:** `bus-dev-potential-gallons/index.html` — `supportingDetailsHtml()`,
 the `#bdpg-sd-lanes` input: `oninput="…actualLanes=this.value"
@@ -154,7 +120,7 @@ to patching just the lane-warning element instead of a full render.
 
 ---
 
-## 5. The headline gallons figure and its ×12 annual math are built in three places
+## 4. The headline gallons figure and its ×12 annual math are built in three places
 
 **Where:** `bus-dev-potential-gallons/index.html` — `pitchHeroHtml()` (the
 `finalGallons` headline and the `finalGallons * 12` line beneath it),
@@ -181,7 +147,7 @@ the same pair of numbers.
 
 ---
 
-## 6. Step 2's state-code input parks the caret at the end after every keystroke
+## 5. Step 2's state-code input parks the caret at the end after every keystroke
 
 **Where:** `bus-dev-potential-gallons/index.html` — `onStateInput()`. The handler
 replaces `#bdpg-step2` wholesale via `outerHTML`, which destroys the focused
@@ -211,7 +177,7 @@ two-character code.
 
 ---
 
-## 7. Loading a profile whose saved `state` snapshot is missing keys throws and leaves the page inert
+## 6. Loading a profile whose saved `state` snapshot is missing keys throws and leaves the page inert
 
 **Where:** `bus-dev-potential-gallons/index.html` — `step2Html()` reads
 `s.amenityDetails[f]` with no guard; reached via `onLoadProfile()`.
@@ -244,14 +210,14 @@ there, and guard the read in `step2Html()`.
 
 ---
 
-## 8. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
+## 7. A profile without `truckerPathRating` renders `Trucker Path Rating NaN`
 
 **Where:** same file, the Step 2 rating display.
 
 **Symptom:** the literal string `NaN` on screen instead of a value or `—`.
 Cosmetic — nothing throws and no stored number is wrong.
 
-**Why it was deferred:** same evidence as #7. The base build always writes
+**Why it was deferred:** same evidence as #6. The base build always writes
 `"truckerPathRating":""`, and a base-written record loaded into the current
 build renders `—` correctly. Only hand-edited storage reaches it.
 
@@ -260,7 +226,7 @@ build renders `—` correctly. Only hand-edited storage reaches it.
 
 ---
 
-## 9. GS Performance Metrics charts never render
+## 8. GS Performance Metrics charts never render
 
 **Where:** `index.html` — `renderGSMetrics()` calls `mkchart('mss-c1')` …
 `mkchart('mss-c4')`, but the canvases in the markup are `gs-c1` … `gs-c4`.
@@ -275,7 +241,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 10. Unterminated HTML comment renders stray `═══ -->`
+## 9. Unterminated HTML comment renders stray `═══ -->`
 
 **Where:** `index.html`, near line 2199.
 
@@ -285,7 +251,7 @@ editing, since either the four `mkchart()` calls or the four canvas ids change.
 
 ---
 
-## 11. Dashboard Overview territory map is unreachable through the UI
+## 10. Dashboard Overview territory map is unreachable through the UI
 
 **Where:** `index.html` — the panel holding the territory map has no visible tab
 button, and neither map auto-renders from nav in a data-less environment. Both
@@ -297,7 +263,7 @@ with identical behaviour. Out of scope for the extraction work.
 
 ---
 
-## 12. Dashboard MASTER LOCK defaults to locked
+## 11. Dashboard MASTER LOCK defaults to locked
 
 **Where:** `index.html`. PIN `1234`. Noted only because it makes automated
 probes of the dashboard read as empty until unlocked — expected behaviour, not a
@@ -310,7 +276,7 @@ by default and has no hardcoded value anywhere — see
 
 ---
 
-## 13. Tracker Summary's Grade Distribution aggregates across weight scales without a marker
+## 12. Tracker Summary's Grade Distribution aggregates across weight scales without a marker
 
 **Where:** `bus-dev-potential-gallons/index.html` — `BDPG.trackerStatsHtml()`
 (≈line 4195): the `Avg Official Subtotal` stat (≈4247) and the
@@ -332,7 +298,7 @@ wrong; the roll-up is simply less qualified than the rows beneath it.
 
 ---
 
-## 14. "Region performance" can never read green out of the box, so Pre-Eval can never say "Strong candidate"
+## 13. "Region performance" can never read green out of the box, so Pre-Eval can never say "Strong candidate"
 
 **Where:** `bus-dev-potential-gallons/index.html` — the Pre-Evaluation region
 chip (`c2`, ≈line 1673) and the `judged` chip set (≈1736–1738).
@@ -353,7 +319,7 @@ to what the chip measures, not a bug fix.
 
 ---
 
-## 15. The amenity bullet claims a network comparison the config cannot support
+## 14. The amenity bullet claims a network comparison the config cannot support
 
 **Where:** `bus-dev-potential-gallons/index.html` — the amenity driver bullet
 says the site's amenity rating "places you above the network average for driver
@@ -378,7 +344,7 @@ leave it claiming a measurement the tool cannot make.
 
 ---
 
-## 16. A no-op baseline re-click marks a saved profile dirty
+## 15. A no-op baseline re-click marks a saved profile dirty
 
 **Where:** `bus-dev-potential-gallons/index.html` — `onBaselineCardClick()`
 clears `autoSetNote` unconditionally, while invalidating the result only on a
@@ -407,7 +373,7 @@ chrome and add it to `SIG_SKIP`. Not both.
 
 Kept for the evidence, not as work. Nothing below needs doing.
 
-## A. (was #3) Open question: should Generate be gated on an explicit amenity confirmation?
+## A. (was an earlier #3) Open question: should Generate be gated on an explicit amenity confirmation?
 
 **The question:** `step2Html()` adopted `suggestAmenityLevel()`'s result
 whenever `amenityOverridden` was false, and `suggestAmenityLevel({})` returns
@@ -435,13 +401,14 @@ Re-verified in the Task 12 checklist: button disabled while unconfirmed,
 direct `onGenerate()` returns false with `state.result` still null, and the
 tracker Export path reaches `print()` zero times.
 
-## B. (was #2) The region-variance percentage was printed verbatim to a prospect with no plausibility bound
+## B. (was #2 in the pre-clamp numbering) The region-variance percentage was printed verbatim to a prospect with no plausibility bound
 
 **The defect:** `pitchDrivers()` rendered "The {region} region runs {x}% above
 the network average" straight from `effectiveRegionPct()`, and the override
-feeding it was written by `onRegionCsvCompute()` with no clamp. Reproduced on
-the previous branch: the packet read **"The West region runs 163.2% above the
-network average"** with a math line of
+feeding it was written by the region-variance CSV tool (`onRegionCsvCompute()`,
+since retired — **Resolved C**) with no clamp. Reproduced on the previous
+branch: the packet read **"The West region runs 163.2% above the network
+average"** with a math line of
 `2,500 × (1 + 1.632 − 0.05 + 0.00) = 6,455`.
 
 **Resolved:** by the ±10 clamp added in Task 7 of the
@@ -456,7 +423,54 @@ regions read back within ±10 through `effectiveRegionPct()`, the sliders and
 the internal chips, and `estimate.regionPct` reached the formula as 0.1.
 
 This entry recommended bounding the value *where it is produced*. It is bounded
-on read instead, which protects strictly more callers, but it does mean
-`onRegionCsvCompute()` still stores and still displays the raw figure — the
-remaining half of this entry's "decide what an out-of-band result should do"
-now lives on as open entry **#2** above.
+on read instead, which protects strictly more callers. The producer that made
+that distinction matter — the CSV tool, the only path that ever generated an
+out-of-band figure — no longer exists, so the remaining half of this entry's
+"decide what an out-of-band result should do" is closed too: see
+**Resolved C**. The read-side clamp stays, and remains the guarantee for every
+other way a number can reach `roadysBDPGRegionOverride`, hand-editing included.
+
+## C. (was #2 until this commit) The region-variance CSV tool computed a figure the config already carried, and silently truncated it
+
+**The defect:** `BDPG.onRegionCsvCompute()`, the ⚙ Weights tab's "Compute
+Region %" tool, averaged each region's gallons against the network average
+from an uploaded per-location CSV. That is the same quantity
+`BDPG_NETWORK_BASELINES` now encodes as committed config, computed from the
+real 12-month network report (227 locations) rather than from whatever CSV
+happened to be to hand. And since the ±10 clamp landed (**Resolved B**), the
+tool's output could not reach the formula as computed: a fixture producing
+Northwest +85.2% and West −97.9% was truncated to +10.0 / −10.0.
+
+An earlier version of this entry claimed an admin "reads 'Northwest: 85.2' in
+the message" while the slider sat at 10.0. That could never happen — the
+confirmation line was written into `#bdpg-csv-result` and then `BDPG.render()`
+replaced `#bdpg-content`'s `innerHTML` wholesale, so the message rendered for
+zero frames. Both halves were then fixed in the final fix round (`856f7de`,
+`042cb1d`): the message moved into `BDPG.state.csvResultMsg` so it survived a
+render, and the compute clamped at the write as well as the read and said how
+many regions were truncated.
+
+**Resolved — retired, not fixed.** The user's ruling on the remaining options
+(redirect it to write context, or retire it) was to **retire it**: it computes
+what `BDPG_NETWORK_BASELINES` already encodes, the ±10 clamp makes its output
+misleading, and a tool that silently truncates is worse than no tool. Removed
+on `feat/bdpg-8-regions-admin-tools` in the branch's final commit:
+`regionCsvHtml()`, `onRegionCsvFile()`, `onRegionCsvCompute()`,
+`csvResultHtml()`, the `BDPG.regionCsv` state object, `state.csvResultMsg` and
+its `SIG_SKIP` entry, the two `csvResultMsg = null` clears in
+`onSaveRegionOverride()` / `onClearRegionOverride()`, and the call site in
+`adminPanelHtml()`. The element ids `bdpg-csv-result`, `bdpg-csv-state-col`
+and `bdpg-csv-gal-col` are gone with it.
+
+**Deliberately kept:** `BDPG.parseCsv()`, which the tool *shared* with the
+network-context generator, and the generator itself
+(`onNetworkContextCsvCompute()` and its "Regenerate network-context.json"
+disclosure) — a different tool that regenerates `network-context.json` and
+stays. Verified after removal: the generator parses an 11-row fixture and
+emits all 8 regions, quoted fields and `""` escapes still parse, and no
+console error appears on load.
+
+The ±10 clamp and the region sliders are untouched: Save, Reset, Clear
+override, the Texas slider and the write-side clamp all still behave exactly
+as **Resolved B** describes. The manual ±10 slider is now the only writer of
+`roadysBDPGRegionOverride`.
