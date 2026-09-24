@@ -401,8 +401,16 @@ New tests:
   no state in two regions.
 - `BDPG_REGION_DISPLAY` and `BDPG_NETWORK_BASELINES` have exactly the same 8
   keys as `BDPG_REGION_MAP` (guards the three maps drifting apart).
-- Each `pctVsNetwork` equals `round((avgGalMo / overallAvgGalMo) − 1)` to one
-  decimal.
+- Each `pctVsNetwork` is within **0.001** of `(avgGalMo / overallAvgGalMo) − 1`.
+  A **tolerance, not exact equality**: both fields were rounded independently
+  from the same unrounded 12-month report — gallons to whole numbers, the
+  percentage to one decimal — so the stored percentage need not reproduce one
+  re-derived from the rounded gallons. Measured slack across all eight regions
+  is 0.00012–0.00051; Northeast (0.06949 stored as 0.070) is the only one that
+  crosses a rounding boundary, and it is not an outlier. 0.001 accepts every
+  real value while still failing a transposed digit or a percentage pasted
+  against the wrong region, which would be off by ≥0.01 — verified by
+  deliberately breaking a value and watching the test fail.
 - New-map spot checks: `AK`→Northwest, `HI`→West, `TX`→Texas, `MI`→Upper
   Midwest, `OH`→Midwest, `WA`→Northwest, `CA`→West.
 - `WEIGHT_CONFIG` values sum to 100.
