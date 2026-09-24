@@ -2934,21 +2934,51 @@ function getCentroid(pathStr, axis){
       // ADDING 313 and rewards removing 626, with the row's own Pricing
       // Posture column contradicting it two cells to the right.
       //
-      // Worded for what the number actually is rather than split into its two
-      // components, deliberately: the split would have to come from a stored
-      // pricingAdjusted (which no already-saved record carries) or from
-      // re-multiplying the percentages, and a re-multiplied step can land a
-      // gallon off the independently-rounded engine figures -- the same
-      // rounding seam the waterfall's difference form exists to avoid. This
-      // phrasing is true for every record shape, legacy rows included, with
-      // nothing new to persist.
+      // The two non-zero branches are worded for what the number actually is
+      // rather than split into GALLONS per term: a per-term gallon figure would
+      // have to come from a stored pricingAdjusted (which no already-saved
+      // record carries) or from re-multiplying the percentages, and a
+      // re-multiplied step can land a gallon off the independently-rounded
+      // engine figures -- the same rounding seam the waterfall's difference
+      // form exists to avoid.
+      //
+      // The zero branch is different, and the first pass at this fix got it
+      // wrong in exactly the way the original defect did. A zero DELTA is not
+      // the same fact as zero ADJUSTMENTS: Most aggressive (+5%) with Not
+      // participating (-5%) cancels to 13,000 == 13,000, and the row then said
+      // "No pricing or rewards adjustment" while its own Pricing Posture and
+      // Rewards columns both showed maximum magnitude. Two of the fifteen
+      // pairings land here (the other is No discounts + Participating).
+      //
+      // Distinguishing them needs no stored figure and no gallon arithmetic --
+      // only the two PERCENTAGES, which come straight from the config maps the
+      // levels are keyed by. hasOwn-guarded like every other name-keyed lookup
+      // in this file, falling back to 0 so a legacy row with no rewardsLevel
+      // (or a hand-edited orphan string, already coerced to '' by
+      // readSummary's str()) reads as the 0% it is actually computed at,
+      // rather than printing undefined.
+      var pPct = hasOwn(BDPG_CONFIG.PRICING_ADJUST, sum.pricingLevel) ? BDPG_CONFIG.PRICING_ADJUST[sum.pricingLevel] : 0;
+      var rPct = hasOwn(BDPG_CONFIG.REWARDS_ADJUST, sum.rewardsLevel) ? BDPG_CONFIG.REWARDS_ADJUST[sum.rewardsLevel] : 0;
+      function pctTxt(v) { return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%'; }
       var diff = sum.finalGallons - sum.officialSubtotal;
       if (diff > 0) {
         finalCell += ' <span style="color:var(--green)" title="Pricing and Rewards together add ' + BDPG.fmtGal(diff) + ' gal/mo above the published figure">▲</span>';
       } else if (diff < 0) {
         finalCell += ' <span style="color:var(--red)" title="Pricing and Rewards together remove ' + BDPG.fmtGal(Math.abs(diff)) + ' gal/mo below the published figure">▼</span>';
-      } else {
+      } else if (pPct === 0 && rPct === 0) {
         finalCell += ' <span style="color:var(--muted)" title="No pricing or rewards adjustment">●</span>';
+      } else if (pPct + rPct === 0) {
+        finalCell += ' <span style="color:var(--muted)" title="Pricing ' + pctTxt(pPct) + ' and Rewards ' + pctTxt(rPct) + ' cancel out — no net change from the published figure">●</span>';
+      } else {
+        // Unreachable from real data -- a record whose stored gallons agree
+        // while its two percentages do not sum to zero has been hand-edited
+        // (every real save computes finalGallons through both terms). Kept as
+        // its own branch anyway because "cancel out" would be a false
+        // mechanism claim on, say, +2.5% and +0.0%, and this file's whole
+        // stance is that corrupt input degrades to a true statement rather
+        // than a confident wrong one. States the two percentages and the
+        // observed net, and asserts nothing about why.
+        finalCell += ' <span style="color:var(--muted)" title="Pricing ' + pctTxt(pPct) + ' and Rewards ' + pctTxt(rPct) + ' — no net change from the published figure">●</span>';
       }
     }
 
