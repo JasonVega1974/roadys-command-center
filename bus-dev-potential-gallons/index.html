@@ -2109,22 +2109,25 @@ function getCentroid(pathStr, axis){
     if (s.roadway === 'Interstate') {
       out.push('Your Interstate location puts you in the path of high-volume fleet corridors — the strongest traffic signal in our network.');
     } else if (s.roadway === 'Highway') {
-      out.push('Your highway location sits on a steady regional freight corridor.');
+      out.push('Your Highway location sits on a steady regional freight corridor.');
     }
     if (e.regionPct > 0) {
-      out.push('The ' + s.result.region + ' region runs +' + (e.regionPct * 100).toFixed(1) +
-        '% above network average — your geography works in your favor.');
+      out.push('The ' + s.result.region + ' region runs ' + (e.regionPct * 100).toFixed(1) +
+        '% above the network average — your geography works in your favor.');
     }
     if (e.amenityPct > 0) {
-      out.push('Your ' + s.amenityLevel + ' amenity rating places you above the network average for driver satisfaction.');
+      out.push('Your amenity level — ' + s.amenityLevel + ' — already places you above the network average for driver satisfaction.');
     }
     if (e.reviewPct > 0) {
+      // Never name the 3.6 threshold here: (3.55).toFixed(1) displays "3.5"
+      // while its reviewPct is already positive, which would make this bullet
+      // self-contradicting for a saved record at that exact value.
       out.push('Your ' + Number(s.truckerPathRating).toFixed(1) +
-        ' Trucker Path rating clears the 3.6 threshold — drivers already rate you well.');
+        ' Trucker Path rating already places you in our top service band — drivers rate you well.');
     }
     if (e.pricingPct > 0) {
-      out.push(s.pricingLevel.replace(' (deepest discounts)', '') + ' discount pricing is projected to drive an additional +' +
-        (e.pricingPct * 100).toFixed(1) + '% gallon volume above baseline.');
+      out.push('Your ' + s.pricingLevel.replace(' (deepest discounts)', '') + ' pricing posture is projected to add ' +
+        (e.pricingPct * 100).toFixed(1) + '% in gallon volume.');
     }
     if (e.rewardsPct > 0) {
       out.push('Participating in Roady\'s Rewards adds an estimated +' + (e.rewardsPct * 100).toFixed(1) +
@@ -2139,7 +2142,7 @@ function getCentroid(pathStr, axis){
     if (!items.length) return '';
     return '<div class="bdpg-box" style="margin-top:14px">' +
       '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">How We Get There</div></div>' +
-      '<ul style="margin:0 0 0 18px;font-size:.9em;line-height:1.7">' +
+      '<ul style="margin:0 0 0 18px;font-size:.8em;line-height:1.7">' +
         items.map(function (t) { return '<li>' + BDPG.escHtml(t) + '</li>'; }).join('') +
       '</ul></div>';
   };
@@ -2150,28 +2153,38 @@ function getCentroid(pathStr, axis){
   BDPG.pitchOpportunities = function () {
     var s = BDPG.state, e = s.result.estimate, out = [];
 
+    // These three are swing bullets: the percentage is the change to the
+    // prospect's own projection from where it stands today (e.g. Not
+    // participating at -5% to Participating at +5% is a 10-point swing), not
+    // a second, larger quote of the program's band -- see the footnote below.
     if (e.rewardsPct < 0.05) {
-      out.push('Adding Roady\'s Rewards participation could add an estimated +' +
-        ((0.05 - e.rewardsPct) * 100).toFixed(1) + '% ≈ ' +
-        BDPG.fmtGal(Math.round(e.baseline * (0.05 - e.rewardsPct))) + ' gal/mo to your projection.');
+      out.push('Joining Roady\'s Rewards moves your projection by ' +
+        ((0.05 - e.rewardsPct) * 100).toFixed(1) + '% — about ' +
+        BDPG.fmtGal(Math.round(e.baseline * (0.05 - e.rewardsPct))) + ' gal/mo.');
     }
     if (e.amenityPct < 0.02) {
-      out.push('Reaching a "Good / full service" amenity level could add +' +
-        ((0.02 - e.amenityPct) * 100).toFixed(1) + '% ≈ ' +
+      out.push('Reaching a "Good / full service" amenity level moves your projection by ' +
+        ((0.02 - e.amenityPct) * 100).toFixed(1) + '% — about ' +
         BDPG.fmtGal(Math.round(e.baseline * (0.02 - e.amenityPct))) + ' gal/mo.');
     }
     if (e.reviewPct < 0.02) {
-      out.push('Reaching a 3.6+ Trucker Path rating could add +' +
-        ((0.02 - e.reviewPct) * 100).toFixed(1) + '% ≈ ' +
+      out.push('Reaching a 3.6+ Trucker Path rating moves your projection by ' +
+        ((0.02 - e.reviewPct) * 100).toFixed(1) + '% — about ' +
         BDPG.fmtGal(Math.round(e.baseline * (0.02 - e.reviewPct))) + ' gal/mo.');
     }
     var levels = BDPG_CONFIG.PRICING_LEVELS;
     var nextIdx = levels.indexOf(s.pricingLevel) - 1;
     if (nextIdx >= 0) {
       var nextPct = BDPG_CONFIG.PRICING_ADJUST[levels[nextIdx]];
-      out.push('Moving to "' + levels[nextIdx].replace(' (deepest discounts)', '') +
-        '" discount pricing could add ' +
-        BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) + ' gal/mo.');
+      var fromLabel = s.pricingLevel.replace(' (deepest discounts)', '');
+      var toLabel = levels[nextIdx].replace(' (deepest discounts)', '');
+      // Pricing and Rewards are deliberately outside officialSubtotal (see
+      // busDevGallonsCalculator.js), so this caveat has to survive here too --
+      // otherwise a prospect reads this gain against the Published Calculator
+      // Figure, the one number that provably never moves.
+      out.push('Moving from "' + fromLabel + '" to "' + toLabel + '" could add about ' +
+        BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) +
+        ' gal/mo to your Final Potential Gallons estimate — this does not change Roady\'s Published Calculator Figure.');
     }
     return out;
   };
@@ -2179,11 +2192,18 @@ function getCentroid(pathStr, axis){
   BDPG.pitchOpportunitiesHtml = function () {
     var items = BDPG.pitchOpportunities();
     if (!items.length) return '';
+    // The footnote only applies when a swing-percentage bullet is actually on
+    // screen (the pricing bullet carries no percentage), so check rather than
+    // always appending it.
+    var hasPct = items.some(function (t) { return t.indexOf('%') !== -1; });
+    var footnote = hasPct
+      ? '<div style="margin-top:8px;font-size:.75em;color:var(--muted)">Percentages show the change to your projection from where it stands today.</div>'
+      : '';
     return '<div class="bdpg-box" style="margin-top:14px">' +
       '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">Opportunities to Grow</div></div>' +
-      '<ul style="margin:0 0 0 18px;font-size:.9em;line-height:1.7">' +
+      '<ul style="margin:0 0 0 18px;font-size:.8em;line-height:1.7">' +
         items.map(function (t) { return '<li>' + BDPG.escHtml(t) + '</li>'; }).join('') +
-      '</ul></div>';
+      '</ul>' + footnote + '</div>';
   };
 
   BDPG.analysisNarrativeHtml = function () {
