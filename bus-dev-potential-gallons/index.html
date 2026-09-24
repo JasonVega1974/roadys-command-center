@@ -514,6 +514,20 @@ function getCentroid(pathStr, axis){
   // sync with the 8-region model in busDevGallonsConfig.js.
   BDPG.REGION_KEYS = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP);
 
+  // The formula's contract: region % is a manual +/-REGION_PCT_BOUND nudge,
+  // not a re-statement of network performance (BDPG_NETWORK_BASELINES runs
+  // from -43.3% to +76.1%, which is exactly why it stays display-only). One
+  // constant so the slider's min/max attributes, the formula-side clamp, and
+  // the rendered readout can't drift apart -- widening the range later means
+  // changing this line, not hunting three call sites.
+  BDPG.REGION_PCT_BOUND = 10;
+
+  BDPG.clampRegionPct = function (n) {
+    n = Number(n);
+    if (!isFinite(n)) return 0;
+    return Math.max(-BDPG.REGION_PCT_BOUND, Math.min(BDPG.REGION_PCT_BOUND, n));
+  };
+
   BDPG.regionVariance = { committed: null, override: null };
   BDPG._regionVarianceLoaded = false;
   // Set true when a stored override was discarded for not matching the
@@ -578,7 +592,12 @@ function getCentroid(pathStr, axis){
     // mismatch that reads as 0% rather than failing.
     if (!hasOwn(v, region)) return 0;
     var n = Number(v[region]);
-    return isFinite(n) ? n / 100 : 0;
+    if (!isFinite(n)) return 0;
+    // Clamped regardless of how a bigger number got into regionVariance --
+    // a hand-edited localStorage value, a stale override, a CSV-computed
+    // figure -- because the formula's contract is +/-REGION_PCT_BOUND
+    // (see the constant above), not whatever happens to be stored.
+    return BDPG.clampRegionPct(n) / 100;
   };
 
   BDPG.regionVarianceAsOf = function () {
@@ -666,12 +685,21 @@ function getCentroid(pathStr, axis){
     var sliders = BDPG.REGION_KEYS.map(function (r, i) {
       var slug = BDPG.regionSlug(r);
       var sliderId = 'bdpg-admin-' + slug;
-      var curVal = Number(v[r]) || 0;
+      // Clamped before it ever reaches the slider's value= attribute or the
+      // readout text, so an out-of-contract stored number (hand-edited
+      // localStorage, a stale override) can't leave the handle sitting at
+      // the native-clamped bound while the readout beside it still claims
+      // the raw figure.
+      var curVal = BDPG.clampRegionPct(Number(v[r]) || 0);
       var baseline = hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, r) ? BDPG_CONFIG.BDPG_NETWORK_BASELINES[r] : null;
+      // Labeled "Network data" and suffixed "vs network" (spec §3) so this
+      // line can never be mistaken for the slider's own value -- the two
+      // numbers are never allowed to be conflated (see BDPG_NETWORK_BASELINES'
+      // comment) and a bare, unlabeled figure invites exactly that mistake.
       var netLine = baseline
         ? ('<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
-            BDPG.fmtGal(baseline.avgGalMo) + ' gal/mo &middot; ' +
-            (baseline.pctVsNetwork >= 0 ? '+' : '') + (baseline.pctVsNetwork * 100).toFixed(1) + '%' +
+            'Network data: ' + BDPG.fmtGal(baseline.avgGalMo) + ' gal/mo &middot; ' +
+            (baseline.pctVsNetwork >= 0 ? '+' : '') + (baseline.pctVsNetwork * 100).toFixed(1) + '% vs network' +
             (baseline.lowSample
               ? ' <span style="color:var(--yellow)">&#9888; low sample confidence (n=' + BDPG.escHtml(String(baseline.n)) + ')</span>'
               : '') +
@@ -680,7 +708,7 @@ function getCentroid(pathStr, axis){
       return '<div class="fg">' +
         '<label style="font-size:.72em">' + BDPG.escHtml(r) + ' %</label>' +
         '<div style="display:flex;align-items:center;gap:8px">' +
-          '<input id="' + sliderId + '" type="range" min="-10" max="10" step="0.1" style="flex:1" ' +
+          '<input id="' + sliderId + '" type="range" min="' + (-BDPG.REGION_PCT_BOUND) + '" max="' + BDPG.REGION_PCT_BOUND + '" step="0.1" style="flex:1" ' +
             'value="' + curVal + '" oninput="BDPG.onRegionSliderInput(' + i + ', this.value)">' +
           '<span id="' + sliderId + '-val" style="font-family:var(--ff);font-weight:700;min-width:3.6em;text-align:right">' +
             curVal.toFixed(1) + '%</span>' +
@@ -724,7 +752,11 @@ function getCentroid(pathStr, axis){
   // persisted until Save; only the in-progress form value moves.
   BDPG.onResetRegionSlider = function (i) {
     var r = BDPG.REGION_KEYS[i];
-    var committed = BDPG.committedRegionPct(r);
+    // Clamped for the same reason the render path is: region_variance.json
+    // is meant to stay in-contract, but nothing stops a hand-edit there
+    // either, and a clamped handle next to an unclamped readout is the
+    // exact mismatch this fix exists to close everywhere, not just on load.
+    var committed = BDPG.clampRegionPct(BDPG.committedRegionPct(r));
     var slug = BDPG.regionSlug(r);
     var slider = document.getElementById('bdpg-admin-' + slug);
     var val = document.getElementById('bdpg-admin-' + slug + '-val');
@@ -736,7 +768,10 @@ function getCentroid(pathStr, axis){
     var out = {};
     BDPG.REGION_KEYS.forEach(function (r) {
       var el = document.getElementById('bdpg-admin-' + BDPG.regionSlug(r));
-      out[r] = el ? (Number(el.value) || 0) : 0;
+      // The native range input already clamps el.value to the rendered
+      // min/max, but clamping again here means Save doesn't depend on that
+      // browser behaviour to keep an out-of-contract number out of storage.
+      out[r] = el ? BDPG.clampRegionPct(Number(el.value) || 0) : 0;
     });
     out.asOf = document.getElementById('bdpg-admin-asof').value.trim();
     localStorage.setItem('roadysBDPGRegionOverride', JSON.stringify(out));
