@@ -62,6 +62,51 @@ test('every state in BDPG_REGION_MAP resolves to exactly one region', () => {
   });
 });
 
+test('BDPG_REGION_MAP has exactly 8 regions covering all 50 states once', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const keys = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP);
+  assert.equal(keys.length, 8);
+  const seen = {};
+  keys.forEach(r => BDPG_CONFIG.BDPG_REGION_MAP[r].forEach(st => {
+    assert.ok(!seen[st], st + ' appears in two regions');
+    seen[st] = r;
+  }));
+  assert.equal(Object.keys(seen).length, 50, 'expected 50 states, got ' + Object.keys(seen).length);
+  assert.ok(!seen.DC, 'DC must stay unmapped');
+});
+
+test('new region assignments resolve correctly', () => {
+  const m = { AK:'Northwest', HI:'West', WA:'Northwest', CA:'West', TX:'Texas',
+              OK:'Southwest', MI:'Upper Midwest', IA:'Upper Midwest',
+              OH:'Midwest', NE:'Midwest', MD:'Northeast', WV:'Southeast' };
+  Object.keys(m).forEach(st => assert.equal(BusDevGallonsCalc.resolveRegion(st), m[st], st));
+});
+
+test('display, baseline and region maps share exactly the same 8 keys', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const r = Object.keys(BDPG_CONFIG.BDPG_REGION_MAP).sort();
+  assert.deepEqual(Object.keys(BDPG_CONFIG.BDPG_REGION_DISPLAY).sort(), r);
+  assert.deepEqual(Object.keys(BDPG_CONFIG.BDPG_NETWORK_BASELINES).sort(), r);
+});
+
+test('each network baseline pct matches its own avg over the overall avg', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const overall = BDPG_CONFIG.NETWORK_BASELINE_META.overallAvgGalMo;
+  Object.keys(BDPG_CONFIG.BDPG_NETWORK_BASELINES).forEach(r => {
+    const b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[r];
+    const derived = Math.round(((b.avgGalMo / overall) - 1) * 1000) / 1000;
+    assert.equal(Math.round(b.pctVsNetwork * 1000) / 1000, derived, r);
+  });
+});
+
+test('WEIGHT_CONFIG has six pillars summing to 100', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  const w = BDPG_CONFIG.WEIGHT_CONFIG;
+  const keys = ['rangePosition','condition','hours','distance','corridor','competition'];
+  assert.deepEqual(Object.keys(w).sort(), keys.slice().sort());
+  assert.equal(keys.reduce((s,k) => s + w[k], 0), 100);
+});
+
 test('amenityAdjustment returns the exact configured percentage', () => {
   assert.equal(BusDevGallonsCalc.amenityAdjustment('Very limited'), -0.05);
   assert.equal(BusDevGallonsCalc.amenityAdjustment('Average'), 0);
