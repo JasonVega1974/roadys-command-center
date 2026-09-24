@@ -353,6 +353,56 @@ to what the chip measures, not a bug fix.
 
 ---
 
+## 15. The amenity bullet claims a network comparison the config cannot support
+
+**Where:** `bus-dev-potential-gallons/index.html` — the amenity driver bullet
+says the site's amenity rating "places you above the network average for driver
+satisfaction."
+
+**Symptom:** `AMENITY_ADJUST` supports "above the **Average band**" — a fixed
+config threshold — not "above the **network average**", which would require
+amenity data across the network that this tool does not have. The page says so
+itself: the amenity chart's own caption reads "No network average available
+yet."
+
+**Why it was deferred:** this is the same defect as the region bullet fixed in
+`856f7de`, in a weaker form. It differs in two ways that keep it off the
+critical path: the number behind it is fixed config rather than an
+admin-adjustable slider, so it cannot drift; and it sits on the **internal**
+half, so it never reaches the customer. Found during the final re-review, after
+the branch's last fix round.
+
+**Fix when picked up:** reword to name the band ("above the Average amenity
+band"), or supply real network amenity data and keep the comparison. Do not
+leave it claiming a measurement the tool cannot make.
+
+---
+
+## 16. A no-op baseline re-click marks a saved profile dirty
+
+**Where:** `bus-dev-potential-gallons/index.html` — `onBaselineCardClick()`
+clears `autoSetNote` unconditionally, while invalidating the result only on a
+real profile/roadway change.
+
+**Symptom:** after a Location Type auto-set, re-clicking the **already
+selected** baseline card changes no data but clears the note, which flips
+`stateSig()` and makes `hasUnsavedWork()` true. The rep is then prompted to
+discard changes they did not make. Reproduced end to end: clean after Save →
+no-op re-click → prompt on Load, with the result itself intact.
+
+**Why it was deferred:** pre-existing — introduced by `083cc38` (2026-09-23),
+confirmed an ancestor of this branch's base `74027bf`. It needs a deliberate
+no-op click to reach, and `autoSetNote` is genuinely serialized, re-rendered and
+restored from the snapshot, so excluding it from the signature is not obviously
+right either — a record really does differ without it. Wants a decision about
+whether the note is data or chrome, which is more than a last-commit change.
+
+**Fix when picked up:** either make the clear conditional on a real change
+(matching the invalidation guard one line above it), or decide the note is
+chrome and add it to `SIG_SKIP`. Not both.
+
+---
+
 # Resolved
 
 Kept for the evidence, not as work. Nothing below needs doing.
