@@ -57,6 +57,24 @@
   };
   var PRICING_DEFAULT = 'Standard / moderate';
 
+  // 5th adjustment: Roady's Rewards participation. Additive, same mechanism as
+  // Region/Amenities/Review/Pricing, and like Pricing it is deliberately
+  // OUTSIDE officialSubtotal -- that figure has to keep matching the published
+  // PDF calculator. Default is "Undecided / unknown" (0%), which is also what
+  // a profile saved before this term existed resolves to.
+  var REWARDS_LEVELS = [
+    "Participating in Roady's Rewards",
+    'Undecided / unknown',
+    'Not participating'
+  ];
+
+  var REWARDS_ADJUST = {
+    "Participating in Roady's Rewards": 0.05,
+    'Undecided / unknown': 0.00,
+    'Not participating': -0.05
+  };
+  var REWARDS_DEFAULT = 'Undecided / unknown';
+
   // Supporting Details / amenity-detail dropdown option sets, plus the
   // thresholds suggestAmenityLevel() reads to produce a suggested level.
   var AMENITY_DETAIL_OPTIONS = {
@@ -124,6 +142,9 @@
     PRICING_LEVELS: PRICING_LEVELS,
     PRICING_ADJUST: PRICING_ADJUST,
     PRICING_DEFAULT: PRICING_DEFAULT,
+    REWARDS_LEVELS: REWARDS_LEVELS,
+    REWARDS_ADJUST: REWARDS_ADJUST,
+    REWARDS_DEFAULT: REWARDS_DEFAULT,
     AMENITY_DETAIL_OPTIONS: AMENITY_DETAIL_OPTIONS,
     NETWORK_FIT_SIGNAL_OPTIONS: NETWORK_FIT_SIGNAL_OPTIONS,
     NETWORK_FIT_SIGNAL_SCORES: NETWORK_FIT_SIGNAL_SCORES,
