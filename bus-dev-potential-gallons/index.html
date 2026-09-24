@@ -731,7 +731,7 @@ function getCentroid(pathStr, axis){
       group: h.indexOf('Group'), state: h.indexOf('State'), status: h.indexOf('Status')
     };
     var byRegion = {};
-    ['West', 'Southwest', 'Midwest', 'Northeast', 'Southeast'].forEach(function (r) {
+    Object.keys(BDPG_CONFIG.BDPG_REGION_MAP).forEach(function (r) {
       byRegion[r] = { total: 0, byType: {}, byGroup: {}, byTypeGroup: {} };
     });
 
