@@ -482,3 +482,38 @@ test('rewards does not widen profileRange, so the Network Fit Grade is unaffecte
   assert.equal(r.rangeLo, 6750);
   assert.equal(r.rangeHi, 13000);
 });
+
+test('default weights reproduce the pre-change grade exactly', () => {
+  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
+    profile: 'Medium truck stop', officialSubtotal: 9000,
+    supportingDetails: { condition:'Average', hours:'24/7', distance:'On exit',
+                         corridor:'Regional', competition:'1 within 15 mi' }
+  });
+  // 0.5*rangePosition + 0.5*mean(50,100,100,50,50) === same under 50/10/10/10/10/10
+  assert.equal(Math.round(r.overallScore * 1000) / 1000,
+               Math.round((0.5 * r.rangePositionPct + 0.5 * r.signalAvg) * 1000) / 1000);
+});
+
+test('resolveWeights falls back to defaults for a set that does not sum to 100', () => {
+  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  assert.deepEqual(BusDevGallonsCalc.resolveWeights({ rangePosition: 90, condition: 90,
+    hours: 10, distance: 10, corridor: 10, competition: 10 }), BDPG_CONFIG.WEIGHT_CONFIG);
+  assert.deepEqual(BusDevGallonsCalc.resolveWeights({ rangePosition: 'x', condition: 10,
+    hours: 10, distance: 10, corridor: 10, competition: 60 }), BDPG_CONFIG.WEIGHT_CONFIG);
+  assert.deepEqual(BusDevGallonsCalc.resolveWeights(null), BDPG_CONFIG.WEIGHT_CONFIG);
+});
+
+test('a valid custom weight set changes the grade but never officialSubtotal', () => {
+  const inputs = { profile: 'Medium truck stop', officialSubtotal: 9000,
+    supportingDetails: { condition:'New or remodeled', hours:'24/7', distance:'On exit',
+                         corridor:'Major', competition:'None within 15 mi' } };
+  const base = BusDevGallonsCalc.calculateNetworkFitGrade(inputs);
+  const tilted = BusDevGallonsCalc.calculateNetworkFitGrade(Object.assign({}, inputs,
+    { weights: { rangePosition: 0, condition: 20, hours: 20, distance: 20, corridor: 20, competition: 20 } }));
+  assert.notEqual(base.overallScore, tilted.overallScore);
+  assert.equal(tilted.overallScore, 100, 'all five signals maxed with no range weight');
+  const est = BusDevGallonsCalc.calculateEstimate({ profile:'Medium truck stop', roadway:'Interstate',
+    regionPct: 0.06, amenityLevel:'Good / full service', reviewRating: 3.8,
+    pricingLevel:'Standard / moderate', rewardsLevel:'Undecided / unknown' });
+  assert.equal(est.officialSubtotal, 13750, 'weights must never touch the official figure');
+});
