@@ -66,6 +66,11 @@ a{color:var(--accent);text-decoration:none;}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--fb);}
 .bdpg-page-hd{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--surface);}
 .bdpg-page-title{font-family:var(--ff);font-size:1.4em;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
+/* Audience label beside the page title. Muted and uppercase like the other
+   small labels in this file (.bdpg-lbl, .cc-lbl) so it reads as a standing
+   note about who the tool is for, not a status message that might change. */
+.bdpg-page-note{font-size:.7em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);border-left:1px solid var(--border);padding-left:12px;margin-left:2px;}
 .container{max-width:1500px;margin:0 auto;padding:18px 22px;}
 
 .btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:.75em;font-weight:600;letter-spacing:.04em;transition:all .15s;display:flex;align-items:center;gap:5px;}
@@ -107,6 +112,37 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .dt td.dn{color:var(--red);}
 .dt td.fl{color:var(--yellow);}
 .bdpg-box{background:var(--bg2,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+/* Collapsible panel headers in the admin tab. Previously a bold <div> with a
+   caret and cursor:pointer and nothing else, which read as a section label --
+   so a collapsed panel looked like a broken one and was unreachable by
+   keyboard. A real button with a border, hover and focus state says "this
+   opens". */
+.bdpg-disclosure{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:var(--fb);font-size:.86em;font-weight:700;
+  padding:8px 10px;cursor:pointer;transition:all .15s;}
+.bdpg-disclosure:hover{border-color:var(--accent);color:var(--accent);}
+.bdpg-disclosure:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.bdpg-disclosure-caret{color:var(--muted);font-size:.9em;}
+.bdpg-disclosure:hover .bdpg-disclosure-caret{color:var(--accent);}
+/* Inline baseline editing in the Network Baseline Analysis table. The value is
+   a real <button> so it is tab-reachable and announces itself as clickable;
+   styled to sit in the numeric column without looking like a form control
+   until you touch it. */
+.bdpg-bl-val{background:none;border:1px solid transparent;border-radius:4px;color:var(--text);
+  font-family:var(--fb);font-size:1em;padding:1px 5px;cursor:pointer;transition:all .12s;}
+.bdpg-bl-val:hover{border-color:var(--accent);color:var(--accent);}
+.bdpg-bl-val:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+/* The override marker. Amber because --accent is amber, and it reads as
+   "changed here" rather than "wrong" -- an override is a legitimate state. */
+.bdpg-bl-dot{color:var(--accent);font-size:.85em;margin-left:3px;}
+.bdpg-bl-mini{padding:2px 7px!important;font-size:.85em!important;line-height:1.2!important;}
+.bdpg-bl-reset{font-size:.72em;color:var(--muted);cursor:pointer;text-decoration:underline;
+  background:none;border:none;padding:0;font-family:var(--fb);display:block;margin:2px 0 0 auto;}
+.bdpg-bl-reset:hover{color:var(--accent);}
+.bdpg-bl-commit{background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;margin:0;overflow-x:auto;font-family:var(--ff);font-size:.74em;
+  line-height:1.7;white-space:pre;color:var(--text);}
 
 /* ── Bus Dev Potential Gallons — wizard shell ── */
 .bdpg-step{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px;position:relative;}
@@ -364,6 +400,7 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
 <body>
   <div class="bdpg-page-hd">
     <div class="bdpg-page-title">⛽ Bus Dev Potential Gallons</div>
+    <div class="bdpg-page-note">For Business Development use only</div>
     <div style="flex:1"></div>
     <button class="btn" title="How this calculator works" onclick="BDPG.toggleTutorial()">?</button>
     <button class="btn" onclick="BDPG.toggleTheme()">🌙</button>
@@ -752,7 +789,16 @@ function getCentroid(pathStr, axis){
     return BDPG.REGION_KEYS.some(function (k) { return Number(o[k]) !== Number(c[k]); });
   };
 
-  BDPG.state.adminOpen = false;
+  // Open by default. This panel used to sit on the calculator tab among a dozen
+  // other sections, where collapsed-by-default was right -- it was one optional
+  // thing among many. Task 9 moved it onto a dedicated admin tab whose first
+  // card (the grade weights) renders expanded, which teaches the eye that
+  // panels here are open; a collapsed row underneath then reads as a static
+  // heading rather than a control, and the region sliders and Save button look
+  // like they are missing. Reported as "the sliders are not interactive" when
+  // in fact they were never in the DOM. The tab exists to hold these controls,
+  // so there is nothing for them to be collapsed behind.
+  BDPG.state.adminOpen = true;
   // Holds the pretty-printed JSON text from the most recent Save, so the preview
   // block survives the BDPG.render() that Save triggers (adminPanelHtml() re-emits
   // this block hidden/empty every render unless it has saved text to show).
@@ -832,7 +878,13 @@ function getCentroid(pathStr, axis){
 
     return banner + resetNotice +
       '<div class="bdpg-box" style="margin-top:14px">' +
-        '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleAdmin()">▸ Region % — Admin ' + (s.adminOpen ? '▾' : '▸') + '</div>' +
+        // A real <button>, not a bold div: the old markup carried a leading
+        // "▸" and a trailing caret with no border, hover or focus state, so it
+        // read as a section label and its collapsed content looked absent
+        // rather than hidden. It also could not be reached by keyboard at all.
+        '<button class="bdpg-disclosure" aria-expanded="' + (s.adminOpen ? 'true' : 'false') +
+          '" onclick="BDPG.toggleAdmin()"><span class="bdpg-disclosure-caret">' +
+          (s.adminOpen ? '▾' : '▸') + '</span>Region % — Admin</button>' +
         (s.adminOpen ? (
           overrideNotice +
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px">' + sliders + '</div>' +
@@ -910,7 +962,12 @@ function getCentroid(pathStr, axis){
   BDPG.networkContextGeneratorHtml = function () {
     var s = BDPG.state;
     return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleNcGenerator()">▸ Regenerate network-context.json ' + (s.ncGeneratorOpen ? '▾' : '▸') + '</div>' +
+      // Same treatment as the Region % header. This one stays collapsed by
+      // default -- it is a rarely-used one-off tool with a file picker, not the
+      // tab's main content -- so its affordance matters more, not less.
+      '<button class="bdpg-disclosure" aria-expanded="' + (s.ncGeneratorOpen ? 'true' : 'false') +
+        '" onclick="BDPG.toggleNcGenerator()"><span class="bdpg-disclosure-caret">' +
+        (s.ncGeneratorOpen ? '▾' : '▸') + '</span>Regenerate network-context.json</button>' +
       (s.ncGeneratorOpen ? (
         '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Drop in the current location-list CSV. Parsed entirely in this browser tab — never uploaded anywhere.</div>' +
         '<input type="file" accept=".csv" onchange="BDPG.onNetworkContextCsvFile(this)" style="margin-top:8px">' +
@@ -1152,7 +1209,14 @@ function getCentroid(pathStr, axis){
         '</div>';
     }
     return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div style="font-weight:700;margin-bottom:6px">🔒 Admin PIN</div>' + body +
+      // The heading tracks the actual state. It used to read "🔒 Admin PIN" in
+      // both branches -- so on a browser with no PIN set, a padlock sat above
+      // fully-open controls and read as "locked", which is the opposite of what
+      // that card is offering. Paired with the collapsed Region % panel below
+      // it, the tab looked locked with no way in when in fact nothing was
+      // locked and every control was live.
+      '<div style="font-weight:700;margin-bottom:6px">' +
+        (BDPG.adminPinIsSet() ? '🔒 Admin PIN' : '🔓 Admin PIN — not set') + '</div>' + body +
       '<div id="bdpg-pin-msg" style="font-size:.8em;margin-top:8px"></div>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:8px">Accident guard, not security: the PIN is stored in plain text in this browser\'s localStorage, and everything it guards can be edited there directly.</div>' +
     '</div>';
@@ -1397,29 +1461,210 @@ function getCentroid(pathStr, axis){
     BDPG.weightsMsg('Weights saved. Re-run Generate to see them in the grade.', false);
   };
 
+  // ── Admin baseline overrides ──────────────────────────────────────────
+  //
+  // BASELINE_TABLE is shipped config and this page must not edit it on disk.
+  // An admin still needs to move a baseline without waiting on a developer --
+  // the 2026-09-24 Profile 3 change (5,000 -> 4,000) took a code edit, a
+  // review and a commit -- so the override lives in localStorage and is
+  // applied INTO the in-memory BDPG_CONFIG.BASELINE_TABLE at load.
+  //
+  // Patching the table itself rather than wrapping each read is deliberate.
+  // Six surfaces resolve a baseline: the engine's getBaselineRow(), the
+  // engine's profileMin/profileMax band, the Step 1 profile cards, the
+  // pre-eval mapper, the tutorial's worked example, and the tracker's
+  // staleness check. Any one of them left unwrapped would show a different
+  // baseline from the others for the same prospect -- the exact "two numbers,
+  // one prospect" failure this file keeps ruling against -- and a wrapper per
+  // call site is one forgotten call site away from it. A patched table cannot
+  // disagree with itself.
+  //
+  // The overrides apply on every load, INCLUDING while the admin panel is
+  // locked. The PIN gates who may *change* a baseline, not whether a saved
+  // change takes effect; locking the panel does not restore config figures,
+  // clearing the storage key does. The panel says so out loud.
+  //
+  // No new stamping machinery is needed. e.baseline flows from the patched row
+  // into BDPG.baselineStamp() on save, and the tracker's "other baseline"
+  // badge compares against getBaselineRow(), which reads the same patched
+  // table -- so changing an override marks every already-saved prospect on
+  // that row, and still never recomputes one.
+  BDPG.ADMIN_BASELINE_KEY = 'roadysBDPGAdminBaselines';
+
+  // A typo guard, not a policy. The largest shipped baseline is 15,000, so
+  // anything past a million is a pasted phone number rather than an estimate.
+  // Out-of-range entries are refused with a message, never clamped: clamping
+  // would store a figure the admin did not choose and then show it back to
+  // them as though they had.
+  BDPG.BASELINE_MIN = 1;
+  BDPG.BASELINE_MAX = 1000000;
+
+  // profile+roadway is already the engine's identity for a baseline row --
+  // getBaselineRow() matches on exactly this pair -- so keying overrides the
+  // same way cannot address a row the calculator resolves differently.
+  BDPG.baselineKey = function (profile, roadway) {
+    return String(profile) + '|' + String(roadway);
+  };
+
+  // Snapshotted BEFORE any override is applied, and never written to again:
+  // once the live table is patched this is the only remaining record of what
+  // busDevGallonsConfig.js actually ships, and both "Reset to default" and the
+  // "update the config with these values" note are worthless if it drifts.
+  BDPG.BASELINE_DEFAULTS = (function () {
+    var out = {};
+    BDPG_CONFIG.BASELINE_TABLE.forEach(function (r) {
+      out[BDPG.baselineKey(r.profile, r.roadway)] = r.baseline;
+    });
+    return out;
+  })();
+
+  BDPG.baselineOverrides = {};
+  // Stored entries discarded as unusable at load, surfaced as a notice in the
+  // panel. Dropping them silently would leave an admin looking at a config
+  // figure they believe they had overridden.
+  BDPG.baselineOverridesDropped = 0;
+  BDPG.baselineOverridesWereReset = false;
+
+  BDPG.validBaselineValue = function (v) {
+    if (v === null || v === undefined || v === '') return null;
+    var n = Number(v);
+    if (!isFinite(n)) return null;
+    n = Math.round(n);
+    if (n < BDPG.BASELINE_MIN || n > BDPG.BASELINE_MAX) return null;
+    return n;
+  };
+
+  BDPG.liveBaseline = function (key) {
+    return hasOwn(BDPG.baselineOverrides, key)
+      ? BDPG.baselineOverrides[key] : BDPG.BASELINE_DEFAULTS[key];
+  };
+
+  BDPG.baselineIsOverridden = function (key) {
+    return hasOwn(BDPG.baselineOverrides, key);
+  };
+
+  // Every row is rewritten on every call -- default first, override second --
+  // so removing an override restores the shipped figure without a reload, and
+  // calling this twice can never compound.
+  BDPG.applyBaselineOverrides = function () {
+    BDPG_CONFIG.BASELINE_TABLE.forEach(function (r) {
+      var k = BDPG.baselineKey(r.profile, r.roadway);
+      r.baseline = hasOwn(BDPG.baselineOverrides, k)
+        ? BDPG.baselineOverrides[k] : BDPG.BASELINE_DEFAULTS[k];
+    });
+  };
+
+  BDPG.writeBaselineOverrides = function () {
+    try {
+      if (Object.keys(BDPG.baselineOverrides).length === 0) {
+        localStorage.removeItem(BDPG.ADMIN_BASELINE_KEY);
+      } else {
+        localStorage.setItem(BDPG.ADMIN_BASELINE_KEY, JSON.stringify(BDPG.baselineOverrides));
+      }
+      return true;
+    } catch (e) { return false; }
+  };
+
+  // Storage first, memory second, and rolled back together. An override that
+  // is live on screen but absent from storage is a figure that vanishes on the
+  // next reload while the prospect records built from it keep its stamp --
+  // worse than refusing the edit outright.
+  BDPG.commitBaselineOverrides = function (next) {
+    var prev = BDPG.baselineOverrides;
+    BDPG.baselineOverrides = next;
+    if (!BDPG.writeBaselineOverrides()) { BDPG.baselineOverrides = prev; return false; }
+    BDPG.applyBaselineOverrides();
+    return true;
+  };
+
+  BDPG.loadBaselineOverrides = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(BDPG.ADMIN_BASELINE_KEY); } catch (e) { return; }
+    if (!raw) return;
+
+    var parsed = null;
+    try { parsed = JSON.parse(raw); } catch (e2) { parsed = null; }
+    if (!parsed || typeof parsed !== 'object' ||
+        Object.prototype.toString.call(parsed) === '[object Array]') {
+      // Nothing in the blob can be trusted, so none of it is applied and the
+      // key goes rather than being re-read and re-rejected on every load.
+      try { localStorage.removeItem(BDPG.ADMIN_BASELINE_KEY); } catch (e3) {}
+      BDPG.baselineOverridesWereReset = true;
+      return;
+    }
+
+    // Per entry, not all-or-nothing: unlike the region override -- where an old
+    // 5-region key described a different set of states and so poisoned the
+    // whole set -- a baseline key names exactly one profile/roadway pair. One
+    // unusable entry says nothing about its neighbours.
+    var dropped = 0, kept = {};
+    Object.keys(parsed).forEach(function (k) {
+      if (!hasOwn(BDPG.BASELINE_DEFAULTS, k)) { dropped++; return; }
+      var n = BDPG.validBaselineValue(parsed[k]);
+      if (n === null) { dropped++; return; }
+      // An entry equal to the shipped figure is not an override. Keeping it
+      // would show a permanent amber dot and a "commit this" line for a value
+      // already in the config.
+      if (n === BDPG.BASELINE_DEFAULTS[k]) { dropped++; return; }
+      kept[k] = n;
+    });
+    BDPG.baselineOverrides = kept;
+    BDPG.baselineOverridesDropped = dropped;
+    // Storage must never keep holding what the page refuses to apply -- else a
+    // hand edit that looks saved never is, and the same entries are re-dropped
+    // on every load forever.
+    if (dropped > 0) BDPG.writeBaselineOverrides();
+    BDPG.applyBaselineOverrides();
+  };
+
+  // Runs at module scope, before DOMContentLoaded and therefore before the
+  // first getBaselineRow() of the session, so no surface ever renders a config
+  // figure that an override was about to replace.
+  BDPG.loadBaselineOverrides();
+
+  BDPG.baselineMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-bl-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
   // The admin tab's body: either every admin control, or just the gate.
   // Nothing in between -- a locked panel that still shows the region sliders
   // "read only" would be a gate in name only.
   // A static record of the 2026-09-24 baseline analysis, not a live view of
-  // BASELINE_TABLE. The "PDF Baseline" column deliberately holds the figure the
-  // PDF shipped with -- 5,000 for Profile 3 -- even though the live config now
-  // carries 4,000. Reading this column out of BASELINE_TABLE would show 4,000
+  // BASELINE_TABLE. The "BD Calculator Baseline" column deliberately holds the
+  // figure the source PDF shipped with -- 5,000 for Profile 3 -- even though
+  // the live config now carries 4,000. Reading this column out of
+  // BASELINE_TABLE would show 4,000
   // and destroy the only thing the table is for: the comparison that justified
   // the change. Update these rows by hand when a new analysis is run.
   //
   // `n` is the count of real network locations matching the profile; a dash
   // means no matching location had usable lane data, which is not the same as
   // a measured zero -- hence "No data" rather than a number.
+  //
+  // `status` is part of that frozen record too, so it keeps describing what
+  // the 2026-09-24 analysis concluded ("✓ Updated to 4,000") even after an
+  // admin overrides that row to something else. Rewriting it would forge the
+  // analysis; the Live Baseline column and its amber dot carry what the
+  // calculator is using today, which is the different question.
+  //
+  // `cfgProfile`/`cfgRoadway` join a row to BASELINE_TABLE. They exist because
+  // the displayed `profile` string cannot: it abbreviates ("Small TS" vs
+  // "Small truck stop") and renders lanes with an en dash, while the config
+  // uses an ASCII hyphen. Parsing the display string back into a lookup would
+  // be a silent mismatch waiting to happen, so the join is stated outright.
   BDPG.BASELINE_ANALYSIS_ASOF = 'Sept 24, 2026';
   BDPG.BASELINE_ANALYSIS = [
-    { profile: 'Fuel stop · Any · 1–2 lanes',            pdf: 2500,  median: null,  p25: null, p75: null,  n: 0,  status: 'No data — PDF retained',    tone: 'gray' },
-    { profile: 'Small TS · Backroad · 1–2 lanes',        pdf: 3000,  median: 3202,  p25: 2477, p75: 3927,  n: 2,  status: 'n<5 — PDF retained',        tone: 'gray' },
-    { profile: 'Small TS · Highway · 3–5 lanes',         pdf: 5000,  median: 1946,  p25: 1285, p75: 4517,  n: 12, status: '✓ Updated to 4,000',        tone: 'green' },
-    { profile: 'Small TS · Interstate · 6+ lanes',       pdf: 7500,  median: 3621,  p25: 92,   p75: 6849,  n: 7,  status: 'Thin (n=7) — PDF retained', tone: 'yellow' },
-    { profile: 'Medium TS · Highway · 3–5 lanes',        pdf: 7500,  median: 12809, p25: 6405, p75: 32626, n: 3,  status: 'n<5 — PDF retained',        tone: 'gray' },
-    { profile: 'Medium TS · Interstate · 6+ lanes',      pdf: 12500, median: 12824, p25: 367,  p75: 19722, n: 15, status: 'Within band — PDF retained', tone: 'gray' },
-    { profile: 'Large TS · Highway · 3–5 lanes',         pdf: 10000, median: null,  p25: null, p75: null,  n: 0,  status: 'No data — PDF retained',    tone: 'gray' },
-    { profile: 'Large TS · Interstate · 6+ lanes',       pdf: 15000, median: 21704, p25: 7811, p75: 46626, n: 28, status: 'Within band — PDF retained', tone: 'gray' }
+    { profile: 'Fuel stop · Any · 1–2 lanes',            cfgProfile: 'Fuel stop',         cfgRoadway: 'Any',        pdf: 2500,  median: null,  p25: null, p75: null,  n: 0,  status: 'No data — BD Calculator retained',    tone: 'gray' },
+    { profile: 'Small TS · Backroad · 1–2 lanes',        cfgProfile: 'Small truck stop',  cfgRoadway: 'Backroad',   pdf: 3000,  median: 3202,  p25: 2477, p75: 3927,  n: 2,  status: 'n<5 — BD Calculator retained',        tone: 'gray' },
+    { profile: 'Small TS · Highway · 3–5 lanes',         cfgProfile: 'Small truck stop',  cfgRoadway: 'Highway',    pdf: 5000,  median: 1946,  p25: 1285, p75: 4517,  n: 12, status: '✓ Updated to 4,000',        tone: 'green' },
+    { profile: 'Small TS · Interstate · 6+ lanes',       cfgProfile: 'Small truck stop',  cfgRoadway: 'Interstate', pdf: 7500,  median: 3621,  p25: 92,   p75: 6849,  n: 7,  status: 'Thin (n=7) — BD Calculator retained', tone: 'yellow' },
+    { profile: 'Medium TS · Highway · 3–5 lanes',        cfgProfile: 'Medium truck stop', cfgRoadway: 'Highway',    pdf: 7500,  median: 12809, p25: 6405, p75: 32626, n: 3,  status: 'n<5 — BD Calculator retained',        tone: 'gray' },
+    { profile: 'Medium TS · Interstate · 6+ lanes',      cfgProfile: 'Medium truck stop', cfgRoadway: 'Interstate', pdf: 12500, median: 12824, p25: 367,  p75: 19722, n: 15, status: 'Within band — BD Calculator retained', tone: 'gray' },
+    { profile: 'Large TS · Highway · 3–5 lanes',         cfgProfile: 'Large truck stop',  cfgRoadway: 'Highway',    pdf: 10000, median: null,  p25: null, p75: null,  n: 0,  status: 'No data — BD Calculator retained',    tone: 'gray' },
+    { profile: 'Large TS · Interstate · 6+ lanes',       cfgProfile: 'Large truck stop',  cfgRoadway: 'Interstate', pdf: 15000, median: 21704, p25: 7811, p75: 46626, n: 28, status: 'Within band — BD Calculator retained', tone: 'gray' }
   ];
 
   BDPG.BASELINE_ANALYSIS_NOTES = [
@@ -1427,18 +1672,175 @@ function getCentroid(pathStr, axis){
     'Lane data: 117 locations at High/Medium confidence from internet sources (Allstays, TruckMap, 4RoadService, TruckStopsAndServices).',
     'Gallons definition: fleet/aggregator contributed gallons with a discount only — same definition as the Aggregator Gallon Report.',
     'Coverage: 57% of active Truck Stop / Fuel Stop locations had usable lane data.',
-    'A baseline is only adjusted when n≥5 AND the PDF figure falls outside the real network P25–P75 band.',
+    'A baseline is only adjusted when n≥5 AND the Roady\'s BD Calculator figure falls outside the real network P25–P75 band.',
     'Next recommended analysis: add diesel_lanes as a real field in Interstate to improve coverage beyond 17% from the Interstate database alone.'
   ];
+
+  // The view-mode contents of one Live Baseline cell. Shared by the table
+  // render and by Cancel, so leaving edit mode cannot produce a cell that
+  // differs from a freshly rendered one.
+  //
+  // The number comes FIRST and the amber dot after it, because the delegated
+  // sorter in the page header ranks rows by parseFloat of the cell's text --
+  // a leading glyph would make this column sort as text. (It strips '●'
+  // already, which is why that is the glyph used.)
+  BDPG.baselineCellInnerHtml = function (i) {
+    var r = BDPG.BASELINE_ANALYSIS[i];
+    if (!r) return '';
+    var key = BDPG.baselineKey(r.cfgProfile, r.cfgRoadway);
+    if (!hasOwn(BDPG.BASELINE_DEFAULTS, key)) {
+      // This analysis row names a profile/roadway pair BASELINE_TABLE no
+      // longer carries. Saying so is the point -- a blank or a 0 here reads as
+      // a live baseline of nothing, and the row is not editable because there
+      // is nothing to edit.
+      return '<span style="color:var(--red)" title="No row in BASELINE_TABLE matches ' +
+        BDPG.escHtml(r.cfgProfile) + ' / ' + BDPG.escHtml(r.cfgRoadway) +
+        '">no config row</span>';
+    }
+    var live = BDPG.liveBaseline(key);
+    var overridden = BDPG.baselineIsOverridden(key);
+    var dot = overridden
+      ? '<span class="bdpg-bl-dot" title="Overridden in this browser. busDevGallonsConfig.js ships ' +
+          BDPG.fmtGal(BDPG.BASELINE_DEFAULTS[key]) + ' gal/mo for this row.">●</span>'
+      : '';
+    var reset = overridden
+      ? '<button class="bdpg-bl-reset" onclick="BDPG.onBaselineReset(' + i +
+          ')" title="Restore the figure busDevGallonsConfig.js ships">Reset to default</button>'
+      : '';
+    return '<button class="bdpg-bl-val" onclick="BDPG.onBaselineEditStart(' + i +
+        ')" title="Click to edit this baseline">' + BDPG.fmtGal(live) + '</button>' +
+      dot + reset;
+  };
+
+  // Patches this one cell rather than calling render(): a render would rebuild
+  // the table and throw away both the focus and any column sort the admin
+  // applied to find the row.
+  BDPG.onBaselineEditStart = function (i) {
+    var r = BDPG.BASELINE_ANALYSIS[i];
+    if (!r) return;
+    var key = BDPG.baselineKey(r.cfgProfile, r.cfgRoadway);
+    if (!hasOwn(BDPG.BASELINE_DEFAULTS, key)) return;
+    var cell = document.getElementById('bdpg-bl-cell-' + i);
+    if (!cell) return;
+    cell.innerHTML =
+      '<span style="display:inline-flex;gap:4px;align-items:center;justify-content:flex-end">' +
+        '<input id="bdpg-bl-in-' + i + '" type="number" step="1" ' +
+          'min="' + BDPG.BASELINE_MIN + '" max="' + BDPG.BASELINE_MAX + '" ' +
+          'style="width:7.5em;text-align:right" value="' + BDPG.liveBaseline(key) + '" ' +
+          'aria-label="Live baseline for ' + BDPG.escHtml(r.profile) + '" ' +
+          'onkeydown="if(event.key===\'Enter\'){event.preventDefault();BDPG.onBaselineSave(' + i +
+            ');}else if(event.key===\'Escape\'){BDPG.onBaselineEditCancel(' + i + ');}">' +
+        '<button class="btn btn-accent bdpg-bl-mini" title="Save this baseline" ' +
+          'onclick="BDPG.onBaselineSave(' + i + ')">✓</button>' +
+        '<button class="btn bdpg-bl-mini" title="Cancel" ' +
+          'onclick="BDPG.onBaselineEditCancel(' + i + ')">✕</button>' +
+      '</span>';
+    var inp = document.getElementById('bdpg-bl-in-' + i);
+    if (inp) { inp.focus(); inp.select(); }
+  };
+
+  BDPG.onBaselineEditCancel = function (i) {
+    var cell = document.getElementById('bdpg-bl-cell-' + i);
+    if (cell) cell.innerHTML = BDPG.baselineCellInnerHtml(i);
+    BDPG.baselineMsg('', false);
+  };
+
+  // Builds the next override map, commits it, and only then touches the page.
+  // `remove` is the Reset path; both share this so the two can never diverge
+  // on what a write failure or an invalidated result means.
+  BDPG.applyBaselineEdit = function (i, value, remove) {
+    var r = BDPG.BASELINE_ANALYSIS[i];
+    if (!r) return;
+    var key = BDPG.baselineKey(r.cfgProfile, r.cfgRoadway);
+    if (!hasOwn(BDPG.BASELINE_DEFAULTS, key)) return;
+
+    var n = null;
+    if (!remove) {
+      n = BDPG.validBaselineValue(value);
+      if (n === null) {
+        // Refused, not coerced -- the same rule as onSaveWeights. The cell
+        // stays in edit mode holding the rejected value, so the admin can see
+        // what was turned down instead of watching it silently become
+        // something else.
+        BDPG.baselineMsg('Baseline must be a whole number between ' + BDPG.fmtGal(BDPG.BASELINE_MIN) +
+          ' and ' + BDPG.fmtGal(BDPG.BASELINE_MAX) + ' gal/mo. Nothing was saved.', true);
+        return;
+      }
+    }
+
+    var next = {};
+    Object.keys(BDPG.baselineOverrides).forEach(function (k) { next[k] = BDPG.baselineOverrides[k]; });
+    // Typing the shipped figure back in is a reset, not an override -- storing
+    // it would leave a permanent amber dot and a "commit this" line for a
+    // value already in the config.
+    if (remove || n === BDPG.BASELINE_DEFAULTS[key]) delete next[key];
+    else next[key] = n;
+
+    if (!BDPG.commitBaselineOverrides(next)) {
+      BDPG.baselineMsg('Could not save the baseline in this browser — nothing was changed.', true);
+      return;
+    }
+
+    // The baseline is the first term of officialSubtotal, so anything on
+    // screen was computed on the old figure and is stale the instant this
+    // lands. Same rule as the region % and the weights writers.
+    BDPG.invalidateResult();
+    BDPG.render();
+    // baselineMsg writes textContent, so these are plain strings -- escaping
+    // here would print the entities rather than the characters.
+    BDPG.baselineMsg(remove || n === BDPG.BASELINE_DEFAULTS[key]
+      ? r.profile + ' restored to the config default of ' +
+          BDPG.fmtGal(BDPG.BASELINE_DEFAULTS[key]) + ' gal/mo. Re-run Generate to use it.'
+      : r.profile + ' baseline set to ' + BDPG.fmtGal(n) +
+          ' gal/mo in this browser. Re-run Generate to use it.', false);
+  };
+
+  BDPG.onBaselineSave = function (i) {
+    var inp = document.getElementById('bdpg-bl-in-' + i);
+    BDPG.applyBaselineEdit(i, inp ? inp.value : null, false);
+  };
+
+  BDPG.onBaselineReset = function (i) { BDPG.applyBaselineEdit(i, null, true); };
+
+  // The hand-off to whoever commits. Listed in BASELINE_TABLE's own order
+  // rather than the override map's insertion order, and emitted as the literal
+  // config rows so the developer pastes them instead of transcribing four
+  // fields. `lanes` is copied straight off the live row, which keeps the ASCII
+  // hyphen the Step 3 lane-mismatch parser needs -- retyping that field by
+  // hand is exactly how an en dash gets in.
+  BDPG.baselineCommitNoteHtml = function () {
+    var overridden = BDPG_CONFIG.BASELINE_TABLE.filter(function (r) {
+      return BDPG.baselineIsOverridden(BDPG.baselineKey(r.profile, r.roadway));
+    });
+    if (overridden.length === 0) return '';
+    var lines = overridden.map(function (r) {
+      var k = BDPG.baselineKey(r.profile, r.roadway);
+      return BDPG.escHtml("  { profile: '" + r.profile + "', roadway: '" + r.roadway +
+          "', lanes: '" + r.lanes + "', baseline: " + BDPG.liveBaseline(k) + " },") +
+        '<span style="color:var(--muted)">   // was ' + BDPG.fmtGal(BDPG.BASELINE_DEFAULTS[k]) + '</span>';
+    }).join('\n');
+    return '<div class="bdpg-box" style="margin-top:12px;border-color:var(--accent)">' +
+      '<div style="font-weight:700;margin-bottom:4px">📌 To make these permanent</div>' +
+      '<div style="font-size:.8em;color:var(--muted);margin-bottom:8px">' +
+        overridden.length + ' baseline' + (overridden.length === 1 ? ' is' : 's are') +
+        ' overridden in this browser only — nobody else\'s copy of the calculator has ' +
+        (overridden.length === 1 ? 'it' : 'them') + '. Update <code>BASELINE_TABLE</code> in ' +
+        '<code>busDevGallonsConfig.js</code> with these values and commit, then Reset each row here ' +
+        'so this browser stops diverging from the shipped config:</div>' +
+      '<pre class="bdpg-bl-commit">' + lines + '</pre>' +
+    '</div>';
+  };
 
   BDPG.networkBaselinePanelHtml = function () {
     function cell(v) { return v === null ? '—' : BDPG.fmtGal(v); }
 
-    var rows = BDPG.BASELINE_ANALYSIS.map(function (r) {
+    var rows = BDPG.BASELINE_ANALYSIS.map(function (r, i) {
       var tone = hasOwn({ green: 1, yellow: 1, gray: 1 }, r.tone) ? r.tone : 'gray';
       return '<tr>' +
         '<td>' + BDPG.escHtml(r.profile) + '</td>' +
         '<td style="text-align:right">' + BDPG.fmtGal(r.pdf) + '</td>' +
+        '<td id="bdpg-bl-cell-' + i + '" style="text-align:right;white-space:nowrap">' +
+          BDPG.baselineCellInnerHtml(i) + '</td>' +
         '<td style="text-align:right">' + cell(r.median) + '</td>' +
         '<td style="text-align:right">' + cell(r.p25) + '</td>' +
         '<td style="text-align:right">' + cell(r.p75) + '</td>' +
@@ -1451,6 +1853,23 @@ function getCentroid(pathStr, axis){
       return '<li>' + BDPG.escHtml(t) + '</li>';
     }).join('');
 
+    // Both notices report storage that was refused at load. Saying nothing
+    // would leave an admin looking at a config figure for a row they believe
+    // they had already overridden.
+    var notices = '';
+    if (BDPG.baselineOverridesWereReset) {
+      notices += '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">The baseline ' +
+        'overrides saved in this browser were not readable, so they were discarded and every row ' +
+        'below is on its config value.</div>';
+    }
+    if (BDPG.baselineOverridesDropped > 0) {
+      notices += '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">' +
+        BDPG.baselineOverridesDropped + ' saved baseline override' +
+        (BDPG.baselineOverridesDropped === 1 ? ' was' : 's were') + ' discarded at load — the row ' +
+        'no longer exists, the value was out of range, or it already matched the config. Those rows ' +
+        'are on their config values.</div>';
+    }
+
     return '<div class="bdpg-box" style="margin-top:14px">' +
       '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
         '<div style="font-weight:700">📊 Network Baseline Analysis</div>' +
@@ -1458,20 +1877,31 @@ function getCentroid(pathStr, axis){
           BDPG.escHtml(BDPG.BASELINE_ANALYSIS_ASOF) + '</div>' +
       '</div>' +
       '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">' +
-        'What the real network says about each PDF baseline. Reference only — the ' +
-        'live figures are in BASELINE_TABLE; this table records the comparison that ' +
-        'justified changing one of them.</div>' +
+        'What the real network says about each Roady\'s BD Calculator baseline, beside what the ' +
+        'calculator is using right now. The analysis columns are a frozen record of the ' +
+        BDPG.escHtml(BDPG.BASELINE_ANALYSIS_ASOF) + ' study; <b>Live Baseline</b> is editable and ' +
+        'feeds every estimate this browser produces.</div>' +
+      notices +
       '<div class="tw" style="margin-bottom:10px"><table class="dt" style="font-size:.8em">' +
         '<thead><tr>' +
           '<th>Profile</th>' +
-          '<th style="text-align:right">PDF Baseline</th>' +
+          '<th style="text-align:right">BD Calculator Baseline</th>' +
+          '<th style="text-align:right">Live Baseline</th>' +
           '<th style="text-align:right">Network Median</th>' +
           '<th style="text-align:right">Network P25</th>' +
           '<th style="text-align:right">Network P75</th>' +
           '<th style="text-align:right">n</th>' +
           '<th>Status</th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<div style="font-size:.76em;color:var(--muted);line-height:1.6">' +
+      '<div id="bdpg-bl-msg" style="font-size:.8em;margin-bottom:8px"></div>' +
+      // Stated because the opposite is the natural assumption: the PIN looks
+      // like it protects the numbers, and it does not. It protects the edit.
+      '<div style="font-size:.74em;color:var(--muted);margin-bottom:10px">Overrides are stored in ' +
+        'this browser under <code>' + BDPG.escHtml(BDPG.ADMIN_BASELINE_KEY) + '</code> and are ' +
+        'applied to every estimate on every load, including while this tab is PIN-locked. Locking ' +
+        'the tab stops further edits; it does not restore the config figures.</div>' +
+      BDPG.baselineCommitNoteHtml() +
+      '<div style="font-size:.76em;color:var(--muted);line-height:1.6;margin-top:12px">' +
         '<div style="font-weight:700;margin-bottom:4px">Methodology</div>' +
         '<ul style="margin:0 0 0 18px">' + notes + '</ul>' +
       '</div>' +
@@ -2010,7 +2440,7 @@ function getCentroid(pathStr, axis){
 
     return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
       'Generate produces two numbers. The <b>Official Calculator figure</b> is the baseline adjusted only by Region, ' +
-      'Amenities and the Trucker Path review score — it matches Roady’s published calculator. ' +
+      'Amenities and the Trucker Path review score — it matches Roady’s BD Calculator. ' +
       '<b>Final Potential Gallons</b> takes that figure and layers on Pricing Strategy and Rewards, and is the headline ' +
       'number used in the pitch. Everything above the INTERNAL divider is written for the prospect and mirrors the Export ' +
       'Pitch Summary; everything below it (the adjustment waterfall, Network Fit Grade, amenity chart) is internal-only ' +
@@ -2388,7 +2818,7 @@ function getCentroid(pathStr, axis){
       ? '<div class="bdpg-box" style="margin-top:10px;border-color:var(--yellow);color:var(--yellow);font-size:.8em;line-height:1.55">' +
           '⚠ <b>No amenity details entered — the level below is an assumption, not an observation of this site.</b><br>' +
           'With all six cards untouched the calculator falls back to <b>' + BDPG.escHtml(suggestion.level) + '</b>, and that ' +
-          '<b>' + assumedPctTxt + '</b> is being applied inside the Roady\'s Published Calculator Figure shown on the results ' +
+          '<b>' + assumedPctTxt + '</b> is being applied inside the Roady\'s BD Calculator Figure shown on the results ' +
           'and in the printed packet. Tap the six cards above, then pick a Confirmed Amenity Level below — Generate is ' +
           'disabled until that level is explicitly confirmed, even if it ends up matching this assumption.' +
         '</div>'
@@ -3138,10 +3568,10 @@ function getCentroid(pathStr, axis){
       '<div style="font-size:.95em;color:var(--muted);margin-top:8px">That\'s ' + BDPG.fmtGal(annual) +
         ' gallons annually — based on your location profile, region, and network data.</div>' +
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
-        '<span class="bdpg-lbl" style="display:inline">Roady\'s Published Calculator Figure:</span> ' +
+        '<span class="bdpg-lbl" style="display:inline">Roady\'s BD Calculator Figure:</span> ' +
         '<b style="font-size:1.15em">' + BDPG.fmtGal(e.officialSubtotal) + ' gal/mo</b>' +
         '<div style="font-size:.72em;color:var(--muted);margin-top:3px">' +
-          'Matches Roady\'s published prospective-member calculator.</div>' +
+          'Matches Roady\'s BD Calculator (Prospective Member Gallons Calculator).</div>' +
         BDPG.networkAverageLineHtml() +
       '</div>' +
     '</div>';
@@ -3457,7 +3887,7 @@ function getCentroid(pathStr, axis){
       '',
       'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
       'Official calculator math: ' + e.officialMathLine,
-      'Roady\'s Published Calculator Figure: ' + BDPG.fmtGal(e.officialSubtotal),
+      'Roady\'s BD Calculator Figure: ' + BDPG.fmtGal(e.officialSubtotal),
       'Pricing Strategy: ' + BDPG.state.pricingLevel,
       'Roady\'s Rewards: ' + BDPG.state.rewardsLevel,
       'Final Potential Gallons math: ' + e.finalMathLine,
@@ -3589,7 +4019,7 @@ function getCentroid(pathStr, axis){
       // Figure, the one number that provably never moves.
       out.push('Moving from "' + fromLabel + '" to "' + toLabel + '" could add about ' +
         BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) +
-        ' gal/mo to your Final Potential Gallons estimate — this does not change Roady\'s Published Calculator Figure.');
+        ' gal/mo to your Final Potential Gallons estimate — this does not change Roady\'s BD Calculator Figure.');
     }
     return out;
   };
@@ -4118,7 +4548,7 @@ function getCentroid(pathStr, axis){
       if (curRow) {
         var curBaselineStamp = BDPG.baselineStamp(curRow.baseline);
         if (!sum.baselineStamp) {
-          officialCell += ' <span class="badge tag-yellow" title="Saved before the PDF baseline was recorded, so the baseline behind these gallons is unknown. The current ' +
+          officialCell += ' <span class="badge tag-yellow" title="Saved before the BD Calculator baseline was recorded, so the baseline behind these gallons is unknown. The current ' +
             BDPG.escHtml(sum.profile) + ' / ' + BDPG.escHtml(sum.roadway) + ' baseline is ' +
             BDPG.fmtGal(curRow.baseline) + ' gal/mo. The stored figures are left exactly as they were saved — re-run Generate and save to restamp them.">&#9888; baseline unknown</span>';
         } else if (sum.baselineStamp !== curBaselineStamp) {
