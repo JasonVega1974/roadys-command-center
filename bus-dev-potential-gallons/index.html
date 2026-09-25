@@ -1701,7 +1701,16 @@ function getCentroid(pathStr, axis){
     var tabBtns = BDPG.TUTORIAL_TABS.map(function (t) {
       var on = (t.key === tab);
       return '<button class="' + (on ? 'on' : '') + '"' + (on ? ' style="background:var(--accent)"' : '') +
-        ' onclick="BDPG.setTutorialTab(' + JSON.stringify(t.key) + ')">' + BDPG.escHtml(t.tab) + '</button>';
+        // JSON.stringify alone emits "step1" WITH its double quotes, which ends
+        // this double-quoted attribute early -- the handler body becomes the
+        // fragment `BDPG.setTutorialTab(` and every tab silently does nothing.
+        // Overview masked it: tutorialTab defaults to 'overview', so that tab
+        // renders active without a click ever having to succeed.
+        // &quot;-escaping is the pattern the rest of this file already uses for
+        // values interpolated into an onclick (onLocationType,
+        // onBaselineCardClick, the tracker row actions).
+        ' onclick="BDPG.setTutorialTab(' + JSON.stringify(t.key).replace(/"/g, '&quot;') + ')">' +
+        BDPG.escHtml(t.tab) + '</button>';
     }).join('');
 
     return '<div class="bdpg-step" id="bdpg-tutorial-card">' +
