@@ -13,15 +13,32 @@
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
-  --accent:#00C8FF;--green:#00D68F;--red:#FF4757;--yellow:#FFD60A;--orange:#FF6B35;
+  --accent:#F59E0B;--green:#00D68F;--red:#FF4757;--yellow:#FFD60A;--orange:#FF6B35;
   --purple:#7C3AED;--teal:#0891B2;--text:#E8EDF8;--muted:#6B7A99;--dim:#3A4A6B;
+  /* --blue is NOT --accent. It exists so the two places that must stay cool
+     blue -- .tag-blue (the "informational" member of the tag-green/yellow/
+     red/gray semantic set) and GRADE_COLORS.A -- can keep their hue now that
+     --accent is warm amber. Folding either into amber would make .tag-blue
+     indistinguishable from .tag-yellow, and would put grade A between C
+     (yellow) and D (orange) in a five-letter scale that exists to be scanned
+     at a glance. It is a token rather than a bare #00C8FF literal because
+     both consumers paint TEXT on a near-white ground in day mode, where
+     #00C8FF measures ~1.9:1 and is unreadable; the day value below keeps the
+     pre-amber day blue. */
+  --blue:#00C8FF;
   --ff:'Barlow Condensed','Arial Narrow',sans-serif;
   --fb:'DM Sans','Segoe UI',sans-serif;
 }
 body.day-mode{
   --bg:#F0F2F5;--surface:#FFFFFF;--surface2:#F7F8FA;--border:#D8DCE3;--border2:#C0C7D3;
-  --accent:#0078D4;--green:#0B8A50;--red:#D32F2F;--yellow:#E6A800;--orange:#D4520A;
+  /* Day accent is amber-700, not the dark theme's amber-500: #F59E0B on this
+     background measures 1.9:1 and fails as text or as a border. #B45309
+     measures 5.02:1 on --surface (#FFFFFF), 4.73:1 on --surface2 and 4.48:1
+     on this --bg, so every accent-coloured label, link, active tab and focus
+     ring clears AA on the two grounds it actually sits on. */
+  --accent:#B45309;--green:#0B8A50;--red:#D32F2F;--yellow:#E6A800;--orange:#D4520A;
   --purple:#6528C7;--teal:#067A8B;--text:#1A1D24;--muted:#5A6170;--dim:#9AA0AD;
+  --blue:#0078D4;
 }
 body.day-mode ::-webkit-scrollbar-track{background:#E8EBF0;}
 body.day-mode ::-webkit-scrollbar-thumb{background:#C0C7D3;}
@@ -31,24 +48,13 @@ body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3;}
    outranked #bdpg-usa-svg path.sel's stroke (0-1-1-1 at line ~110), so the
    selected state's ring silently fell back to the same grey as every
    unselected border in day mode, for every region, not just teal. This rule
-   (0-1-2-2) restores the accent ring; stroke-width still comes from path.sel
-   below, and the glow colour from the rule immediately after this one. */
-body.day-mode #bdpg-usa-svg path.sel{stroke:var(--accent);}
-/* path.sel's drop-shadow (line ~118) is hardcoded rgba(0,200,255,.7) -- dark
-   mode's own --accent, spelled literally because a CSS colour cannot be
-   interpolated into a filter's rgba(). In day mode the ring therefore resolved
-   to #0078D4 while its halo stayed night-cyan: two different blues on one
-   outline, and the light theme leaning on a value that only means anything at
-   night. Same 0-1-2-2 specificity as the stroke rule above, so it beats
-   path.sel's 0-1-1-1 regardless of source order. rgba(0,120,212,.7) is the day
-   --accent (#0078D4) at the same alpha, so ring and halo are now one colour in
-   both themes.
-   What this does NOT fix: the ring itself is still 1.23:1 against the teal
-   Northwest fill, unchanged, because the stroke colour is untouched. It does
-   roughly double the halo's contrast against the light day-mode background it
-   actually spills onto (1.70:1 -> 3.92:1 vs #F0F2F5). See FOLLOW-UPS.md #1
-   options 2 and 3 for the ring-vs-fill half, which is still the user's call. */
-body.day-mode #bdpg-usa-svg path.sel{filter:drop-shadow(0 0 7px rgba(0,120,212,.7));}
+   (0-1-2-2) restores the ring; stroke-width and the glow still come from
+   path.sel below, which needs no day-mode override now that both themes ring
+   in the same white.
+   The ring is #FFF, deliberately NOT var(--accent) -- see the long note on
+   path.sel below for why the map's selection colour is decoupled from the
+   accent entirely. */
+body.day-mode #bdpg-usa-svg path.sel{stroke:#FFFFFF;}
 body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3;color:#1A1D24;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{color-scheme:dark;}
@@ -112,7 +118,7 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .bdpg-bcard{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:12px;cursor:pointer;transition:all .15s;text-align:left;}
 .bdpg-bcard:hover{border-color:var(--border2);transform:translateY(-1px);}
 .bdpg-bcard.dim{opacity:.45;}
-.bdpg-bcard.on{border-color:var(--accent);background:rgba(0,200,255,.08);box-shadow:0 0 14px rgba(0,200,255,.25);}
+.bdpg-bcard.on{border-color:var(--accent);background:rgba(245,158,11,.08);box-shadow:0 0 14px rgba(245,158,11,.25);}
 /* :not(.on) makes the "selected beats suggested" rule live in the CSS itself.
    Both selectors set border-color at equal specificity, so without it the
    winner is decided by source order, and the only reason a card never carries
@@ -130,7 +136,29 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 #bdpg-usa-svg{width:100%;height:auto;display:block;}
 #bdpg-usa-svg path{cursor:pointer;stroke:#0A0E1A;stroke-width:.5;transition:all .15s;}
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
-#bdpg-usa-svg path.sel{stroke:var(--accent);stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(0,200,255,.7));}
+/* The selection ring is WHITE in both themes and is deliberately decoupled
+   from --accent. --accent is amber (#F59E0B / #B45309), which sits directly
+   between two of the eight region fills -- Midwest #FFD60A and Southwest
+   #FF6B35 -- and would be near-invisible on either. Cyan was excluded from
+   the region palette for exactly this reason (see REGION_COLORS); amber
+   cannot inherit that exemption because it is inside the palette's own hue
+   range. White is the one value that is not adjacent to any of the eight.
+   Measured against each region's .85-alpha fill composited on its card, ring
+   vs fill, worst case across all eight:
+     white  1.92:1 (dark, Midwest)   1.35:1 (day, Midwest)
+     amber  1.12:1 (dark, Midwest)   1.15:1 (day, Southwest)
+     old cyan / day blue  1.02:1 and 1.04:1
+   So white is the best available single hue by a wide margin, and it clears
+   the case FOLLOW-UPS.md #1 was opened for: white vs the teal Northwest fill
+   in day mode is 3.01:1 composited (3.68:1 against solid #0891B2), up from
+   1.23:1. The residual worst case moves to Midwest yellow at 1.35:1, where
+   the 2.2px stroke width -- not the hue -- is what carries the ring.
+   The glow follows the stroke to white, one rule for both themes, because a
+   filter's rgba() cannot interpolate a CSS custom property and a second
+   theme-scoped copy would only be a second place to forget. Note the
+   trade-off that buys: in day mode a white halo over the white card is
+   invisible, so the day ring reads by stroke alone. */
+#bdpg-usa-svg path.sel{stroke:#FFFFFF;stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(255,255,255,.7));}
 #bdpg-usa-svg path.nomap{cursor:default;}
 /* .nomap paths (DC alone today -- anything BDPG_REGION_MAP does not cover;
    AK and HI were in this set until the 8-region model mapped them to
@@ -143,7 +171,7 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .bdpg-chip{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:.72em;}
-.bdpg-chip.on{border-color:var(--accent);box-shadow:0 0 10px rgba(0,200,255,.3);}
+.bdpg-chip.on{border-color:var(--accent);box-shadow:0 0 10px rgba(245,158,11,.3);}
 .bdpg-chip-dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto;}
 .bdpg-chip-name{font-weight:700;color:var(--text);}
 .bdpg-chip-meta{color:var(--muted);}
@@ -165,13 +193,13 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
 .bdpg-acard{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px;cursor:pointer;text-align:center;transition:all .15s;}
 .bdpg-acard:hover{border-color:var(--border2);}
-.bdpg-acard.set{border-color:var(--accent);background:rgba(0,200,255,.07);}
+.bdpg-acard.set{border-color:var(--accent);background:rgba(245,158,11,.07);}
 .bdpg-acard-ico{font-size:1.4em;line-height:1;}
 .bdpg-acard-f{font-size:.64em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px;}
 .bdpg-acard-v{font-size:.76em;font-weight:700;color:var(--text);margin-top:3px;min-height:1.1em;}
 .bdpg-acard:not(.set) .bdpg-acard-v{color:var(--dim);}
 .bdpg-go{width:100%;padding:15px;margin:16px 0;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
-.bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(0,200,255,.45);}
+.bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(245,158,11,.45);}
 .bdpg-go:disabled{opacity:.45;cursor:not-allowed;background:var(--surface2);color:var(--muted);}
 .bdpg-results{animation:bdpgIn .22s ease-out;}
 @keyframes bdpgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -193,11 +221,11 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
    adjustment outside the official subtotal is 0% -- officialSubtotal ===
    finalGallons and both markers land at the identical left%. A small
    opposite-direction nudge keeps both visible edge-to-edge instead of the
-   cyan Final marker fully eclipsing the Official one -- harmless at any
+   amber Final marker fully eclipsing the Official one -- harmless at any
    other position too, since it's a couple px against a track hundreds of
    px wide. (Pricing alone was the whole condition before the rewards term
    existed; both have to be neutral now.) */
-.bdpg-nrange-m.final{background:var(--accent);box-shadow:0 0 8px rgba(0,200,255,.7);transform:translateX(1.5px);}
+.bdpg-nrange-m.final{background:var(--accent);box-shadow:0 0 8px rgba(245,158,11,.7);transform:translateX(1.5px);}
 .bdpg-nrange-m.official{background:var(--text);opacity:.85;transform:translateX(-1.5px);}
 .bdpg-nrange-key{display:flex;gap:16px;font-size:.7em;color:var(--muted);margin-top:8px;}
 
@@ -205,7 +233,14 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .tag-green{background:rgba(0,214,143,.15);color:var(--green);}
 .tag-red{background:rgba(255,71,87,.15);color:var(--red);}
 .tag-yellow{background:rgba(255,214,10,.15);color:var(--yellow);}
-.tag-blue{background:rgba(0,200,255,.15);color:var(--accent);}
+/* tag-blue stays BLUE and is decoupled from --accent, which is now amber:
+   this class is the "informational" member of a semantic set alongside
+   tag-green / tag-yellow / tag-red / tag-gray, and an amber tag-blue would be
+   indistinguishable from tag-yellow while making the class name a lie. The
+   background tint is theme-scoped alongside the text colour so the day theme
+   does not sit a day-blue label on a night-cyan wash. */
+.tag-blue{background:rgba(0,200,255,.15);color:var(--blue);}
+body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
 .tag-orange{background:rgba(255,107,53,.15);color:var(--orange);}
 .tag-gray{background:rgba(107,122,153,.15);color:var(--muted);}
 
@@ -277,7 +312,7 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
   body.bdpg-print-mode #bdpg-print-only .bdpg-lbl { color: #000 !important; }
   /* The pitch sections come from BDPG.pitchSectionsHtml(), which is written
      for the dark UI and carries inline color:var(--accent) / var(--muted) /
-     var(--border). On white those resolve to #00C8FF (under 2:1) and #6B7A99
+     var(--border). On white those resolve to #F59E0B (under 2:1) and #6B7A99
      -- a pale smear on the largest numbers an owner is meant to read. An
      inline style can only be beaten by !important, and there is no selector
      for "elements whose inline style mentions --accent", so re-point the
@@ -1967,18 +2002,18 @@ function getCentroid(pathStr, axis){
         'oninput="BDPG.onProspectInput(\'notes\', this.value)">' + BDPG.escHtml(p.notes) + '</textarea></div>';
   };
 
-  // BDPG region fills. Cyan (--accent) is deliberately NOT here: it is reserved
-  // for the selected-state highlight, which must read against every region color.
-  // Teal (Northwest, #0891B2) is the closest hue to cyan of the eight and is
-  // the worst case for the selection ring. Dark mode is clean: ring #00C8FF
-  // (L 0.485) on the 0.85-alpha teal fill. Day mode is NOT -- ring #0078D4
-  // (L 0.1819) against that fill (L 0.2352) measures 1.23:1, and no amount of
-  // theme-scoping the ring's own colour changes that, because both are
-  // mid-blue-green. The two body.day-mode path.sel rules near the top of the
-  // stylesheet make the ring and its halo agree with each other and with the
-  // light background; making the ring legible against the teal itself needs a
-  // wider stroke or a different Northwest hue -- FOLLOW-UPS.md #1, the user's
-  // call, deliberately not taken by an implementer.
+  // BDPG region fills. The selection ring is deliberately NOT one of these
+  // eight, and is no longer --accent either: --accent is amber, which sits
+  // between Midwest (#FFD60A) and Southwest (#FF6B35) and would disappear on
+  // both. path.sel rings in WHITE in both themes instead -- the one hue not
+  // adjacent to anything in this map. See the note on #bdpg-usa-svg path.sel
+  // near the top of the stylesheet for the per-region measurements; the short
+  // version is that white's worst case is 1.92:1 (dark) / 1.35:1 (day) against
+  // Midwest yellow, where every accent-coloured alternative was at or under
+  // 1.15:1 somewhere.
+  // Teal (Northwest, #0891B2) was the historic worst case and is no longer:
+  // white on the .85-alpha teal fill measures 3.01:1 in day mode against the
+  // 1.23:1 that FOLLOW-UPS.md #1 was opened for. That entry is now Resolved.
   BDPG.REGION_COLORS = {
     West: '#00D68F', Southwest: '#FF6B35', Midwest: '#FFD60A',
     Northeast: '#7C3AED', Southeast: '#FF4757',
@@ -2742,7 +2777,7 @@ function getCentroid(pathStr, axis){
       labels: steps.map(function (s) { return s.label; }),
       data: steps.map(function (s) { return [s.from, s.to]; }),
       colors: steps.map(function (s) {
-        if (s.accent) return 'rgba(0,200,255,.75)';
+        if (s.accent) return 'rgba(245,158,11,.75)';
         if (s.neutral) return 'rgba(58,74,107,.85)';
         return s.to >= s.from ? 'rgba(0,214,143,.7)' : 'rgba(255,71,87,.7)';
       })
@@ -2833,7 +2868,7 @@ function getCentroid(pathStr, axis){
       var a = BDPG.amenityProfileData(BDPG.state.amenityDetails);
       mkchart('bdpg-amenity', {
         type: 'bar',
-        data: { labels: a.labels, datasets: [{ label: 'Score', data: a.data, backgroundColor: 'rgba(0,200,255,.6)', borderRadius: 3 }] },
+        data: { labels: a.labels, datasets: [{ label: 'Score', data: a.data, backgroundColor: 'rgba(245,158,11,.6)', borderRadius: 3 }] },
         options: Object.assign({}, CDO, {
           indexAxis: 'y',
           plugins: { legend: { display: false } },
@@ -2858,7 +2893,15 @@ function getCentroid(pathStr, axis){
     }
   };
 
-  BDPG.GRADE_COLORS = { A: 'var(--accent)', B: 'var(--green)', C: 'var(--yellow)', D: 'var(--orange)', E: 'var(--red)' };
+  // A is var(--blue) -- cyan at night, #0078D4 by day -- and is deliberately
+  // NOT var(--accent) now that the accent is amber. The grades exist to be
+  // scanned as a five-step scale; an amber A would land between C (yellow)
+  // and D (orange) and give the scale three adjacent warm hues at the end a
+  // reader cares most about. --blue rather than a bare cyan literal because
+  // these values are painted as TEXT and as a 1px border on a near-white
+  // ground in day mode, where #00C8FF measures ~1.9:1. See the --blue note
+  // in :root.
+  BDPG.GRADE_COLORS = { A: 'var(--blue)', B: 'var(--green)', C: 'var(--yellow)', D: 'var(--orange)', E: 'var(--red)' };
 
   BDPG.gradeBadgeHtml = function (g) {
     var col = BDPG.GRADE_COLORS[g.grade] || 'var(--muted)';

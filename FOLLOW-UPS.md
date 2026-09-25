@@ -6,61 +6,62 @@ real user already has. Newest first. Items closed by later work move to
 **Resolved** at the bottom rather than being deleted, so the evidence that
 produced them stays findable.
 
-Entry 1 is **awaiting a decision from the user**, not implementation work
-waiting for a slot.
+Entry 1 is the **residual of a decision already taken** (the amber recolour,
+Resolved D) rather than implementation work waiting for a slot; the choice
+between its three fixes is still the user's.
 
 ---
 
-## 1. Awaiting a decision: the day-mode map selection ring does not contrast with the teal Northwest fill
+## 1. The map selection ring is marginal against the Midwest yellow fill
 
 **Where:** `bus-dev-potential-gallons/index.html` — `#bdpg-usa-svg path.sel`
-(line 133) sets `stroke:var(--accent); stroke-width:2.2;
-filter:drop-shadow(0 0 7px rgba(0,200,255,.7))`, with two day-mode overrides
-near the top of the stylesheet (lines 36 and 51) re-pointing the stroke and
-the glow to the day `--accent`.
+(`stroke:#FFFFFF; stroke-width:2.2; filter:drop-shadow(0 0 7px rgba(255,255,255,.7))`)
+plus the one `body.day-mode` override that re-asserts the white stroke past
+`body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3}`.
 
-**Symptom:** in day mode `--accent` is `#0078D4` and the Northwest fill is
-`#0891B2`. Computed relative luminances are 0.1819 and 0.2352, giving a
-contrast ratio of **1.23:1** between the selection ring and the shape it is
-supposed to outline — well under any legibility threshold. Dark mode is clean:
-ring `rgb(0,200,255)` on `rgba(8,145,178,.85)`, 1.88:1 and far brighter.
+**Symptom:** with a Midwest state selected, the white ring measures **1.35:1**
+in day mode and **1.92:1** in dark against the Midwest fill (`#FFD60A` at the
+active region's 0.85 alpha, composited on the card — `#FFFFFF` by day,
+`#0D1225` at night). In day mode the ring is visible only because the stroke
+is 2.2px against the neighbouring states' 0.5px grey borders; by hue alone it
+is not there. The white drop-shadow adds nothing in day mode either — a white
+halo on a white card is invisible.
 
-**Option 1 below was taken on `feat/bdpg-8-regions-admin-tools`** (the
-branch's final commit). Measured on the same page and the same rendering
-engine, HEAD bytes vs working-tree bytes, Northwest (`WA`) selected:
+**Why it is recorded rather than fixed:** it is the residual of the amber
+recolour, and it is the *best* available residual, not an oversight. The ring
+was decoupled from `--accent` to white precisely because amber sits between
+Midwest `#FFD60A` and Southwest `#FF6B35`. Measured ring-vs-fill minimum
+across all eight regions, worst case of each candidate:
 
-| day mode | before | after |
+| ring | dark, worst | day, worst |
 |---|---|---|
-| ring stroke | `rgb(0,120,212)` | `rgb(0,120,212)` |
-| glow | `rgba(0,200,255,.7)` | `rgba(0,120,212,.7)` |
-| **ring vs teal fill** | **1.23:1** | **1.23:1** |
-| ring vs its own glow | 2.31:1 | 1.00:1 |
-| glow vs page background `#F0F2F5` | 1.75:1 | 4.04:1 |
+| **white (shipped)** | **1.92:1** (Midwest) | **1.35:1** (Midwest) |
+| amber `#F59E0B` / `#B45309` | 1.12:1 (Midwest) | 1.15:1 (Southwest / Northeast) |
+| old cyan `#00C8FF` / day blue `#0078D4` | 1.02:1 (Midwest) | 1.04:1 (Northeast) |
 
-Dark mode is unchanged in every measured value. **Read that table honestly:
-the ring-versus-fill number did not move, and could not have** — the fix never
-touches the stroke colour, and both colours are mid blue-green. What it does
-fix is the two-different-blues mismatch (a light theme depending on a value
-that only means anything at night), and it roughly doubles the halo's contrast
-against the light background the drop-shadow actually spills onto. It also
-removes the bright cyan that was visually propping day mode up, so the ring
-now reads as the marginal outline it has always been rather than being rescued
-by an artifact.
+So white raises the floor by roughly 1.9x in dark mode and 1.3x in day mode
+against every previous option. It is also a *regression for Midwest
+specifically* in day mode, and that is the honest half: the old `#0078D4`
+ring measured 3.35:1 on Midwest yellow (it was the one region blue was good
+at) and now reads worse, in exchange for teal going 1.23:1 → 3.01:1 and six
+other regions improving. Resolved D has the full before/after.
 
-**Still open**, and still the user's call — the teal is their own colour choice
-and the 8-region palette shipped with their conditional approval:
+No single hue clears a legibility threshold against all eight of a palette
+that already spans the wheel; that is a property of the palette, not of the
+ring.
 
-1. ~~**Theme-scope the glow** — add a `body.day-mode …path.sel{filter:…}` rule
-   using a day-appropriate colour.~~ **Implemented 2026-09-24.** A correctness
-   fix; it does not move the 1.23:1.
-2. **Thicken the day-mode `.sel` stroke** — raise `stroke-width` in the
-   day-mode block so the ring reads by width rather than by contrast. Keeps
-   every hue.
-3. **Change the Northwest hue** — move `#0891B2` far enough from `#0078D4`
-   that the ring contrasts on its own. Largest blast radius: the colour is
-   also used by the region chips and the map legend.
+**Fix when picked up** — same shape as the options on the old teal entry,
+which was always the user's call and still is:
 
-Not blocking, and deliberately not decided by an implementer.
+1. **Thicken the ring** — raise `stroke-width` so it reads by width rather
+   than by hue. Keeps every colour, helps all eight regions at once.
+2. **Two-tone the ring** — a dark casing under the white stroke (or a white
+   stroke over a dark one) so one of the two always contrasts. Largest visual
+   change, but it is the only option that is hue-independent by construction.
+3. **Darken Midwest** — move `#FFD60A` down in luminance. Largest blast
+   radius: the colour is also used by the region chips and the map legend.
+
+Not blocking.
 
 ---
 
@@ -474,3 +475,48 @@ The ±10 clamp and the region sliders are untouched: Save, Reset, Clear
 override, the Texas slider and the write-side clamp all still behave exactly
 as **Resolved B** describes. The manual ±10 slider is now the only writer of
 `roadysBDPGRegionOverride`.
+
+
+## D. (was #1) The day-mode map selection ring did not contrast with the teal Northwest fill
+
+**Was:** in day mode the ring took `--accent` (`#0078D4`) and the Northwest
+fill is `#0891B2`. Ring vs the solid teal measured **1.23:1**; against the
+0.85-alpha fill as actually composited on the white card, **1.51:1**. Two
+mid blue-greens, so no amount of theme-scoping the ring's own blue could
+move it — as the 2026-09-24 glow fix (option 1) proved by not moving it.
+
+**Fixed 2026-09-25** by the amber recolour, and not by any of the three
+options the entry listed. Recolouring `--accent` to amber
+(`#F59E0B` dark / `#B45309` day) forced the question the entry had been
+holding: amber sits *inside* the eight-region palette's hue range, between
+Midwest `#FFD60A` and Southwest `#FF6B35`, so the ring could not follow the
+accent at all. It was decoupled to **white** in both themes instead — the one
+hue not adjacent to anything on the map — and the drop-shadow followed it.
+
+Measured on the same page and the same rendering engine, HEAD bytes vs
+working-tree bytes, ring against the active region's 0.85-alpha fill
+composited on its card:
+
+| ring vs fill | before | after |
+|---|---|---|
+| **day, Northwest teal** | **1.51:1** (1.23:1 vs solid `#0891B2`) | **3.01:1** (3.68:1 vs solid) |
+| dark, Northwest teal | 2.39:1 | 4.69:1 |
+| day, worst of all eight | 1.04:1 (Northeast) | 1.35:1 (Midwest) |
+| dark, worst of all eight | 1.02:1 (Midwest) | 1.92:1 (Midwest) |
+
+Confirmed visually as well as numerically: on HEAD, day-mode Washington reads
+as a slightly darker teal blob with no discernible outline; with the white
+ring it is unambiguously outlined. Screenshots were taken of both.
+
+**What this does not fix, and the entry that carries it:** Midwest yellow is
+now the worst case at 1.35:1 in day mode, and that is a regression for that
+one region (blue measured 3.35:1 there). The ring floor across all eight
+still went up, in both themes. See the new **#1** for the measurements and
+the remaining options.
+
+One more thing the same change closed: the `body.day-mode …path.sel{filter:…}`
+override added on 2026-09-24 is gone, because the glow is now the same white
+in both themes and the base rule carries it. The day-mode *stroke* override
+stays — it is load-bearing for specificity against
+`body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3}` (0-1-1-2 beats path.sel's
+0-1-1-1), which was the original ab77820 bug.
