@@ -6,63 +6,61 @@ real user already has. Newest first. Items closed by later work move to
 **Resolved** at the bottom rather than being deleted, so the evidence that
 produced them stays findable.
 
-Entry 1 is the **residual of a decision already taken** (the amber recolour,
-Resolved D) rather than implementation work waiting for a slot; the choice
-between its three fixes is still the user's.
+Entry 1 is a **pre-existing layout bug surfaced by other work**, not a
+regression from it — it reproduces byte-for-byte on `3104ce9`. It is filed
+rather than fixed because the fix is a box-model change the print path
+already depends on.
 
 ---
 
-## 1. The map selection ring is marginal against the Midwest yellow fill
+## 1. In day mode, everything past the first viewport renders on the dark app background
 
-**Where:** `bus-dev-potential-gallons/index.html` — `#bdpg-usa-svg path.sel`
-(`stroke:#FFFFFF; stroke-width:2.2; filter:drop-shadow(0 0 7px rgba(255,255,255,.7))`)
-plus the one `body.day-mode` override that re-asserts the white stroke past
-`body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3}`.
+**Where:** `bus-dev-potential-gallons/index.html` — the
+`html,body{height:100%;background:var(--bg);...}` rule, against
+`body.day-mode` re-pointing `--bg` on **`body` only**. `:root` (i.e. `html`)
+keeps `--bg:#080C18`.
 
-**Symptom:** with a Midwest state selected, the white ring measures **1.35:1**
-in day mode and **1.92:1** in dark against the Midwest fill (`#FFD60A` at the
-active region's 0.85 alpha, composited on the card — `#FFFFFF` by day,
-`#0D1225` at night). In day mode the ring is visible only because the stroke
-is 2.2px against the neighbouring states' 0.5px grey borders; by hue alone it
-is not there. The white drop-shadow adds nothing in day mode either — a white
-halo on a white card is invisible.
+**Symptom:** in day mode the page renders light for exactly one viewport
+height and dark navy below it. Because `html` carries its own `background`,
+`body`'s background does **not** propagate to the canvas the way it normally
+would; `body` paints only its own box, and `height:100%` pins that box to the
+viewport. Everything past it — on a generated result that is most of the page,
+including the whole pitch stack and the tracker — sits on `#080C18` with
+day-mode text colours over it.
 
-**Why it is recorded rather than fixed:** it is the residual of the amber
-recolour, and it is the *best* available residual, not an oversight. The ring
-was decoupled from `--accent` to white precisely because amber sits between
-Midwest `#FFD60A` and Southwest `#FF6B35`. Measured ring-vs-fill minimum
-across all eight regions, worst case of each candidate:
+Measured, day mode, a generated result on screen:
 
-| ring | dark, worst | day, worst |
-|---|---|---|
-| **white (shipped)** | **1.92:1** (Midwest) | **1.35:1** (Midwest) |
-| amber `#F59E0B` / `#B45309` | 1.12:1 (Midwest) | 1.15:1 (Southwest / Northeast) |
-| old cyan `#00C8FF` / day blue `#0078D4` | 1.02:1 (Midwest) | 1.04:1 (Northeast) |
+| | |
+|---|---|
+| `getComputedStyle(html).backgroundColor` | `rgb(8, 12, 24)` |
+| `getComputedStyle(body).backgroundColor` | `rgb(240, 242, 245)` |
+| `body.getBoundingClientRect().height` | 1000 (the viewport) |
+| `document.documentElement.scrollHeight` | 4446 |
 
-So white raises the floor by roughly 1.9x in dark mode and 1.3x in day mode
-against every previous option. It is also a *regression for Midwest
-specifically* in day mode, and that is the honest half: the old `#0078D4`
-ring measured 3.35:1 on Midwest yellow (it was the one region blue was good
-at) and now reads worse, in exchange for teal going 1.23:1 → 3.01:1 and six
-other regions improving. Resolved D has the full before/after.
+**Pre-existing, and confirmed so rather than assumed.** HEAD bytes
+(`3104ce9`) were served alongside the working tree and driven to the same
+state: identical values, identical banding. It is also the exact mechanism
+the `@media print` block's own comment already documents — "html carries its
+own `background:var(--bg)` (see the `:root` block), so body's white does NOT
+propagate to the print canvas -- everything past the first viewport-height
+prints on the dark app background." That comment fixed the **print** half by
+putting `.bdpg-print-mode` on `html`; the on-screen half was never addressed.
 
-No single hue clears a legibility threshold against all eight of a palette
-that already spans the wheel; that is a property of the palette, not of the
-ring.
+**Why it is filed rather than fixed:** it is unrelated to the amber recolour
+and was found while screenshotting it. It is also more *visible* now — a warm
+accent against a cold dark band reads as a rendering fault in a way the
+previous cool cyan did not — which is a reason to decide about it, not a
+reason for a recolour commit to reach into the page's box model. The fix is
+one line but it is a layout change, and the print path already depends on
+this exact arrangement.
 
-**Fix when picked up** — same shape as the options on the old teal entry,
-which was always the user's call and still is:
-
-1. **Thicken the ring** — raise `stroke-width` so it reads by width rather
-   than by hue. Keeps every colour, helps all eight regions at once.
-2. **Two-tone the ring** — a dark casing under the white stroke (or a white
-   stroke over a dark one) so one of the two always contrasts. Largest visual
-   change, but it is the only option that is hue-independent by construction.
-3. **Darken Midwest** — move `#FFD60A` down in luminance. Largest blast
-   radius: the colour is also used by the region chips and the map legend.
-
-Not blocking.
-
+**Fix when picked up:** either drop `background:var(--bg)` from the `html`
+half of the `html,body` rule (letting body's background propagate to the
+canvas as it normally would), or give `body.day-mode` a matching `html`-level
+background. Prefer the first: it removes the special case instead of adding a
+second one. Check the `@media print` block either way —
+`html.bdpg-print-mode{background:#fff}` exists precisely because `html` is
+currently painted, and would become redundant rather than wrong.
 ---
 
 ## 2. `resolveRegion()` does not trim whitespace
@@ -508,15 +506,94 @@ Confirmed visually as well as numerically: on HEAD, day-mode Washington reads
 as a slightly darker teal blob with no discernible outline; with the white
 ring it is unambiguously outlined. Screenshots were taken of both.
 
-**What this does not fix, and the entry that carries it:** Midwest yellow is
-now the worst case at 1.35:1 in day mode, and that is a regression for that
-one region (blue measured 3.35:1 there). The ring floor across all eight
-still went up, in both themes. See the new **#1** for the measurements and
-the remaining options.
+**What this did not fix, and what closed that too:** going to plain white
+moved the worst case to Midwest yellow at 1.35:1 — a regression for that one
+region, since blue measured 3.35:1 there. That was open as #1 for exactly one
+commit and is now **Resolved E**: the ring is dual-tone (white stroke,
+`#0A0E1A` casing) and the floor across all eight is 4.43:1 dark / 4.42:1 day.
+The teal numbers in the table above improved again with it — white on the
+teal fill is unchanged at 3.01:1, but the casing adds 6.40:1 alongside it.
 
-One more thing the same change closed: the `body.day-mode …path.sel{filter:…}`
-override added on 2026-09-24 is gone, because the glow is now the same white
-in both themes and the base rule carries it. The day-mode *stroke* override
-stays — it is load-bearing for specificity against
+One more thing the white change closed: the `body.day-mode …path.sel{filter:…}`
+override added on 2026-09-24 is gone, because the ring is now the same two
+tones in both themes and the base rule carries them. The day-mode *stroke*
+override stays — it is load-bearing for specificity against
 `body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3}` (0-1-1-2 beats path.sel's
 0-1-1-1), which was the original ab77820 bug.
+
+
+## E. (was #1 for one commit) The white selection ring was marginal against the Midwest yellow fill
+
+**Was:** the amber recolour decoupled the map's selection ring from
+`--accent` and made it plain white. That fixed the teal Northwest case
+(**Resolved D**) and broke Midwest instead: white on the `#FFD60A` fill
+measured **1.35:1** in day mode, **1.92:1** in dark. The ring survived only
+on stroke width. It was also a regression for that one region specifically —
+the old `#0078D4` measured 3.35:1 there, Midwest being the one fill blue was
+good at.
+
+**Fixed 2026-09-25, same day, by stopping the search for a hue.** The lesson
+across three attempts — cyan, amber, white — is that there are eight
+saturated fills spanning the wheel, so **any** single ring colour is adjacent
+to one of them. The ring is now **dual-tone**: a white 2.2px stroke inside a
+`#0A0E1A` casing, identical in both themes. The two tones fail on opposite
+fills, so the ring reads at whichever of them is stronger on that particular
+region.
+
+Ring vs the active region's 0.85-alpha fill composited on its card
+(`#0D1225` dark, `#FFFFFF` day). "reads at" is max(white, casing):
+
+| region | dark: white / casing → reads at | day: white / casing → reads at |
+|---|---|---|
+| West `#00D68F` | 2.56 / 7.53 → **7.53** | 1.77 / 10.86 → **10.86** |
+| Southwest `#FF6B35` | 3.72 / 5.17 → **5.17** | 2.46 / 7.82 → **7.82** |
+| Midwest `#FFD60A` | 1.92 / 10.01 → **10.01** | 1.35 / 14.25 → **14.25** |
+| Northeast `#7C3AED` | 6.95 / 2.77 → **6.95** | 4.36 / 4.42 → **4.42** |
+| Southeast `#FF4757` | 4.35 / 4.43 → **4.43** | 2.89 / 6.65 → **6.65** |
+| Northwest `#0891B2` | 4.69 / 4.11 → **4.69** | 3.01 / 6.40 → **6.40** |
+| Texas `#E0218A` | 5.63 / 3.42 → **5.63** | 3.76 / 5.12 → **5.12** |
+| Upper Midwest `#8BC34A` | 2.79 / 6.89 → **6.89** | 1.87 / 10.31 → **10.31** |
+| **floor** | **4.43:1** (Southeast) | **4.42:1** (Northeast) |
+
+Every previous treatment, for comparison — worst case across the same eight:
+
+| ring | dark | day |
+|---|---|---|
+| cyan `#00C8FF` / day blue `#0078D4` | 1.02:1 | 1.04:1 |
+| amber `#F59E0B` / `#B45309` | 1.12:1 | 1.15:1 |
+| plain white | 1.92:1 | 1.35:1 |
+| **white + `#0A0E1A` casing** | **4.43:1** | **4.42:1** |
+
+**Verified against rendered pixels, not only arithmetic.** Element
+screenshots were decoded and scanned across the ring on the two theoretical
+worst cases in each theme:
+
+| sample | rendered |
+|---|---|
+| Kansas, day (Midwest, the old 1.35:1) | fill `rgb(218,184,13)`, white stroke `rgb(255,255,255)`, casing `rgb(40,77,74)` → casing vs fill **4.82:1** |
+| Pennsylvania, day (Northeast, theoretical floor 4.42) | fill `rgb(106,51,206)`, stroke `rgb(244,241,223)` → white vs fill **6.21:1** |
+| Georgia, dark (Southeast, theoretical floor 4.43) | fill `rgb(218,62,77)`, stroke `rgb(255,255,255)`, casing `rgb(63,27,39)` → white vs fill **4.39:1**, casing vs neighbour **3.46:1** |
+
+Each lands at or above the arithmetic floor, so the floor is the conservative
+figure and the treatment clears 3:1 on every region in both themes.
+
+One case the arithmetic does not cover and the change also fixes: a selected
+coastal or border state meeting the **page background** in day mode.
+A plain white ring there was effectively invisible (white on white); the dark
+casing outlines it. Visible on California.
+
+`#0A0E1A` is not a new colour — it is the ink `#bdpg-usa-svg path` already
+strokes every state border with. Against the white stroke it is 19.25:1, so
+the ring reads as a deliberate object rather than a halo whatever it is over.
+
+**Implementation note, because it is not a real second stroke.** SVG gives
+one stroke per element; a true dual stroke needs a duplicated path underneath,
+which means changing what the map render emits. This is three zero-offset
+1.5px `drop-shadow`s composed into a casing instead. Two consequences for
+whoever touches it next: the casing is **outside-only** (a drop-shadow is the
+silhouette painted behind the element, so no dark line appears on the fill
+side), and it is **not flat `#0A0E1A`** but a blur composited over whatever
+is behind it — which is why the rendered Kansas casing samples `rgb(40,77,74)`
+rather than the literal. Both are accounted for in the measurements above. If
+an exact casing is ever needed, the duplicated-path route is the correct one,
+and it is a render change rather than a CSS change.

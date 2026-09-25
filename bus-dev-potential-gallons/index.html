@@ -48,12 +48,11 @@ body.day-mode #bdpg-usa-svg path{stroke:#D8DCE3;}
    outranked #bdpg-usa-svg path.sel's stroke (0-1-1-1 at line ~110), so the
    selected state's ring silently fell back to the same grey as every
    unselected border in day mode, for every region, not just teal. This rule
-   (0-1-2-2) restores the ring; stroke-width and the glow still come from
-   path.sel below, which needs no day-mode override now that both themes ring
-   in the same white.
-   The ring is #FFF, deliberately NOT var(--accent) -- see the long note on
-   path.sel below for why the map's selection colour is decoupled from the
-   accent entirely. */
+   (0-1-2-2) restores the ring; stroke-width and the dark casing still come
+   from path.sel below, which needs no day-mode override now that the ring is
+   the same two tones in both themes.
+   The ring is #FFF over a dark casing, deliberately NOT var(--accent) and
+   deliberately not any single hue -- see the long note on path.sel below. */
 body.day-mode #bdpg-usa-svg path.sel{stroke:#FFFFFF;}
 body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3;color:#1A1D24;}
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -73,6 +72,11 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:var(--fb);}
 .btn:hover{border-color:var(--border2);color:var(--text);}
 .btn-accent{background:var(--accent);border-color:var(--accent);color:#000;}
 .btn-accent:hover{opacity:.9;}
+/* Day mode flips this one to white. See the note on .bdpg-seg button.on below
+   for the #000 convention and why .btn-accent and .bdpg-go are the two
+   buttons that leave it: #000 on the day accent #B45309 is 4.18:1 (under AA),
+   #FFF on it is 5.02:1. Dark mode keeps #000 -- 9.78:1 on #F59E0B. */
+body.day-mode .btn-accent{color:#FFFFFF;}
 .badge{padding:3px 10px;border-radius:20px;font-size:.7em;font-weight:700;letter-spacing:.05em;}
 
 .fg label{display:block;font-size:.7em;color:var(--muted);margin-bottom:3px;}
@@ -136,29 +140,42 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 #bdpg-usa-svg{width:100%;height:auto;display:block;}
 #bdpg-usa-svg path{cursor:pointer;stroke:#0A0E1A;stroke-width:.5;transition:all .15s;}
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
-/* The selection ring is WHITE in both themes and is deliberately decoupled
-   from --accent. --accent is amber (#F59E0B / #B45309), which sits directly
-   between two of the eight region fills -- Midwest #FFD60A and Southwest
-   #FF6B35 -- and would be near-invisible on either. Cyan was excluded from
-   the region palette for exactly this reason (see REGION_COLORS); amber
-   cannot inherit that exemption because it is inside the palette's own hue
-   range. White is the one value that is not adjacent to any of the eight.
-   Measured against each region's .85-alpha fill composited on its card, ring
-   vs fill, worst case across all eight:
-     white  1.92:1 (dark, Midwest)   1.35:1 (day, Midwest)
-     amber  1.12:1 (dark, Midwest)   1.15:1 (day, Southwest)
-     old cyan / day blue  1.02:1 and 1.04:1
-   So white is the best available single hue by a wide margin, and it clears
-   the case FOLLOW-UPS.md #1 was opened for: white vs the teal Northwest fill
-   in day mode is 3.01:1 composited (3.68:1 against solid #0891B2), up from
-   1.23:1. The residual worst case moves to Midwest yellow at 1.35:1, where
-   the 2.2px stroke width -- not the hue -- is what carries the ring.
-   The glow follows the stroke to white, one rule for both themes, because a
-   filter's rgba() cannot interpolate a CSS custom property and a second
-   theme-scoped copy would only be a second place to forget. Note the
-   trade-off that buys: in day mode a white halo over the white card is
-   invisible, so the day ring reads by stroke alone. */
-#bdpg-usa-svg path.sel{stroke:#FFFFFF;stroke-width:2.2;filter:drop-shadow(0 0 7px rgba(255,255,255,.7));}
+/* The selection ring is DUAL-TONE in both themes: a white 2.2px stroke inside
+   a near-black casing. It is deliberately decoupled from --accent, and just as
+   deliberately not any single colour.
+   Three rounds of single-hue attempts are the reason. --accent is amber
+   (#F59E0B / #B45309), which sits between Midwest #FFD60A and Southwest
+   #FF6B35 and vanishes on both, so the ring could not simply follow the
+   recolour. Plain white was tried next and fixed the teal Northwest case the
+   old cyan/blue ring failed (FOLLOW-UPS.md #1, 1.23:1) while breaking Midwest
+   yellow instead, at 1.35:1. That is not bad luck: there are eight saturated
+   fills spanning the wheel, so ANY one ring colour is adjacent to one of them.
+   Worst case across all eight, ring vs the active region's .85-alpha fill
+   composited on its card (#0D1225 dark, #FFFFFF day):
+     old cyan #00C8FF / day blue #0078D4   1.02:1 dark   1.04:1 day
+     amber #F59E0B / #B45309               1.12:1 dark   1.15:1 day
+     plain white                           1.92:1 dark   1.35:1 day
+     white + #0A0E1A casing (shipped)      4.43:1 dark   4.42:1 day
+   The dual tone works because the two tones fail on opposite fills: where the
+   white is weakest (Midwest yellow, 1.35:1 day) the casing is at its strongest
+   (14.25:1), and where the casing is weakest (Northeast purple, 4.42:1 day)
+   the white carries it (4.36:1). The measured floor is whichever tone reads
+   better on that fill, and that floor clears 3:1 on every region in both
+   themes -- the first treatment here that does.
+   #0A0E1A is not a new colour: it is the same ink #bdpg-usa-svg path already
+   strokes every state border with. Against the white stroke it is 19.25:1, so
+   the ring reads as a deliberate object rather than a halo whatever it is
+   drawn over.
+   Why a stacked filter and not a second path: SVG gives one stroke per
+   element, so a true double stroke needs a duplicated path underneath, which
+   means changing what renderMap() emits. Three zero-offset 1.5px drop-shadows
+   compose into a near-opaque casing hugging the stroke's outer edge, stay
+   purely in CSS, and cost one declaration on one element. They also replace
+   the old 7px white glow, which was invisible in day mode anyway -- a white
+   halo on a white card -- so nothing is lost by spending the filter here.
+   One rule for both themes: a filter cannot interpolate a custom property, and
+   a theme-scoped copy would only be a second place to forget. */
+#bdpg-usa-svg path.sel{stroke:#FFFFFF;stroke-width:2.2;filter:drop-shadow(0 0 1.5px #0A0E1A) drop-shadow(0 0 1.5px #0A0E1A) drop-shadow(0 0 1.5px #0A0E1A);}
 #bdpg-usa-svg path.nomap{cursor:default;}
 /* .nomap paths (DC alone today -- anything BDPG_REGION_MAP does not cover;
    AK and HI were in this set until the 8-region model mapped them to
@@ -181,12 +198,19 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-seg button{flex:1;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--muted);padding:9px 4px;font-family:var(--fb);font-size:.68em;font-weight:700;cursor:pointer;transition:all .15s;line-height:1.3;}
 .bdpg-seg button:last-child{border-right:none;}
 .bdpg-seg button:hover{color:var(--text);}
-/* #000 (not a --token) matches the project convention used for text on every
-   other saturated accent-colored button/badge in this file (e.g. .btn-accent
-   above, the map's TAP TO REDEEM chip) -- it has to stay dark regardless of
-   theme since the segmented button's "on" background cycles through green,
+/* #000 (not a --token) is the project convention for text on a saturated
+   fill in this file, and THIS button is the reason the convention exists:
+   the segmented button's "on" background cycles through the accent, green,
    yellow, orange and red in both day and night mode, and no --root token
-   evaluates to a theme-stable dark. */
+   evaluates to a theme-stable dark. #000 is the only value that reads on all
+   of them -- #FFF would fail outright on yellow (#FFD60A / #E6A800).
+   So this one keeps #000 unconditionally, and it is now the only one of the
+   three that does. .btn-accent and .bdpg-go moved to #FFF in day mode,
+   because their fill is ALWAYS the accent: #000 on the day accent #B45309 is
+   4.18:1, under AA, while #FFF on it is 5.02:1. That reasoning is about a
+   fixed fill and does not reach a button whose fill varies -- do not
+   "finish the job" by bringing this rule along. Dark mode is unaffected
+   everywhere: #000 on #F59E0B is 9.78:1. */
 .bdpg-seg button.on{color:#000;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
 .bdpg-star-half{position:relative;display:inline-block;}
@@ -201,6 +225,13 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-go{width:100%;padding:15px;margin:16px 0;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
 .bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(245,158,11,.45);}
 .bdpg-go:disabled{opacity:.45;cursor:not-allowed;background:var(--surface2);color:var(--muted);}
+/* Same flip as .btn-accent, and the same reason -- the fill is always the
+   accent, and #000 on the day accent is 4.18:1 against #FFF's 5.02:1.
+   :not(:disabled) is load-bearing, not decoration: this selector is 0-3-1 and
+   would otherwise outrank .bdpg-go:disabled's color:var(--muted) at 0-2-0,
+   painting the disabled Generate button's label white on the grey --surface2
+   fill it falls back to. */
+body.day-mode .bdpg-go:not(:disabled){color:#FFFFFF;}
 .bdpg-results{animation:bdpgIn .22s ease-out;}
 @keyframes bdpgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .bdpg-hero{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;}
@@ -2005,15 +2036,16 @@ function getCentroid(pathStr, axis){
   // BDPG region fills. The selection ring is deliberately NOT one of these
   // eight, and is no longer --accent either: --accent is amber, which sits
   // between Midwest (#FFD60A) and Southwest (#FF6B35) and would disappear on
-  // both. path.sel rings in WHITE in both themes instead -- the one hue not
-  // adjacent to anything in this map. See the note on #bdpg-usa-svg path.sel
-  // near the top of the stylesheet for the per-region measurements; the short
-  // version is that white's worst case is 1.92:1 (dark) / 1.35:1 (day) against
-  // Midwest yellow, where every accent-coloured alternative was at or under
-  // 1.15:1 somewhere.
-  // Teal (Northwest, #0891B2) was the historic worst case and is no longer:
-  // white on the .85-alpha teal fill measures 3.01:1 in day mode against the
-  // 1.23:1 that FOLLOW-UPS.md #1 was opened for. That entry is now Resolved.
+  // both. Nor is it any single colour -- with eight saturated fills spanning
+  // the wheel, every candidate hue is adjacent to one of them. path.sel rings
+  // DUAL-TONE instead (white stroke, #0A0E1A casing), so one tone or the other
+  // always carries. See the note on #bdpg-usa-svg path.sel near the top of the
+  // stylesheet for the per-region table.
+  // The practical consequence for anyone editing this map: these eight can be
+  // rebalanced freely without checking them against a ring colour. The ring no
+  // longer depends on a hue gap existing in this object -- which is what every
+  // previous version of this comment was really tracking, and what
+  // FOLLOW-UPS.md #1 was open on twice.
   BDPG.REGION_COLORS = {
     West: '#00D68F', Southwest: '#FF6B35', Midwest: '#FFD60A',
     Northeast: '#7C3AED', Southeast: '#FF4757',
