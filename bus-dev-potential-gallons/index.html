@@ -107,6 +107,19 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .dt td.dn{color:var(--red);}
 .dt td.fl{color:var(--yellow);}
 .bdpg-box{background:var(--bg2,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+/* Collapsible panel headers in the admin tab. Previously a bold <div> with a
+   caret and cursor:pointer and nothing else, which read as a section label --
+   so a collapsed panel looked like a broken one and was unreachable by
+   keyboard. A real button with a border, hover and focus state says "this
+   opens". */
+.bdpg-disclosure{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:var(--fb);font-size:.86em;font-weight:700;
+  padding:8px 10px;cursor:pointer;transition:all .15s;}
+.bdpg-disclosure:hover{border-color:var(--accent);color:var(--accent);}
+.bdpg-disclosure:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.bdpg-disclosure-caret{color:var(--muted);font-size:.9em;}
+.bdpg-disclosure:hover .bdpg-disclosure-caret{color:var(--accent);}
 
 /* ── Bus Dev Potential Gallons — wizard shell ── */
 .bdpg-step{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px;position:relative;}
@@ -752,7 +765,16 @@ function getCentroid(pathStr, axis){
     return BDPG.REGION_KEYS.some(function (k) { return Number(o[k]) !== Number(c[k]); });
   };
 
-  BDPG.state.adminOpen = false;
+  // Open by default. This panel used to sit on the calculator tab among a dozen
+  // other sections, where collapsed-by-default was right -- it was one optional
+  // thing among many. Task 9 moved it onto a dedicated admin tab whose first
+  // card (the grade weights) renders expanded, which teaches the eye that
+  // panels here are open; a collapsed row underneath then reads as a static
+  // heading rather than a control, and the region sliders and Save button look
+  // like they are missing. Reported as "the sliders are not interactive" when
+  // in fact they were never in the DOM. The tab exists to hold these controls,
+  // so there is nothing for them to be collapsed behind.
+  BDPG.state.adminOpen = true;
   // Holds the pretty-printed JSON text from the most recent Save, so the preview
   // block survives the BDPG.render() that Save triggers (adminPanelHtml() re-emits
   // this block hidden/empty every render unless it has saved text to show).
@@ -832,7 +854,13 @@ function getCentroid(pathStr, axis){
 
     return banner + resetNotice +
       '<div class="bdpg-box" style="margin-top:14px">' +
-        '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleAdmin()">▸ Region % — Admin ' + (s.adminOpen ? '▾' : '▸') + '</div>' +
+        // A real <button>, not a bold div: the old markup carried a leading
+        // "▸" and a trailing caret with no border, hover or focus state, so it
+        // read as a section label and its collapsed content looked absent
+        // rather than hidden. It also could not be reached by keyboard at all.
+        '<button class="bdpg-disclosure" aria-expanded="' + (s.adminOpen ? 'true' : 'false') +
+          '" onclick="BDPG.toggleAdmin()"><span class="bdpg-disclosure-caret">' +
+          (s.adminOpen ? '▾' : '▸') + '</span>Region % — Admin</button>' +
         (s.adminOpen ? (
           overrideNotice +
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px">' + sliders + '</div>' +
@@ -910,7 +938,12 @@ function getCentroid(pathStr, axis){
   BDPG.networkContextGeneratorHtml = function () {
     var s = BDPG.state;
     return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div style="cursor:pointer;font-weight:700" onclick="BDPG.toggleNcGenerator()">▸ Regenerate network-context.json ' + (s.ncGeneratorOpen ? '▾' : '▸') + '</div>' +
+      // Same treatment as the Region % header. This one stays collapsed by
+      // default -- it is a rarely-used one-off tool with a file picker, not the
+      // tab's main content -- so its affordance matters more, not less.
+      '<button class="bdpg-disclosure" aria-expanded="' + (s.ncGeneratorOpen ? 'true' : 'false') +
+        '" onclick="BDPG.toggleNcGenerator()"><span class="bdpg-disclosure-caret">' +
+        (s.ncGeneratorOpen ? '▾' : '▸') + '</span>Regenerate network-context.json</button>' +
       (s.ncGeneratorOpen ? (
         '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Drop in the current location-list CSV. Parsed entirely in this browser tab — never uploaded anywhere.</div>' +
         '<input type="file" accept=".csv" onchange="BDPG.onNetworkContextCsvFile(this)" style="margin-top:8px">' +
@@ -1152,7 +1185,14 @@ function getCentroid(pathStr, axis){
         '</div>';
     }
     return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<div style="font-weight:700;margin-bottom:6px">🔒 Admin PIN</div>' + body +
+      // The heading tracks the actual state. It used to read "🔒 Admin PIN" in
+      // both branches -- so on a browser with no PIN set, a padlock sat above
+      // fully-open controls and read as "locked", which is the opposite of what
+      // that card is offering. Paired with the collapsed Region % panel below
+      // it, the tab looked locked with no way in when in fact nothing was
+      // locked and every control was live.
+      '<div style="font-weight:700;margin-bottom:6px">' +
+        (BDPG.adminPinIsSet() ? '🔒 Admin PIN' : '🔓 Admin PIN — not set') + '</div>' + body +
       '<div id="bdpg-pin-msg" style="font-size:.8em;margin-top:8px"></div>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:8px">Accident guard, not security: the PIN is stored in plain text in this browser\'s localStorage, and everything it guards can be edited there directly.</div>' +
     '</div>';
