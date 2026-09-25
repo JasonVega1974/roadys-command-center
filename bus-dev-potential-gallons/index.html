@@ -1257,6 +1257,30 @@ function getCentroid(pathStr, axis){
     return (n * 100).toFixed(1);
   };
 
+  // Third member of the same family, for the input the other two do not cover:
+  // the PDF baseline itself. BASELINE_TABLE was treated as fixed until Profile 3
+  // moved 5,000 -> 4,000 on 2026-09-24 from real network analysis, which makes it
+  // exactly as volatile as the region % and the grade weights -- and unlike
+  // those two it is the *first* term of officialSubtotal, so a change scales
+  // every downstream figure on the row.
+  //
+  // Stamps the row's own baseline, not a version of the whole table. A
+  // table-wide version would flag every saved prospect whenever any single row
+  // changed, including the seven rows a given record never touched -- which
+  // teaches reps to ignore the badge. Per-row means a Small TS / Highway record
+  // is marked and a Large TS / Interstate record beside it is not, which is the
+  // truth.
+  //
+  // Stored gallons are NEVER recomputed to match a new baseline. Stamp and
+  // mark; never rewrite -- same ruling as the region % and the weights.
+  //
+  // '' means "no evidence" and must never be filled in with today's value.
+  BDPG.baselineStamp = function (baseline) {
+    var n = Number(baseline);
+    if (!isFinite(n)) return '';
+    return String(Math.round(n));
+  };
+
   BDPG.weightsCardHtml = function () {
     var w = BDPG.effectiveWeights();
     var total = 0;
@@ -1376,9 +1400,88 @@ function getCentroid(pathStr, axis){
   // The admin tab's body: either every admin control, or just the gate.
   // Nothing in between -- a locked panel that still shows the region sliders
   // "read only" would be a gate in name only.
+  // A static record of the 2026-09-24 baseline analysis, not a live view of
+  // BASELINE_TABLE. The "PDF Baseline" column deliberately holds the figure the
+  // PDF shipped with -- 5,000 for Profile 3 -- even though the live config now
+  // carries 4,000. Reading this column out of BASELINE_TABLE would show 4,000
+  // and destroy the only thing the table is for: the comparison that justified
+  // the change. Update these rows by hand when a new analysis is run.
+  //
+  // `n` is the count of real network locations matching the profile; a dash
+  // means no matching location had usable lane data, which is not the same as
+  // a measured zero -- hence "No data" rather than a number.
+  BDPG.BASELINE_ANALYSIS_ASOF = 'Sept 24, 2026';
+  BDPG.BASELINE_ANALYSIS = [
+    { profile: 'Fuel stop · Any · 1–2 lanes',            pdf: 2500,  median: null,  p25: null, p75: null,  n: 0,  status: 'No data — PDF retained',    tone: 'gray' },
+    { profile: 'Small TS · Backroad · 1–2 lanes',        pdf: 3000,  median: 3202,  p25: 2477, p75: 3927,  n: 2,  status: 'n<5 — PDF retained',        tone: 'gray' },
+    { profile: 'Small TS · Highway · 3–5 lanes',         pdf: 5000,  median: 1946,  p25: 1285, p75: 4517,  n: 12, status: '✓ Updated to 4,000',        tone: 'green' },
+    { profile: 'Small TS · Interstate · 6+ lanes',       pdf: 7500,  median: 3621,  p25: 92,   p75: 6849,  n: 7,  status: 'Thin (n=7) — PDF retained', tone: 'yellow' },
+    { profile: 'Medium TS · Highway · 3–5 lanes',        pdf: 7500,  median: 12809, p25: 6405, p75: 32626, n: 3,  status: 'n<5 — PDF retained',        tone: 'gray' },
+    { profile: 'Medium TS · Interstate · 6+ lanes',      pdf: 12500, median: 12824, p25: 367,  p75: 19722, n: 15, status: 'Within band — PDF retained', tone: 'gray' },
+    { profile: 'Large TS · Highway · 3–5 lanes',         pdf: 10000, median: null,  p25: null, p75: null,  n: 0,  status: 'No data — PDF retained',    tone: 'gray' },
+    { profile: 'Large TS · Interstate · 6+ lanes',       pdf: 15000, median: 21704, p25: 7811, p75: 46626, n: 28, status: 'Within band — PDF retained', tone: 'gray' }
+  ];
+
+  BDPG.BASELINE_ANALYSIS_NOTES = [
+    'Source: 12-month contributed gallons report (Sept 2025–Aug 2026), joined to internet lane research across 226 active network locations.',
+    'Lane data: 117 locations at High/Medium confidence from internet sources (Allstays, TruckMap, 4RoadService, TruckStopsAndServices).',
+    'Gallons definition: fleet/aggregator contributed gallons with a discount only — same definition as the Aggregator Gallon Report.',
+    'Coverage: 57% of active Truck Stop / Fuel Stop locations had usable lane data.',
+    'A baseline is only adjusted when n≥5 AND the PDF figure falls outside the real network P25–P75 band.',
+    'Next recommended analysis: add diesel_lanes as a real field in Interstate to improve coverage beyond 17% from the Interstate database alone.'
+  ];
+
+  BDPG.networkBaselinePanelHtml = function () {
+    function cell(v) { return v === null ? '—' : BDPG.fmtGal(v); }
+
+    var rows = BDPG.BASELINE_ANALYSIS.map(function (r) {
+      var tone = hasOwn({ green: 1, yellow: 1, gray: 1 }, r.tone) ? r.tone : 'gray';
+      return '<tr>' +
+        '<td>' + BDPG.escHtml(r.profile) + '</td>' +
+        '<td style="text-align:right">' + BDPG.fmtGal(r.pdf) + '</td>' +
+        '<td style="text-align:right">' + cell(r.median) + '</td>' +
+        '<td style="text-align:right">' + cell(r.p25) + '</td>' +
+        '<td style="text-align:right">' + cell(r.p75) + '</td>' +
+        '<td style="text-align:right">' + r.n + '</td>' +
+        '<td><span class="badge tag-' + tone + '">' + BDPG.escHtml(r.status) + '</span></td>' +
+      '</tr>';
+    }).join('');
+
+    var notes = BDPG.BASELINE_ANALYSIS_NOTES.map(function (t) {
+      return '<li>' + BDPG.escHtml(t) + '</li>';
+    }).join('');
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-weight:700">📊 Network Baseline Analysis</div>' +
+        '<div style="font-size:.78em;color:var(--muted)">last updated ' +
+          BDPG.escHtml(BDPG.BASELINE_ANALYSIS_ASOF) + '</div>' +
+      '</div>' +
+      '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">' +
+        'What the real network says about each PDF baseline. Reference only — the ' +
+        'live figures are in BASELINE_TABLE; this table records the comparison that ' +
+        'justified changing one of them.</div>' +
+      '<div class="tw" style="margin-bottom:10px"><table class="dt" style="font-size:.8em">' +
+        '<thead><tr>' +
+          '<th>Profile</th>' +
+          '<th style="text-align:right">PDF Baseline</th>' +
+          '<th style="text-align:right">Network Median</th>' +
+          '<th style="text-align:right">Network P25</th>' +
+          '<th style="text-align:right">Network P75</th>' +
+          '<th style="text-align:right">n</th>' +
+          '<th>Status</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div style="font-size:.76em;color:var(--muted);line-height:1.6">' +
+        '<div style="font-weight:700;margin-bottom:4px">Methodology</div>' +
+        '<ul style="margin:0 0 0 18px">' + notes + '</ul>' +
+      '</div>' +
+    '</div>';
+  };
+
   BDPG.adminTabHtml = function () {
     if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
     return BDPG.weightsCardHtml() +
+      BDPG.networkBaselinePanelHtml() +
       BDPG.adminPanelHtml() +
       BDPG.networkContextGeneratorHtml() +
       BDPG.adminPinCardHtml();
@@ -3617,6 +3720,11 @@ function getCentroid(pathStr, axis){
       // reason weightStamp reads the grade's own weights: the stamp has to
       // describe the figure sitting beside it, not today's slider.
       regionPctStamp: e ? BDPG.regionPctStamp(e.regionPct) : '',
+      // The PDF baseline those gallons were built from. Same rule again: read
+      // from the estimate's OWN baseline -- the row calculateEstimate() actually
+      // resolved -- not from a fresh getBaselineRow() lookup here, which would
+      // describe today's table rather than the figure beside it.
+      baselineStamp: e ? BDPG.baselineStamp(e.baseline) : '',
       preEvalSignal: s.prospect.preEvalSignal || '',
       amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || '',
       rewardsLevel: s.rewardsLevel || ''
@@ -3671,6 +3779,11 @@ function getCentroid(pathStr, axis){
       // number or object into '' rather than letting it be compared as a
       // stamp.
       regionPctStamp: str(sum.regionPctStamp),
+      // Same no-fallback rule again. Note this cannot fall back to
+      // st.result.estimate.baseline either -- the snapshot deliberately drops
+      // `result`, so a pre-stamping record has no record of its baseline
+      // anywhere and '' is the only honest answer.
+      baselineStamp: str(sum.baselineStamp),
       preEvalSignal: str(sum.preEvalSignal) || str(pr.preEvalSignal),
       amenityLevel: str(sum.amenityLevel) || str(st.amenityLevel),
       pricingLevel: str(sum.pricingLevel) || str(st.pricingLevel),
@@ -3987,6 +4100,32 @@ function getCentroid(pathStr, axis){
         officialCell += ' <span class="badge tag-yellow" title="Computed under a ' + BDPG.escHtml(sum.regionPctStamp) +
           '% region adjustment; the current ' + BDPG.escHtml(sum.region) + ' adjustment is ' + BDPG.escHtml(curRegionStamp) +
           '%, so this figure and the Final Gallons beside it are not directly comparable with rows computed on the current scale — and this row\'s Export Pitch Summary, which recomputes, will print different numbers. The stored figures are left exactly as they were saved — re-run Generate and save to recompute them.">&#9888; other region %</span>';
+      }
+    }
+
+    // The same treatment for the PDF baseline, which BASELINE_TABLE made
+    // mutable on 2026-09-24 (Profile 3: 5,000 -> 4,000 from network analysis).
+    // It sits on the Official cell beside the region marker because both scale
+    // that figure -- and a row can legitimately carry both when the baseline
+    // moved AND a slider did, which is two independent facts, not one repeated.
+    //
+    // Compared against the CURRENT row for this record's own profile/roadway,
+    // so only records on a row that actually changed are marked. Skipped when
+    // the pair no longer resolves to a baseline row: there is nothing to
+    // compare against, and the Location Profile cell already reads "—".
+    if (isNum(sum.officialSubtotal) && sum.profile && sum.roadway) {
+      var curRow = BusDevGallonsCalc.getBaselineRow(sum.profile, sum.roadway);
+      if (curRow) {
+        var curBaselineStamp = BDPG.baselineStamp(curRow.baseline);
+        if (!sum.baselineStamp) {
+          officialCell += ' <span class="badge tag-yellow" title="Saved before the PDF baseline was recorded, so the baseline behind these gallons is unknown. The current ' +
+            BDPG.escHtml(sum.profile) + ' / ' + BDPG.escHtml(sum.roadway) + ' baseline is ' +
+            BDPG.fmtGal(curRow.baseline) + ' gal/mo. The stored figures are left exactly as they were saved — re-run Generate and save to restamp them.">&#9888; baseline unknown</span>';
+        } else if (sum.baselineStamp !== curBaselineStamp) {
+          officialCell += ' <span class="badge tag-yellow" title="Built from a ' + BDPG.fmtGal(Number(sum.baselineStamp)) +
+            ' gal/mo baseline; the current ' + BDPG.escHtml(sum.profile) + ' / ' + BDPG.escHtml(sum.roadway) +
+            ' baseline is ' + BDPG.fmtGal(curRow.baseline) + ' gal/mo, so this figure and the Final Gallons beside it are not directly comparable with rows built on the current table — and this row\'s Export Pitch Summary, which recomputes, will print different numbers. The stored figures are left exactly as they were saved — re-run Generate and save to recompute them.">&#9888; other baseline</span>';
+        }
       }
     }
 

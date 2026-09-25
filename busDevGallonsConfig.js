@@ -1,10 +1,24 @@
 (function (root) {
   'use strict';
 
+  // Baselines reflect the Roady's Prospective Member Gallons Calculator (PDF).
+  // Profile 3 updated 2026-09-24 based on real network analysis (n=12, median 1,946,
+  // P75 4,517 — PDF figure of 5,000 was above the full P25–P75 band).
+  // Source: reports/baseline-audit-2026-09-24.html (committed).
+  // Full lane enrichment, all 226 locations: reports/lane-enrichment-2026-09-24.csv
+  // (gitignored, local only). The 117 High/Medium-confidence subset actually used
+  // for the join: reports/lane-enrichment-high-medium.csv (gitignored, local only).
+  //
+  // `lanes` is stored with an ASCII hyphen, not an en dash: the Step 3
+  // lane-mismatch warning parses it with row.lanes.split('-')[1]
+  // (index.html), so an en dash would make the upper bound NaN and silently
+  // stop the "more lanes than this row expects" warning from ever firing.
+  // The en-dash form is presentation only -- preEvalMappedProfile() applies
+  // .replace('-', '–') when it renders.
   var BASELINE_TABLE = [
     { profile: 'Fuel stop',         roadway: 'Any',        lanes: '1-2', baseline: 2500 },
     { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-2', baseline: 3000 },
-    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '3-5', baseline: 5000 },
+    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '3-5', baseline: 4000 },
     { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '6+',  baseline: 7500 },
     { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '3-5', baseline: 7500 },
     { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '6+',  baseline: 12500 },
