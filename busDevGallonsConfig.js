@@ -9,6 +9,14 @@
   // (gitignored, local only). The 117 High/Medium-confidence subset actually used
   // for the join: reports/lane-enrichment-high-medium.csv (gitignored, local only).
   //
+  // SUPERSEDED AS THE CURRENT ANALYSIS, 2026-09-27: a re-cut against diesel pump
+  // counts matched 169 locations (up from 67) and produced medians by lane tier
+  // -- 1-2: 3,202 (n=8), 3-5: 6,059 (n=87), 6+: 11,985 (n=74). It is recorded in
+  // BDPG.BASELINE_ANALYSIS (index.html), not here. Every baseline below is
+  // deliberately UNCHANGED by it, pending a review of those medians against
+  // these figures; the 2026-09-24 note above is still the reason Profile 3
+  // reads 4,000 today. Do not treat the new medians as agreed baselines.
+  //
   // `lanes` is stored with an ASCII hyphen, not an en dash: the Step 3
   // lane-mismatch warning parses it with row.lanes.split('-')[1]
   // (index.html), so an en dash would make the upper bound NaN and silently
