@@ -10,6 +10,11 @@
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script src="../busDevGallonsConfig.js"></script>
 <script src="../busDevGallonsCalculator.js"></script>
+<!-- Percentile and profile-matching maths for the Network Locations tab.
+     Separate from the calculator engine on purpose: nothing in it is on the
+     estimate path, and keeping it in its own UMD module is what makes the
+     rule that decides which locations feed which baseline unit-testable. -->
+<script src="../bdpgStats.js"></script>
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
@@ -414,6 +419,10 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
          the only place to set, enter or change that PIN, so hiding it while
          locked would leave no way back in. -->
     <button id="bdpg-tab-weights" class="impl-sub-tab" onclick="BDPG.switchTab('weights')">⚙ Weights</button>
+    <!-- Per-location detail behind the same PIN. The button stays visible
+         while locked for the same reason the Weights one does: the PIN card
+         lives inside, so hiding the way in leaves no way in. -->
+    <button id="bdpg-tab-locations" class="impl-sub-tab" onclick="BDPG.switchTab('locations')">🗺 Network Locations</button>
   </div>
   <div class="container" id="bdpg-content"></div>
   <div class="toast" id="toast"></div>
@@ -616,6 +625,15 @@ function getCentroid(pathStr, axis){
         // below carries none of them. See BDPG.adminTabHtml(), which decides
         // between the admin controls and the PIN gate.
         el.innerHTML = BDPG.tutorialCardHtml() + BDPG.adminTabHtml();
+        return;
+      }
+      if (BDPG.activeTab === 'locations') {
+        // Fetched lazily, and only from here: a rep who never opens this tab
+        // never pulls the per-location file at all. That is tidiness, not
+        // protection -- see the note in locationsTabHtml() about the file
+        // being public regardless.
+        if (!BDPG._locationsLoaded) { BDPG.loadLocations(BDPG.render); return; }
+        el.innerHTML = BDPG.tutorialCardHtml() + BDPG.locationsTabHtml();
         return;
       }
       el.innerHTML =
@@ -1907,6 +1925,15 @@ function getCentroid(pathStr, axis){
         'calculator is using right now. The analysis columns are a frozen record of the ' +
         BDPG.escHtml(BDPG.BASELINE_ANALYSIS_ASOF) + ' study; <b>Live Baseline</b> is editable and ' +
         'feeds every estimate this browser produces.</div>' +
+      // Two baseline analyses now exist and neither shadows the other: this
+      // one is the frozen record of what the Sept 27 cut concluded, the
+      // Network Locations tab recomputes live from per-location data. Saying
+      // so in both directions is what stops a reader treating whichever they
+      // opened first as the only one.
+      '<div style="font-size:.78em;color:var(--muted);margin:0 0 10px">' +
+        'This table is frozen. For the live computation over per-location data — which ' +
+        'recomputes as locations are edited and can push its medians into the baselines — see the ' +
+        '<button class="btn" style="padding:1px 7px;font-size:.92em" onclick="BDPG.switchTab(\'locations\')">🗺 Network Locations</button> tab.</div>' +
       notices +
       '<div class="tw" style="margin-bottom:10px"><table class="dt" style="font-size:.8em">' +
         '<thead><tr>' +
@@ -1935,6 +1962,237 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
+  // ══ Network Locations tab ═══════════════════════════════════════════════
+  //
+  // Per-location detail, and the live baseline analysis computed from it. The
+  // loop this closes: edit a location -> the medians recompute -> optionally
+  // push them into the baseline override store -> the calculator uses them.
+  //
+  // THE CIRCULARITY THIS TAB HAS TO KEEP VISIBLE. Size (Small/Medium/Large) is
+  // not in any source system; it is hand-set here, and it is also what the
+  // medians are grouped by. Set Size by glancing at the gallons column on the
+  // same screen and the analysis simply replays that assignment back -- the
+  // Larges will read higher than the Smalls because they were put there, not
+  // because anything measured it. Three deliberate choices follow from that:
+  //   * every hand-set Size records sizeOrigin:'manual', and each profile
+  //     reports how many of its sample were hand-sized;
+  //   * the guidance to size from physical characteristics sits at the point
+  //     of editing, not only in a footnote nobody scrolls to;
+  //   * there is NO "auto-assign Size from gallons" button, and adding one
+  //     would destroy the analysis it appears to accelerate.
+  //
+  // PII. The committed network-locations.json carries an anonymised id plus
+  // city/state only. The allowlist below is enforced at load: unknown keys are
+  // stripped from the in-memory rows and reported by NAME (never by value --
+  // echoing the value of a leaked `memberName` into the page is the one thing
+  // worse than loading it). PIN-gating this tab does not protect the file:
+  // it is committed to a public GitHub Pages repo and served at a guessable
+  // URL, and the PIN is an accident guard by its own documentation. The
+  // allowlist is the actual protection.
+  BDPG.LOCATIONS_URL = '../network-locations.json';
+  BDPG.LOCATIONS_SAMPLE_URL = '../network-locations.sample.json';
+  BDPG.LOCATION_EDITS_KEY = 'roadysBDPGLocationEdits';
+
+  BDPG.LOCATION_FIELDS = ['id', 'city', 'state', 'group', 'type', 'dieselLanes',
+    'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
+  BDPG.LOCATION_EDITABLE = ['dieselLanes', 'size', 'roadway', 'distanceToInterstate'];
+  BDPG.LOCATION_TYPES = ['Truck Stop', 'Fuel Stop', 'Service Center', 'C-Store'];
+  BDPG.DISTANCE_OPTIONS = ['On exit', '1-5 mi', '5-15 mi', '15+ mi'];
+
+  BDPG.locations = [];
+  BDPG.locationsMeta = null;
+  BDPG.locationsSourceLabel = '';
+  BDPG.locationsUnexpectedKeys = [];
+  BDPG.locationsDropped = 0;
+  BDPG._locationsLoaded = false;
+  BDPG.locationEdits = {};
+  BDPG.locationEditsDropped = 0;
+  BDPG.locationEditsWereReset = false;
+  // Filter and confirmation state live on BDPG, not BDPG.state: they are view
+  // chrome, and stateSig() must never read a filter change as unsaved work.
+  BDPG.locFilter = { region: '', type: '', size: '', completeness: '' };
+  BDPG.locApplyPending = null;
+
+  BDPG.loadLocations = function (onDone) {
+    if (BDPG._locationsLoaded) { if (onDone) onDone(); return; }
+    BDPG._locationsLoaded = true;
+    BDPG.loadLocationEdits();
+
+    function accept(json, label) {
+      BDPG.locationsSourceLabel = label;
+      BDPG.ingestLocations(json);
+      if (onDone) onDone();
+    }
+    fetch(BDPG.LOCATIONS_URL).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (json) {
+        if (json) { accept(json, 'network-locations.json'); return; }
+        // Falling back is announced on the card, never silent: an analysis run
+        // against ten invented rows must not be mistaken for the real network.
+        return fetch(BDPG.LOCATIONS_SAMPLE_URL).then(function (r2) { return r2.ok ? r2.json() : null; })
+          .then(function (s) { accept(s, s ? 'network-locations.sample.json' : ''); });
+      })
+      .catch(function () { accept(null, ''); });
+  };
+
+  BDPG.ingestLocations = function (json) {
+    BDPG.locations = [];
+    BDPG.locationsMeta = null;
+    BDPG.locationsUnexpectedKeys = [];
+    BDPG.locationsDropped = 0;
+    if (!json || typeof json !== 'object') return;
+
+    BDPG.locationsMeta = {
+      asOf: str(json.asOf), source: str(json.source), sample: json.sample === true
+    };
+    var raw = json.locations;
+    if (Object.prototype.toString.call(raw) !== '[object Array]') return;
+
+    var seenUnexpected = {};
+    raw.forEach(function (row) {
+      if (!row || typeof row !== 'object') { BDPG.locationsDropped++; return; }
+      var id = str(row.id).trim();
+      if (!id) { BDPG.locationsDropped++; return; }
+      var clean = {};
+      BDPG.LOCATION_FIELDS.forEach(function (k) { clean[k] = row[k]; });
+      Object.keys(row).forEach(function (k) {
+        if (BDPG.LOCATION_FIELDS.indexOf(k) === -1 && !hasOwn(seenUnexpected, k)) {
+          seenUnexpected[k] = 1;
+          BDPG.locationsUnexpectedKeys.push(k);
+        }
+      });
+      clean.id = id;
+      // `size` is never a source field -- it exists only as an admin edit.
+      clean.size = '';
+      clean.sizeOrigin = '';
+      BDPG.locations.push(clean);
+    });
+  };
+
+  // ── Edit overlay ────────────────────────────────────────────────────────
+  //
+  // Deltas only, keyed by location id, so regenerating network-locations.json
+  // never clobbers an admin's work and "reset row" is a delete rather than a
+  // reconstruction. The trade is that a source value arriving later for a
+  // field somebody already guessed stays hidden behind the guess -- which is
+  // why the row's marker tooltip names the source value it is overriding.
+  BDPG.loadLocationEdits = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(BDPG.LOCATION_EDITS_KEY); } catch (e) { return; }
+    if (!raw) return;
+    var parsed = null;
+    try { parsed = JSON.parse(raw); } catch (e2) { parsed = null; }
+    if (!parsed || typeof parsed !== 'object' ||
+        Object.prototype.toString.call(parsed) === '[object Array]') {
+      try { localStorage.removeItem(BDPG.LOCATION_EDITS_KEY); } catch (e3) {}
+      BDPG.locationEditsWereReset = true;
+      return;
+    }
+    var kept = {}, dropped = 0;
+    Object.keys(parsed).forEach(function (id) {
+      var e = parsed[id];
+      if (!e || typeof e !== 'object') { dropped++; return; }
+      var row = {}, any = false;
+      BDPG.LOCATION_EDITABLE.forEach(function (f) {
+        if (!hasOwn(e, f)) return;
+        var v = BDPG.validLocationField(f, e[f]);
+        if (v === undefined) { dropped++; return; }
+        row[f] = v; any = true;
+      });
+      if (hasOwn(e, 'sizeOrigin') && e.sizeOrigin === 'manual') row.sizeOrigin = 'manual';
+      if (any) kept[id] = row;
+    });
+    BDPG.locationEdits = kept;
+    BDPG.locationEditsDropped = dropped;
+    // Storage never keeps what the page refuses to apply, so a hand edit that
+    // looks saved never silently isn't -- same rule as the baseline overrides.
+    if (dropped > 0) BDPG.writeLocationEdits();
+  };
+
+  // Returns the cleaned value, or undefined for "refuse this". '' means the
+  // field was explicitly cleared back to Unknown, which is a legitimate value
+  // and is NOT the same as undefined.
+  BDPG.validLocationField = function (field, v) {
+    if (field === 'dieselLanes') {
+      if (v === '' || v === null || v === undefined) return '';
+      var n = Number(v);
+      if (!isFinite(n) || n < 0 || n > 99) return undefined;
+      return Math.floor(n);
+    }
+    if (field === 'size') {
+      if (v === '' || v === 'Unknown') return '';
+      return BDPG_STATS.SIZES.indexOf(v) === -1 ? undefined : v;
+    }
+    if (field === 'roadway') {
+      if (v === '' || v === 'Unknown') return '';
+      return BDPG_STATS.ROADWAYS.indexOf(v) === -1 ? undefined : v;
+    }
+    if (field === 'distanceToInterstate') {
+      if (v === '' || v === 'Unknown') return '';
+      return BDPG.DISTANCE_OPTIONS.indexOf(v) === -1 ? undefined : v;
+    }
+    return undefined;
+  };
+
+  BDPG.writeLocationEdits = function () {
+    try {
+      if (Object.keys(BDPG.locationEdits).length === 0) {
+        localStorage.removeItem(BDPG.LOCATION_EDITS_KEY);
+      } else {
+        localStorage.setItem(BDPG.LOCATION_EDITS_KEY, JSON.stringify(BDPG.locationEdits));
+      }
+      return true;
+    } catch (e) { return false; }
+  };
+
+  // Storage first, memory second, rolled back together -- the same contract as
+  // commitBaselineOverrides(). An edit live on screen but absent from storage
+  // is one that vanishes on reload after the medians were already read off it.
+  BDPG.commitLocationEdits = function (next) {
+    var prev = BDPG.locationEdits;
+    BDPG.locationEdits = next;
+    if (!BDPG.writeLocationEdits()) { BDPG.locationEdits = prev; return false; }
+    return true;
+  };
+
+  BDPG.cloneLocationEdits = function () {
+    var out = {};
+    Object.keys(BDPG.locationEdits).forEach(function (id) {
+      var src = BDPG.locationEdits[id], row = {};
+      Object.keys(src).forEach(function (k) { row[k] = src[k]; });
+      out[id] = row;
+    });
+    return out;
+  };
+
+  // Source row + admin overlay. Region is derived here and never stored, so
+  // it cannot drift from BDPG_REGION_MAP.
+  BDPG.effectiveLocation = function (loc) {
+    var e = hasOwn(BDPG.locationEdits, loc.id) ? BDPG.locationEdits[loc.id] : null;
+    var out = {
+      id: loc.id, city: str(loc.city), state: str(loc.state),
+      group: str(loc.group), type: str(loc.type),
+      gallons12mo: loc.gallons12mo, avgGalMo: loc.avgGalMo,
+      dieselLanes: loc.dieselLanes, roadway: str(loc.roadway),
+      distanceToInterstate: str(loc.distanceToInterstate),
+      size: '', sizeOrigin: ''
+    };
+    if (e) {
+      BDPG.LOCATION_EDITABLE.forEach(function (f) { if (hasOwn(e, f)) out[f] = e[f]; });
+      if (e.sizeOrigin === 'manual' && out.size) out.sizeOrigin = 'manual';
+    }
+    out.region = out.state ? BusDevGallonsCalc.resolveRegion(out.state) : null;
+    return out;
+  };
+
+  BDPG.effectiveLocations = function () {
+    return BDPG.locations.map(BDPG.effectiveLocation);
+  };
+
+  BDPG.locationIsEdited = function (id) {
+    return hasOwn(BDPG.locationEdits, id) &&
+      BDPG.LOCATION_EDITABLE.some(function (f) { return hasOwn(BDPG.locationEdits[id], f); });
+  };
+
   BDPG.adminTabHtml = function () {
     if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
     return BDPG.weightsCardHtml() +
@@ -1948,6 +2206,604 @@ function getCentroid(pathStr, axis){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  };
+
+  // ── Network Locations: rendering ────────────────────────────────────────
+
+  // Guidance shown at the point of editing, per the brief. It is deliberately
+  // adjacent to the Size control rather than in the analysis footnote: by the
+  // time someone reads a footnote they have already sized 169 rows off the
+  // gallons column and the analysis is circular.
+  BDPG.SIZE_GUIDANCE = 'Set Size from physical site characteristics — lot size, ' +
+    'parking spaces, service bays, showers. Do NOT set it from the gallons column: ' +
+    'the baseline medians below are grouped by Size, so sizing by gallons makes them ' +
+    'report your own assignment back to you instead of measuring anything.';
+
+  BDPG.LOC_STATUS_LABEL = {
+    'need-size': 'Needs Size',
+    'need-roadway': 'Needs Roadway',
+    'no-profile': 'No matching profile',
+    'not-applicable': 'N/A for baselines',
+    'lane-conflict': '⚠ lanes/roadway conflict'
+  };
+  BDPG.LOC_STATUS_TONE = {
+    'ok': 'green', 'need-size': 'yellow', 'need-roadway': 'yellow',
+    'no-profile': 'gray', 'not-applicable': 'gray', 'lane-conflict': 'red'
+  };
+
+  BDPG.locFitCellHtml = function (eff) {
+    var m = BDPG_STATS.matchBaselineProfile(eff, BDPG_CONFIG.BASELINE_TABLE);
+    var tone = hasOwn(BDPG.LOC_STATUS_TONE, m.status) ? BDPG.LOC_STATUS_TONE[m.status] : 'gray';
+    if (m.status === 'ok') {
+      return '<span class="badge tag-green">' + BDPG.escHtml(m.row.profile + ' · ' + m.row.roadway) + '</span>';
+    }
+    var title = '';
+    if (m.status === 'lane-conflict') {
+      title = 'Roadway ' + m.roadway + ' expects ' + m.expectedLanes +
+        ' lanes, but the diesel pump count is in the ' + m.laneTier + ' band. ' +
+        'BASELINE_TABLE has no row for that pair, so this location is excluded from every ' +
+        'median rather than being assigned to a band one of its own fields denies. ' +
+        'Correct whichever field is wrong.';
+    } else if (m.status === 'no-profile') {
+      title = 'BASELINE_TABLE has no ' + (m.profile || 'matching') + ' / ' + (m.roadway || '?') +
+        ' row — Medium and Large truck stops exist only on Highway and Interstate. ' +
+        'Filling in more fields cannot fix this.';
+    } else if (m.status === 'not-applicable') {
+      title = 'Only Truck Stop and Fuel Stop map to a baseline profile. This row is not counted as incomplete.';
+    }
+    return '<span class="badge tag-' + tone + '"' + (title ? ' title="' + BDPG.escHtml(title) + '"' : '') +
+      '>' + BDPG.escHtml(BDPG.LOC_STATUS_LABEL[m.status] || '—') + '</span>';
+  };
+
+  BDPG.locHandSetHtml = function (eff) {
+    return eff.sizeOrigin === 'manual'
+      ? ' <span style="font-size:.66em;color:var(--yellow)" title="Size was set by hand on this page, not read from source data. Every profile median reports how many of its sample are hand-sized, because a median grouped by a hand-set field is only as independent as the hand that set it.">hand-set</span>'
+      : '';
+  };
+
+  BDPG.locMarkCellHtml = function (eff) {
+    if (!BDPG.locationIsEdited(eff.id)) return '';
+    var src = null;
+    for (var i = 0; i < BDPG.locations.length; i++) {
+      if (BDPG.locations[i].id === eff.id) { src = BDPG.locations[i]; break; }
+    }
+    var parts = [];
+    BDPG.LOCATION_EDITABLE.forEach(function (f) {
+      if (!hasOwn(BDPG.locationEdits[eff.id], f)) return;
+      if (f === 'size') { parts.push('Size is never in source data — it only ever comes from this page'); return; }
+      var was = (src && src[f] !== null && src[f] !== undefined && src[f] !== '') ? String(src[f]) : 'unset';
+      parts.push(f + ': source value was ' + was);
+    });
+    return '<span class="bdpg-bl-dot" title="Edited in this browser. ' +
+        BDPG.escHtml(parts.join(' · ')) + '">●</span>' +
+      '<button class="bdpg-bl-reset" onclick="BDPG.onLocationReset(\'' +
+        BDPG.escHtml(eff.id) + '\')" title="Discard every edit on this row and restore the source values">Reset row</button>';
+  };
+
+  BDPG.locSelectHtml = function (id, field, options, value, extra) {
+    var opts = ['<option value=""' + (value ? '' : ' selected') + '>Unknown</option>'];
+    options.forEach(function (o) {
+      opts.push('<option value="' + BDPG.escHtml(o) + '"' + (o === value ? ' selected' : '') + '>' +
+        BDPG.escHtml(o) + '</option>');
+    });
+    return '<select style="font-size:.9em;padding:2px 4px"' + (extra || '') +
+      ' onchange="BDPG.onLocationEdit(\'' + BDPG.escHtml(id) + '\',\'' + field + '\',this.value)">' +
+      opts.join('') + '</select>';
+  };
+
+  BDPG.locationRowHtml = function (eff) {
+    var idAttr = BDPG.escHtml(eff.id);
+    var lanes = (eff.dieselLanes === null || eff.dieselLanes === undefined || eff.dieselLanes === '')
+      ? '' : String(eff.dieselLanes);
+    return '<tr>' +
+      '<td style="font-family:var(--ff)">' + BDPG.escHtml(eff.id) + '</td>' +
+      '<td>' + BDPG.escHtml(eff.city) + ', ' + BDPG.escHtml(eff.state) + '</td>' +
+      '<td style="color:var(--muted)">' + BDPG.escHtml(eff.region || '—') + '</td>' +
+      '<td style="color:var(--muted)">' + BDPG.escHtml(eff.group || '—') + '</td>' +
+      '<td>' + BDPG.escHtml(eff.type || '—') + '</td>' +
+      '<td style="text-align:right">' +
+        '<input type="number" min="0" max="99" step="1" value="' + BDPG.escHtml(lanes) + '" ' +
+          'style="width:4.5em;text-align:right;font-size:.9em;padding:2px 4px" ' +
+          'aria-label="Diesel lanes for ' + idAttr + '" ' +
+          'onchange="BDPG.onLocationEdit(\'' + idAttr + '\',\'dieselLanes\',this.value)"></td>' +
+      // The hand-set marker gets its own span so patchLocationRow() can update
+      // it without rebuilding the <select> beside it -- rebuilding would take
+      // the focus off the control the admin just used.
+      '<td>' + BDPG.locSelectHtml(eff.id, 'size', BDPG_STATS.SIZES, eff.size,
+          ' title="' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '"') +
+        '<span id="bdpg-nl-hand-' + idAttr + '">' + BDPG.locHandSetHtml(eff) + '</span></td>' +
+      '<td id="bdpg-nl-fit-' + idAttr + '">' + BDPG.locFitCellHtml(eff) + '</td>' +
+      '<td style="text-align:right">' + (isNum(Number(eff.gallons12mo)) && eff.gallons12mo !== null
+          ? BDPG.fmtGal(eff.gallons12mo) : '—') + '</td>' +
+      '<td style="text-align:right;white-space:nowrap">' +
+        (BDPG_STATS.toFinite(eff.avgGalMo) !== null ? BDPG.fmtGal(eff.avgGalMo) : '—') +
+        // Number first, marker after -- the delegated sorter parseFloats this
+        // cell, so a leading badge would make the column sort as text.
+        (BDPG_STATS.gallonStatus(eff.avgGalMo) === 'non-reporting'
+          ? ' <span class="badge tag-gray" title="Below the ' +
+            BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo reporting floor, so this ' +
+            'location is treated as non-reporting rather than low-volume: excluded from every ' +
+            'median and from anything Apply writes, but still counted and shown.">non-reporting</span>'
+          : '') + '</td>' +
+      '<td>' + BDPG.locSelectHtml(eff.id, 'roadway', BDPG_STATS.ROADWAYS, eff.roadway, '') + '</td>' +
+      '<td>' + BDPG.locSelectHtml(eff.id, 'distanceToInterstate', BDPG.DISTANCE_OPTIONS, eff.distanceToInterstate, '') + '</td>' +
+      '<td id="bdpg-nl-mark-' + idAttr + '" style="white-space:nowrap">' + BDPG.locMarkCellHtml(eff) + '</td>' +
+    '</tr>';
+  };
+
+  BDPG.locationPassesFilter = function (eff) {
+    var f = BDPG.locFilter;
+    if (f.region && eff.region !== f.region) return false;
+    if (f.type && eff.type !== f.type) return false;
+    if (f.size && (f.size === 'Unknown' ? !!eff.size : eff.size !== f.size)) return false;
+    if (f.completeness) {
+      var st = BDPG_STATS.matchBaselineProfile(eff, BDPG_CONFIG.BASELINE_TABLE).status;
+      if (f.completeness === 'complete' && st !== 'ok') return false;
+      if (f.completeness === 'incomplete' && (st === 'ok' || st === 'not-applicable')) return false;
+      if (f.completeness === 'na' && st !== 'not-applicable') return false;
+    }
+    return true;
+  };
+
+  BDPG.onLocationFilter = function (key, value) {
+    if (!hasOwn(BDPG.locFilter, key)) return;
+    BDPG.locFilter[key] = value;
+    // Only the table body moves. The analysis below is deliberately computed
+    // over every location regardless of the filter -- see locAnalysisHtml().
+    var body = document.getElementById('bdpg-nl-body');
+    if (body) body.innerHTML = BDPG.locationRowsHtml();
+    BDPG.refreshLocationFilterCount();
+  };
+
+  BDPG.onLocationEdit = function (id, field, value) {
+    var clean = BDPG.validLocationField(field, value);
+    if (clean === undefined) { BDPG.locMsg('That value was not accepted — nothing was saved.', true); return; }
+
+    var next = BDPG.cloneLocationEdits();
+    var row = hasOwn(next, id) ? next[id] : {};
+    if (clean === '') delete row[field]; else row[field] = clean;
+    // sizeOrigin tracks the circularity guard: it is set when a Size is
+    // entered by hand and cleared the moment that Size is cleared, so a stale
+    // 'manual' can never inflate a profile's hand-set count.
+    if (field === 'size') { if (clean === '') delete row.sizeOrigin; else row.sizeOrigin = 'manual'; }
+    if (Object.keys(row).length === 0) delete next[id]; else next[id] = row;
+
+    if (!BDPG.commitLocationEdits(next)) {
+      BDPG.locMsg('Could not save the edit in this browser — nothing was changed.', true);
+      return;
+    }
+    BDPG.patchLocationRow(id);
+    BDPG.refreshLocationAnalysis();
+    BDPG.locMsg('', false);
+  };
+
+  BDPG.onLocationReset = function (id) {
+    var next = BDPG.cloneLocationEdits();
+    delete next[id];
+    if (!BDPG.commitLocationEdits(next)) {
+      BDPG.locMsg('Could not clear the edits in this browser — nothing was changed.', true);
+      return;
+    }
+    // A reset changes the inputs themselves, so this row is rebuilt whole --
+    // unlike an edit, where the input the admin just used must keep its focus.
+    var tr = document.getElementById('bdpg-nl-fit-' + id);
+    tr = tr ? tr.parentNode : null;
+    var src = null;
+    for (var i = 0; i < BDPG.locations.length; i++) {
+      if (BDPG.locations[i].id === id) { src = BDPG.locations[i]; break; }
+    }
+    if (tr && src) {
+      var html = BDPG.locationRowHtml(BDPG.effectiveLocation(src));
+      var tmp = document.createElement('tbody');
+      tmp.innerHTML = html;
+      if (tmp.firstChild) tr.parentNode.replaceChild(tmp.firstChild, tr);
+    }
+    BDPG.refreshLocationAnalysis();
+    BDPG.locMsg('', false);
+  };
+
+  // Patches only the derived cells. Rebuilding the whole <tr> would blow away
+  // the focus on the select the admin just used, and re-rendering the page
+  // would lose their scroll position 140 rows down.
+  BDPG.patchLocationRow = function (id) {
+    var src = null;
+    for (var i = 0; i < BDPG.locations.length; i++) {
+      if (BDPG.locations[i].id === id) { src = BDPG.locations[i]; break; }
+    }
+    if (!src) return;
+    var eff = BDPG.effectiveLocation(src);
+    var fit = document.getElementById('bdpg-nl-fit-' + id);
+    if (fit) fit.innerHTML = BDPG.locFitCellHtml(eff);
+    var mark = document.getElementById('bdpg-nl-mark-' + id);
+    if (mark) mark.innerHTML = BDPG.locMarkCellHtml(eff);
+    var hand = document.getElementById('bdpg-nl-hand-' + id);
+    if (hand) hand.innerHTML = BDPG.locHandSetHtml(eff);
+  };
+
+  BDPG.locMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-nl-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  BDPG.refreshLocationAnalysis = function () {
+    var el = document.getElementById('bdpg-nl-analysis');
+    if (el) el.innerHTML = BDPG.locAnalysisInnerHtml();
+    var c = document.getElementById('bdpg-nl-completeness');
+    if (c) c.innerHTML = BDPG.locCompletenessInnerHtml();
+    BDPG.refreshLocationFilterCount();
+  };
+
+  BDPG.refreshLocationFilterCount = function () {
+    var el = document.getElementById('bdpg-nl-shown');
+    if (!el) return;
+    var all = BDPG.effectiveLocations();
+    var shown = all.filter(BDPG.locationPassesFilter).length;
+    el.textContent = shown === all.length
+      ? ('Showing all ' + all.length + ' locations')
+      : ('Showing ' + shown + ' of ' + all.length + ' locations');
+  };
+
+  BDPG.locationRowsHtml = function () {
+    var rows = BDPG.effectiveLocations().filter(BDPG.locationPassesFilter);
+    if (!rows.length) {
+      return '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--muted)">' +
+        'No locations match the current filters.</td></tr>';
+    }
+    return rows.map(BDPG.locationRowHtml).join('');
+  };
+
+  BDPG.locCompletenessInnerHtml = function () {
+    var c = BDPG_STATS.completenessCounts(BDPG.effectiveLocations(), BDPG_CONFIG.BASELINE_TABLE);
+    // complete / notApplicable / incomplete partition the set exactly, and
+    // withGallons is reported apart from complete because mapping to a profile
+    // and having a gallon figure are two different things -- a median
+    // captioned with the larger count overstates its own evidence.
+    return '<b>' + c.complete + ' of ' + c.total + '</b> locations have complete profile data' +
+      ' <span style="color:var(--muted)">(' + c.withGallons + ' of those also clear the ' +
+      BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo reporting floor and feed a median)</span>' +
+      '<div style="font-size:.78em;color:var(--muted);margin-top:4px">' +
+        c.incomplete + ' incomplete — ' + c.needSize + ' need Size, ' + c.needRoadway +
+        ' need Roadway, ' + c.laneConflict + ' lanes/roadway conflict, ' + c.noProfile +
+        ' have no matching profile. ' + c.notApplicable +
+        ' not applicable (C-Store / PPO / Service Center — no baseline profile exists, so they are not counted as incomplete).</div>' +
+      '<div style="font-size:.78em;color:var(--muted);margin-top:4px">' +
+        c.nonReporting + ' of ' + c.total + ' locations report under ' +
+        BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and are treated as non-reporting ' +
+        'rather than low-volume — excluded from every median and from Apply, counted here instead.</div>';
+  };
+
+  BDPG.locAnalysisInnerHtml = function () {
+    var all = BDPG.effectiveLocations();
+    var sum = BDPG_STATS.summarizeByProfile(all, BDPG_CONFIG.BASELINE_TABLE);
+    var counts = BDPG_STATS.completenessCounts(all, BDPG_CONFIG.BASELINE_TABLE);
+    var eligible = sum.filter(function (r) { return r.n >= 5 && r.median !== null; });
+
+    // Surfaced as a standing line, not buried in the per-row markers. On the
+    // real 249-location file this reads 69, and that is a finding about the
+    // baseline model rather than a data defect to clean up: BASELINE_TABLE
+    // pairs Interstate with 6+ lanes, while roughly half the network's
+    // Interstate locations carry fewer than six diesel pumps. Those rows are
+    // excluded from every median by design. Note that the exclusion is
+    // systematic -- it removes exactly the locations that contradict the
+    // model's assumption -- so the medians that survive are drawn from a
+    // sample selected for agreeing with it.
+    var conflictLine = counts.laneConflict > 0
+      ? '<div style="font-size:.78em;color:var(--red);margin-bottom:10px">' +
+          '<b>' + counts.laneConflict + ' locations excluded due to lanes/roadway conflict — see notes.</b> ' +
+          'Their roadway and diesel pump count disagree about the lane band, and BASELINE_TABLE has ' +
+          'no row for that pair. They are left out of every median rather than assigned to a band one ' +
+          'of their own fields denies. Because the exclusion is systematic, treat the surviving ' +
+          'medians as drawn from locations that happen to fit the model\'s roadway/lane pairing.</div>'
+      : '';
+
+    var rows = sum.map(function (r) {
+      var trust = r.n >= 5;
+      var med = r.median === null ? '—' : BDPG.fmtGal(r.median);
+      var delta = r.delta === null ? '—'
+        : (r.delta > 0 ? '+' : '') + BDPG.fmtGal(r.delta);
+      var deltaColor = r.delta === null ? 'var(--muted)' : (r.delta > 0 ? 'var(--green)' : (r.delta < 0 ? 'var(--red)' : 'var(--muted)'));
+      // The usable count leads; everything excluded is stated beside it
+      // rather than folded away, so "n" can never read as the whole sample.
+      var nCell = r.n + ' usable' +
+        (r.nNonReporting > 0
+          ? '<span style="font-size:.72em;color:var(--muted)" title="Below the ' +
+            BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo floor: ' +
+            BDPG.escHtml(r.nonReportingIds.join(', ')) + '">, ' + r.nNonReporting +
+            ' non-reporting excluded</span>'
+          : '') +
+        (r.nMissingGallons > 0
+          ? '<span style="font-size:.72em;color:var(--muted)" title="Mapped to this profile but carrying no gallon figure at all.">, ' +
+            r.nMissingGallons + ' no gallons</span>'
+          : '') +
+        (r.nManualSize > 0
+          ? '<span style="font-size:.72em;color:var(--yellow)" title="' + r.nManualSize +
+            ' of the mapped rows had Size set by hand on this page rather than from source data. A median grouped by a hand-set field is only as independent as the hand that set it.">, ' +
+            r.nManualSize + ' hand-sized</span>'
+          : '');
+      return '<tr>' +
+        '<td>' + BDPG.escHtml(r.profile + ' · ' + r.roadway + ' · ' + r.lanes) + '</td>' +
+        '<td style="text-align:right">' + nCell + '</td>' +
+        '<td style="text-align:right">' + med + '</td>' +
+        '<td style="text-align:right">' + (r.p25 === null ? '—' : BDPG.fmtGal(r.p25)) + '</td>' +
+        '<td style="text-align:right">' + (r.p75 === null ? '—' : BDPG.fmtGal(r.p75)) + '</td>' +
+        '<td style="text-align:right">' + BDPG.fmtGal(r.currentBaseline) + '</td>' +
+        '<td style="text-align:right;color:' + deltaColor + '">' + delta + '</td>' +
+        '<td><span class="badge tag-' + (trust ? 'green' : 'gray') + '">' +
+          (trust ? 'n≥5' : 'n<5 — not applied') + '</span></td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-weight:700">📈 Baseline Analysis (from this data)</div>' +
+        '<div style="font-size:.78em;color:var(--muted)">recomputes on every edit</div>' +
+      '</div>' +
+      '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">' +
+        'Computed over <b>all ' + all.length + ' locations</b>, not the current filter — a filtered ' +
+        'median must never be the one pushed into the baselines. Only locations that map to a ' +
+        'profile <i>and</i> carry a gallon figure are counted.</div>' +
+      '<div style="font-size:.78em;color:var(--yellow);margin-bottom:10px">' +
+        'These medians are evidence only to the extent Size was set from site characteristics. ' +
+        'Any profile showing a “hand-sized” count is partly reporting back the grouping it was given.</div>' +
+      conflictLine +
+      '<div style="font-size:.78em;color:var(--muted);margin-bottom:10px">' +
+        'Locations reporting under ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) +
+        ' gal/mo are treated as non-reporting and excluded from every median and from Apply ' +
+        '(' + counts.nonReporting + ' of ' + all.length + ' across the file). A site that sold nine ' +
+        'gallons in a year is not a measurement of a working location.</div>' +
+      '<div class="tw" style="margin-bottom:10px"><table class="dt" style="font-size:.8em">' +
+        '<thead><tr>' +
+          '<th>Baseline Profile</th>' +
+          '<th style="text-align:right">n</th>' +
+          '<th style="text-align:right">Suggested Baseline (median)</th>' +
+          '<th style="text-align:right">P25</th>' +
+          '<th style="text-align:right">P75</th>' +
+          '<th style="text-align:right">Current Live Baseline</th>' +
+          '<th style="text-align:right">Delta</th>' +
+          '<th>Apply?</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      (BDPG.locApplyPending
+        ? BDPG.locApplyConfirmHtml()
+        : '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+            '<button class="btn btn-accent" onclick="BDPG.onApplySuggestedBaselines()"' +
+              (eligible.length ? '' : ' disabled') + '>Apply suggested baselines</button>' +
+            '<span style="font-size:.78em;color:var(--muted)">' +
+              (eligible.length
+                ? eligible.length + ' of 8 profiles reach n≥5 and would be applied. The other ' +
+                  (8 - eligible.length) + ' are skipped — see the confirmation.'
+                : 'No profile reaches n≥5 yet, so there is nothing to apply.') +
+            '</span>' +
+          '</div>') +
+      '<div id="bdpg-nl-apply-msg" style="font-size:.8em;margin-top:8px"></div>';
+  };
+
+  // n<5 profiles are EXCLUDED from the write, not merely annotated. A note
+  // saying "only trust n≥5" beside a button that applies n=2 anyway is the
+  // silent-cap pattern this project has already been bitten by -- so the
+  // skipped profiles are named, with their counts, rather than dropped
+  // quietly.
+  BDPG.onApplySuggestedBaselines = function () {
+    var sum = BDPG_STATS.summarizeByProfile(BDPG.effectiveLocations(), BDPG_CONFIG.BASELINE_TABLE);
+    BDPG.locApplyPending = sum;
+    BDPG.refreshLocationAnalysis();
+  };
+
+  BDPG.onCancelApplyBaselines = function () {
+    BDPG.locApplyPending = null;
+    BDPG.refreshLocationAnalysis();
+  };
+
+  BDPG.locApplyConfirmHtml = function () {
+    var sum = BDPG.locApplyPending || [];
+    var apply = sum.filter(function (r) { return r.n >= 5 && r.median !== null; });
+    var skip = sum.filter(function (r) { return !(r.n >= 5 && r.median !== null); });
+
+    var applyRows = apply.map(function (r) {
+      return '<tr><td>' + BDPG.escHtml(r.profile + ' · ' + r.roadway) + '</td>' +
+        '<td style="text-align:right">' + BDPG.fmtGal(r.currentBaseline) + '</td>' +
+        '<td style="text-align:right">→</td>' +
+        '<td style="text-align:right;font-weight:700">' + BDPG.fmtGal(r.median) + '</td>' +
+        '<td style="text-align:right">n=' + r.n +
+          (r.nManualSize > 0 ? ', ' + r.nManualSize + ' hand-sized' : '') + '</td></tr>';
+    }).join('');
+
+    var skipRows = skip.map(function (r) {
+      var why = r.median === null
+        ? (r.nNonReporting > 0
+            ? 'every mapped location is below the ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) +
+              ' gal/mo reporting floor, or has no gallon figure'
+            : 'no locations with a gallon figure')
+        : 'n=' + r.n + ' usable, below the n≥5 floor';
+      return '<li>' + BDPG.escHtml(r.profile + ' · ' + r.roadway) + ' — ' + why +
+        '. Stays at ' + BDPG.fmtGal(r.currentBaseline) + '.</li>';
+    }).join('');
+
+    // Every location the floor kept out of an applied median, named. A count
+    // alone would let an admin approve a change without being able to check
+    // which sites were dropped to produce it -- and the floor is the guard
+    // standing between this button and a 94% baseline cut, so what it removed
+    // has to be inspectable at the moment of approval, not afterwards.
+    var excluded = [];
+    apply.forEach(function (r) {
+      if (r.nNonReporting > 0) {
+        excluded.push('<li><b>' + BDPG.escHtml(r.profile + ' · ' + r.roadway) + '</b> — ' +
+          r.nNonReporting + ' excluded from its median: ' +
+          BDPG.escHtml(r.nonReportingIds.join(', ')) + '</li>');
+      }
+    });
+    var excludedBlock = excluded.length
+      ? '<div style="font-size:.78em;color:var(--muted);margin-top:10px">' +
+          '<b>Non-reporting locations excluded from the medians above:</b>' +
+          '<ul style="margin:4px 0 0 18px">' + excluded.join('') + '</ul></div>'
+      : '';
+
+    return '<div class="bdpg-box" style="border-color:var(--accent);margin-top:10px">' +
+      '<div style="font-weight:700;margin-bottom:6px">Confirm baseline changes</div>' +
+      (apply.length
+        ? '<div style="font-size:.8em;color:var(--muted);margin-bottom:8px">These ' + apply.length +
+            ' profile' + (apply.length === 1 ? '' : 's') + ' will be written to the baseline override ' +
+            'store in this browser. The calculator uses them immediately; saved prospects are NOT ' +
+            'recomputed, they are marked stale.</div>' +
+          '<div class="tw"><table class="dt" style="font-size:.8em"><thead><tr>' +
+            '<th>Profile</th><th style="text-align:right">Now</th><th></th>' +
+            '<th style="text-align:right">After</th><th style="text-align:right">Sample</th>' +
+          '</tr></thead><tbody>' + applyRows + '</tbody></table></div>' + excludedBlock
+        : '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Nothing meets the n≥5 floor of usable locations, so no baseline would change.</div>') +
+      (skip.length
+        ? '<div style="font-size:.78em;color:var(--muted);margin-top:10px">' +
+            '<b>Skipped (' + skip.length + '):</b><ul style="margin:4px 0 0 18px">' + skipRows + '</ul></div>'
+        : '') +
+      '<div style="display:flex;gap:10px;margin-top:12px">' +
+        (apply.length ? '<button class="btn btn-accent" onclick="BDPG.onConfirmApplyBaselines()">Confirm and apply</button>' : '') +
+        '<button class="btn" onclick="BDPG.onCancelApplyBaselines()">Cancel</button>' +
+      '</div>' +
+    '</div>';
+  };
+
+  BDPG.onConfirmApplyBaselines = function () {
+    var sum = BDPG.locApplyPending || [];
+    var apply = sum.filter(function (r) { return r.n >= 5 && r.median !== null; });
+    if (!apply.length) { BDPG.locApplyPending = null; BDPG.refreshLocationAnalysis(); return; }
+
+    // Written through the existing override store, so this lands in exactly
+    // the same place the inline baseline editor writes -- one override system,
+    // one amber dot, one "to make these permanent" note listing what to commit.
+    var next = {};
+    Object.keys(BDPG.baselineOverrides).forEach(function (k) { next[k] = BDPG.baselineOverrides[k]; });
+    var applied = 0;
+    apply.forEach(function (r) {
+      var key = BDPG.baselineKey(r.profile, r.roadway);
+      if (!hasOwn(BDPG.BASELINE_DEFAULTS, key)) return;
+      var v = BDPG.validBaselineValue(r.median);
+      if (v === null) return;
+      if (v === BDPG.BASELINE_DEFAULTS[key]) delete next[key]; else next[key] = v;
+      applied++;
+    });
+
+    if (!BDPG.commitBaselineOverrides(next)) {
+      BDPG.locApplyPending = null;
+      BDPG.refreshLocationAnalysis();
+      BDPG.applyMsg('Could not write the baselines in this browser — nothing was changed.', true);
+      return;
+    }
+    BDPG.locApplyPending = null;
+    // Baselines are the first term of officialSubtotal, so anything on screen
+    // was computed under the old ones -- same rule as every other writer.
+    BDPG.invalidateResult();
+    BDPG.refreshLocationAnalysis();
+    BDPG.applyMsg(applied + ' baseline' + (applied === 1 ? '' : 's') +
+      ' applied. The ⚙ Weights tab now lists them under “To make these permanent” — ' +
+      'commit those into busDevGallonsConfig.js to share them beyond this browser.', false);
+  };
+
+  BDPG.applyMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-nl-apply-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  BDPG.locationsTabHtml = function () {
+    if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
+
+    var meta = BDPG.locationsMeta;
+    if (!BDPG.locations.length) {
+      return '<div class="bdpg-box" style="margin-top:14px">' +
+        '<div style="font-weight:700;margin-bottom:6px">🗺 Network Locations</div>' +
+        '<div style="font-size:.85em;color:var(--muted)">No location data loaded. Expected <code>' +
+          BDPG.escHtml(BDPG.LOCATIONS_URL) + '</code> (or the committed sample at <code>' +
+          BDPG.escHtml(BDPG.LOCATIONS_SAMPLE_URL) + '</code>).</div></div>';
+    }
+
+    var notices = '';
+    if (meta && meta.sample) {
+      notices += '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.84em">' +
+        '<b>⚠ Sample data.</b> This is the committed scaffold of invented rows (<code>' +
+        BDPG.escHtml(BDPG.locationsSourceLabel) + '</code>), not the real network. ' +
+        'Every median below is computed from fake gallons — do not apply these baselines.</div>';
+    }
+    if (BDPG.locationsUnexpectedKeys.length) {
+      // Key NAMES only, never values: if a member name did leak through, this
+      // notice must not be the thing that renders it onto the page.
+      notices += '<div class="bdpg-box" style="border-color:var(--red);margin-bottom:10px;font-size:.84em">' +
+        '<b>⚠ Unexpected fields in the location file.</b> These keys are not in the allowed ' +
+        'schema and were stripped before anything rendered: <code>' +
+        BDPG.escHtml(BDPG.locationsUnexpectedKeys.join(', ')) + '</code>. ' +
+        'This file is committed to a public repository — if any of those carry member names, ' +
+        'addresses or phone numbers, regenerate it and rewrite the history that contains them. ' +
+        'Their values are deliberately not shown here.</div>';
+    }
+    if (BDPG.locationsDropped > 0) {
+      notices += '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">' +
+        BDPG.locationsDropped + ' row' + (BDPG.locationsDropped === 1 ? ' was' : 's were') +
+        ' skipped for having no usable id.</div>';
+    }
+    if (BDPG.locationEditsWereReset) {
+      notices += '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">' +
+        'The location edits saved in this browser were not readable and were discarded.</div>';
+    }
+    if (BDPG.locationEditsDropped > 0) {
+      notices += '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">' +
+        BDPG.locationEditsDropped + ' saved edit field' + (BDPG.locationEditsDropped === 1 ? ' was' : 's were') +
+        ' discarded at load for being outside the allowed values.</div>';
+    }
+
+    var regionOpts = BDPG.REGION_KEYS.map(function (r) {
+      return '<option value="' + BDPG.escHtml(r) + '"' + (BDPG.locFilter.region === r ? ' selected' : '') +
+        '>' + BDPG.escHtml(r) + '</option>';
+    }).join('');
+    var typeOpts = BDPG.LOCATION_TYPES.map(function (t) {
+      return '<option value="' + BDPG.escHtml(t) + '"' + (BDPG.locFilter.type === t ? ' selected' : '') +
+        '>' + BDPG.escHtml(t) + '</option>';
+    }).join('');
+    var sizeOpts = BDPG_STATS.SIZES.concat(['Unknown']).map(function (s) {
+      return '<option value="' + BDPG.escHtml(s) + '"' + (BDPG.locFilter.size === s ? ' selected' : '') +
+        '>' + BDPG.escHtml(s) + '</option>';
+    }).join('');
+    var compOpts = [['complete', 'Complete'], ['incomplete', 'Incomplete'], ['na', 'N/A for baselines']]
+      .map(function (p) {
+        return '<option value="' + p[0] + '"' + (BDPG.locFilter.completeness === p[0] ? ' selected' : '') +
+          '>' + p[1] + '</option>';
+      }).join('');
+
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-weight:700">🗺 Network Locations</div>' +
+        '<div style="font-size:.78em;color:var(--muted)">' +
+          BDPG.escHtml(BDPG.locationsSourceLabel || 'no source') +
+          (meta && meta.asOf ? ' · as of ' + BDPG.escHtml(meta.asOf) : '') + '</div>' +
+      '</div>' +
+      '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">' +
+        'Per-location detail behind the admin PIN. Edits are stored in this browser under <code>' +
+        BDPG.escHtml(BDPG.LOCATION_EDITS_KEY) + '</code> and drive the baseline analysis at the ' +
+        'bottom of this tab. The frozen <b>Network Baseline Analysis</b> on the ⚙ Weights tab is a ' +
+        'separate historical record of the Sept 27 study — this panel is the live one.</div>' +
+      notices +
+      '<div id="bdpg-nl-completeness" class="bdpg-box" style="margin-bottom:10px;font-size:.86em">' +
+        BDPG.locCompletenessInnerHtml() + '</div>' +
+      '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.8em">' +
+        '<b>Setting Size:</b> ' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+        '<select onchange="BDPG.onLocationFilter(\'region\',this.value)"><option value="">All regions</option>' + regionOpts + '</select>' +
+        '<select onchange="BDPG.onLocationFilter(\'type\',this.value)"><option value="">All types</option>' + typeOpts + '</select>' +
+        '<select onchange="BDPG.onLocationFilter(\'size\',this.value)"><option value="">All sizes</option>' + sizeOpts + '</select>' +
+        '<select onchange="BDPG.onLocationFilter(\'completeness\',this.value)"><option value="">All rows</option>' + compOpts + '</select>' +
+        '<span id="bdpg-nl-shown" style="font-size:.78em;color:var(--muted)">Showing all ' + BDPG.locations.length + ' locations</span>' +
+      '</div>' +
+      '<div class="tw"><table class="dt" style="font-size:.8em"><thead><tr>' +
+        '<th>Location ID</th><th>City, State</th><th>Region</th><th>Group</th><th>Type</th>' +
+        '<th style="text-align:right">Diesel Lanes</th>' +
+        '<th title="' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '">Size ⓘ</th>' +
+        '<th>Baseline Profile Fit</th>' +
+        '<th style="text-align:right">12-Mo Gallons</th>' +
+        '<th style="text-align:right">Avg Gal/Month</th>' +
+        '<th>Roadway</th><th>Distance to Interstate</th><th>Edited</th>' +
+      '</tr></thead><tbody id="bdpg-nl-body">' + BDPG.locationRowsHtml() + '</tbody></table></div>' +
+      '<div id="bdpg-nl-msg" style="font-size:.8em;margin-top:8px"></div>' +
+    '</div>' +
+    '<div id="bdpg-nl-analysis" class="bdpg-box" style="margin-top:14px">' +
+      BDPG.locAnalysisInnerHtml() + '</div>';
   };
 
   BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
@@ -4426,7 +5282,7 @@ function getCentroid(pathStr, axis){
     // Driven off one list rather than a line per tab, so a fourth tab can
     // never be added to the markup and forgotten here (which would leave two
     // buttons looking active at once).
-    ['calc', 'prospects', 'weights'].forEach(function (t) {
+    ['calc', 'prospects', 'weights', 'locations'].forEach(function (t) {
       var btn = document.getElementById('bdpg-tab-' + t);
       if (btn) btn.classList.toggle('active', t === name);
     });
