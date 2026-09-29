@@ -450,3 +450,150 @@ test('Service Center alone is still not a truck stop', () => {
   // Only the combined type maps; a pure service centre sells no diesel.
   assert.equal(BDPG_STATS.typeClass('Service Center'), 'none');
 });
+
+// ── lane-size rule ──────────────────────────────────────────────────────────
+
+test('the lane rule maps each tier to one size', () => {
+  assert.deepEqual(BDPG_STATS.LANE_SIZE_RULE, { '1-2': 'Small', '3-5': 'Medium', '6+': 'Large' });
+  assert.equal(BDPG_STATS.suggestSizeFromLanes(1), 'Small');
+  assert.equal(BDPG_STATS.suggestSizeFromLanes(2), 'Small');
+  assert.equal(BDPG_STATS.suggestSizeFromLanes(3), 'Medium');
+  assert.equal(BDPG_STATS.suggestSizeFromLanes(5), 'Medium');
+  assert.equal(BDPG_STATS.suggestSizeFromLanes(6), 'Large');
+  assert.equal(BDPG_STATS.suggestSizeFromLanes(40), 'Large');
+});
+
+test('the lane rule refuses unknown or impossible pump counts', () => {
+  [null, undefined, '', 0, -1, 'x', {}].forEach((v) => {
+    assert.equal(BDPG_STATS.suggestSizeFromLanes(v), null, JSON.stringify(v));
+  });
+});
+
+test('the lane rule only ever emits sizes BASELINE_TABLE knows', () => {
+  Object.keys(BDPG_STATS.LANE_SIZE_RULE).forEach((tier) => {
+    assert.ok(BDPG_STATS.SIZES.indexOf(BDPG_STATS.LANE_SIZE_RULE[tier]) !== -1, tier);
+  });
+});
+
+test('rule-sized and hand-sized are counted apart', () => {
+  const locs = [
+    loc({ id: 'H1', size: 'Small', roadway: 'Highway', avgGalMo: 5000, sizeOrigin: 'manual' }),
+    loc({ id: 'R1', size: 'Small', roadway: 'Highway', avgGalMo: 6000, sizeOrigin: 'lanes' }),
+    loc({ id: 'R2', size: 'Small', roadway: 'Highway', avgGalMo: 7000, sizeOrigin: 'lanes' })
+  ];
+  const r = BDPG_STATS.summarizeByProfile(locs, TABLE)
+    .find((x) => x.profile === 'Small truck stop' && x.roadway === 'Highway');
+  assert.equal(r.nManualSize, 1);
+  assert.equal(r.nRuleSized, 2);
+  assert.equal(r.n, 3);
+});
+
+test('ruleSizedMajority gates on the usable sample, not the mapped one', () => {
+  // Two usable hand-sized rows, plus three rule-sized rows that the reporting
+  // floor keeps out of the median. The median rests entirely on hand-set
+  // sizes, so this profile must NOT be blocked.
+  const locs = [
+    loc({ id: 'H1', size: 'Large', roadway: 'Interstate', avgGalMo: 20000, sizeOrigin: 'manual' }),
+    loc({ id: 'H2', size: 'Large', roadway: 'Interstate', avgGalMo: 22000, sizeOrigin: 'manual' }),
+    loc({ id: 'R1', size: 'Large', roadway: 'Interstate', avgGalMo: 3, sizeOrigin: 'lanes' }),
+    loc({ id: 'R2', size: 'Large', roadway: 'Interstate', avgGalMo: 4, sizeOrigin: 'lanes' }),
+    loc({ id: 'R3', size: 'Large', roadway: 'Interstate', avgGalMo: 5, sizeOrigin: 'lanes' })
+  ];
+  const r = BDPG_STATS.summarizeByProfile(locs, TABLE)
+    .find((x) => x.profile === 'Large truck stop' && x.roadway === 'Interstate');
+  assert.equal(r.nRuleSized, 3);
+  assert.equal(r.nRuleSizedUsable, 0);
+  assert.equal(r.ruleSizedMajority, false);
+});
+
+test('ruleSizedMajority is true only on a strict majority', () => {
+  function build(nRule, nManual) {
+    const l = [];
+    for (let i = 0; i < nRule; i++) l.push(loc({ id: 'R' + i, size: 'Medium', roadway: 'Highway', avgGalMo: 5000, sizeOrigin: 'lanes' }));
+    for (let i = 0; i < nManual; i++) l.push(loc({ id: 'H' + i, size: 'Medium', roadway: 'Highway', avgGalMo: 5000, sizeOrigin: 'manual' }));
+    return BDPG_STATS.summarizeByProfile(l, TABLE)
+      .find((x) => x.profile === 'Medium truck stop' && x.roadway === 'Highway');
+  }
+  assert.equal(build(2, 2).ruleSizedMajority, false, 'exactly half is not a majority');
+  assert.equal(build(3, 2).ruleSizedMajority, true);
+  assert.equal(build(0, 4).ruleSizedMajority, false);
+  assert.equal(build(4, 0).ruleSizedMajority, true);
+  assert.equal(build(0, 0).ruleSizedMajority, false, 'an empty sample is not majority anything');
+});
+
+// The property that makes the rule triage rather than evidence. Pinned so a
+// later "improvement" that lets rule-sized profiles feed Apply has to delete
+// a test that explains why it must not.
+test('PROPERTY: the lane rule makes Size a relabel of Roadway, not new information', () => {
+  // Build one non-conflicted truck stop for every roadway at every pump count
+  // that agrees with it, size them all by the rule, and check that roadway
+  // alone determines the size that came out.
+  const byRoadway = { Backroad: [1, 2], Highway: [3, 4, 5], Interstate: [6, 9, 20] };
+  const seen = {};
+  Object.keys(byRoadway).forEach((rw) => {
+    byRoadway[rw].forEach((lanes) => {
+      const size = BDPG_STATS.suggestSizeFromLanes(lanes);
+      const l = loc({ roadway: rw, dieselLanes: lanes, size, sizeOrigin: 'lanes' });
+      // Precondition: agreeing pump counts must not be conflicts.
+      assert.equal(BDPG_STATS.matchBaselineProfile(l, TABLE).status, 'ok', `${rw}/${lanes}`);
+      seen[rw] = seen[rw] || new Set();
+      seen[rw].add(size);
+    });
+  });
+  Object.keys(seen).forEach((rw) => {
+    assert.equal(seen[rw].size, 1,
+      `${rw} produced ${[...seen[rw]].join('/')} — if this ever exceeds 1 the rule has stopped being collinear with roadway and the Apply block can be revisited`);
+  });
+  assert.deepEqual([...seen.Backroad], ['Small']);
+  assert.deepEqual([...seen.Highway], ['Medium']);
+  assert.deepEqual([...seen.Interstate], ['Large']);
+});
+
+test('Size only participates in a truck stop profile lookup', () => {
+  assert.equal(BDPG_STATS.sizeAffectsProfile('Truck Stop'), true);
+  assert.equal(BDPG_STATS.sizeAffectsProfile('Truck Stop / Service Center'), true);
+  assert.equal(BDPG_STATS.sizeAffectsProfile('Fuel Stop'), false);
+  assert.equal(BDPG_STATS.sizeAffectsProfile('C-Store'), false);
+  assert.equal(BDPG_STATS.sizeAffectsProfile('PPO'), false);
+});
+
+test('a size on a fuel stop cannot change how it maps', () => {
+  // The invariant behind sizeAffectsProfile: if a fuel stop's mapping is
+  // indifferent to Size, then nothing derived from Size may disqualify it.
+  const sizes = ['', 'Small', 'Medium', 'Large'];
+  const rows = sizes.map((s) => BDPG_STATS.matchBaselineProfile(
+    loc({ type: 'Fuel Stop', size: s, sizeOrigin: s ? 'lanes' : '' }), TABLE));
+  rows.forEach((m, i) => {
+    assert.equal(m.status, 'ok', sizes[i]);
+    assert.equal(m.row.profile, 'Fuel stop', sizes[i]);
+  });
+});
+
+test('PROPERTY: the lane rule can populate only 3 of the 7 truck-stop profiles', () => {
+  // Every non-conflicted truck stop, sized by the rule, across every roadway
+  // and pump count. Four profiles stay empty no matter how much data arrives
+  // -- including Small truck stop / Highway, whose baseline was the one
+  // changed on 2026-09-24.
+  const locs = [];
+  [['Backroad', 1], ['Backroad', 2], ['Highway', 3], ['Highway', 4], ['Highway', 5],
+    ['Interstate', 6], ['Interstate', 10], ['Interstate', 30]].forEach((p, i) => {
+    locs.push(loc({
+      id: 'P' + i, roadway: p[0], dieselLanes: p[1],
+      size: BDPG_STATS.suggestSizeFromLanes(p[1]), sizeOrigin: 'lanes', avgGalMo: 5000
+    }));
+  });
+  const populated = BDPG_STATS.summarizeByProfile(locs, TABLE)
+    .filter((s) => s.nMapped > 0)
+    .map((s) => s.profile + '/' + s.roadway);
+  assert.deepEqual(populated.sort(), [
+    'Large truck stop/Interstate',
+    'Medium truck stop/Highway',
+    'Small truck stop/Backroad'
+  ]);
+  const empty = BDPG_STATS.summarizeByProfile(locs, TABLE)
+    .filter((s) => s.nMapped === 0 && s.profile !== 'Fuel stop')
+    .map((s) => s.profile + '/' + s.roadway);
+  assert.ok(empty.indexOf('Small truck stop/Highway') !== -1,
+    'Small/Highway must be unreachable by the rule alone');
+  assert.equal(empty.length, 4);
+});

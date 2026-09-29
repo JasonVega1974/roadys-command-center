@@ -1993,8 +1993,129 @@ function getCentroid(pathStr, axis){
   BDPG.LOCATIONS_SAMPLE_URL = '../network-locations.sample.json';
   BDPG.LOCATION_EDITS_KEY = 'roadysBDPGLocationEdits';
 
+  // `name` is deliberately NOT here. Member business names never enter the
+  // committed file -- they arrive through the local-only overlay below -- so
+  // a regeneration that starts including them must trip the unexpected-key
+  // warning rather than pass validation silently. The allowlist is the guard;
+  // widening it to accept `name` would disarm the one check standing between
+  // a generator change and 249 business names on a public Pages site.
   BDPG.LOCATION_FIELDS = ['id', 'city', 'state', 'group', 'type', 'dieselLanes',
     'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
+
+  // ── Local-only name overlay ─────────────────────────────────────────────
+  //
+  // Truck stop names are useful for the one job this tab exists for -- you
+  // cannot judge whether a site is Small or Large from an opaque id -- but
+  // they cannot ship. network-locations.json is committed to a public Pages
+  // repo, and the rows are already only pseudonymous: 217 of the 249 are the
+  // only location in their city+state, so city+state+group already points at
+  // a specific member. Adding names would remove even that thin cover and put
+  // them in git history permanently.
+  //
+  // So names live here instead: imported by the admin from a local file,
+  // parsed entirely in this browser tab, written to localStorage, never
+  // uploaded and never committed. Same contract as the network-context
+  // generator on the Weights tab. The public site shows "—" for every name,
+  // which is what an anonymous visitor should see; an admin who has imported
+  // once sees real names on that same hosted page.
+  BDPG.LOCATION_NAMES_KEY = 'roadysBDPGLocationNames';
+  BDPG.locationNames = {};
+  BDPG.locationNamesDropped = 0;
+
+  BDPG.loadLocationNames = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(BDPG.LOCATION_NAMES_KEY); } catch (e) { return; }
+    if (!raw) return;
+    var parsed = null;
+    try { parsed = JSON.parse(raw); } catch (e2) { parsed = null; }
+    if (!parsed || typeof parsed !== 'object' ||
+        Object.prototype.toString.call(parsed) === '[object Array]') {
+      try { localStorage.removeItem(BDPG.LOCATION_NAMES_KEY); } catch (e3) {}
+      return;
+    }
+    var kept = {};
+    Object.keys(parsed).forEach(function (k) {
+      var v = str(parsed[k]).trim();
+      if (v) kept[String(k).trim()] = v;
+    });
+    BDPG.locationNames = kept;
+  };
+
+  BDPG.locationName = function (id) {
+    return hasOwn(BDPG.locationNames, id) ? BDPG.locationNames[id] : '';
+  };
+
+  // Accepts a JSON object map {"LOC-001":"Name"} or two-column CSV/TSV
+  // (id,name), with or without a header row. Both are parsed in this tab;
+  // nothing is sent anywhere.
+  BDPG.parseNameOverlay = function (text) {
+    var out = {}, dropped = 0;
+    var t = String(text || '').replace(/^﻿/, '').trim();
+    if (!t) return { names: out, dropped: 0, error: 'The file was empty.' };
+
+    if (t.charAt(0) === '{') {
+      var obj = null;
+      try { obj = JSON.parse(t); } catch (e) { return { names: {}, dropped: 0, error: 'That file is not valid JSON.' }; }
+      Object.keys(obj).forEach(function (k) {
+        var id = String(k).trim(), v = str(obj[k]).trim();
+        if (id && v) out[id] = v; else dropped++;
+      });
+      return { names: out, dropped: dropped, error: '' };
+    }
+
+    t.split(/\r?\n/).forEach(function (line, i) {
+      if (!line.trim()) return;
+      var sep = line.indexOf('\t') !== -1 ? '\t' : ',';
+      var idx = line.indexOf(sep);
+      if (idx === -1) { dropped++; return; }
+      var id = line.slice(0, idx).trim().replace(/^"|"$/g, '');
+      var nm = line.slice(idx + 1).trim().replace(/^"|"$/g, '');
+      // A header row is skipped rather than imported as a location called
+      // "name" -- but only on the first line, so a real id spelled "id"
+      // further down is not silently lost.
+      if (i === 0 && /^id$/i.test(id)) return;
+      if (id && nm) out[id] = nm; else dropped++;
+    });
+    return { names: out, dropped: dropped, error: '' };
+  };
+
+  BDPG.onImportNames = function (input) {
+    var file = input && input.files && input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var res = BDPG.parseNameOverlay(reader.result);
+      if (res.error) { BDPG.namesMsg(res.error, true); return; }
+      var count = Object.keys(res.names).length;
+      if (!count) { BDPG.namesMsg('No id/name pairs were found in that file.', true); return; }
+      try { localStorage.setItem(BDPG.LOCATION_NAMES_KEY, JSON.stringify(res.names)); }
+      catch (e) { BDPG.namesMsg('Could not store the names in this browser (they may be too large).', true); return; }
+      BDPG.locationNames = res.names;
+      BDPG.locationNamesDropped = res.dropped;
+      var matched = BDPG.locations.filter(function (l) { return hasOwn(res.names, l.id); }).length;
+      BDPG.render();
+      BDPG.namesMsg(count + ' names imported, ' + matched + ' matched to a loaded location' +
+        (res.dropped ? ' (' + res.dropped + ' unusable rows skipped)' : '') +
+        '. Stored in this browser only — never uploaded, never committed.', false);
+    };
+    reader.onerror = function () { BDPG.namesMsg('That file could not be read.', true); };
+    reader.readAsText(file);
+  };
+
+  BDPG.onClearNames = function () {
+    try { localStorage.removeItem(BDPG.LOCATION_NAMES_KEY); } catch (e) {}
+    BDPG.locationNames = {};
+    BDPG.locationNamesDropped = 0;
+    BDPG.render();
+    BDPG.namesMsg('Names cleared from this browser.', false);
+  };
+
+  BDPG.namesMsg = function (text, isErr) {
+    var el = document.getElementById('bdpg-nl-names-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
   BDPG.LOCATION_EDITABLE = ['dieselLanes', 'size', 'roadway', 'distanceToInterstate'];
   BDPG.LOCATION_TYPES = ['Truck Stop', 'Fuel Stop', 'Service Center', 'C-Store'];
   BDPG.DISTANCE_OPTIONS = ['On exit', '1-5 mi', '5-15 mi', '15+ mi'];
@@ -2012,11 +2133,16 @@ function getCentroid(pathStr, axis){
   // chrome, and stateSig() must never read a filter change as unsaved work.
   BDPG.locFilter = { region: '', type: '', size: '', completeness: '' };
   BDPG.locApplyPending = null;
+  // Row selection for bulk sizing. On BDPG rather than BDPG.state for the
+  // same reason as the filters: ticking a checkbox is not unsaved work.
+  BDPG.locSelected = {};
+  BDPG.locBulkSize = '';
 
   BDPG.loadLocations = function (onDone) {
     if (BDPG._locationsLoaded) { if (onDone) onDone(); return; }
     BDPG._locationsLoaded = true;
     BDPG.loadLocationEdits();
+    BDPG.loadLocationNames();
 
     function accept(json, label) {
       BDPG.locationsSourceLabel = label;
@@ -2098,7 +2224,9 @@ function getCentroid(pathStr, axis){
         if (v === undefined) { dropped++; return; }
         row[f] = v; any = true;
       });
-      if (hasOwn(e, 'sizeOrigin') && e.sizeOrigin === 'manual') row.sizeOrigin = 'manual';
+      if (hasOwn(e, 'sizeOrigin') && BDPG_STATS.SIZE_ORIGINS.indexOf(e.sizeOrigin) !== -1) {
+        row.sizeOrigin = e.sizeOrigin;
+      }
       if (any) kept[id] = row;
     });
     BDPG.locationEdits = kept;
@@ -2178,7 +2306,11 @@ function getCentroid(pathStr, axis){
     };
     if (e) {
       BDPG.LOCATION_EDITABLE.forEach(function (f) { if (hasOwn(e, f)) out[f] = e[f]; });
-      if (e.sizeOrigin === 'manual' && out.size) out.sizeOrigin = 'manual';
+      // An origin without a size is meaningless, and a stale one would
+      // inflate the hand-sized or rule-sized counts a profile reports.
+      if (out.size && BDPG_STATS.SIZE_ORIGINS.indexOf(e.sizeOrigin) !== -1) {
+        out.sizeOrigin = e.sizeOrigin;
+      }
     }
     out.region = out.state ? BusDevGallonsCalc.resolveRegion(out.state) : null;
     return out;
@@ -2256,9 +2388,13 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.locHandSetHtml = function (eff) {
-    return eff.sizeOrigin === 'manual'
-      ? ' <span style="font-size:.66em;color:var(--yellow)" title="Size was set by hand on this page, not read from source data. Every profile median reports how many of its sample are hand-sized, because a median grouped by a hand-set field is only as independent as the hand that set it.">hand-set</span>'
-      : '';
+    if (eff.sizeOrigin === 'manual') {
+      return ' <span style="font-size:.66em;color:var(--yellow)" title="Size was set by hand on this page, not read from source data. Every profile median reports how many of its sample are hand-sized, because a median grouped by a hand-set field is only as independent as the hand that set it.">hand-set</span>';
+    }
+    if (eff.sizeOrigin === 'lanes') {
+      return ' <span style="font-size:.66em;color:var(--red)" title="Suggested from the diesel pump count, not observed. For any location whose lanes and roadway agree, this rule just relabels the roadway — Backroad→Small, Highway→Medium, Interstate→Large — so it adds no information the roadway did not already carry. Override it wherever you know the site. A profile whose usable sample is mostly rule-sized is blocked from Apply.">lane-rule</span>';
+    }
+    return '';
   };
 
   BDPG.locMarkCellHtml = function (eff) {
@@ -2295,8 +2431,18 @@ function getCentroid(pathStr, axis){
     var idAttr = BDPG.escHtml(eff.id);
     var lanes = (eff.dieselLanes === null || eff.dieselLanes === undefined || eff.dieselLanes === '')
       ? '' : String(eff.dieselLanes);
+    var nm = BDPG.locationName(eff.id);
     return '<tr>' +
+      '<td style="width:50px;text-align:center">' +
+        '<input type="checkbox" id="bdpg-nl-sel-' + idAttr + '"' +
+          (BDPG.locSelected[eff.id] ? ' checked' : '') +
+          ' aria-label="Select ' + idAttr + '"' +
+          ' onchange="BDPG.onLocationSelect(\'' + idAttr + '\',this.checked)"></td>' +
       '<td style="font-family:var(--ff)">' + BDPG.escHtml(eff.id) + '</td>' +
+      // Name comes from the local-only overlay, never from the committed
+      // file. An em dash here is the correct and expected reading for a
+      // public visitor.
+      '<td>' + (nm ? BDPG.escHtml(nm) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td>' + BDPG.escHtml(eff.city) + ', ' + BDPG.escHtml(eff.state) + '</td>' +
       '<td style="color:var(--muted)">' + BDPG.escHtml(eff.region || '—') + '</td>' +
       '<td style="color:var(--muted)">' + BDPG.escHtml(eff.group || '—') + '</td>' +
@@ -2377,6 +2523,143 @@ function getCentroid(pathStr, axis){
     BDPG.locMsg('', false);
   };
 
+  // ── Lane-rule sizing (triage) ───────────────────────────────────────────
+
+  // Candidates: Size currently unset AND a usable pump count. A location that
+  // already carries a size is never touched, whatever its origin -- including
+  // one this rule set earlier, so re-running is idempotent and can never
+  // overwrite a hand correction.
+  BDPG.laneRuleCandidates = function () {
+    return BDPG.effectiveLocations().filter(function (eff) {
+      // Truck stops only. A fuel stop maps on Type alone and a C-Store maps
+      // to nothing, so a Size on either is inert -- and an inert rule-sized
+      // flag still counts toward the rule-sized majority that blocks Apply,
+      // which is how the first run of this disqualified Fuel stop over edits
+      // that could not have affected it.
+      if (!BDPG_STATS.sizeAffectsProfile(eff.type)) return false;
+      return !eff.size && BDPG_STATS.suggestSizeFromLanes(eff.dieselLanes) !== null;
+    });
+  };
+
+  BDPG.onSuggestSizesFromLanes = function () {
+    var cands = BDPG.laneRuleCandidates();
+    if (!cands.length) {
+      BDPG.locMsg('No locations to size: every row with a known pump count already has a Size.', true);
+      return;
+    }
+    if (!window.confirm('This will suggest sizes for ' + cands.length +
+        ' locations based on diesel lane count. Lanes are a physical proxy for size but not a ' +
+        'perfect one — review and override where you have better information. Continue?')) {
+      return;
+    }
+    var next = BDPG.cloneLocationEdits();
+    var applied = 0;
+    cands.forEach(function (eff) {
+      var size = BDPG_STATS.suggestSizeFromLanes(eff.dieselLanes);
+      if (!size) return;
+      var row = hasOwn(next, eff.id) ? next[eff.id] : {};
+      row.size = size;
+      row.sizeOrigin = 'lanes';
+      next[eff.id] = row;
+      applied++;
+    });
+    if (!BDPG.commitLocationEdits(next)) {
+      BDPG.locMsg('Could not save the suggested sizes in this browser — nothing was changed.', true);
+      return;
+    }
+    BDPG.render();
+    BDPG.locMsg(applied + ' sizes suggested from diesel lanes. These are marked "lane-rule" and ' +
+      'are triage only — for any location whose lanes and roadway agree, the rule just relabels ' +
+      'the roadway, so a profile whose sample is mostly rule-sized is blocked from Apply.', false);
+  };
+
+  // Reverts ONLY rule-set sizes. A hand-set size is a judgement somebody made
+  // about a real site and must survive this button.
+  BDPG.onClearLaneRuleSizes = function () {
+    var next = BDPG.cloneLocationEdits();
+    var cleared = 0;
+    Object.keys(next).forEach(function (id) {
+      if (next[id].sizeOrigin !== 'lanes') return;
+      delete next[id].size;
+      delete next[id].sizeOrigin;
+      cleared++;
+      if (Object.keys(next[id]).length === 0) delete next[id];
+    });
+    if (!cleared) { BDPG.locMsg('There are no lane-rule sizes to clear.', true); return; }
+    if (!BDPG.commitLocationEdits(next)) {
+      BDPG.locMsg('Could not clear the lane-rule sizes in this browser — nothing was changed.', true);
+      return;
+    }
+    BDPG.render();
+    BDPG.locMsg(cleared + ' lane-rule sizes cleared. Hand-set sizes were left untouched.', false);
+  };
+
+  // ── Multi-select bulk sizing ────────────────────────────────────────────
+
+  BDPG.onLocationSelect = function (id, checked) {
+    if (checked) BDPG.locSelected[id] = 1; else delete BDPG.locSelected[id];
+    BDPG.refreshLocationSelectionUi();
+  };
+
+  // "Select all" means all VISIBLE rows -- the point of the control is to
+  // filter down to a comparable set and size it together, so it must never
+  // reach past the filter into rows the admin cannot see.
+  BDPG.onLocationSelectAll = function (checked) {
+    var visible = BDPG.effectiveLocations().filter(BDPG.locationPassesFilter);
+    visible.forEach(function (eff) {
+      if (checked) BDPG.locSelected[eff.id] = 1; else delete BDPG.locSelected[eff.id];
+      var box = document.getElementById('bdpg-nl-sel-' + eff.id);
+      if (box) box.checked = !!checked;
+    });
+    BDPG.refreshLocationSelectionUi();
+  };
+
+  BDPG.selectedLocationIds = function () { return Object.keys(BDPG.locSelected); };
+
+  BDPG.refreshLocationSelectionUi = function () {
+    var n = BDPG.selectedLocationIds().length;
+    var lbl = document.getElementById('bdpg-nl-selcount');
+    if (lbl) lbl.textContent = n ? (n + ' selected') : 'none selected';
+    var btn = document.getElementById('bdpg-nl-bulk-apply');
+    if (btn) btn.disabled = !(n && BDPG.locBulkSize);
+    // The header box reflects the visible set, not the whole file.
+    var visible = BDPG.effectiveLocations().filter(BDPG.locationPassesFilter);
+    var all = visible.length > 0 && visible.every(function (e) { return !!BDPG.locSelected[e.id]; });
+    var head = document.getElementById('bdpg-nl-selall');
+    if (head) {
+      head.checked = all;
+      head.indeterminate = !all && visible.some(function (e) { return !!BDPG.locSelected[e.id]; });
+    }
+  };
+
+  BDPG.onBulkSizeChange = function (v) {
+    BDPG.locBulkSize = BDPG_STATS.SIZES.indexOf(v) === -1 ? '' : v;
+    BDPG.refreshLocationSelectionUi();
+  };
+
+  // Bulk sizing is MANUAL origin: the admin picked the size and chose the
+  // rows, which is a judgement about those sites -- unlike the lane rule,
+  // which derives one mechanically.
+  BDPG.onBulkSetSize = function () {
+    var ids = BDPG.selectedLocationIds();
+    var size = BDPG.locBulkSize;
+    if (!ids.length || BDPG_STATS.SIZES.indexOf(size) === -1) return;
+    var next = BDPG.cloneLocationEdits();
+    ids.forEach(function (id) {
+      var row = hasOwn(next, id) ? next[id] : {};
+      row.size = size;
+      row.sizeOrigin = 'manual';
+      next[id] = row;
+    });
+    if (!BDPG.commitLocationEdits(next)) {
+      BDPG.locMsg('Could not save the sizes in this browser — nothing was changed.', true);
+      return;
+    }
+    BDPG.locSelected = {};
+    BDPG.render();
+    BDPG.locMsg(ids.length + ' locations set to ' + size + ' (hand-set). Selection cleared.', false);
+  };
+
   BDPG.onLocationReset = function (id) {
     var next = BDPG.cloneLocationEdits();
     delete next[id];
@@ -2448,7 +2731,7 @@ function getCentroid(pathStr, axis){
   BDPG.locationRowsHtml = function () {
     var rows = BDPG.effectiveLocations().filter(BDPG.locationPassesFilter);
     if (!rows.length) {
-      return '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--muted)">' +
+      return '<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--muted)">' +
         'No locations match the current filters.</td></tr>';
     }
     return rows.map(BDPG.locationRowHtml).join('');
@@ -2474,11 +2757,40 @@ function getCentroid(pathStr, axis){
         'rather than low-volume — excluded from every median and from Apply, counted here instead.</div>';
   };
 
+  // The single Apply gate. Three independent conditions, each of which has
+  // already been shown to matter on real data:
+  //   * a median exists at all
+  //   * n>=5 usable locations behind it (sample size)
+  //   * the usable sample is not majority lane-rule-sized (information)
+  // The third is the one proved by the collinearity property test: for a
+  // non-conflicted location the lane rule relabels Roadway, so a median
+  // resting mostly on rule-sized rows is a roadway average wearing a profile
+  // name. It must not reach the calculator.
+  BDPG.baselineApplyEligible = function (r) {
+    return r.median !== null && r.n >= 5 && !r.ruleSizedMajority;
+  };
+
+  BDPG.baselineApplySkipReason = function (r) {
+    if (r.median === null) {
+      return r.nNonReporting > 0
+        ? 'every mapped location is below the ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) +
+          ' gal/mo reporting floor, or has no gallon figure'
+        : 'no locations with a gallon figure';
+    }
+    if (r.n < 5) return 'n=' + r.n + ' usable, below the n≥5 floor';
+    if (r.ruleSizedMajority) {
+      return r.nRuleSizedUsable + ' of its ' + r.n + ' usable locations were sized by the ' +
+        'diesel-lane rule, which just relabels the roadway — this median is a roadway average, ' +
+        'not evidence about this size band. Override those sizes from real site knowledge to unblock it';
+    }
+    return 'not eligible';
+  };
+
   BDPG.locAnalysisInnerHtml = function () {
     var all = BDPG.effectiveLocations();
     var sum = BDPG_STATS.summarizeByProfile(all, BDPG_CONFIG.BASELINE_TABLE);
     var counts = BDPG_STATS.completenessCounts(all, BDPG_CONFIG.BASELINE_TABLE);
-    var eligible = sum.filter(function (r) { return r.n >= 5 && r.median !== null; });
+    var eligible = sum.filter(BDPG.baselineApplyEligible);
 
     // Surfaced as a standing line, not buried in the per-row markers. On the
     // real 249-location file this reads 69, and that is a finding about the
@@ -2499,7 +2811,7 @@ function getCentroid(pathStr, axis){
       : '';
 
     var rows = sum.map(function (r) {
-      var trust = r.n >= 5;
+      var trust = BDPG.baselineApplyEligible(r);
       var med = r.median === null ? '—' : BDPG.fmtGal(r.median);
       var delta = r.delta === null ? '—'
         : (r.delta > 0 ? '+' : '') + BDPG.fmtGal(r.delta);
@@ -2521,6 +2833,12 @@ function getCentroid(pathStr, axis){
           ? '<span style="font-size:.72em;color:var(--yellow)" title="' + r.nManualSize +
             ' of the mapped rows had Size set by hand on this page rather than from source data. A median grouped by a hand-set field is only as independent as the hand that set it.">, ' +
             r.nManualSize + ' hand-sized</span>'
+          : '') +
+        (r.nRuleSized > 0
+          ? '<span style="font-size:.72em;color:var(--red)" title="' + r.nRuleSized +
+            ' of the mapped rows were sized by the diesel-lane rule, of which ' + r.nRuleSizedUsable +
+            ' reach this median. For a non-conflicted location that rule just relabels the roadway, so those rows carry no information the roadway did not already give.">, ' +
+            r.nRuleSized + ' lane-rule</span>'
           : '');
       return '<tr>' +
         '<td>' + BDPG.escHtml(r.profile + ' · ' + r.roadway + ' · ' + r.lanes) + '</td>' +
@@ -2531,7 +2849,7 @@ function getCentroid(pathStr, axis){
         '<td style="text-align:right">' + BDPG.fmtGal(r.currentBaseline) + '</td>' +
         '<td style="text-align:right;color:' + deltaColor + '">' + delta + '</td>' +
         '<td><span class="badge tag-' + (trust ? 'green' : 'gray') + '">' +
-          (trust ? 'n≥5' : 'n<5 — not applied') + '</span></td>' +
+          (trust ? 'n≥5' : (r.ruleSizedMajority ? 'lane-rule — blocked' : 'n<5 — not applied')) + '</span></td>' +
       '</tr>';
     }).join('');
 
@@ -2570,9 +2888,10 @@ function getCentroid(pathStr, axis){
               (eligible.length ? '' : ' disabled') + '>Apply suggested baselines</button>' +
             '<span style="font-size:.78em;color:var(--muted)">' +
               (eligible.length
-                ? eligible.length + ' of 8 profiles reach n≥5 and would be applied. The other ' +
-                  (8 - eligible.length) + ' are skipped — see the confirmation.'
-                : 'No profile reaches n≥5 yet, so there is nothing to apply.') +
+                ? eligible.length + ' of 8 profiles are eligible and would be applied. The other ' +
+                  (8 - eligible.length) + ' are skipped — see the confirmation for which and why.'
+                : 'No profile is eligible yet — each is short of n≥5 usable locations, has no median, ' +
+                  'or rests mostly on lane-rule sizes. Nothing to apply.') +
             '</span>' +
           '</div>') +
       '<div id="bdpg-nl-apply-msg" style="font-size:.8em;margin-top:8px"></div>';
@@ -2596,8 +2915,8 @@ function getCentroid(pathStr, axis){
 
   BDPG.locApplyConfirmHtml = function () {
     var sum = BDPG.locApplyPending || [];
-    var apply = sum.filter(function (r) { return r.n >= 5 && r.median !== null; });
-    var skip = sum.filter(function (r) { return !(r.n >= 5 && r.median !== null); });
+    var apply = sum.filter(BDPG.baselineApplyEligible);
+    var skip = sum.filter(function (r) { return !BDPG.baselineApplyEligible(r); });
 
     var applyRows = apply.map(function (r) {
       return '<tr><td>' + BDPG.escHtml(r.profile + ' · ' + r.roadway) + '</td>' +
@@ -2609,12 +2928,7 @@ function getCentroid(pathStr, axis){
     }).join('');
 
     var skipRows = skip.map(function (r) {
-      var why = r.median === null
-        ? (r.nNonReporting > 0
-            ? 'every mapped location is below the ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) +
-              ' gal/mo reporting floor, or has no gallon figure'
-            : 'no locations with a gallon figure')
-        : 'n=' + r.n + ' usable, below the n≥5 floor';
+      var why = BDPG.baselineApplySkipReason(r);
       return '<li>' + BDPG.escHtml(r.profile + ' · ' + r.roadway) + ' — ' + why +
         '. Stays at ' + BDPG.fmtGal(r.currentBaseline) + '.</li>';
     }).join('');
@@ -2649,7 +2963,7 @@ function getCentroid(pathStr, axis){
             '<th>Profile</th><th style="text-align:right">Now</th><th></th>' +
             '<th style="text-align:right">After</th><th style="text-align:right">Sample</th>' +
           '</tr></thead><tbody>' + applyRows + '</tbody></table></div>' + excludedBlock
-        : '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">Nothing meets the n≥5 floor of usable locations, so no baseline would change.</div>') +
+        : '<div style="font-size:.8em;color:var(--yellow);margin-bottom:8px">No profile is eligible, so no baseline would change.</div>') +
       (skip.length
         ? '<div style="font-size:.78em;color:var(--muted);margin-top:10px">' +
             '<b>Skipped (' + skip.length + '):</b><ul style="margin:4px 0 0 18px">' + skipRows + '</ul></div>'
@@ -2663,7 +2977,7 @@ function getCentroid(pathStr, axis){
 
   BDPG.onConfirmApplyBaselines = function () {
     var sum = BDPG.locApplyPending || [];
-    var apply = sum.filter(function (r) { return r.n >= 5 && r.median !== null; });
+    var apply = sum.filter(BDPG.baselineApplyEligible);
     if (!apply.length) { BDPG.locApplyPending = null; BDPG.refreshLocationAnalysis(); return; }
 
     // Written through the existing override store, so this lands in exactly
@@ -2702,6 +3016,42 @@ function getCentroid(pathStr, axis){
     if (!el) return;
     el.textContent = text;
     el.style.color = isErr ? 'var(--red)' : 'var(--green)';
+  };
+
+  BDPG.locationsCardNamesCount = function () {
+    var loaded = Object.keys(BDPG.locationNames).length;
+    if (!loaded) return 0;
+    var matched = 0;
+    BDPG.locations.forEach(function (l) { if (hasOwn(BDPG.locationNames, l.id)) matched++; });
+    return matched;
+  };
+
+  BDPG.locationNamesCardHtml = function () {
+    var loaded = Object.keys(BDPG.locationNames).length;
+    var matched = BDPG.locationsCardNamesCount();
+    return '<div class="bdpg-box" style="margin-bottom:10px;font-size:.8em">' +
+      '<div style="font-weight:700;margin-bottom:4px">🏷 Truck stop names — local only</div>' +
+      '<div style="color:var(--muted);margin-bottom:8px">' +
+        'Names are <b>not</b> in <code>network-locations.json</code> and must never be: that file is ' +
+        'committed to a public repository and served by GitHub Pages. Import them here instead — the ' +
+        'file is parsed in this browser tab, stored under <code>' +
+        BDPG.escHtml(BDPG.LOCATION_NAMES_KEY) + '</code>, and never uploaded or committed. Anyone ' +
+        'without this import sees “—” in the Name column, which is what a public visitor should see.' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        '<input type="file" accept=".json,.csv,.tsv,.txt" onchange="BDPG.onImportNames(this)" ' +
+          'style="font-size:.95em">' +
+        (loaded
+          ? '<button class="btn" onclick="BDPG.onClearNames()">Clear names from this browser</button>' +
+            '<span style="color:var(--muted)">' + loaded + ' names loaded, ' + matched +
+            ' matched to a location</span>'
+          : '<span style="color:var(--muted)">No names imported in this browser</span>') +
+      '</div>' +
+      '<div style="color:var(--muted);margin-top:6px;font-size:.92em">' +
+        'Accepts a JSON map <code>{"LOC-001":"Name"}</code> or two columns of CSV/TSV ' +
+        '<code>id,name</code> (a leading <code>id</code> header row is skipped).</div>' +
+      '<div id="bdpg-nl-names-msg" style="margin-top:6px"></div>' +
+    '</div>';
   };
 
   BDPG.locationsTabHtml = function () {
@@ -2784,6 +3134,7 @@ function getCentroid(pathStr, axis){
         BDPG.locCompletenessInnerHtml() + '</div>' +
       '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.8em">' +
         '<b>Setting Size:</b> ' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '</div>' +
+      BDPG.locationNamesCardHtml() +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
         '<select onchange="BDPG.onLocationFilter(\'region\',this.value)"><option value="">All regions</option>' + regionOpts + '</select>' +
         '<select onchange="BDPG.onLocationFilter(\'type\',this.value)"><option value="">All types</option>' + typeOpts + '</select>' +
@@ -2791,8 +3142,47 @@ function getCentroid(pathStr, axis){
         '<select onchange="BDPG.onLocationFilter(\'completeness\',this.value)"><option value="">All rows</option>' + compOpts + '</select>' +
         '<span id="bdpg-nl-shown" style="font-size:.78em;color:var(--muted)">Showing all ' + BDPG.locations.length + ' locations</span>' +
       '</div>' +
+      // Bulk sizing and the lane rule sit together because they are the two
+      // ways to fill Size at scale, and the difference between them -- a
+      // judgement about chosen sites versus a mechanical relabel -- is the
+      // thing the analysis panel later has to account for.
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;' +
+          'padding:8px 10px;border:1px solid var(--border);border-radius:6px">' +
+        '<span id="bdpg-nl-selcount" style="font-size:.78em;color:var(--muted);min-width:7em">none selected</span>' +
+        '<select onchange="BDPG.onBulkSizeChange(this.value)">' +
+          '<option value="">Set size for selected…</option>' +
+          BDPG_STATS.SIZES.map(function (sz) {
+            return '<option value="' + BDPG.escHtml(sz) + '"' +
+              (BDPG.locBulkSize === sz ? ' selected' : '') + '>' + BDPG.escHtml(sz) + '</option>';
+          }).join('') +
+        '</select>' +
+        '<button class="btn" id="bdpg-nl-bulk-apply" disabled onclick="BDPG.onBulkSetSize()" ' +
+          'title="Sets the chosen Size on every checked row, recorded as hand-set">Apply to selected</button>' +
+        '<span style="color:var(--border)">|</span>' +
+        '<button class="btn" onclick="BDPG.onSuggestSizesFromLanes()" ' +
+          'title="Fills Size from the diesel pump count for rows that have no Size yet. Triage only — see the note below.">Suggest sizes from lanes</button>' +
+        '<button class="btn" onclick="BDPG.onClearLaneRuleSizes()" ' +
+          'title="Reverts only the sizes this rule set. Hand-set sizes are untouched.">Clear lane-rule sizes</button>' +
+      '</div>' +
+      '<div class="bdpg-box" style="border-color:var(--red);margin-bottom:10px;font-size:.78em">' +
+        '<b>About “Suggest sizes from lanes”:</b> it maps 1-2→Small, 3-5→Medium, 6+→Large. For any ' +
+        'location whose lanes and roadway agree, that is a one-to-one relabel of Roadway ' +
+        '(Backroad→Small, Highway→Medium, Interstate→Large), so it adds nothing the roadway did not ' +
+        'already say — and it can only ever populate three of the seven truck-stop profiles, leaving ' +
+        'Small/Highway, Small/Interstate, Medium/Interstate and Large/Highway permanently empty. ' +
+        'Use it to triage, then override from real site knowledge. A profile whose usable sample is ' +
+        'mostly rule-sized is blocked from Apply.</div>' +
       '<div class="tw"><table class="dt" style="font-size:.8em"><thead><tr>' +
-        '<th>Location ID</th><th>City, State</th><th>Region</th><th>Group</th><th>Type</th>' +
+        // width:50px is what the delegated sorter checks to skip a column --
+        // sorting rows by checkbox state would be meaningless and would
+        // scatter a carefully filtered selection.
+        '<th style="width:50px;text-align:center">' +
+          '<input type="checkbox" id="bdpg-nl-selall" aria-label="Select all visible locations" ' +
+            'title="Select every row matching the current filter" ' +
+            'onchange="BDPG.onLocationSelectAll(this.checked)"></th>' +
+        '<th>Location ID</th>' +
+        '<th title="From the local-only name overlay. Never stored in network-locations.json, which is public.">Name</th>' +
+        '<th>City, State</th><th>Region</th><th>Group</th><th>Type</th>' +
         '<th style="text-align:right">Diesel Lanes</th>' +
         '<th title="' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '">Size ⓘ</th>' +
         '<th>Baseline Profile Fit</th>' +
