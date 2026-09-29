@@ -124,6 +124,105 @@
   // edit that changed nothing about it.
   function sizeAffectsProfile(type) { return typeClass(type) === 'truckstop'; }
 
+  // The Size a baseline profile name implies. 'Small truck stop' -> 'Small'.
+  // Fuel stop has no size: its single profile is roadway 'Any'.
+  function profileSize(profile) {
+    var p = String(profile || '').trim();
+    for (var i = 0; i < SIZES.length; i++) {
+      if (p.indexOf(SIZES[i] + ' ') === 0) return SIZES[i];
+    }
+    return null;
+  }
+
+  // A prospect's baseline needs at least this many comparable network
+  // locations before the live median replaces the static table value.
+  //
+  // Three, not the five the Apply gate uses, and the difference is deliberate:
+  // Apply rewrites a baseline for every future prospect in every region, this
+  // picks one number for one prospect in one region and is recomputed from
+  // scratch next time. A thinner sample is acceptable when nothing persists.
+  var DYNAMIC_BASELINE_MIN_N = 3;
+
+  // The locations comparable to one prospect: same region, same type, and for
+  // a truck stop the same size and lane band. Exported separately from
+  // dynamicBaseline() so the UI can report what matched without recomputing.
+  //
+  // sizeOrigin must be 'manual'. A lane-rule size is a relabel of roadway
+  // (see LANE_SIZE_RULE), so grouping by it would make "the median for Medium
+  // truck stops on a Highway" mean nothing more than "the median on a
+  // Highway" -- the same reason a rule-sized profile is blocked from Apply.
+  // 'manual' now arrives from two places: a curated sizeSource in
+  // network-locations.json, and a per-browser admin edit.
+  function comparableLocations(locations, row, region, opts) {
+    var wantSize = profileSize(row.profile);
+    var isFuel = typeClass(row.profile === 'Fuel stop' ? 'Fuel Stop' : 'Truck Stop') === 'fuel';
+    return (locations || []).filter(function (loc) {
+      if (!loc || loc.region !== region) return false;
+      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return false;
+      if (isFuel) return typeClass(loc.type) === 'fuel';
+      if (typeClass(loc.type) !== 'truckstop') return false;
+      if (laneTierFor(loc.dieselLanes) !== row.lanes) return false;
+      if (loc.size !== wantSize) return false;
+      return loc.sizeOrigin === 'manual';
+    });
+  }
+
+  // The baseline for one prospect: the median of its comparable locations, or
+  // the static table value when too few exist.
+  //
+  // Always returns a usable number. `source` says which it is, and the caller
+  // is expected to show that -- a dynamic baseline and a fallback look
+  // identical as figures and must never look identical on screen.
+  //   'network'    median of n >= DYNAMIC_BASELINE_MIN_N comparables
+  //   'static'     too few comparables; static table value
+  //   'no-region'  prospect has no resolved region; nothing to compare within
+  //   'no-profile' no such row in BASELINE_TABLE; there is no baseline at all
+  function dynamicBaseline(sel, locations, baselineTable, opts) {
+    var row = null;
+    (baselineTable || []).forEach(function (r) {
+      if (r.profile === (sel && sel.profile) && r.roadway === (sel && sel.roadway)) row = r;
+    });
+    if (!row) {
+      return { baseline: null, source: 'no-profile', n: 0, median: null,
+               staticBaseline: null, region: (sel && sel.region) || null, row: null };
+    }
+    var base = {
+      staticBaseline: row.baseline, row: row,
+      region: (sel && sel.region) || null, minN: optMinN(opts)
+    };
+    if (!base.region) {
+      return assign(base, { baseline: row.baseline, source: 'no-region', n: 0, median: null });
+    }
+    var hits = comparableLocations(locations, row, base.region, opts);
+    var med = median(hits.map(function (h) { return h.avgGalMo; }));
+    if (hits.length < base.minN || med === null) {
+      return assign(base, { baseline: row.baseline, source: 'static', n: hits.length, median: roundOrNull(med) });
+    }
+    return assign(base, { baseline: Math.round(med), source: 'network', n: hits.length, median: Math.round(med) });
+  }
+
+  function optMinN(opts) {
+    var v = opts && toFinite(opts.minN);
+    return v === null || v === undefined ? DYNAMIC_BASELINE_MIN_N : v;
+  }
+
+  function assign(a, b) {
+    var out = {};
+    Object.keys(a).forEach(function (k) { out[k] = a[k]; });
+    Object.keys(b).forEach(function (k) { out[k] = b[k]; });
+    return out;
+  }
+
+  // How far a live baseline has moved from the table it replaced, as a
+  // fraction. null when there is nothing to compare. The UI flags this past a
+  // threshold so a large divergence between the network and the config is
+  // noticed rather than quietly applied.
+  function baselineDivergence(d) {
+    if (!d || d.source !== 'network') return null;
+    if (!isFinite(d.staticBaseline) || d.staticBaseline === 0) return null;
+    return (d.baseline - d.staticBaseline) / d.staticBaseline;
+  }
+
   // A location reporting less than this many gallons a month is treated as
   // non-reporting, not as a low-volume site: excluded from every median and
   // from anything the Apply button writes, but kept visible and counted.
@@ -404,6 +503,11 @@
     SIZE_ORIGINS: SIZE_ORIGINS,
     suggestSizeFromLanes: suggestSizeFromLanes,
     sizeAffectsProfile: sizeAffectsProfile,
+    profileSize: profileSize,
+    comparableLocations: comparableLocations,
+    dynamicBaseline: dynamicBaseline,
+    baselineDivergence: baselineDivergence,
+    DYNAMIC_BASELINE_MIN_N: DYNAMIC_BASELINE_MIN_N,
     matchBaselineProfile: matchBaselineProfile,
     summarizeByProfile: summarizeByProfile,
     completenessCounts: completenessCounts,
