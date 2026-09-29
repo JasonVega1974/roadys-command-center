@@ -82,6 +82,48 @@
   var SIZES = ['Small', 'Medium', 'Large'];
   var ROADWAYS = ['Backroad', 'Highway', 'Interstate'];
 
+  // Diesel pump count -> a suggested Size. A triage aid, and NOT evidence.
+  //
+  // Read the collinearity note below before trusting anything grouped by a
+  // size this produced. In short: for any location that is not lane-conflicted,
+  // the lane tier already equals the roadway's expected band, so this rule
+  // makes Size a one-to-one relabel of Roadway and adds no information the
+  // roadway did not already carry. Measured on the real 249-location file it
+  // sizes 223 rows and populates exactly three of the seven truck-stop
+  // profiles -- Small/Backroad, Medium/Highway, Large/Interstate -- leaving
+  // Small/Highway, Small/Interstate, Medium/Interstate and Large/Highway
+  // permanently empty no matter how much data arrives.
+  //
+  // That is why summarizeByProfile reports nRuleSized separately and flags
+  // ruleSizedMajority, and why the page blocks such a profile from Apply.
+  // Lanes are a physical proxy, which is the one thing gallons are not -- so
+  // the rule is safe to suggest with and unsafe to conclude from.
+  var LANE_SIZE_RULE = { '1-2': 'Small', '3-5': 'Medium', '6+': 'Large' };
+
+  // Size origins, in increasing order of how much weight a median may carry:
+  //   ''       from source data (no source ships Size today, so unused)
+  //   'lanes'  derived by LANE_SIZE_RULE -- a relabel of roadway
+  //   'manual' set by hand from site characteristics
+  var SIZE_ORIGINS = ['manual', 'lanes'];
+
+  function suggestSizeFromLanes(lanes) {
+    var tier = laneTierFor(lanes);
+    if (tier === null) return null;
+    return Object.prototype.hasOwnProperty.call(LANE_SIZE_RULE, tier)
+      ? LANE_SIZE_RULE[tier] : null;
+  }
+
+  // Does Size participate in this type's profile lookup at all?
+  //
+  // Only truck stops. A fuel stop reaches its single profile on Type alone
+  // and a C-Store reaches none, so writing a Size onto either is inert data
+  // -- and worse than inert once anything counts it. Found by running the
+  // lane rule over the real file: it sized 29 fuel stops, whose sizes could
+  // not possibly affect their mapping, and the rule-sized majority check then
+  // blocked Fuel stop from Apply. An eligible profile was disqualified by an
+  // edit that changed nothing about it.
+  function sizeAffectsProfile(type) { return typeClass(type) === 'truckstop'; }
+
   // A location reporting less than this many gallons a month is treated as
   // non-reporting, not as a low-volume site: excluded from every median and
   // from anything the Apply button writes, but kept visible and counted.
@@ -252,7 +294,8 @@
       buckets[k] = {
         profile: r.profile, roadway: r.roadway, lanes: r.lanes,
         currentBaseline: r.baseline,
-        gallons: [], nMapped: 0, nManualSize: 0,
+        gallons: [], nMapped: 0, nManualSize: 0, nRuleSized: 0,
+        nRuleSizedUsable: 0,
         nNonReporting: 0, nonReportingIds: [], nMissingGallons: 0
       };
       order.push(k);
@@ -266,7 +309,13 @@
       var b = buckets[k];
       b.nMapped++;
       if (loc.sizeOrigin === 'manual') b.nManualSize++;
+      if (loc.sizeOrigin === 'lanes') b.nRuleSized++;
       var st = gallonStatus(loc.avgGalMo, opts);
+      // Counted against the USABLE sample specifically, because that is the
+      // set the median is computed from. Rule-sized rows that never reach the
+      // median cannot make it untrustworthy, and counting them against the
+      // mapped total would block profiles whose actual sample is sound.
+      if (st === 'usable' && loc.sizeOrigin === 'lanes') b.nRuleSizedUsable++;
       if (st === 'usable') b.gallons.push(toFinite(loc.avgGalMo));
       else if (st === 'non-reporting') {
         b.nNonReporting++;
@@ -285,6 +334,14 @@
         n: b.gallons.length,
         nMapped: b.nMapped,
         nManualSize: b.nManualSize,
+        nRuleSized: b.nRuleSized,
+        nRuleSizedUsable: b.nRuleSizedUsable,
+        // The Apply gate. Strict majority of the usable sample: at exactly
+        // half, the median still rests as much on hand-set sizes as on
+        // relabelled roadways, and blocking there would be a judgement the
+        // data does not force. An empty sample is not "majority" anything.
+        ruleSizedMajority: b.gallons.length > 0 &&
+          b.nRuleSizedUsable * 2 > b.gallons.length,
         nNonReporting: b.nNonReporting,
         nonReportingIds: b.nonReportingIds,
         nMissingGallons: b.nMissingGallons,
@@ -343,6 +400,10 @@
     typeClass: typeClass,
     gallonStatus: gallonStatus,
     MIN_REPORTING_GAL_MO: MIN_REPORTING_GAL_MO,
+    LANE_SIZE_RULE: LANE_SIZE_RULE,
+    SIZE_ORIGINS: SIZE_ORIGINS,
+    suggestSizeFromLanes: suggestSizeFromLanes,
+    sizeAffectsProfile: sizeAffectsProfile,
     matchBaselineProfile: matchBaselineProfile,
     summarizeByProfile: summarizeByProfile,
     completenessCounts: completenessCounts,
