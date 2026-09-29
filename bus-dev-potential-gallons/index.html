@@ -584,7 +584,7 @@ function getCentroid(pathStr, axis){
       profile: '', roadway: '',
       state: '', amenityDetails: {}, amenityLevel: '',
       truckerPathRating: '', pricingLevel: '', rewardsLevel: '',
-      prospect: { name: '', street: '', city: '', locationType: '', notes: '', gsName: '' },
+      prospect: { name: '', street: '', city: '', locationType: '', notes: '' },
       autoSetNote: '', suggestProfiles: [],
       // Only the observed lane count survives. The five grade signals and the
       // three name/city/state echoes went with Step 3; a profile saved before
@@ -3741,10 +3741,6 @@ function getCentroid(pathStr, axis){
         // Copy Summary and feeds no calculation, so it deliberately routes
         // through onProspectInput (no render(), no invalidateResult()) --
         // typing a name must never throw away a generated result. Placed
-        // after State rather than mid-address so the four address fields
-        // (name / street / city / state) stay contiguous in the 3-up grid.
-        '<div class="fg"><label>Prepared by (GS Name)</label>' +
-          '<input id="bdpg-prospect-gsname" value="' + BDPG.escHtml(p.gsName || '') + '" oninput="BDPG.onProspectInput(\'gsName\', this.value)"></div>' +
       '</div>' +
       '<div class="fg" style="margin-top:12px"><label>Location Type</label><div class="bdpg-seg">' + segs + '</div></div>' +
       '<div class="fg" style="margin-top:12px"><label>Notes</label>' +
@@ -4858,16 +4854,12 @@ function getCentroid(pathStr, axis){
     var today = now.getFullYear() + '-' +
       ('0' + (now.getMonth() + 1)).slice(-2) + '-' +
       ('0' + now.getDate()).slice(-2);
-    // Omitted entirely when unset, so the header closes on the date with no
-    // blank line where a name would have been.
-    var preparedBy = BDPG.state.prospect.gsName
-      ? '<p style="font-size:.9em">Prepared by ' + BDPG.escHtml(BDPG.state.prospect.gsName) + '</p>' : '';
     var asOfPitch = BDPG.regionVarianceAsOfLinePitch();
 
     return '<div id="bdpg-print-only">' +
       '<h1>Roady\'s Fuel Network — Value Proposition for ' + BDPG.escHtml(BDPG.displayName()) + '</h1>' +
       (loc ? '<h2>' + BDPG.escHtml(loc) + '</h2>' : '') +
-      '<p style="font-size:.9em">' + today + '</p>' + preparedBy +
+      '<p style="font-size:.9em">' + today + '</p>' +
       // Exactly the sections shown on screen -- same function, not a second
       // copy, so the packet and the laptop cannot drift.
       BDPG.pitchSectionsHtml() +
@@ -4929,7 +4921,6 @@ function getCentroid(pathStr, axis){
     var lines = [
       'Roady\'s Fuel Network — Value Proposition for ' + BDPG.displayName(),
       loc || '',
-      BDPG.state.prospect.gsName ? 'Prepared by ' + BDPG.state.prospect.gsName : '',
       '',
       // Same reframing as the on-screen hero and the packet: this is a
       // network average for comparable locations, not a promise to this one.
@@ -5275,7 +5266,7 @@ function getCentroid(pathStr, axis){
     // a coin flip. One rule now, no exceptions: each guard tests that the
     // field HAS THE TYPE it must have, never whether it is truthy. That keeps
     // a legitimate falsy value (preEvalOpen:false means the rep collapsed the
-    // panel; gsName:'' means no name) and still replaces a missing field --
+    // panel, not that it is unset) and still replaces a missing field --
     // or a hand-edited one of the wrong type, which `=== undefined` would
     // have waved through into the DOM as "[object Object]".
     if (typeof BDPG.state.preEvalOpen !== 'boolean') BDPG.state.preEvalOpen = true;
@@ -5291,7 +5282,7 @@ function getCentroid(pathStr, axis){
     // a pre-Task-4 record.
     // (typeof null === 'object', hence both halves.)
     if (!BDPG.state.prospect || typeof BDPG.state.prospect !== 'object') {
-      BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '', gsName: '' };
+      BDPG.state.prospect = { name: '', street: '', city: '', locationType: '', notes: '' };
     }
     // ...and then seed the name from the record itself. A pre-Task-4 record
     // carries the prospect's name at the TOP level (`found.name`) -- which is
@@ -5309,10 +5300,9 @@ function getCentroid(pathStr, axis){
     if (typeof BDPG.state.prospect.name !== 'string' || !BDPG.state.prospect.name) {
       BDPG.state.prospect.name = (typeof found.name === 'string' ? found.name : '');
     }
-    // A profile saved before Task 10 has a `prospect` but no gsName. Default
-    // it so the field renders empty rather than the literal "undefined", and
-    // so summaryText()'s Prepared-by line stays absent instead of printing it.
-    if (typeof BDPG.state.prospect.gsName !== 'string') BDPG.state.prospect.gsName = '';
+    // gsName is no longer a field. A profile saved while it existed still
+    // carries one on its stored record; it is neither read nor copied onto
+    // state, so it simply stops appearing. Nothing needs migrating.
     // Same "needs re-select" case trackerRowHtml() flags for this record's
     // row: readSummary() derives region from the state code, not from
     // whatever this record's summary.region says, and here that came back
