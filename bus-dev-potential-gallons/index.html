@@ -1993,129 +1993,36 @@ function getCentroid(pathStr, axis){
   BDPG.LOCATIONS_SAMPLE_URL = '../network-locations.sample.json';
   BDPG.LOCATION_EDITS_KEY = 'roadysBDPGLocationEdits';
 
-  // `name` is deliberately NOT here. Member business names never enter the
-  // committed file -- they arrive through the local-only overlay below -- so
-  // a regeneration that starts including them must trip the unexpected-key
-  // warning rather than pass validation silently. The allowlist is the guard;
-  // widening it to accept `name` would disarm the one check standing between
-  // a generator change and 249 business names on a public Pages site.
+  // `name` is deliberately NOT here, and stays out now that `id` carries the
+  // real Roady's LID. The LID is the human-readable reference this tab needs
+  // -- an admin recognises R03650 -- so there is nothing left for a name
+  // field to add, and a regeneration that starts emitting business names
+  // should still trip the unexpected-key warning rather than pass validation
+  // silently.
+  //
+  // `id` is accepted as any non-empty string and has never been pattern
+  // checked. It held LOC-nnn until 2026-09-29 and holds LIDs (R03650, P03654)
+  // now; nothing in this page or in bdpgStats.js parses its shape. Do not add
+  // a format check -- the id's only contract is that it is unique per row and
+  // stable between regenerations.
   BDPG.LOCATION_FIELDS = ['id', 'city', 'state', 'group', 'type', 'dieselLanes',
-    'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
+    'size', 'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
 
-  // ── Local-only name overlay ─────────────────────────────────────────────
+  // Escapes a value for use as an argument inside a single-quoted JS string
+  // that itself sits inside a double-quoted HTML attribute -- the shape every
+  // onclick="BDPG.fn('<id>')" in this tab has.
   //
-  // Truck stop names are useful for the one job this tab exists for -- you
-  // cannot judge whether a site is Small or Large from an opaque id -- but
-  // they cannot ship. network-locations.json is committed to a public Pages
-  // repo, and the rows are already only pseudonymous: 217 of the 249 are the
-  // only location in their city+state, so city+state+group already points at
-  // a specific member. Adding names would remove even that thin cover and put
-  // them in git history permanently.
-  //
-  // So names live here instead: imported by the admin from a local file,
-  // parsed entirely in this browser tab, written to localStorage, never
-  // uploaded and never committed. Same contract as the network-context
-  // generator on the Weights tab. The public site shows "—" for every name,
-  // which is what an anonymous visitor should see; an admin who has imported
-  // once sees real names on that same hosted page.
-  BDPG.LOCATION_NAMES_KEY = 'roadysBDPGLocationNames';
-  BDPG.locationNames = {};
-  BDPG.locationNamesDropped = 0;
-
-  BDPG.loadLocationNames = function () {
-    var raw = null;
-    try { raw = localStorage.getItem(BDPG.LOCATION_NAMES_KEY); } catch (e) { return; }
-    if (!raw) return;
-    var parsed = null;
-    try { parsed = JSON.parse(raw); } catch (e2) { parsed = null; }
-    if (!parsed || typeof parsed !== 'object' ||
-        Object.prototype.toString.call(parsed) === '[object Array]') {
-      try { localStorage.removeItem(BDPG.LOCATION_NAMES_KEY); } catch (e3) {}
-      return;
-    }
-    var kept = {};
-    Object.keys(parsed).forEach(function (k) {
-      var v = str(parsed[k]).trim();
-      if (v) kept[String(k).trim()] = v;
-    });
-    BDPG.locationNames = kept;
+  // escHtml alone is not enough there. It turns ' into &#39;, the browser
+  // decodes that back to a bare ' before the JS is parsed, and the string
+  // literal terminates early. Backslash-escaping first and HTML-escaping
+  // second survives both passes. Roady's LIDs will not contain an apostrophe,
+  // but the id is now an externally supplied identifier rather than one this
+  // code generates, so it is no longer ours to assume.
+  BDPG.jsAttr = function (s) {
+    return BDPG.escHtml(String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
   };
 
-  BDPG.locationName = function (id) {
-    return hasOwn(BDPG.locationNames, id) ? BDPG.locationNames[id] : '';
-  };
-
-  // Accepts a JSON object map {"LOC-001":"Name"} or two-column CSV/TSV
-  // (id,name), with or without a header row. Both are parsed in this tab;
-  // nothing is sent anywhere.
-  BDPG.parseNameOverlay = function (text) {
-    var out = {}, dropped = 0;
-    var t = String(text || '').replace(/^﻿/, '').trim();
-    if (!t) return { names: out, dropped: 0, error: 'The file was empty.' };
-
-    if (t.charAt(0) === '{') {
-      var obj = null;
-      try { obj = JSON.parse(t); } catch (e) { return { names: {}, dropped: 0, error: 'That file is not valid JSON.' }; }
-      Object.keys(obj).forEach(function (k) {
-        var id = String(k).trim(), v = str(obj[k]).trim();
-        if (id && v) out[id] = v; else dropped++;
-      });
-      return { names: out, dropped: dropped, error: '' };
-    }
-
-    t.split(/\r?\n/).forEach(function (line, i) {
-      if (!line.trim()) return;
-      var sep = line.indexOf('\t') !== -1 ? '\t' : ',';
-      var idx = line.indexOf(sep);
-      if (idx === -1) { dropped++; return; }
-      var id = line.slice(0, idx).trim().replace(/^"|"$/g, '');
-      var nm = line.slice(idx + 1).trim().replace(/^"|"$/g, '');
-      // A header row is skipped rather than imported as a location called
-      // "name" -- but only on the first line, so a real id spelled "id"
-      // further down is not silently lost.
-      if (i === 0 && /^id$/i.test(id)) return;
-      if (id && nm) out[id] = nm; else dropped++;
-    });
-    return { names: out, dropped: dropped, error: '' };
-  };
-
-  BDPG.onImportNames = function (input) {
-    var file = input && input.files && input.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function () {
-      var res = BDPG.parseNameOverlay(reader.result);
-      if (res.error) { BDPG.namesMsg(res.error, true); return; }
-      var count = Object.keys(res.names).length;
-      if (!count) { BDPG.namesMsg('No id/name pairs were found in that file.', true); return; }
-      try { localStorage.setItem(BDPG.LOCATION_NAMES_KEY, JSON.stringify(res.names)); }
-      catch (e) { BDPG.namesMsg('Could not store the names in this browser (they may be too large).', true); return; }
-      BDPG.locationNames = res.names;
-      BDPG.locationNamesDropped = res.dropped;
-      var matched = BDPG.locations.filter(function (l) { return hasOwn(res.names, l.id); }).length;
-      BDPG.render();
-      BDPG.namesMsg(count + ' names imported, ' + matched + ' matched to a loaded location' +
-        (res.dropped ? ' (' + res.dropped + ' unusable rows skipped)' : '') +
-        '. Stored in this browser only — never uploaded, never committed.', false);
-    };
-    reader.onerror = function () { BDPG.namesMsg('That file could not be read.', true); };
-    reader.readAsText(file);
-  };
-
-  BDPG.onClearNames = function () {
-    try { localStorage.removeItem(BDPG.LOCATION_NAMES_KEY); } catch (e) {}
-    BDPG.locationNames = {};
-    BDPG.locationNamesDropped = 0;
-    BDPG.render();
-    BDPG.namesMsg('Names cleared from this browser.', false);
-  };
-
-  BDPG.namesMsg = function (text, isErr) {
-    var el = document.getElementById('bdpg-nl-names-msg');
-    if (!el) return;
-    el.textContent = text;
-    el.style.color = isErr ? 'var(--red)' : 'var(--green)';
-  };
   BDPG.LOCATION_EDITABLE = ['dieselLanes', 'size', 'roadway', 'distanceToInterstate'];
   BDPG.LOCATION_TYPES = ['Truck Stop', 'Fuel Stop', 'Service Center', 'C-Store'];
   BDPG.DISTANCE_OPTIONS = ['On exit', '1-5 mi', '5-15 mi', '15+ mi'];
@@ -2125,6 +2032,10 @@ function getCentroid(pathStr, axis){
   BDPG.locationsSourceLabel = '';
   BDPG.locationsUnexpectedKeys = [];
   BDPG.locationsDropped = 0;
+  // File-sourced Size problems, each reported rather than swallowed.
+  BDPG.locationsBadSize = 0;        // not one of Small/Medium/Large
+  BDPG.locationsSizeIgnored = 0;    // sized, but Size cannot affect its profile
+  BDPG.locationsSizeConflict = 0;   // disagrees with this page's own lane rule
   BDPG._locationsLoaded = false;
   BDPG.locationEdits = {};
   BDPG.locationEditsDropped = 0;
@@ -2142,7 +2053,6 @@ function getCentroid(pathStr, axis){
     if (BDPG._locationsLoaded) { if (onDone) onDone(); return; }
     BDPG._locationsLoaded = true;
     BDPG.loadLocationEdits();
-    BDPG.loadLocationNames();
 
     function accept(json, label) {
       BDPG.locationsSourceLabel = label;
@@ -2165,6 +2075,9 @@ function getCentroid(pathStr, axis){
     BDPG.locationsMeta = null;
     BDPG.locationsUnexpectedKeys = [];
     BDPG.locationsDropped = 0;
+    BDPG.locationsBadSize = 0;
+    BDPG.locationsSizeIgnored = 0;
+    BDPG.locationsSizeConflict = 0;
     if (!json || typeof json !== 'object') return;
 
     BDPG.locationsMeta = {
@@ -2187,11 +2100,89 @@ function getCentroid(pathStr, axis){
         }
       });
       clean.id = id;
-      // `size` is never a source field -- it exists only as an admin edit.
-      clean.size = '';
-      clean.sizeOrigin = '';
+      // `size` now ships in the file, pre-computed from the diesel pump count
+      // by the generator. Adopted as the row's starting Size with the SAME
+      // origin the "Suggest sizes from lanes" button sets, so it lands in
+      // nRuleSized, counts toward ruleSizedMajority, and is blocked from Apply
+      // exactly as a locally-applied rule size would be. A file-sourced size
+      // is a suggestion the generator made, not evidence, and nothing about
+      // arriving in JSON makes it stronger.
+      //
+      // It is NOT an admin edit: it never enters locationEdits, never reaches
+      // localStorage, and shows no amber dot. A rep overriding it writes a
+      // real edit on top, which does both.
+      var fileSize = str(row.size).trim();
+      if (fileSize && BDPG_STATS.SIZES.indexOf(fileSize) === -1) {
+        fileSize = '';
+        BDPG.locationsBadSize++;
+      } else if (fileSize && !BDPG_STATS.sizeAffectsProfile(clean.type)) {
+        // The generator sizes every row with a pump count, including fuel
+        // stops, C-Stores and PPOs -- 50 of the 249. Size plays no part in how
+        // those map, so adopting it would be inert data carrying a live flag:
+        // the rule-sized majority check would see it and block Fuel stop from
+        // Apply over a value that cannot affect its median. That exact
+        // regression is why laneRuleCandidates() is gated the same way.
+        fileSize = '';
+        BDPG.locationsSizeIgnored++;
+      } else if (fileSize && BDPG_STATS.suggestSizeFromLanes(clean.dieselLanes) !== null &&
+                 BDPG_STATS.suggestSizeFromLanes(clean.dieselLanes) !== fileSize) {
+        // The file's size and this page's own lane rule disagree. Both claim
+        // to be the same derivation, so one of them has drifted -- surfaced
+        // rather than silently preferred, because which is right is a question
+        // about the generator, not something this page can decide.
+        BDPG.locationsSizeConflict++;
+      }
+      clean.size = fileSize;
+      clean.sizeOrigin = fileSize ? 'lanes' : '';
       BDPG.locations.push(clean);
     });
+    BDPG.findOrphanedLocationEdits();
+  };
+
+  // Stored edits whose location id is not in the file that just loaded.
+  //
+  // loadLocationEdits() cannot do this itself: it runs before the fetch
+  // resolves, so there is no location set to check against yet. Hence a
+  // second pass here, once ingest has finished.
+  //
+  // The state is real and silent without it. Edits are keyed by location id,
+  // so anything that changes an id strands them -- they stay in localStorage
+  // indefinitely, contribute to nothing, and the admin simply finds their
+  // sizing work gone. Worse, a later file that reused a stranded id would
+  // reanimate the old edit against a different location. This happened
+  // wholesale on 2026-09-29 when ids moved from LOC-nnn to real LIDs, and
+  // happens one row at a time whenever a location leaves the network.
+  //
+  // Reported, never auto-deleted: the edits might be the only record of
+  // someone's afternoon, and which id they belonged to is information a
+  // silent cleanup would destroy.
+  BDPG.locationEditOrphans = [];
+  BDPG.findOrphanedLocationEdits = function () {
+    BDPG.locationEditOrphans = [];
+    // With nothing loaded, every edit would look orphaned -- a failed fetch
+    // must not present as "all your work is stale".
+    if (!BDPG.locations.length) return;
+    var known = {};
+    BDPG.locations.forEach(function (l) { known[l.id] = 1; });
+    Object.keys(BDPG.locationEdits).forEach(function (id) {
+      if (!hasOwn(known, id)) BDPG.locationEditOrphans.push(id);
+    });
+  };
+
+  BDPG.onClearOrphanedEdits = function () {
+    if (!BDPG.locationEditOrphans.length) return;
+    var next = BDPG.cloneLocationEdits();
+    var n = 0;
+    BDPG.locationEditOrphans.forEach(function (id) {
+      if (hasOwn(next, id)) { delete next[id]; n++; }
+    });
+    if (!BDPG.commitLocationEdits(next)) {
+      BDPG.locMsg('Could not clear the stale edits in this browser — nothing was changed.', true);
+      return;
+    }
+    BDPG.findOrphanedLocationEdits();
+    BDPG.render();
+    BDPG.locMsg(n + ' stale edit' + (n === 1 ? '' : 's') + ' cleared.', false);
   };
 
   // ── Edit overlay ────────────────────────────────────────────────────────
@@ -2302,7 +2293,10 @@ function getCentroid(pathStr, axis){
       gallons12mo: loc.gallons12mo, avgGalMo: loc.avgGalMo,
       dieselLanes: loc.dieselLanes, roadway: str(loc.roadway),
       distanceToInterstate: str(loc.distanceToInterstate),
-      size: '', sizeOrigin: ''
+      // Seeded from the file, then overridden below by any admin edit. The
+      // edit wins because it is an observation of the site; the file value is
+      // a derivation from the pump count.
+      size: str(loc.size), sizeOrigin: str(loc.sizeOrigin)
     };
     if (e) {
       BDPG.LOCATION_EDITABLE.forEach(function (f) { if (hasOwn(e, f)) out[f] = e[f]; });
@@ -2312,12 +2306,23 @@ function getCentroid(pathStr, axis){
         out.sizeOrigin = e.sizeOrigin;
       }
     }
+    // Suppressing a file-supplied Size (choosing Unknown) leaves the origin
+    // seeded from the file behind it. Cleared here rather than at each writer
+    // so no path can produce the incoherent "no size, but rule-sized" state.
+    if (!out.size) out.sizeOrigin = '';
     out.region = out.state ? BusDevGallonsCalc.resolveRegion(out.state) : null;
     return out;
   };
 
   BDPG.effectiveLocations = function () {
     return BDPG.locations.map(BDPG.effectiveLocation);
+  };
+
+  BDPG.sourceLocation = function (id) {
+    for (var i = 0; i < BDPG.locations.length; i++) {
+      if (BDPG.locations[i].id === id) return BDPG.locations[i];
+    }
+    return null;
   };
 
   BDPG.locationIsEdited = function (id) {
@@ -2406,14 +2411,19 @@ function getCentroid(pathStr, axis){
     var parts = [];
     BDPG.LOCATION_EDITABLE.forEach(function (f) {
       if (!hasOwn(BDPG.locationEdits[eff.id], f)) return;
-      if (f === 'size') { parts.push('Size is never in source data — it only ever comes from this page'); return; }
+      if (f === 'size') {
+        parts.push(src && str(src.size)
+          ? 'Size: the file suggests ' + str(src.size) + ' from its pump count'
+          : 'Size: not suggested by the file');
+        return;
+      }
       var was = (src && src[f] !== null && src[f] !== undefined && src[f] !== '') ? String(src[f]) : 'unset';
       parts.push(f + ': source value was ' + was);
     });
     return '<span class="bdpg-bl-dot" title="Edited in this browser. ' +
         BDPG.escHtml(parts.join(' · ')) + '">●</span>' +
       '<button class="bdpg-bl-reset" onclick="BDPG.onLocationReset(\'' +
-        BDPG.escHtml(eff.id) + '\')" title="Discard every edit on this row and restore the source values">Reset row</button>';
+        BDPG.jsAttr(eff.id) + '\')" title="Discard every edit on this row and restore the source values">Reset row</button>';
   };
 
   BDPG.locSelectHtml = function (id, field, options, value, extra) {
@@ -2423,26 +2433,24 @@ function getCentroid(pathStr, axis){
         BDPG.escHtml(o) + '</option>');
     });
     return '<select style="font-size:.9em;padding:2px 4px"' + (extra || '') +
-      ' onchange="BDPG.onLocationEdit(\'' + BDPG.escHtml(id) + '\',\'' + field + '\',this.value)">' +
+      ' onchange="BDPG.onLocationEdit(\'' + BDPG.jsAttr(id) + '\',\'' + field + '\',this.value)">' +
       opts.join('') + '</select>';
   };
 
   BDPG.locationRowHtml = function (eff) {
+    // idAttr for HTML attribute values (DOM ids, aria-labels); jsId for the
+    // JS string arguments inside onclick/onchange -- see BDPG.jsAttr.
     var idAttr = BDPG.escHtml(eff.id);
+    var jsId = BDPG.jsAttr(eff.id);
     var lanes = (eff.dieselLanes === null || eff.dieselLanes === undefined || eff.dieselLanes === '')
       ? '' : String(eff.dieselLanes);
-    var nm = BDPG.locationName(eff.id);
     return '<tr>' +
       '<td style="width:50px;text-align:center">' +
         '<input type="checkbox" id="bdpg-nl-sel-' + idAttr + '"' +
           (BDPG.locSelected[eff.id] ? ' checked' : '') +
           ' aria-label="Select ' + idAttr + '"' +
-          ' onchange="BDPG.onLocationSelect(\'' + idAttr + '\',this.checked)"></td>' +
+          ' onchange="BDPG.onLocationSelect(\'' + jsId + '\',this.checked)"></td>' +
       '<td style="font-family:var(--ff)">' + BDPG.escHtml(eff.id) + '</td>' +
-      // Name comes from the local-only overlay, never from the committed
-      // file. An em dash here is the correct and expected reading for a
-      // public visitor.
-      '<td>' + (nm ? BDPG.escHtml(nm) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td>' + BDPG.escHtml(eff.city) + ', ' + BDPG.escHtml(eff.state) + '</td>' +
       '<td style="color:var(--muted)">' + BDPG.escHtml(eff.region || '—') + '</td>' +
       '<td style="color:var(--muted)">' + BDPG.escHtml(eff.group || '—') + '</td>' +
@@ -2451,7 +2459,7 @@ function getCentroid(pathStr, axis){
         '<input type="number" min="0" max="99" step="1" value="' + BDPG.escHtml(lanes) + '" ' +
           'style="width:4.5em;text-align:right;font-size:.9em;padding:2px 4px" ' +
           'aria-label="Diesel lanes for ' + idAttr + '" ' +
-          'onchange="BDPG.onLocationEdit(\'' + idAttr + '\',\'dieselLanes\',this.value)"></td>' +
+          'onchange="BDPG.onLocationEdit(\'' + jsId + '\',\'dieselLanes\',this.value)"></td>' +
       // The hand-set marker gets its own span so patchLocationRow() can update
       // it without rebuilding the <select> beside it -- rebuilding would take
       // the focus off the control the admin just used.
@@ -2507,10 +2515,22 @@ function getCentroid(pathStr, axis){
 
     var next = BDPG.cloneLocationEdits();
     var row = hasOwn(next, id) ? next[id] : {};
-    if (clean === '') delete row[field]; else row[field] = clean;
-    // sizeOrigin tracks the circularity guard: it is set when a Size is
-    // entered by hand and cleared the moment that Size is cleared, so a stale
-    // 'manual' can never inflate a profile's hand-set count.
+    var src = BDPG.sourceLocation(id);
+    var srcHasValue = !!(src && str(src[field]));
+    if (clean === '') {
+      // Choosing "Unknown" over a value the FILE supplies is itself an edit,
+      // and has to be stored as an explicit empty rather than deleted --
+      // deleting the key just falls back to the file value, so the control
+      // would snap straight back and the rep could never un-set it. Where the
+      // file supplies nothing, deleting is right: there is no value to
+      // suppress and a stored '' would mark the row edited for nothing.
+      if (srcHasValue) row[field] = ''; else delete row[field];
+    } else {
+      row[field] = clean;
+    }
+    // sizeOrigin tracks the circularity guard: 'manual' only while a hand-set
+    // size is actually present, so neither a cleared size nor a suppressed
+    // file size can inflate a profile's hand-sized count.
     if (field === 'size') { if (clean === '') delete row.sizeOrigin; else row.sizeOrigin = 'manual'; }
     if (Object.keys(row).length === 0) delete next[id]; else next[id] = row;
 
@@ -2544,7 +2564,8 @@ function getCentroid(pathStr, axis){
   BDPG.onSuggestSizesFromLanes = function () {
     var cands = BDPG.laneRuleCandidates();
     if (!cands.length) {
-      BDPG.locMsg('No locations to size: every row with a known pump count already has a Size.', true);
+      BDPG.locMsg('Nothing to size — every truck stop with a known pump count already has a Size, ' +
+        'most of them pre-filled from the file.', true);
       return;
     }
     if (!window.confirm('This will suggest sizes for ' + cands.length +
@@ -2585,7 +2606,14 @@ function getCentroid(pathStr, axis){
       cleared++;
       if (Object.keys(next[id]).length === 0) delete next[id];
     });
-    if (!cleared) { BDPG.locMsg('There are no lane-rule sizes to clear.', true); return; }
+    if (!cleared) {
+      // Precise on purpose: the table is full of lane-rule sizes, but they
+      // came from the file and are not this browser's to clear. Saying "there
+      // are none" beside a column of them would read as a broken button.
+      BDPG.locMsg('No lane-rule sizes were applied in this browser. The ones shown come from ' +
+        'network-locations.json — set a row to Unknown to drop it, or Reset row to restore it.', true);
+      return;
+    }
     if (!BDPG.commitLocationEdits(next)) {
       BDPG.locMsg('Could not clear the lane-rule sizes in this browser — nothing was changed.', true);
       return;
@@ -2731,7 +2759,7 @@ function getCentroid(pathStr, axis){
   BDPG.locationRowsHtml = function () {
     var rows = BDPG.effectiveLocations().filter(BDPG.locationPassesFilter);
     if (!rows.length) {
-      return '<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--muted)">' +
+      return '<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--muted)">' +
         'No locations match the current filters.</td></tr>';
     }
     return rows.map(BDPG.locationRowHtml).join('');
@@ -3018,42 +3046,6 @@ function getCentroid(pathStr, axis){
     el.style.color = isErr ? 'var(--red)' : 'var(--green)';
   };
 
-  BDPG.locationsCardNamesCount = function () {
-    var loaded = Object.keys(BDPG.locationNames).length;
-    if (!loaded) return 0;
-    var matched = 0;
-    BDPG.locations.forEach(function (l) { if (hasOwn(BDPG.locationNames, l.id)) matched++; });
-    return matched;
-  };
-
-  BDPG.locationNamesCardHtml = function () {
-    var loaded = Object.keys(BDPG.locationNames).length;
-    var matched = BDPG.locationsCardNamesCount();
-    return '<div class="bdpg-box" style="margin-bottom:10px;font-size:.8em">' +
-      '<div style="font-weight:700;margin-bottom:4px">🏷 Truck stop names — local only</div>' +
-      '<div style="color:var(--muted);margin-bottom:8px">' +
-        'Names are <b>not</b> in <code>network-locations.json</code> and must never be: that file is ' +
-        'committed to a public repository and served by GitHub Pages. Import them here instead — the ' +
-        'file is parsed in this browser tab, stored under <code>' +
-        BDPG.escHtml(BDPG.LOCATION_NAMES_KEY) + '</code>, and never uploaded or committed. Anyone ' +
-        'without this import sees “—” in the Name column, which is what a public visitor should see.' +
-      '</div>' +
-      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-        '<input type="file" accept=".json,.csv,.tsv,.txt" onchange="BDPG.onImportNames(this)" ' +
-          'style="font-size:.95em">' +
-        (loaded
-          ? '<button class="btn" onclick="BDPG.onClearNames()">Clear names from this browser</button>' +
-            '<span style="color:var(--muted)">' + loaded + ' names loaded, ' + matched +
-            ' matched to a location</span>'
-          : '<span style="color:var(--muted)">No names imported in this browser</span>') +
-      '</div>' +
-      '<div style="color:var(--muted);margin-top:6px;font-size:.92em">' +
-        'Accepts a JSON map <code>{"LOC-001":"Name"}</code> or two columns of CSV/TSV ' +
-        '<code>id,name</code> (a leading <code>id</code> header row is skipped).</div>' +
-      '<div id="bdpg-nl-names-msg" style="margin-top:6px"></div>' +
-    '</div>';
-  };
-
   BDPG.locationsTabHtml = function () {
     if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
 
@@ -3098,6 +3090,38 @@ function getCentroid(pathStr, axis){
         BDPG.locationEditsDropped + ' saved edit field' + (BDPG.locationEditsDropped === 1 ? ' was' : 's were') +
         ' discarded at load for being outside the allowed values.</div>';
     }
+    if (BDPG.locationsBadSize > 0) {
+      notices += '<div style="font-size:.8em;color:var(--red);margin-bottom:8px">' +
+        BDPG.locationsBadSize + ' location' + (BDPG.locationsBadSize === 1 ? ' carries a' : 's carry a') +
+        ' <code>size</code> that is not Small, Medium or Large. Those rows load unsized.</div>';
+    }
+    if (BDPG.locationsSizeConflict > 0) {
+      notices += '<div style="font-size:.8em;color:var(--red);margin-bottom:8px">' +
+        'On ' + BDPG.locationsSizeConflict + ' location' + (BDPG.locationsSizeConflict === 1 ? '' : 's') +
+        ', the file&#39;s <code>size</code> disagrees with the diesel-lane rule this page applies. ' +
+        'Both are meant to be the same derivation, so one has drifted — the file value is shown ' +
+        'as-is rather than silently corrected.</div>';
+    }
+    if (BDPG.locationsSizeIgnored > 0) {
+      notices += '<div style="font-size:.78em;color:var(--muted);margin-bottom:8px">' +
+        BDPG.locationsSizeIgnored + ' file-supplied size' + (BDPG.locationsSizeIgnored === 1 ? ' was' : 's were') +
+        ' ignored on Fuel Stop / C-Store / PPO rows, where Size plays no part in the baseline ' +
+        'profile. Honouring them would let an inert value block a profile from Apply.</div>';
+    }
+    if (BDPG.locationEditOrphans.length) {
+      var orph = BDPG.locationEditOrphans;
+      notices += '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.84em">' +
+        '<b>⚠ ' + orph.length + ' saved edit' + (orph.length === 1 ? '' : 's') +
+        ' belong to location ids that are not in this file.</b> ' +
+        'They are doing nothing — edits are keyed by location id, so an id that changed or a ' +
+        'location that left the network strands them. Nothing has been deleted; they are listed ' +
+        'here rather than cleaned up silently, because which id they belonged to is the only ' +
+        'record of what the work applied to.' +
+        '<div style="font-family:var(--ff);font-size:.9em;color:var(--muted);margin:6px 0;' +
+          'max-height:5em;overflow-y:auto">' + BDPG.escHtml(orph.join(', ')) + '</div>' +
+        '<button class="btn" onclick="BDPG.onClearOrphanedEdits()">Clear these ' + orph.length +
+          ' stale edits</button></div>';
+    }
 
     var regionOpts = BDPG.REGION_KEYS.map(function (r) {
       return '<option value="' + BDPG.escHtml(r) + '"' + (BDPG.locFilter.region === r ? ' selected' : '') +
@@ -3125,16 +3149,17 @@ function getCentroid(pathStr, axis){
           (meta && meta.asOf ? ' · as of ' + BDPG.escHtml(meta.asOf) : '') + '</div>' +
       '</div>' +
       '<div style="font-size:.8em;color:var(--muted);margin:6px 0 10px">' +
-        'Per-location detail behind the admin PIN. Edits are stored in this browser under <code>' +
-        BDPG.escHtml(BDPG.LOCATION_EDITS_KEY) + '</code> and drive the baseline analysis at the ' +
-        'bottom of this tab. The frozen <b>Network Baseline Analysis</b> on the ⚙ Weights tab is a ' +
-        'separate historical record of the Sept 27 study — this panel is the live one.</div>' +
+        'Per-location detail behind the admin PIN. <b>Location ID</b> is the real Roady\'s LID, ' +
+        'served straight from <code>network-locations.json</code> — no import step. Edits are stored ' +
+        'in this browser under <code>' + BDPG.escHtml(BDPG.LOCATION_EDITS_KEY) + '</code>, keyed by ' +
+        'that LID, and drive the baseline analysis at the bottom of this tab. The frozen ' +
+        '<b>Network Baseline Analysis</b> on the ⚙ Weights tab is a separate historical record of ' +
+        'the Sept 27 study — this panel is the live one.</div>' +
       notices +
       '<div id="bdpg-nl-completeness" class="bdpg-box" style="margin-bottom:10px;font-size:.86em">' +
         BDPG.locCompletenessInnerHtml() + '</div>' +
       '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.8em">' +
         '<b>Setting Size:</b> ' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '</div>' +
-      BDPG.locationNamesCardHtml() +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
         '<select onchange="BDPG.onLocationFilter(\'region\',this.value)"><option value="">All regions</option>' + regionOpts + '</select>' +
         '<select onchange="BDPG.onLocationFilter(\'type\',this.value)"><option value="">All types</option>' + typeOpts + '</select>' +
@@ -3180,8 +3205,9 @@ function getCentroid(pathStr, axis){
           '<input type="checkbox" id="bdpg-nl-selall" aria-label="Select all visible locations" ' +
             'title="Select every row matching the current filter" ' +
             'onchange="BDPG.onLocationSelectAll(this.checked)"></th>' +
-        '<th>Location ID</th>' +
-        '<th title="From the local-only name overlay. Never stored in network-locations.json, which is public.">Name</th>' +
+        // HTML entities rather than backslash-escaped apostrophes: this is a
+        // single-quoted JS string, and a literal ' here terminates it.
+        '<th title="The location&#39;s real Roady&#39;s LID, served straight from network-locations.json.">Location ID</th>' +
         '<th>City, State</th><th>Region</th><th>Group</th><th>Type</th>' +
         '<th style="text-align:right">Diesel Lanes</th>' +
         '<th title="' + BDPG.escHtml(BDPG.SIZE_GUIDANCE) + '">Size ⓘ</th>' +

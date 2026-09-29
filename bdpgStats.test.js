@@ -89,7 +89,7 @@ test('every lane band in BASELINE_TABLE is reachable from some pump count', () =
 // ── profile matching ────────────────────────────────────────────────────────
 
 const loc = (o) => Object.assign(
-  { id: 'LOC-000', type: 'Truck Stop', size: '', roadway: '', dieselLanes: null, avgGalMo: 1000 }, o
+  { id: 'R00000', type: 'Truck Stop', size: '', roadway: '', dieselLanes: null, avgGalMo: 1000 }, o
 );
 
 test('a fuel stop maps on Type alone, ignoring size, roadway and lanes', () => {
