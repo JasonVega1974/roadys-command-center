@@ -104,6 +104,8 @@
     return { level: 'Average', reason: 'Falls between the Good and Very limited thresholds.' };
   }
 
+  function atLeastZero(n) { return n < 0 ? 0 : n; }
+
   function calculateEstimate(opts) {
     var row = getBaselineRow(opts.profile, opts.roadway);
     if (!row) return null;
@@ -115,11 +117,20 @@
     var rewardsPct = rewardsAdjustment(opts.rewardsLevel);
 
     // Three multipliers, each adding one more term to the one above it.
-    // officialMultiplier is the line that must never gain a term: it is what
-    // reproduces Roady's published calculator.
-    var officialMultiplier = 1 + regionPct + amenityPct + review.pct;
-    var pricingMultiplier = officialMultiplier + pricingPct;
-    var finalMultiplier = pricingMultiplier + rewardsPct;
+    // officialMultiplier must never gain a term -- it is the figure every
+    // downstream surface reports as the network-adjusted baseline.
+    //
+    // Floored at zero. The region term used to be a +/-10% nudge, which no sum
+    // of the other adjustments could drive negative. It now carries real
+    // per-region deltas on a -100..+100 slider, so region -100 with amenity
+    // -5 and review -5 reaches -0.10 and the tool would quote NEGATIVE
+    // gallons. Today's worst real value is Texas at -36.7%, comfortably safe;
+    // the floor is here because the control permits what the data does not.
+    // Clamping the multiplier rather than the output keeps all three figures
+    // and their printed math lines consistent with one another.
+    var officialMultiplier = atLeastZero(1 + regionPct + amenityPct + review.pct);
+    var pricingMultiplier = atLeastZero(officialMultiplier + pricingPct);
+    var finalMultiplier = atLeastZero(pricingMultiplier + rewardsPct);
 
     var officialSubtotal = Math.round(row.baseline * officialMultiplier);
     var pricingAdjusted = Math.round(row.baseline * pricingMultiplier);
@@ -153,137 +164,6 @@
     };
   }
 
-  function profileAdjustmentBounds() {
-    var amenityVals = Object.keys(BDPG_CONFIG.AMENITY_ADJUST).map(function (k) { return BDPG_CONFIG.AMENITY_ADJUST[k]; });
-    var reviewVals = BDPG_CONFIG.REVIEW_BANDS.map(function (b) { return b.pct; });
-    return {
-      min: Math.min.apply(null, amenityVals) + Math.min.apply(null, reviewVals),
-      max: Math.max.apply(null, amenityVals) + Math.max.apply(null, reviewVals)
-    };
-  }
-
-  function profileRange(profile) {
-    var rows = BDPG_CONFIG.BASELINE_TABLE.filter(function (r) { return r.profile === profile; });
-    if (!rows.length) return null;
-    var baselines = rows.map(function (r) { return r.baseline; });
-    var bounds = profileAdjustmentBounds();
-    var profileMin = Math.min.apply(null, baselines);
-    var profileMax = Math.max.apply(null, baselines);
-    return {
-      rangeLo: Math.round(profileMin * (1 + bounds.min)),
-      rangeHi: Math.round(profileMax * (1 + bounds.max))
-    };
-  }
-
-  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
-
-  function signalScore(signal, value) {
-    var map = BDPG_CONFIG.NETWORK_FIT_SIGNAL_SCORES[signal];
-    return (map && map.hasOwnProperty(value)) ? map[value] : 0;
-  }
-
-  function gradeForScore(score) {
-    var band = BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS.filter(function (b) { return score >= b.min; })[0];
-    return band || BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS[BDPG_CONFIG.NETWORK_FIT_GRADE_BANDS.length - 1];
-  }
-
-  var WEIGHT_KEYS = ['rangePosition', 'condition', 'hours', 'distance', 'corridor', 'competition'];
-
-  // A weight set reaches here from localStorage, so it can be anything. A set
-  // that is not six finite numbers in 0..100 summing to exactly 100 is not
-  // "close enough" -- it would silently produce a grade nobody configured, so
-  // it is discarded whole rather than patched. Same stance as isNum/hasOwn
-  // elsewhere in this project.
-  function resolveWeights(w) {
-    if (!w) return BDPG_CONFIG.WEIGHT_CONFIG;
-    var total = 0;
-    for (var i = 0; i < WEIGHT_KEYS.length; i++) {
-      var v = w[WEIGHT_KEYS[i]];
-      if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 100) return BDPG_CONFIG.WEIGHT_CONFIG;
-      total += v;
-    }
-    // Exactly the six keys, not "at least" them. An object carrying a seventh
-    // key is not a valid set with harmless extras -- it is evidence the value
-    // came from something other than this tool's own six sliders (a hand edit,
-    // an older or newer shape, another product's config). Accepting it would
-    // pass the strays straight through into grade.weights and, from there,
-    // into a saved record's weight stamp. Own enumerable keys only, which is
-    // all JSON.parse can produce; the six are already known present, so a
-    // count is the whole test. Runs after the loop so a non-object argument
-    // has already fallen back on the typeof check above rather than reaching
-    // Object.keys().
-    if (Object.keys(w).length !== WEIGHT_KEYS.length) return BDPG_CONFIG.WEIGHT_CONFIG;
-    return total === 100 ? w : BDPG_CONFIG.WEIGHT_CONFIG;
-  }
-
-  function calculateNetworkFitGrade(opts) {
-    var range = profileRange(opts.profile);
-    var d = opts.supportingDetails || {};
-
-    var rangePositionPct;
-    if (!range || range.rangeHi === range.rangeLo) {
-      rangePositionPct = 0;
-    } else {
-      rangePositionPct = clamp((opts.officialSubtotal - range.rangeLo) / (range.rangeHi - range.rangeLo), 0, 1) * 100;
-    }
-
-    var signalScores = {
-      condition: signalScore('condition', d.condition),
-      hours: signalScore('hours', d.hours),
-      distance: signalScore('distance', d.distance),
-      corridor: signalScore('corridor', d.corridor),
-      competition: signalScore('competition', d.competition)
-    };
-    var signalKeys = Object.keys(signalScores);
-    var signalAvg = signalKeys.reduce(function (sum, k) { return sum + signalScores[k]; }, 0) / signalKeys.length;
-
-    var w = resolveWeights(opts.weights);
-    var overallScore = (w.rangePosition * rangePositionPct +
-                        w.condition * signalScores.condition +
-                        w.hours * signalScores.hours +
-                        w.distance * signalScores.distance +
-                        w.corridor * signalScores.corridor +
-                        w.competition * signalScores.competition) / 100;
-    var band = gradeForScore(overallScore);
-
-    return {
-      rangeLo: range ? range.rangeLo : null,
-      rangeHi: range ? range.rangeHi : null,
-      rangePositionPct: rangePositionPct,
-      signalScores: signalScores,
-      signalAvg: signalAvg,
-      weights: w,
-      overallScore: overallScore,
-      grade: band.grade,
-      gradeLabel: band.label
-    };
-  }
-
-  function conditionAdjustedGallons(finalGallons, condition) {
-    var pct = BDPG_CONFIG.CONDITION_ADJUST.hasOwnProperty(condition) ? BDPG_CONFIG.CONDITION_ADJUST[condition] : 0;
-    return Math.round(finalGallons * (1 + pct));
-  }
-
-  function calculateMembershipFit(finalGallons) {
-    var cfg = BDPG_CONFIG.MEMBERSHIP_CONFIG;
-    var vpg = Number(cfg.valuePerGallon) || 0;
-
-    if (vpg <= 0) {
-      return { valuePerGallonConfigured: false, valuePerGallon: 0, monthlyValue: null, plans: [] };
-    }
-
-    var monthlyValue = finalGallons * vpg;
-    var plans = cfg.plans.map(function (p) {
-      var cost = Number(p.cost) || 0;
-      if (cost <= 0) return { name: p.name, configured: false };
-      var breakevenGallons = Math.max(1, Math.round(cost / vpg));
-      var coverageMultiple = Math.round((finalGallons / breakevenGallons) * 100) / 100;
-      return { name: p.name, configured: true, cost: cost, breakevenGallons: breakevenGallons, coverageMultiple: coverageMultiple };
-    });
-
-    return { valuePerGallonConfigured: true, valuePerGallon: vpg, monthlyValue: monthlyValue, plans: plans };
-  }
-
   return {
     getProfiles: getProfiles,
     getValidRoadways: getValidRoadways,
@@ -294,10 +174,6 @@
     pricingAdjustment: pricingAdjustment,
     rewardsAdjustment: rewardsAdjustment,
     suggestAmenityLevel: suggestAmenityLevel,
-    calculateEstimate: calculateEstimate,
-    calculateNetworkFitGrade: calculateNetworkFitGrade,
-    resolveWeights: resolveWeights,
-    conditionAdjustedGallons: conditionAdjustedGallons,
-    calculateMembershipFit: calculateMembershipFit
+    calculateEstimate: calculateEstimate
   };
 });

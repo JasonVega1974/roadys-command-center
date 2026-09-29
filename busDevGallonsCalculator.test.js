@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { BusDevGallonsCalc } = require('./busDevGallonsCalculator.js');
+const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
 
 test('getProfiles returns the 4 distinct profiles in table order', () => {
   assert.deepEqual(BusDevGallonsCalc.getProfiles(), [
@@ -105,14 +106,6 @@ test('each network baseline pct is consistent with its own avg over the overall 
     assert.ok(Math.abs(b.pctVsNetwork - derived) < 0.001,
       r + ': stored ' + b.pctVsNetwork + ' vs derived ' + derived.toFixed(5));
   });
-});
-
-test('WEIGHT_CONFIG has six pillars summing to 100', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  const w = BDPG_CONFIG.WEIGHT_CONFIG;
-  const keys = ['rangePosition','condition','hours','distance','corridor','competition'];
-  assert.deepEqual(Object.keys(w).sort(), keys.slice().sort());
-  assert.equal(keys.reduce((s,k) => s + w[k], 0), 100);
 });
 
 test('amenityAdjustment returns the exact configured percentage', () => {
@@ -301,121 +294,6 @@ test('suggestAmenityLevel: fast food (not just full restaurant) still counts as 
   assert.equal(r.level, 'Good / full service');
 });
 
-test('calculateNetworkFitGrade: Fuel stop at exact baseline scores ~71% range-position, not near 0', () => {
-  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Fuel stop', officialSubtotal: 2500,
-    supportingDetails: { condition: 'Average', hours: 'Extended', distance: '5-15 mi', corridor: 'Regional', competition: '1 within 15 mi' }
-  });
-  assert.equal(r.rangeLo, 2250);
-  assert.equal(r.rangeHi, 2600);
-  assert.ok(r.rangePositionPct > 65 && r.rangePositionPct < 75, 'expected ~71, got ' + r.rangePositionPct);
-});
-
-test('calculateNetworkFitGrade: case A officialSubtotal (13750) clamps range-position at 100 regardless of pricing', () => {
-  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Medium truck stop', officialSubtotal: 13750,
-    supportingDetails: { condition: 'New or remodeled', hours: '24/7', distance: 'On exit', corridor: 'Major', competition: 'None within 15 mi' }
-  });
-  assert.equal(r.rangeLo, 6750);
-  assert.equal(r.rangeHi, 13000);
-  assert.equal(r.rangePositionPct, 100);
-  assert.equal(r.grade, 'A');
-});
-
-test('calculateNetworkFitGrade: grade is identical regardless of what finalGallons/pricing would have been -- it never receives finalGallons at all', () => {
-  // Same officialSubtotal (14550), passed directly -- proves the function's
-  // contract by construction: it has no pricingLevel/finalGallons parameter to leak through.
-  const r1 = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Large truck stop', officialSubtotal: 14550, supportingDetails: {}
-  });
-  const r2 = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Large truck stop', officialSubtotal: 14550, supportingDetails: {}
-  });
-  assert.deepEqual(r1, r2);
-});
-
-test('calculateNetworkFitGrade: never divides by zero for a single-baseline-row profile', () => {
-  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Fuel stop', officialSubtotal: 2500, supportingDetails: {}
-  });
-  assert.ok(Number.isFinite(r.rangePositionPct));
-  assert.ok(!Number.isNaN(r.rangePositionPct));
-});
-
-test('calculateNetworkFitGrade: missing supporting details score 0 for that signal, never throw', () => {
-  assert.doesNotThrow(() => {
-    const r = BusDevGallonsCalc.calculateNetworkFitGrade({ profile: 'Small truck stop', officialSubtotal: 5000, supportingDetails: {} });
-    assert.equal(r.signalScores.condition, 0);
-  });
-});
-
-test('calculateNetworkFitGrade: grade bands are correctly ordered', () => {
-  const worst = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Large truck stop', officialSubtotal: 9000,
-    supportingDetails: { condition: 'Older / dated', hours: 'Business hours only', distance: '15+ mi', corridor: 'Local', competition: 'Adjacent to a major chain' }
-  });
-  assert.equal(worst.grade, 'E');
-});
-
-test('conditionAdjustedGallons applies +10/0/-10 to finalGallons', () => {
-  assert.equal(BusDevGallonsCalc.conditionAdjustedGallons(10000, 'New or remodeled'), 11000);
-  assert.equal(BusDevGallonsCalc.conditionAdjustedGallons(10000, 'Average'), 10000);
-  assert.equal(BusDevGallonsCalc.conditionAdjustedGallons(10000, 'Older / dated'), 9000);
-});
-
-test('calculateMembershipFit: today\'s actual placeholder state (all 0) is "not configured", never NaN/Infinity', () => {
-  const r = BusDevGallonsCalc.calculateMembershipFit(10000);
-  assert.equal(r.valuePerGallonConfigured, false);
-  assert.deepEqual(r.plans, []);
-  assert.equal(r.monthlyValue, null);
-  const flat = JSON.stringify(r);
-  assert.ok(!/NaN/.test(flat) && !/Infinity/.test(flat), 'result must never contain NaN or Infinity: ' + flat);
-});
-
-test('calculateMembershipFit: valuePerGallon set, only one plan cost set', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  const original = JSON.parse(JSON.stringify(BDPG_CONFIG.MEMBERSHIP_CONFIG));
-  try {
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = 0.05;
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.plans[0].cost = 100; // Roady's only
-
-    const r = BusDevGallonsCalc.calculateMembershipFit(10000);
-    assert.equal(r.valuePerGallonConfigured, true);
-    assert.equal(r.monthlyValue, 500);
-    const roadys = r.plans.filter(p => p.name === "Roady's")[0];
-    const ptp = r.plans.filter(p => p.name === 'PTP')[0];
-    assert.equal(roadys.configured, true);
-    assert.equal(roadys.breakevenGallons, 2000);
-    assert.equal(roadys.coverageMultiple, 5);
-    assert.equal(ptp.configured, false);
-    assert.equal('breakevenGallons' in ptp, false);
-  } finally {
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = original.valuePerGallon;
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.plans = original.plans;
-  }
-});
-
-test('calculateMembershipFit: degenerate input (large valuePerGallon, small cost) guards against division by zero', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  const original = JSON.parse(JSON.stringify(BDPG_CONFIG.MEMBERSHIP_CONFIG));
-  try {
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = 1000;
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.plans[0].cost = 100; // Roady's: 100/1000 = 0.1, rounds to 0
-
-    const r = BusDevGallonsCalc.calculateMembershipFit(10000);
-    assert.equal(r.valuePerGallonConfigured, true);
-    const roadys = r.plans.filter(p => p.name === "Roady's")[0];
-    assert.equal(roadys.configured, true);
-    assert.ok(roadys.breakevenGallons >= 1, 'breakevenGallons must be >= 1, got ' + roadys.breakevenGallons);
-    assert.ok(Number.isFinite(roadys.coverageMultiple), 'coverageMultiple must be finite, got ' + roadys.coverageMultiple);
-    const flat = JSON.stringify(r);
-    assert.ok(!/NaN/.test(flat) && !/Infinity/.test(flat), 'result must never contain NaN or Infinity: ' + flat);
-  } finally {
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.valuePerGallon = original.valuePerGallon;
-    BDPG_CONFIG.MEMBERSHIP_CONFIG.plans = original.plans;
-  }
-});
-
 test('calculateEstimate — case E: case A + Most aggressive pricing + Rewards participating', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
     profile: 'Medium truck stop', roadway: 'Interstate',
@@ -473,78 +351,103 @@ test('an estimate with no rewardsLevel equals one at the default — old profile
   assert.equal(withoutRewards.finalMathLine, atDefault.finalMathLine);
 });
 
-test('rewards does not widen profileRange, so the Network Fit Grade is unaffected', () => {
-  // profileAdjustmentBounds() sums ONLY amenity + review extremes: -0.05 + -0.05
-  // and +0.02 + +0.02. Medium truck stop baselines are 7,500 and 12,500.
-  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Medium truck stop', officialSubtotal: 13750, supportingDetails: {}
+// ── uncapped region variance and the multiplier floor ───────────────────────
+
+test('a real uncapped region delta flows straight into the subtotal', () => {
+  // Midwest measures +58.8%. Under the old +/-10% cap this was impossible to
+  // express; it is now the actual input.
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Small truck stop', roadway: 'Highway', regionPct: 0.588,
+    amenityLevel: 'Average', reviewRating: 4.0,
+    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown'
   });
-  assert.equal(r.rangeLo, 6750);
-  assert.equal(r.rangeHi, 13000);
+  assert.equal(e.baseline, 4000);
+  assert.equal(e.officialSubtotal, 6432);          // 4000 * (1 + 0.588 + 0 + 0.02)
+  assert.equal(e.officialMathLine, '4,000 × (1 + 0.588 + 0.00 + 0.02) = 6,432');
 });
 
-test('default weights reproduce the pre-change grade exactly', () => {
-  const r = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Medium truck stop', officialSubtotal: 9000,
-    supportingDetails: { condition:'Average', hours:'24/7', distance:'On exit',
-                         corridor:'Regional', competition:'1 within 15 mi' }
+test('a large negative region delta still produces a sane figure', () => {
+  // Texas measures -36.7%, the worst real value.
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate', regionPct: -0.367,
+    amenityLevel: 'Very limited', reviewRating: 2.0,
+    pricingLevel: 'No discounts', rewardsLevel: 'Not participating'
   });
-  // 0.5*rangePosition + 0.5*mean(50,100,100,50,50) === same under 50/10/10/10/10/10
-  assert.equal(Math.round(r.overallScore * 1000) / 1000,
-               Math.round((0.5 * r.rangePositionPct + 0.5 * r.signalAvg) * 1000) / 1000);
+  assert.ok(e.officialSubtotal > 0, 'the worst real region must not floor out');
+  assert.equal(e.officialSubtotal, Math.round(15000 * (1 - 0.367 - 0.05 - 0.05)));
+  assert.ok(e.finalGallons > 0);
 });
 
-test('resolveWeights falls back to defaults for a set that does not sum to 100', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  assert.deepEqual(BusDevGallonsCalc.resolveWeights({ rangePosition: 90, condition: 90,
-    hours: 10, distance: 10, corridor: 10, competition: 10 }), BDPG_CONFIG.WEIGHT_CONFIG);
-  assert.deepEqual(BusDevGallonsCalc.resolveWeights({ rangePosition: 'x', condition: 10,
-    hours: 10, distance: 10, corridor: 10, competition: 60 }), BDPG_CONFIG.WEIGHT_CONFIG);
-  assert.deepEqual(BusDevGallonsCalc.resolveWeights(null), BDPG_CONFIG.WEIGHT_CONFIG);
-});
-
-test('resolveWeights rejects a valid six-key set carrying extra keys', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  const valid = { rangePosition: 50, condition: 10, hours: 10, distance: 10, corridor: 10, competition: 10 };
-  // The same six values, summing to 100, plus strays. Whole-set rejection.
-  const withExtras = Object.assign({}, valid, { fuelBrand: 'x', rangePositionn: 99 });
-  assert.equal(BusDevGallonsCalc.resolveWeights(withExtras), BDPG_CONFIG.WEIGHT_CONFIG,
-    'an object with extra keys must fall back, not pass through');
-  // Proves the assertion above is not vacuous: strip the extras and the very
-  // same values are accepted, so it is the extra keys doing the rejecting.
-  assert.equal(BusDevGallonsCalc.resolveWeights(valid), valid);
-  // And the strays must not reach grade.weights (where the tracker stamps them).
-  const g = BusDevGallonsCalc.calculateNetworkFitGrade({
-    profile: 'Medium truck stop', officialSubtotal: 9000,
-    supportingDetails: {}, weights: withExtras
+test('the multiplier is floored at zero, so gallons are never negative', () => {
+  // The slider permits -100 even though no region measures anywhere near it.
+  // Without the floor this returns a negative quote.
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Small truck stop', roadway: 'Highway', regionPct: -1.0,
+    amenityLevel: 'Very limited', reviewRating: 1.0,
+    pricingLevel: 'No discounts', rewardsLevel: 'Not participating'
   });
-  assert.equal(Object.keys(g.weights).length, 6);
-  assert.equal(Object.prototype.hasOwnProperty.call(g.weights, 'fuelBrand'), false);
+  assert.equal(e.officialSubtotal, 0);
+  assert.equal(e.pricingAdjusted, 0);
+  assert.equal(e.finalGallons, 0);
 });
 
-test('WEIGHT_CONFIG is frozen, so a caller cannot corrupt the shared defaults', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  assert.equal(Object.isFrozen(BDPG_CONFIG.WEIGHT_CONFIG), true);
-  // resolveWeights() hands this exact object back on every fallback, and the
-  // page's discard notice depends on that identity -- so the freeze, not a
-  // defensive copy, is what has to make the write below impossible.
-  const handedBack = BusDevGallonsCalc.resolveWeights({ rangePosition: 1 });
-  assert.equal(handedBack, BDPG_CONFIG.WEIGHT_CONFIG);
-  assert.throws(() => { handedBack.rangePosition = 0; }, TypeError);
-  assert.equal(BDPG_CONFIG.WEIGHT_CONFIG.rangePosition, 50);
+test('the floor never lets a later figure resurrect a clamped one', () => {
+  // pricingMultiplier builds on the CLAMPED officialMultiplier, so a positive
+  // pricing term adds to zero rather than to a negative number.
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Small truck stop', roadway: 'Highway', regionPct: -2.0,
+    amenityLevel: 'Average', reviewRating: 4.0,
+    pricingLevel: 'Most aggressive (deepest discounts)',
+    rewardsLevel: "Participating in Roady's Rewards"
+  });
+  assert.equal(e.officialSubtotal, 0);
+  assert.equal(e.finalGallons, Math.round(4000 * 0.10));
 });
 
-test('a valid custom weight set changes the grade but never officialSubtotal', () => {
-  const inputs = { profile: 'Medium truck stop', officialSubtotal: 9000,
-    supportingDetails: { condition:'New or remodeled', hours:'24/7', distance:'On exit',
-                         corridor:'Major', competition:'None within 15 mi' } };
-  const base = BusDevGallonsCalc.calculateNetworkFitGrade(inputs);
-  const tilted = BusDevGallonsCalc.calculateNetworkFitGrade(Object.assign({}, inputs,
-    { weights: { rangePosition: 0, condition: 20, hours: 20, distance: 20, corridor: 20, competition: 20 } }));
-  assert.notEqual(base.overallScore, tilted.overallScore);
-  assert.equal(tilted.overallScore, 100, 'all five signals maxed with no range weight');
-  const est = BusDevGallonsCalc.calculateEstimate({ profile:'Medium truck stop', roadway:'Interstate',
-    regionPct: 0.06, amenityLevel:'Good / full service', reviewRating: 3.8,
-    pricingLevel:'Standard / moderate', rewardsLevel:'Undecided / unknown' });
-  assert.equal(est.officialSubtotal, 13750, 'weights must never touch the official figure');
+test('the floor does not touch an ordinary estimate', () => {
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate', regionPct: 0.072,
+    amenityLevel: 'Good / full service', reviewRating: 4.5,
+    pricingLevel: 'Aggressive', rewardsLevel: "Participating in Roady's Rewards"
+  });
+  assert.equal(e.officialSubtotal, Math.round(12500 * (1 + 0.072 + 0.02 + 0.02)));
+  assert.ok(e.finalGallons > e.officialSubtotal);
+});
+
+test('the grade, weights, condition and membership helpers are gone', () => {
+  // Removed with the internal results section. Asserted so a later re-export
+  // has to be deliberate rather than accidental.
+  ['calculateNetworkFitGrade', 'resolveWeights', 'conditionAdjustedGallons',
+    'calculateMembershipFit'].forEach((k) => {
+    assert.equal(BusDevGallonsCalc[k], undefined, k + ' should no longer be exported');
+  });
+  ['WEIGHT_CONFIG', 'NETWORK_FIT_SIGNAL_OPTIONS', 'NETWORK_FIT_SIGNAL_SCORES',
+    'NETWORK_FIT_GRADE_BANDS', 'CONDITION_ADJUST', 'MEMBERSHIP_CONFIG'].forEach((k) => {
+    assert.equal(BDPG_CONFIG[k], undefined, k + ' should no longer be in the config');
+  });
+});
+
+test('the amenity rule reads exactly the four details the UI still asks for', () => {
+  // service and defReefer were collected and never read; the option sets must
+  // not reintroduce a question that cannot change the answer.
+  const opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS;
+  assert.equal(opts.service, undefined);
+  assert.equal(opts.defReefer, undefined);
+  ['showers', 'food', 'scale', 'parking'].forEach((k) => {
+    assert.ok(opts[k], k + ' must remain an offered detail');
+  });
+  const base = { showers: '4-9', food: 'fast food', scale: 'yes', parking: '51-100' };
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(base).level, 'Good / full service');
+  assert.equal(
+    BusDevGallonsCalc.suggestAmenityLevel(
+      Object.assign({}, base, { service: 'none', defReefer: 'neither' })).level,
+    'Good / full service');
+});
+
+test('an untouched amenity form still returns Very limited, which is why the gate exists', () => {
+  // The -5% that the removed confirmation dropdown was built to catch. The
+  // Generate gate now requires all four rule-reading details to be answered,
+  // so this value can never reach a headline unobserved.
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel({}).level, 'Very limited');
+  assert.equal(BDPG_CONFIG.AMENITY_ADJUST['Very limited'], -0.05);
 });
