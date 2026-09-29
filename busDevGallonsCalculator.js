@@ -110,6 +110,24 @@
     var row = getBaselineRow(opts.profile, opts.roadway);
     if (!row) return null;
 
+    // The baseline may be supplied by the caller. This is an INPUT, not a
+    // formula change: every multiplier below is untouched and officialSubtotal
+    // is still baseline x (1 + region + amenities + review).
+    //
+    // The page passes the per-prospect figure that BDPG_STATS.dynamicBaseline()
+    // computes from comparable network locations; when that lookup falls back,
+    // it passes nothing and the static table row stands. Validated here rather
+    // than trusted, because a bad value would silently rescale every figure on
+    // a customer-facing sheet -- anything that is not a positive finite number
+    // falls back to the row.
+    var supplied = opts.baseline;
+    var baseline = row.baseline;
+    if (supplied !== null && supplied !== undefined && supplied !== '' &&
+        typeof supplied !== 'boolean' && typeof supplied !== 'object') {
+      var b = Number(supplied);
+      if (isFinite(b) && b > 0) baseline = b;
+    }
+
     var regionPct = Number(opts.regionPct) || 0;
     var amenityPct = amenityAdjustment(opts.amenityLevel);
     var review = reviewAdjustment(opts.reviewRating);
@@ -132,23 +150,23 @@
     var pricingMultiplier = atLeastZero(officialMultiplier + pricingPct);
     var finalMultiplier = atLeastZero(pricingMultiplier + rewardsPct);
 
-    var officialSubtotal = Math.round(row.baseline * officialMultiplier);
-    var pricingAdjusted = Math.round(row.baseline * pricingMultiplier);
-    var finalGallons = Math.round(row.baseline * finalMultiplier);
+    var officialSubtotal = Math.round(baseline * officialMultiplier);
+    var pricingAdjusted = Math.round(baseline * pricingMultiplier);
+    var finalGallons = Math.round(baseline * finalMultiplier);
 
-    var officialMathLine = fmtInt(row.baseline) + ' × (1' +
+    var officialMathLine = fmtInt(baseline) + ' × (1' +
       pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) +
       ') = ' + fmtInt(officialSubtotal);
-    var pricingMathLine = fmtInt(row.baseline) + ' × (1' +
+    var pricingMathLine = fmtInt(baseline) + ' × (1' +
       pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) + pctTerm(pricingPct) +
       ') = ' + fmtInt(pricingAdjusted);
-    var finalMathLine = fmtInt(row.baseline) + ' × (1' +
+    var finalMathLine = fmtInt(baseline) + ' × (1' +
       pctTerm(regionPct) + pctTerm(amenityPct) + pctTerm(review.pct) +
       pctTerm(pricingPct) + pctTerm(rewardsPct) +
       ') = ' + fmtInt(finalGallons);
 
     return {
-      baseline: row.baseline,
+      baseline: baseline,
       regionPct: regionPct,
       amenityPct: amenityPct,
       reviewPct: review.pct,

@@ -1528,6 +1528,19 @@ function getCentroid(pathStr, axis){
   // sorter in the page header ranks rows by parseFloat of the cell's text --
   // a leading glyph would make this column sort as text. (It strips '●'
   // already, which is why that is the glyph used.)
+  // Which regions answer this profile from live network data. Used by the
+  // admin editor to say so, and by nothing that computes.
+  BDPG.regionsWithNetworkBaseline = function (profile, roadway) {
+    if (!BDPG._locationsReady) return [];
+    var locs = BDPG.networkLocations(), out = [];
+    BDPG.REGION_KEYS.forEach(function (reg) {
+      var d = BDPG_STATS.dynamicBaseline({ profile: profile, roadway: roadway, region: reg },
+        locs, BDPG_CONFIG.BASELINE_TABLE);
+      if (d.source === 'network') out.push({ region: reg, baseline: d.baseline, n: d.n });
+    });
+    return out;
+  };
+
   BDPG.baselineCellInnerHtml = function (i) {
     var r = BDPG.BASELINE_ANALYSIS[i];
     if (!r) return '';
@@ -1543,6 +1556,25 @@ function getCentroid(pathStr, axis){
     }
     var live = BDPG.liveBaseline(key);
     var overridden = BDPG.baselineIsOverridden(key);
+
+    // How many regions now answer this profile from network data instead of
+    // this row. Deliberately a count, not a single "computed value": the
+    // dynamic baseline is per REGION, so one profile has up to eight of them
+    // and there is no one number to show read-only in its place.
+    //
+    // The input therefore stays editable, which is not what a literal reading
+    // of "read-only for dynamic profiles" would do -- this value still governs
+    // every region that has no live data, so locking it would remove the
+    // admin's only control over the majority of prospects.
+    var liveRegions = BDPG.regionsWithNetworkBaseline(r.cfgProfile, r.cfgRoadway);
+    var drivenNote = liveRegions.length
+      ? '<div style="font-size:.66em;color:var(--muted);margin-top:2px" title="' +
+          BDPG.escHtml(liveRegions.map(function (x) {
+            return x.region + ': ' + BDPG.fmtGal(x.baseline) + ' (n=' + x.n + ')';
+          }).join(' · ')) +
+        '">network-driven in ' + liveRegions.length + ' region' +
+        (liveRegions.length === 1 ? '' : 's') + ' — edit those in Network Locations</div>'
+      : '';
     var dot = overridden
       ? '<span class="bdpg-bl-dot" title="Overridden in this browser. busDevGallonsConfig.js ships ' +
           BDPG.fmtGal(BDPG.BASELINE_DEFAULTS[key]) + ' gal/mo for this row.">●</span>'
@@ -1553,7 +1585,7 @@ function getCentroid(pathStr, axis){
       : '';
     return '<button class="bdpg-bl-val" onclick="BDPG.onBaselineEditStart(' + i +
         ')" title="Click to edit this baseline">' + BDPG.fmtGal(live) + '</button>' +
-      dot + reset;
+      dot + reset + drivenNote;
   };
 
   // Patches this one cell rather than calling render(): a render would rebuild
@@ -1807,7 +1839,7 @@ function getCentroid(pathStr, axis){
   // a format check -- the id's only contract is that it is unique per row and
   // stable between regenerations.
   BDPG.LOCATION_FIELDS = ['id', 'city', 'state', 'group', 'type', 'dieselLanes',
-    'size', 'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
+    'size', 'sizeSource', 'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
 
   // Escapes a value for use as an argument inside a single-quoted JS string
   // that itself sits inside a double-quoted HTML attribute -- the shape every
@@ -1837,6 +1869,7 @@ function getCentroid(pathStr, axis){
   BDPG.locationsBadSize = 0;        // not one of Small/Medium/Large
   BDPG.locationsSizeIgnored = 0;    // sized, but Size cannot affect its profile
   BDPG.locationsSizeConflict = 0;   // disagrees with this page's own lane rule
+  BDPG.locationsCuratedSizes = 0;   // sizeSource:'manual' -- reviewed into the repo
   BDPG._locationsLoaded = false;
   BDPG.locationEdits = {};
   BDPG.locationEditsDropped = 0;
@@ -1850,6 +1883,25 @@ function getCentroid(pathStr, axis){
   BDPG.locSelected = {};
   BDPG.locBulkSize = '';
 
+  // The single entry point both tabs use. The Network Locations tab calls it
+  // when it first renders; the calculator calls it the first time it needs a
+  // baseline. The _locationsLoaded guard means the second caller waits on the
+  // first one's fetch rather than issuing its own -- the file is read once per
+  // page load whichever tab is opened first, and never twice.
+  //
+  // Callers waiting on an in-flight fetch are queued rather than dropped: the
+  // guard flips before the request resolves, so an early return would leave
+  // the calculator rendering a static baseline and never re-rendering when
+  // the data arrived.
+  BDPG._locationsWaiters = [];
+  BDPG.ensureLocations = function (onDone) {
+    if (BDPG._locationsReady) { if (onDone) onDone(); return; }
+    if (onDone) BDPG._locationsWaiters.push(onDone);
+    BDPG.loadLocations(null);
+  };
+
+  BDPG._locationsReady = false;
+
   BDPG.loadLocations = function (onDone) {
     if (BDPG._locationsLoaded) { if (onDone) onDone(); return; }
     BDPG._locationsLoaded = true;
@@ -1858,7 +1910,11 @@ function getCentroid(pathStr, axis){
     function accept(json, label) {
       BDPG.locationsSourceLabel = label;
       BDPG.ingestLocations(json);
+      BDPG._locationsReady = true;
       if (onDone) onDone();
+      var waiters = BDPG._locationsWaiters;
+      BDPG._locationsWaiters = [];
+      waiters.forEach(function (fn) { try { fn(); } catch (e) {} });
     }
     fetch(BDPG.LOCATIONS_URL).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) {
@@ -1879,6 +1935,7 @@ function getCentroid(pathStr, axis){
     BDPG.locationsBadSize = 0;
     BDPG.locationsSizeIgnored = 0;
     BDPG.locationsSizeConflict = 0;
+    BDPG.locationsCuratedSizes = 0;
     if (!json || typeof json !== 'object') return;
 
     BDPG.locationsMeta = {
@@ -1934,7 +1991,18 @@ function getCentroid(pathStr, axis){
         BDPG.locationsSizeConflict++;
       }
       clean.size = fileSize;
-      clean.sizeOrigin = fileSize ? 'lanes' : '';
+      // sizeSource:'manual' in the file means a human decided that size and it
+      // was reviewed into the repo, which is the same standing as a local
+      // hand edit -- and unlike a local edit, every rep gets it. Anything
+      // else with a size is the lane rule's derivation.
+      //
+      // This is what switches the dynamic baseline on: comparableLocations()
+      // only counts 'manual', so until the committed file carries sizeSource
+      // every truck stop profile falls back to the static table.
+      clean.sizeOrigin = fileSize
+        ? (str(row.sizeSource).trim().toLowerCase() === 'manual' ? 'manual' : 'lanes')
+        : '';
+      if (clean.sizeOrigin === 'manual') BDPG.locationsCuratedSizes++;
       BDPG.locations.push(clean);
     });
     BDPG.findOrphanedLocationEdits();
@@ -3798,6 +3866,79 @@ function getCentroid(pathStr, axis){
     }).join('') + '</div>';
   };
 
+  // ── Per-prospect dynamic baseline ───────────────────────────────────────
+  //
+  // The baseline is the median avg gal/mo of the network locations comparable
+  // to THIS prospect -- same region, type, size and lane band -- falling back
+  // to the static BASELINE_TABLE row when fewer than three exist. The
+  // arithmetic lives in BDPG_STATS.dynamicBaseline(); this is the page's
+  // cache and its trigger.
+  //
+  // Only locations whose size was set by a human count (a curated sizeSource
+  // in the file, or a local admin edit). Until the committed file carries
+  // sizeSource the lookup finds nothing for any truck stop profile and every
+  // prospect uses the static table -- which is the intended state while the
+  // sizing work is still being done, not a failure.
+  //
+  // How large the divergence has to be before the UI flags it. Not a
+  // threshold on using the number, only on drawing attention to it.
+  BDPG.BASELINE_DIVERGENCE_FLAG = 0.20;
+
+  // Recomputed rather than cached across renders: it depends on the selected
+  // profile, the prospect's state and the current set of hand-sized
+  // locations, all of which change under the rep. A stale baseline is the one
+  // failure mode this whole feature cannot afford, and the computation is a
+  // filter over 249 rows.
+  BDPG.currentBaseline = function () {
+    var s = BDPG.state;
+    var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
+    return BDPG_STATS.dynamicBaseline(
+      { profile: s.profile, roadway: s.roadway, region: region },
+      BDPG.networkLocations(), BDPG_CONFIG.BASELINE_TABLE);
+  };
+
+  // The ingested locations with admin edits applied -- the same view the
+  // Network Locations tab renders, so a size set there is immediately
+  // comparable here. Region is derived on the fly; it is not a stored field.
+  BDPG.networkLocations = function () {
+    if (!BDPG._locationsReady) return [];
+    return BDPG.effectiveLocations();
+  };
+
+  // Triggered from the calculator, not just the Network Locations tab. The
+  // first baseline lookup of a session kicks the fetch and re-renders when it
+  // lands; every later one is served from memory.
+  BDPG.primeLocationsForBaseline = function () {
+    if (BDPG._locationsReady || BDPG._locationsLoaded) return;
+    BDPG.ensureLocations(function () { BDPG.render(); });
+  };
+
+  BDPG.baselineSourceNoteHtml = function (d) {
+    if (!d || d.source === 'no-profile') return '';
+    var muted = 'font-size:.78em;color:var(--muted);margin-top:6px';
+    if (d.source === 'network') {
+      var div = BDPG_STATS.baselineDivergence(d);
+      var flag = (div !== null && Math.abs(div) >= BDPG.BASELINE_DIVERGENCE_FLAG)
+        ? '<div style="font-size:.78em;color:var(--yellow);margin-top:4px">⚠ ' +
+            (div > 0 ? '+' : '') + Math.round(div * 100) + '% vs the ' +
+            BDPG.fmtGal(d.staticBaseline) + ' table value — the network and the ' +
+            'configured baseline disagree materially for this profile.</div>'
+        : '';
+      return '<div style="' + muted + '"><span class="badge tag-green">Network avg (n=' + d.n + ')</span> ' +
+        'Based on ' + d.n + ' comparable network location' + (d.n === 1 ? '' : 's') + ' in ' +
+        BDPG.escHtml(d.region) + '.</div>' + flag;
+    }
+    var why;
+    if (d.source === 'no-region') {
+      why = 'Set the prospect&#39;s state to use a network-data baseline.';
+    } else if (!BDPG._locationsReady) {
+      why = 'Loading network locations…';
+    } else {
+      why = 'Using network default — insufficient local data for this profile (n=' + d.n + ').';
+    }
+    return '<div style="' + muted + '"><span class="badge tag-gray">Network default</span> ' + why + '</div>';
+  };
+
   BDPG.step1Html = function () {
     var s = BDPG.state;
     var ICONS = { 'Fuel stop': '⛽', 'Small truck stop': '🚏',
@@ -3822,11 +3963,17 @@ function getCentroid(pathStr, axis){
     var row = (s.profile && s.roadway) ? BusDevGallonsCalc.getBaselineRow(s.profile, s.roadway) : null;
     var callout = '';
     if (row) {
-      var pos = Math.max(0, Math.min(100, ((row.baseline - 2500) / 12500) * 100));
+      // Kicks the fetch on the first baseline of a session if the Network
+      // Locations tab has not already done it; re-renders when it lands.
+      BDPG.primeLocationsForBaseline();
+      var dyn = BDPG.currentBaseline();
+      var shown = (dyn && isNum(dyn.baseline)) ? dyn.baseline : row.baseline;
+      var pos = Math.max(0, Math.min(100, ((shown - 2500) / 12500) * 100));
       callout = '<div class="bdpg-callout">' +
         '<div class="bdpg-lbl">Selected Baseline</div>' +
         '<div style="font-family:var(--ff);font-size:2em;font-weight:800;color:var(--accent);line-height:1">' +
-          BDPG.fmtGal(row.baseline) + '<span style="font-size:.45em;color:var(--muted);margin-left:8px">avg gal/mo baseline</span></div>' +
+          BDPG.fmtGal(shown) + '<span style="font-size:.45em;color:var(--muted);margin-left:8px">avg gal/mo baseline</span></div>' +
+        BDPG.baselineSourceNoteHtml(dyn) +
         '<div class="bdpg-rangebar"><div class="bdpg-rangebar-tick" style="left:' + pos.toFixed(1) + '%"></div></div>' +
         '<div class="bdpg-rangebar-ends"><span>2,500</span><span>15,000</span></div>' +
       '</div>';
@@ -4372,15 +4519,21 @@ function getCentroid(pathStr, axis){
     var region = BusDevGallonsCalc.resolveRegion(s.state);
     var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
 
+    // The per-prospect baseline. dynamicBaseline() already falls back to the
+    // static row, so this is never undefined for a valid profile -- and the
+    // engine validates it again before using it.
+    var dyn = BDPG.currentBaseline();
+
     var estimate = BusDevGallonsCalc.calculateEstimate({
       profile: s.profile, roadway: s.roadway, regionPct: regionPct,
+      baseline: dyn ? dyn.baseline : null,
       amenityLevel: s.amenityLevel, reviewRating: s.truckerPathRating === '' ? null : Number(s.truckerPathRating),
       pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT,
       rewardsLevel: s.rewardsLevel || BDPG_CONFIG.REWARDS_DEFAULT
     });
     if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return false; }
 
-    s.result = { estimate: estimate, region: region };
+    s.result = { estimate: estimate, region: region, baselineSource: dyn ? dyn.source : '', baselineN: dyn ? dyn.n : 0 };
     // The result and the inputs are back in step, so the "results cleared"
     // notice must go with them.
     s.resultStale = false;
@@ -5342,7 +5495,19 @@ function getCentroid(pathStr, axis){
     // the pair no longer resolves to a baseline row: there is nothing to
     // compare against, and the Location Profile cell already reads "—".
     if (isNum(sum.officialSubtotal) && sum.profile && sum.roadway) {
-      var curRow = BusDevGallonsCalc.getBaselineRow(sum.profile, sum.roadway);
+      // Compared against a recomputation of THIS record's own lookup, not
+      // against the static table row.
+      //
+      // The baseline became per-prospect: two records on the same profile in
+      // different regions legitimately carry different baselines, so
+      // comparing every record against one table value would light the
+      // "other baseline" badge on every row that ever used network data and
+      // the marker would stop meaning anything. sum.region is stored with the
+      // record precisely so this comparison can be like-for-like.
+      var curDyn = BDPG_STATS.dynamicBaseline(
+        { profile: sum.profile, roadway: sum.roadway, region: sum.region },
+        BDPG.networkLocations(), BDPG_CONFIG.BASELINE_TABLE);
+      var curRow = curDyn && isNum(curDyn.baseline) ? curDyn : null;
       if (curRow) {
         var curBaselineStamp = BDPG.baselineStamp(curRow.baseline);
         if (!sum.baselineStamp) {

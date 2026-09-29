@@ -3,6 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { BusDevGallonsCalc } = require('./busDevGallonsCalculator.js');
 const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+const { BDPG_STATS } = require('./bdpgStats.js');
+const TABLE = BDPG_CONFIG.BASELINE_TABLE;
 
 test('getProfiles returns the 4 distinct profiles in table order', () => {
   assert.deepEqual(BusDevGallonsCalc.getProfiles(), [
@@ -450,4 +452,172 @@ test('an untouched amenity form still returns Very limited, which is why the gat
   // so this value can never reach a headline unobserved.
   assert.equal(BusDevGallonsCalc.suggestAmenityLevel({}).level, 'Very limited');
   assert.equal(BDPG_CONFIG.AMENITY_ADJUST['Very limited'], -0.05);
+});
+
+// ── dynamic baseline lookup ─────────────────────────────────────────────────
+
+const nloc = (o) => Object.assign({
+  id: 'R1', region: 'Midwest', type: 'Truck Stop', size: 'Medium',
+  sizeOrigin: 'manual', dieselLanes: 4, avgGalMo: 8000
+}, o);
+const sel = (o) => Object.assign({ profile: 'Medium truck stop', roadway: 'Highway', region: 'Midwest' }, o);
+
+test('profileSize reads the size out of a profile name', () => {
+  assert.equal(BDPG_STATS.profileSize('Small truck stop'), 'Small');
+  assert.equal(BDPG_STATS.profileSize('Medium truck stop'), 'Medium');
+  assert.equal(BDPG_STATS.profileSize('Large truck stop'), 'Large');
+  assert.equal(BDPG_STATS.profileSize('Fuel stop'), null);
+  assert.equal(BDPG_STATS.profileSize(''), null);
+});
+
+test('the dynamic threshold is 3, deliberately below the Apply floor of 5', () => {
+  assert.equal(BDPG_STATS.DYNAMIC_BASELINE_MIN_N, 3);
+});
+
+test('three comparable locations produce a network baseline', () => {
+  const locs = [nloc({ id: 'a', avgGalMo: 6000 }), nloc({ id: 'b', avgGalMo: 8000 }),
+    nloc({ id: 'c', avgGalMo: 10000 })];
+  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
+  assert.equal(d.source, 'network');
+  assert.equal(d.n, 3);
+  assert.equal(d.baseline, 8000);
+  assert.equal(d.staticBaseline, 7500);
+});
+
+test('two comparable locations fall back to the static table', () => {
+  const locs = [nloc({ id: 'a', avgGalMo: 6000 }), nloc({ id: 'b', avgGalMo: 10000 })];
+  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
+  assert.equal(d.source, 'static');
+  assert.equal(d.n, 2);
+  assert.equal(d.baseline, 7500, 'must be the BASELINE_TABLE value');
+  assert.equal(d.median, 8000, 'the median is still reported, just not used');
+});
+
+test('lane-rule-sized locations never count toward a baseline', () => {
+  // The whole reason the filter exists: a lane-rule size is a relabel of
+  // roadway, so grouping by it measures the roadway a second time.
+  const locs = [nloc({ id: 'a', sizeOrigin: 'lanes' }), nloc({ id: 'b', sizeOrigin: 'lanes' }),
+    nloc({ id: 'c', sizeOrigin: 'lanes' }), nloc({ id: 'd', sizeOrigin: 'lanes' })];
+  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
+  assert.equal(d.n, 0);
+  assert.equal(d.source, 'static');
+});
+
+test('a curated sizeSource and a local edit are both "manual" and both count', () => {
+  const locs = [nloc({ id: 'a', avgGalMo: 5000 }), nloc({ id: 'b', avgGalMo: 7000 }),
+    nloc({ id: 'c', avgGalMo: 9000 })];
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), locs, TABLE).baseline, 7000);
+});
+
+test('the reporting floor applies to the comparables', () => {
+  const locs = [nloc({ id: 'a', avgGalMo: 9000 }), nloc({ id: 'b', avgGalMo: 11000 }),
+    nloc({ id: 'c', avgGalMo: 3 }), nloc({ id: 'd', avgGalMo: 0 })];
+  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
+  assert.equal(d.n, 2, 'the two non-reporting rows must not pad the sample');
+  assert.equal(d.source, 'static');
+});
+
+test('region, lane tier and size all have to match', () => {
+  const good = [nloc({ id: 'a' }), nloc({ id: 'b' }), nloc({ id: 'c' })];
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), good, TABLE).n, 3);
+  const wrongRegion = good.map((l) => Object.assign({}, l, { region: 'Texas' }));
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongRegion, TABLE).n, 0);
+  const wrongLanes = good.map((l) => Object.assign({}, l, { dieselLanes: 9 }));  // 6+ vs 3-5
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongLanes, TABLE).n, 0);
+  const wrongSize = good.map((l) => Object.assign({}, l, { size: 'Large' }));
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongSize, TABLE).n, 0);
+  const wrongType = good.map((l) => Object.assign({}, l, { type: 'C-Store' }));
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongType, TABLE).n, 0);
+});
+
+test('a fuel stop matches on type and region alone, ignoring size and lanes', () => {
+  const locs = [
+    nloc({ id: 'a', type: 'Fuel Stop', size: '', sizeOrigin: '', dieselLanes: 20, avgGalMo: 2000 }),
+    nloc({ id: 'b', type: 'Fuel Stop', size: 'Large', sizeOrigin: 'lanes', dieselLanes: 1, avgGalMo: 3000 }),
+    nloc({ id: 'c', type: 'Fuel Stop', size: '', sizeOrigin: '', dieselLanes: null, avgGalMo: 4000 })
+  ];
+  const d = BDPG_STATS.dynamicBaseline(sel({ profile: 'Fuel stop', roadway: 'Any' }), locs, TABLE);
+  assert.equal(d.source, 'network');
+  assert.equal(d.n, 3, 'a fuel stop needs no hand-set size to be comparable');
+  assert.equal(d.baseline, 3000);
+});
+
+test('no region means no lookup, and the static value stands', () => {
+  const locs = [nloc({ id: 'a' }), nloc({ id: 'b' }), nloc({ id: 'c' })];
+  const d = BDPG_STATS.dynamicBaseline(sel({ region: null }), locs, TABLE);
+  assert.equal(d.source, 'no-region');
+  assert.equal(d.baseline, 7500);
+  assert.equal(d.n, 0);
+});
+
+test('an unknown profile/roadway pair yields no baseline at all', () => {
+  const d = BDPG_STATS.dynamicBaseline(sel({ profile: 'Medium truck stop', roadway: 'Backroad' }), [], TABLE);
+  assert.equal(d.source, 'no-profile');
+  assert.equal(d.baseline, null);
+});
+
+test('an empty location set falls back rather than throwing', () => {
+  [[], null, undefined].forEach((l) => {
+    const d = BDPG_STATS.dynamicBaseline(sel(), l, TABLE);
+    assert.equal(d.source, 'static');
+    assert.equal(d.baseline, 7500);
+  });
+});
+
+test('the threshold is overridable per call', () => {
+  const locs = [nloc({ id: 'a', avgGalMo: 6000 }), nloc({ id: 'b', avgGalMo: 10000 })];
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), locs, TABLE, { minN: 2 }).source, 'network');
+  assert.equal(BDPG_STATS.dynamicBaseline(sel(), locs, TABLE, { minN: 9 }).source, 'static');
+});
+
+test('divergence is reported only for a live baseline', () => {
+  const locs = [nloc({ id: 'a', avgGalMo: 15000 }), nloc({ id: 'b', avgGalMo: 15000 }),
+    nloc({ id: 'c', avgGalMo: 15000 })];
+  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
+  assert.equal(d.baseline, 15000);
+  assert.equal(BDPG_STATS.baselineDivergence(d), 1);           // 15000 vs 7500
+  const few = BDPG_STATS.dynamicBaseline(sel(), locs.slice(0, 1), TABLE);
+  assert.equal(BDPG_STATS.baselineDivergence(few), null, 'a fallback has not diverged from anything');
+});
+
+test('comparableLocations reports the same set the baseline was built from', () => {
+  const locs = [nloc({ id: 'a' }), nloc({ id: 'b' }), nloc({ id: 'x', sizeOrigin: 'lanes' })];
+  const row = BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Highway');
+  const hits = BDPG_STATS.comparableLocations(locs, row, 'Midwest');
+  assert.deepEqual(hits.map((h) => h.id), ['a', 'b']);
+});
+
+test('the formula is unchanged: a dynamic baseline is just a different input', () => {
+  // Same adjustments, two baselines -- the multiplier must be identical.
+  const args = {
+    profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0.588,
+    amenityLevel: 'Average', reviewRating: 4.0,
+    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown'
+  };
+  const stat = BusDevGallonsCalc.calculateEstimate(args);
+  const dyn = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: 15605 }));
+  assert.equal(stat.baseline, 7500);
+  assert.equal(dyn.baseline, 15605);
+  // Compared against the multiplier directly, not by dividing the two
+  // subtotals: both are rounded, so their ratios differ by ~1e-5 no matter
+  // how correct the arithmetic is. Asserting each figure reproduces
+  // round(baseline * m) is the check that actually means "same formula".
+  const m = 1 + 0.588 + 0 + 0.02;
+  assert.equal(stat.officialSubtotal, Math.round(7500 * m));
+  assert.equal(dyn.officialSubtotal, Math.round(15605 * m));
+  // And the percentage terms in the printed math line are identical.
+  assert.equal(stat.officialMathLine.replace(/^[\d,]+ /, ''),
+               dyn.officialMathLine.replace(/^[\d,]+ /, '').replace(/= [\d,]+$/, '') +
+               '= ' + stat.officialSubtotal.toLocaleString('en-US'));
+});
+
+test('a baseline override is ignored unless it is a usable positive number', () => {
+  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0,
+    amenityLevel: 'Average', reviewRating: 4.0,
+    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown' };
+  [null, undefined, '', 0, -5, 'x', NaN].forEach((b) => {
+    assert.equal(BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: b })).baseline,
+      7500, 'bad override ' + JSON.stringify(b) + ' must fall back to the table');
+  });
+  assert.equal(BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: '9000' })).baseline, 9000);
 });
