@@ -671,7 +671,14 @@ test('the committed network file and network-context agree on what the network i
   const seen = new Set();
   Object.values(nc.byRegion).forEach((r) => Object.keys(r.byType).forEach((t) => seen.add(t)));
   BDPG_STATS.EXCLUDED_NETWORK_TYPES.forEach((t) => assert.ok(!seen.has(t), t));
-  assert.equal(nc.activeTotal, 251);   // 400 less 128 PPO and 21 C-Store
+  // 400 less 128 PPO, 21 C-Store and 23 Service Center.
+  assert.equal(nc.activeTotal, 228);
+  // The stronger statement: after normalizing, the context file describes
+  // only the types network-locations.json is allowed to contain. The two
+  // files come from different exports, so this is what keeps them talking
+  // about the same network rather than merely similar ones.
+  const allowed = ['Truck Stop', 'Truck Stop / Service Center', 'Fuel Stop'];
+  [...seen].forEach((t) => assert.ok(allowed.includes(t), 'unexpected type in context: ' + t));
 });
 
 test('the committed region_variance.json matches the computed deltas', () => {

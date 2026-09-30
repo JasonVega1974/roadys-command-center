@@ -100,6 +100,25 @@
   // general -- measured slack across all eight regions is ~0.0001-0.0005.
   // Do not "fix" a pct that looks off by a thousandth against that
   // derivation; the stored value is the more accurate one.
+  //
+  // FALLBACK ONLY as of 2026-09-30. The results page reads
+  // BDPG.effectiveNetworkAverage(), which takes the median avgGalMo of the
+  // region's reporting locations in network-locations.json and only reaches
+  // these figures for a region the file cannot speak for (fewer than
+  // DYNAMIC_BASELINE_MIN_N reporting locations -- no region is in that state
+  // today). Two things follow, and both matter if these values are ever
+  // touched again:
+  //
+  //   * They are MEANS from a retired 227-location gallon report; the live
+  //     path is a MEDIAN over a different, smaller file. They read much
+  //     higher -- Southeast 10,373 here against 5,985 observed -- because a
+  //     few very large sites set a mean and nothing else does. Do not
+  //     reconcile the two by editing these numbers to match; they are
+  //     different statistics over different populations, and the caption
+  //     says which one produced the figure on screen.
+  //   * pctVsNetwork is not displayed anywhere. It is kept because the
+  //     internal-consistency test below pins it against overallAvgGalMo,
+  //     which is what would catch a careless edit to this block.
   var BDPG_NETWORK_BASELINES = {
     'Northwest':     { avgGalMo: 11153, pctVsNetwork: -0.097 },
     'West':          { avgGalMo: 10883, pctVsNetwork: -0.119 },
@@ -111,6 +130,12 @@
     'Southeast':     { avgGalMo: 10373, pctVsNetwork: -0.160 }
   };
 
+  // Metadata for the retired report above. `locations` and `label` are no
+  // longer displayed: the caption that cited "Roady's 227-location network
+  // report" now names the region's own reporting count out of
+  // network-locations.json, so that every number on the results page comes
+  // from one file. `asOf` survives as the fallback path's date, and
+  // `overallAvgGalMo` as the anchor the pctVsNetwork consistency test needs.
   var NETWORK_BASELINE_META = {
     overallAvgGalMo: 12347, locations: 227, asOf: '2026-09',
     label: "From Roady's network data (12mo avg, 227 locations, as of 2026-09)"
