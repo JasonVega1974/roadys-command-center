@@ -26,7 +26,7 @@ test('getValidRoadways never offers Backroad for Medium or Large (open item 2)',
 
 test('getBaselineRow returns the exact row for a valid combination', () => {
   assert.deepEqual(BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Interstate'), {
-    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 12500
+    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10492
   });
 });
 
@@ -141,18 +141,18 @@ test('pricingAdjustment returns the exact configured percentage for each band', 
   assert.equal(BusDevGallonsCalc.pricingAdjustment('No discounts'), -0.05);
 });
 
-test('pricingAdjustment falls back to the configured default for empty/unrecognized input', () => {
-  const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  const defaultPct = BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT];
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(''), defaultPct);
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(undefined), defaultPct);
-  assert.equal(BusDevGallonsCalc.pricingAdjustment('not a real band'), defaultPct);
+test('pricingAdjustment falls back to the default for unusable input', () => {
+  [null, undefined, '', true, {}, [], NaN, 'nonsense'].forEach((v) => {
+    assert.equal(BusDevGallonsCalc.pricingAdjustment(v), BDPG_CONFIG.PRICING_DEFAULT,
+      JSON.stringify(v));
+  });
+  assert.equal(BDPG_CONFIG.PRICING_DEFAULT, 0, 'the default posture is neutral');
 });
 
 test('calculateEstimate — case A @ Standard/0% pricing: officialSubtotal === finalGallons === 13750', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate',
-    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8, pricingLevel: 'Standard / moderate'
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
+    regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8, pricingLevel: 0
   });
   assert.equal(r.officialSubtotal, 13750);
   assert.equal(r.finalGallons, 13750);
@@ -160,8 +160,8 @@ test('calculateEstimate — case A @ Standard/0% pricing: officialSubtotal === f
 
 test('calculateEstimate — case B @ Standard/0% pricing: 2250', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Fuel stop', roadway: 'Any',
-    regionPct: 0, amenityLevel: 'Very limited', reviewRating: 2.7, pricingLevel: 'Standard / moderate'
+    profile: 'Fuel stop', roadway: 'Any', baseline: 2500,
+    regionPct: 0, amenityLevel: 'Very limited', reviewRating: 2.7, pricingLevel: 0
   });
   assert.equal(r.officialSubtotal, 2250);
   assert.equal(r.finalGallons, 2250);
@@ -169,8 +169,8 @@ test('calculateEstimate — case B @ Standard/0% pricing: 2250', () => {
 
 test('calculateEstimate — case C @ Standard/0% pricing: 14550', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large truck stop', roadway: 'Interstate',
-    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Standard / moderate'
+    profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000,
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 0
   });
   assert.equal(r.officialSubtotal, 14550);
   assert.equal(r.finalGallons, 14550);
@@ -178,8 +178,8 @@ test('calculateEstimate — case C @ Standard/0% pricing: 14550', () => {
 
 test('calculateEstimate — case D @ Standard/0% pricing: 3240', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Small truck stop', roadway: 'Backroad',
-    regionPct: 0.06, amenityLevel: 'Average', reviewRating: 3.6, pricingLevel: 'Standard / moderate'
+    profile: 'Small truck stop', roadway: 'Backroad', baseline: 3000,
+    regionPct: 0.06, amenityLevel: 'Average', reviewRating: 3.6, pricingLevel: 0
   });
   assert.equal(r.officialSubtotal, 3240);
   assert.equal(r.finalGallons, 3240);
@@ -187,9 +187,9 @@ test('calculateEstimate — case D @ Standard/0% pricing: 3240', () => {
 
 test('calculateEstimate — case A @ Most aggressive pricing: officialSubtotal unchanged, finalGallons 14375', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate',
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
     regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
-    pricingLevel: 'Most aggressive (deepest discounts)'
+    pricingLevel: 0.05
   });
   assert.equal(r.officialSubtotal, 13750);
   assert.equal(r.finalGallons, 14375);
@@ -197,9 +197,9 @@ test('calculateEstimate — case A @ Most aggressive pricing: officialSubtotal u
 
 test('calculateEstimate — case A @ No discounts pricing: officialSubtotal unchanged, finalGallons 13125', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate',
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
     regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
-    pricingLevel: 'No discounts'
+    pricingLevel: -0.05
   });
   assert.equal(r.officialSubtotal, 13750);
   assert.equal(r.finalGallons, 13125);
@@ -207,8 +207,8 @@ test('calculateEstimate — case A @ No discounts pricing: officialSubtotal unch
 
 test('calculateEstimate — case C @ Aggressive pricing: officialSubtotal unchanged, finalGallons 14925', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large truck stop', roadway: 'Interstate',
-    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Aggressive'
+    profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000,
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 0.025
   });
   assert.equal(r.officialSubtotal, 14550);
   assert.equal(r.finalGallons, 14925);
@@ -216,8 +216,11 @@ test('calculateEstimate — case C @ Aggressive pricing: officialSubtotal unchan
 
 test('calculateEstimate — officialSubtotal is invariant across every pricing band', () => {
   const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
-  const subtotals = BDPG_CONFIG.PRICING_LEVELS.map(level => BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large truck stop', roadway: 'Interstate',
+  const r = BDPG_CONFIG.PRICING_RANGE;
+  const bands = [];
+  for (let p = r.min; p <= r.max + 1e-9; p += r.step) bands.push(Math.round(p * 1000) / 1000);
+  const subtotals = bands.map(level => BusDevGallonsCalc.calculateEstimate({
+    profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000,
     regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: level
   }).officialSubtotal);
   assert.ok(subtotals.every(v => v === 14550), 'officialSubtotal must never change with pricing: ' + subtotals);
@@ -228,7 +231,7 @@ test('calculateEstimate — all 8 baseline rows at 0/0/0/0 equal the table exact
   BDPG_CONFIG.BASELINE_TABLE.forEach(row => {
     const r = BusDevGallonsCalc.calculateEstimate({
       profile: row.profile, roadway: row.roadway,
-      regionPct: 0, amenityLevel: 'Average', reviewRating: 3.2, pricingLevel: 'Standard / moderate'
+      regionPct: 0, amenityLevel: 'Average', reviewRating: 3.2, pricingLevel: 0
     });
     assert.equal(r.officialSubtotal, row.baseline);
     assert.equal(r.finalGallons, row.baseline);
@@ -238,15 +241,15 @@ test('calculateEstimate — all 8 baseline rows at 0/0/0/0 equal the table exact
 test('calculateEstimate returns null for an invalid profile/roadway combination', () => {
   assert.equal(BusDevGallonsCalc.calculateEstimate({
     profile: 'Large truck stop', roadway: 'Backroad',
-    regionPct: 0, amenityLevel: 'Average', reviewRating: 3.2, pricingLevel: 'Standard / moderate'
+    regionPct: 0, amenityLevel: 'Average', reviewRating: 3.2, pricingLevel: 0
   }), null);
 });
 
 test('calculateEstimate renders distinct official and final math lines', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate',
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
     regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
-    pricingLevel: 'Most aggressive (deepest discounts)'
+    pricingLevel: 0.05
   });
   assert.equal(r.officialMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02) = 13,750');
   assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 + 0.05 + 0.00) = 14,375');
@@ -254,8 +257,8 @@ test('calculateEstimate renders distinct official and final math lines', () => {
 
 test('calculateEstimate — case C @ Aggressive finalMathLine prints the exact 0.025 pricing term and "- 0.03" region term (not the lossy "+ -0.03")', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large truck stop', roadway: 'Interstate',
-    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 'Aggressive'
+    profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000,
+    regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: 0.025
   });
   assert.equal(r.finalGallons, 14925, 'gallon value must not change, only the equation string');
   assert.equal(r.finalMathLine, '15,000 × (1 - 0.03 + 0.00 + 0.00 + 0.025 + 0.00) = 14,925');
@@ -265,9 +268,9 @@ test('calculateEstimate — case C @ Aggressive finalMathLine prints the exact 0
 
 test('calculateEstimate — case A @ No discounts finalMathLine reads "- 0.05" for the negative pricing term', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate',
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
     regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
-    pricingLevel: 'No discounts'
+    pricingLevel: -0.05
   });
   assert.equal(r.finalGallons, 13125, 'gallon value must not change, only the equation string');
   assert.equal(r.finalMathLine, '12,500 × (1 + 0.06 + 0.02 + 0.02 - 0.05 + 0.00) = 13,125');
@@ -323,9 +326,9 @@ test('suggestAmenityLevel: fast food (not just full restaurant) still counts as 
 
 test('calculateEstimate — case E: case A + Most aggressive pricing + Rewards participating', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate',
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
     regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
-    pricingLevel: 'Most aggressive (deepest discounts)',
+    pricingLevel: 0.05,
     rewardsLevel: "Participating in Roady's Rewards"
   });
   // 12,500 × (1 + .06 + .02 + .02 + .05 + .05) = 12,500 × 1.20
@@ -336,9 +339,9 @@ test('calculateEstimate — case E: case A + Most aggressive pricing + Rewards p
 
 test('calculateEstimate — case F: case B + No discounts + Not participating', () => {
   const r = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Fuel stop', roadway: 'Any',
+    profile: 'Fuel stop', roadway: 'Any', baseline: 2500,
     regionPct: 0, amenityLevel: 'Very limited', reviewRating: 2.7,
-    pricingLevel: 'No discounts', rewardsLevel: 'Not participating'
+    pricingLevel: -0.05, rewardsLevel: 'Not participating'
   });
   // 2,500 × (1 + 0 - .05 - .05 - .05 - .05) = 2,500 × 0.80
   assert.equal(r.finalGallons, 2000);
@@ -349,9 +352,9 @@ test('calculateEstimate — case F: case B + No discounts + Not participating', 
 test('calculateEstimate — officialSubtotal is invariant across every rewards band', () => {
   const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
   const subtotals = BDPG_CONFIG.REWARDS_LEVELS.map(level => BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large truck stop', roadway: 'Interstate',
+    profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000,
     regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5,
-    pricingLevel: 'Aggressive', rewardsLevel: level
+    pricingLevel: 0.025, rewardsLevel: level
   }).officialSubtotal);
   assert.ok(subtotals.every(v => v === 14550), 'officialSubtotal must never change with rewards: ' + subtotals);
 });
@@ -366,9 +369,9 @@ test('rewardsAdjustment returns 0 for an unknown or absent level', () => {
 test('an estimate with no rewardsLevel equals one at the default — old profiles do not move', () => {
   const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
   const base = {
-    profile: 'Medium truck stop', roadway: 'Interstate',
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500,
     regionPct: 0.06, amenityLevel: 'Good / full service', reviewRating: 3.8,
-    pricingLevel: 'Most aggressive (deepest discounts)'
+    pricingLevel: 0.05
   };
   const withoutRewards = BusDevGallonsCalc.calculateEstimate(base);
   const atDefault = BusDevGallonsCalc.calculateEstimate(
@@ -384,9 +387,9 @@ test('a real uncapped region delta flows straight into the subtotal', () => {
   // Midwest measures +58.8%. Under the old +/-10% cap this was impossible to
   // express; it is now the actual input.
   const e = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Small truck stop', roadway: 'Highway', regionPct: 0.588,
+    profile: 'Small truck stop', roadway: 'Highway', baseline: 4000, regionPct: 0.588,
     amenityLevel: 'Average', reviewRating: 4.0,
-    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown'
+    pricingLevel: 0, rewardsLevel: 'Undecided / unknown'
   });
   assert.equal(e.baseline, 4000);
   assert.equal(e.officialSubtotal, 6432);          // 4000 * (1 + 0.588 + 0 + 0.02)
@@ -396,9 +399,9 @@ test('a real uncapped region delta flows straight into the subtotal', () => {
 test('a large negative region delta still produces a sane figure', () => {
   // Texas measures -36.7%, the worst real value.
   const e = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large truck stop', roadway: 'Interstate', regionPct: -0.367,
+    profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000, regionPct: -0.367,
     amenityLevel: 'Very limited', reviewRating: 2.0,
-    pricingLevel: 'No discounts', rewardsLevel: 'Not participating'
+    pricingLevel: -0.05, rewardsLevel: 'Not participating'
   });
   assert.ok(e.officialSubtotal > 0, 'the worst real region must not floor out');
   assert.equal(e.officialSubtotal, Math.round(15000 * (1 - 0.367 - 0.05 - 0.05)));
@@ -409,9 +412,9 @@ test('the multiplier is floored at zero, so gallons are never negative', () => {
   // The slider permits -100 even though no region measures anywhere near it.
   // Without the floor this returns a negative quote.
   const e = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Small truck stop', roadway: 'Highway', regionPct: -1.0,
+    profile: 'Small truck stop', roadway: 'Highway', baseline: 4000, regionPct: -1.0,
     amenityLevel: 'Very limited', reviewRating: 1.0,
-    pricingLevel: 'No discounts', rewardsLevel: 'Not participating'
+    pricingLevel: -0.05, rewardsLevel: 'Not participating'
   });
   assert.equal(e.officialSubtotal, 0);
   assert.equal(e.pricingAdjusted, 0);
@@ -422,9 +425,9 @@ test('the floor never lets a later figure resurrect a clamped one', () => {
   // pricingMultiplier builds on the CLAMPED officialMultiplier, so a positive
   // pricing term adds to zero rather than to a negative number.
   const e = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Small truck stop', roadway: 'Highway', regionPct: -2.0,
+    profile: 'Small truck stop', roadway: 'Highway', baseline: 4000, regionPct: -2.0,
     amenityLevel: 'Average', reviewRating: 4.0,
-    pricingLevel: 'Most aggressive (deepest discounts)',
+    pricingLevel: 0.05,
     rewardsLevel: "Participating in Roady's Rewards"
   });
   assert.equal(e.officialSubtotal, 0);
@@ -433,9 +436,9 @@ test('the floor never lets a later figure resurrect a clamped one', () => {
 
 test('the floor does not touch an ordinary estimate', () => {
   const e = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Medium truck stop', roadway: 'Interstate', regionPct: 0.072,
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 12500, regionPct: 0.072,
     amenityLevel: 'Good / full service', reviewRating: 4.5,
-    pricingLevel: 'Aggressive', rewardsLevel: "Participating in Roady's Rewards"
+    pricingLevel: 0.025, rewardsLevel: "Participating in Roady's Rewards"
   });
   assert.equal(e.officialSubtotal, Math.round(12500 * (1 + 0.072 + 0.02 + 0.02)));
   assert.ok(e.finalGallons > e.officialSubtotal);
@@ -499,9 +502,9 @@ test('the dynamic threshold is 3, deliberately below the Apply floor of 5', () =
 test('the formula is unchanged: a dynamic baseline is just a different input', () => {
   // Same adjustments, two baselines -- the multiplier must be identical.
   const args = {
-    profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0.588,
+    profile: 'Medium truck stop', roadway: 'Highway', baseline: 7500, regionPct: 0.588,
     amenityLevel: 'Average', reviewRating: 4.0,
-    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown'
+    pricingLevel: 0, rewardsLevel: 'Undecided / unknown'
   };
   const stat = BusDevGallonsCalc.calculateEstimate(args);
   const dyn = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: 15605 }));
@@ -521,12 +524,17 @@ test('the formula is unchanged: a dynamic baseline is just a different input', (
 });
 
 test('a baseline override is ignored unless it is a usable positive number', () => {
+  // No baseline in args: the point is what happens when the override is
+  // unusable, and the answer is "the table row". Read from the table rather
+  // than restated, so updating a median cannot make this test assert that
+  // the fallback is a number the table no longer holds.
   const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0,
     amenityLevel: 'Average', reviewRating: 4.0,
-    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown' };
+    pricingLevel: 0, rewardsLevel: 'Undecided / unknown' };
+  const fromTable = BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Highway').baseline;
   [null, undefined, '', 0, -5, 'x', NaN].forEach((b) => {
     assert.equal(BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: b })).baseline,
-      7500, 'bad override ' + JSON.stringify(b) + ' must fall back to the table');
+      fromTable, 'bad override ' + JSON.stringify(b) + ' must fall back to the table');
   });
   assert.equal(BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: '9000' })).baseline, 9000);
 });
@@ -543,9 +551,9 @@ test('restroom condition is +2 / 0 / -2, and unset is neutral', () => {
 });
 
 test('restroom condition sums into the amenity term, not a sixth term', () => {
-  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0,
+  const args = { profile: 'Medium truck stop', roadway: 'Highway', baseline: 7500, regionPct: 0,
     amenityLevel: 'Good / full service', reviewRating: 4.0,
-    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown' };
+    pricingLevel: 0, rewardsLevel: 'Undecided / unknown' };
   const plain = BusDevGallonsCalc.calculateEstimate(args);
   const clean = BusDevGallonsCalc.calculateEstimate(
     Object.assign({}, args, { restroomLevel: 'Clean / updated' }));
@@ -605,9 +613,9 @@ test('a zero gallons-per-transaction returns null rather than Infinity', () => {
 });
 
 test('DEF and inside sales never touch the estimate', () => {
-  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0.489,
+  const args = { profile: 'Medium truck stop', roadway: 'Highway', baseline: 7500, regionPct: 0.489,
     amenityLevel: 'Average', reviewRating: 4.0,
-    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown' };
+    pricingLevel: 0, rewardsLevel: 'Undecided / unknown' };
   const e = BusDevGallonsCalc.calculateEstimate(args);
   const before = JSON.stringify(e);
   BusDevGallonsCalc.defInsideEstimate(e.finalGallons);
@@ -660,7 +668,17 @@ test('the committed network file carries no C-Stores and no PPOs', () => {
   BDPG_STATS.EXCLUDED_NETWORK_TYPES.forEach((t) => {
     assert.equal(locs.filter((r) => r.type === t).length, 0, t);
   });
-  assert.equal(locs.length, 225);
+  assert.equal(locs.length, 219);
+});
+
+test('the committed network file carries no excluded groups', () => {
+  // Removed 2026-09-30. All six were non-reporting, so no median, region
+  // delta or displayed figure moved -- the file got smaller and nothing
+  // else changed, which is the only reason this was a safe removal.
+  const locs = require('./network-locations.json').locations;
+  BDPG_STATS.EXCLUDED_NETWORK_GROUPS.forEach((g) => {
+    assert.equal(locs.filter((r) => r.group === g).length, 0, g);
+  });
 });
 
 test('the committed network file and network-context agree on what the network is', () => {
@@ -671,8 +689,12 @@ test('the committed network file and network-context agree on what the network i
   const seen = new Set();
   Object.values(nc.byRegion).forEach((r) => Object.keys(r.byType).forEach((t) => seen.add(t)));
   BDPG_STATS.EXCLUDED_NETWORK_TYPES.forEach((t) => assert.ok(!seen.has(t), t));
-  // 400 less 128 PPO, 21 C-Store and 23 Service Center.
-  assert.equal(nc.activeTotal, 228);
+  // 400 less 128 PPO, 21 C-Store, 23 Service Center and 6 Roady's Lite.
+  assert.equal(nc.activeTotal, 222);
+  assert.equal(nc.groupsApplied, true, 'the context file must carry byTypeGroup');
+  const groups = new Set();
+  Object.values(nc.byRegion).forEach((r) => Object.keys(r.byGroup).forEach((g) => groups.add(g)));
+  BDPG_STATS.EXCLUDED_NETWORK_GROUPS.forEach((g) => assert.ok(!groups.has(g), g));
   // The stronger statement: after normalizing, the context file describes
   // only the types network-locations.json is allowed to contain. The two
   // files come from different exports, so this is what keeps them talking
@@ -691,4 +713,97 @@ test('the committed region_variance.json matches the computed deltas', () => {
     assert.equal(rv[reg], d[reg].pct, reg);
     assert.equal(rv.n[reg], d[reg].n, reg + ' n');
   });
+});
+
+// ── the pricing slider ──────────────────────────────────────────────────────
+
+test('the pricing range is -25%..+25% in steps of 5, defaulting to neutral', () => {
+  const r = BDPG_CONFIG.PRICING_RANGE;
+  assert.equal(r.min, -0.25);
+  assert.equal(r.max, 0.25);
+  assert.equal(r.step, 0.05);
+  assert.equal(BDPG_CONFIG.PRICING_DEFAULT, 0);
+});
+
+test('pricingAdjustment passes a slider value straight through', () => {
+  [-0.25, -0.2, -0.1, -0.05, 0, 0.05, 0.15, 0.25].forEach((v) => {
+    assert.equal(BusDevGallonsCalc.pricingAdjustment(v), v, String(v));
+  });
+});
+
+test('pricingAdjustment clamps anything outside the range', () => {
+  // The slider cannot produce these; a hand-edited record or a stale saved
+  // profile can, and an unclamped -3 would quote zero gallons.
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(-3), -0.25);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(0.9), 0.25);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(Infinity), 0);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(-Infinity), 0);
+});
+
+test('pricingAdjustment accepts a numeric string, as an <input> hands it over', () => {
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('0.15'), 0.15);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment('-0.05'), -0.05);
+});
+
+test('a prospect saved under the old five options reopens at its own percentage', () => {
+  // The whole point of keeping PRICING_LEGACY_ADJUST: a record quoted at
+  // "Most aggressive" must not silently become neutral and restate its own
+  // estimate at a different number.
+  const legacy = { 'Most aggressive (deepest discounts)': 0.05, 'Aggressive': 0.025,
+    'Standard / moderate': 0, 'Light discounting': -0.025, 'No discounts': -0.05 };
+  Object.keys(legacy).forEach((k) => {
+    assert.equal(BusDevGallonsCalc.pricingAdjustment(k), legacy[k], k);
+  });
+});
+
+test('the new range reaches five times further than the retired options', () => {
+  // The reason for the change: +/-5% could not express the gap between a
+  // site running several fleet and aggregator programs and one running none.
+  const oldMax = Math.max.apply(null,
+    Object.keys(BDPG_CONFIG.PRICING_LEGACY_ADJUST).map((k) => BDPG_CONFIG.PRICING_LEGACY_ADJUST[k]));
+  assert.equal(oldMax, 0.05);
+  assert.equal(BDPG_CONFIG.PRICING_RANGE.max / oldMax, 5);
+});
+
+test('every slider step is a term in the formula and nothing else', () => {
+  const r = BDPG_CONFIG.PRICING_RANGE;
+  const args = { profile: 'Medium truck stop', roadway: 'Interstate', baseline: 10000,
+    regionPct: 0.10, amenityLevel: 'Average', reviewRating: 4.0,
+    rewardsLevel: 'Undecided / unknown' };
+  for (let p = r.min; p <= r.max + 1e-9; p += r.step) {
+    const pct = Math.round(p * 1000) / 1000;
+    const e = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: pct }));
+    assert.equal(e.pricingPct, pct, String(pct));
+    // officialSubtotal excludes pricing by definition, at every step.
+    assert.equal(e.officialSubtotal, Math.round(10000 * (1 + 0.10 + 0 + 0.02)), String(pct));
+    assert.equal(e.finalGallons, Math.round(10000 * (1 + 0.10 + 0 + 0.02 + pct)), String(pct));
+  }
+});
+
+test('the extremes of the slider move the final figure by a quarter of the baseline', () => {
+  const args = { profile: 'Large truck stop', roadway: 'Interstate', baseline: 20000,
+    regionPct: 0, amenityLevel: 'Average', reviewRating: 4.0,
+    rewardsLevel: 'Undecided / unknown' };
+  const lo = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: -0.25 }));
+  const hi = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: 0.25 }));
+  assert.equal(hi.finalGallons - lo.finalGallons, 10000, '0.5 x 20,000');
+  assert.equal(lo.officialSubtotal, hi.officialSubtotal, 'the published figure never moves');
+});
+
+test('the slider cannot drive the estimate negative', () => {
+  // -25% pricing on top of a deeply negative region is what the multiplier
+  // floor exists for.
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 10000,
+    regionPct: -1, amenityLevel: 'Very limited', reviewRating: 2.0,
+    pricingLevel: -0.25, rewardsLevel: 'Not participating'
+  });
+  assert.equal(e.finalGallons, 0);
+  assert.ok(e.finalGallons >= 0);
+});
+
+test('the retired option list is gone from the config surface', () => {
+  assert.equal(BDPG_CONFIG.PRICING_LEVELS, undefined, 'nothing may enumerate options again');
+  assert.equal(BDPG_CONFIG.PRICING_ADJUST, undefined);
+  assert.ok(BDPG_CONFIG.PRICING_RANGE, 'the range replaces them');
 });

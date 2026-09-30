@@ -1917,6 +1917,10 @@ function getCentroid(pathStr, axis){
     if (BDPG._locationsLoaded) { if (onDone) onDone(); return; }
     BDPG._locationsLoaded = true;
     BDPG.loadLocationEdits();
+    // Before ingest: effectiveLocations() consults the hidden set, and the
+    // first render after accept() must already reflect it rather than
+    // briefly showing figures over the unfiltered file.
+    BDPG.readHiddenLocations();
 
     function accept(json, label) {
       BDPG.locationsSourceLabel = label;
@@ -2151,8 +2155,124 @@ function getCentroid(pathStr, axis){
     return out;
   };
 
-  BDPG.effectiveLocations = function () {
-    return BDPG.locations.map(BDPG.effectiveLocation);
+  // ── hidden locations (this browser only) ──────────────────────────────────
+  //
+  // A per-browser suppression list, stored as location ids under
+  // HIDDEN_LOCATIONS_KEY. Never a change to network-locations.json: the file
+  // is committed and served to everyone, and one admin deciding a row looks
+  // wrong is not grounds for removing it from every other browser. Hiding is
+  // the staging step -- the export button hands the ids over for a real,
+  // reviewed removal from the file later.
+  //
+  // The filter lives in effectiveLocations() because that is the single
+  // function every consumer already reads through: the table, the
+  // completeness line, the profile medians, the region deltas, the region
+  // display figures, the baseline analysis panel and the pitch. Filtering
+  // here means a hidden row is gone from all of them at once and cannot be
+  // half-applied -- which is the whole hazard of a feature that changes what
+  // the numbers mean.
+  BDPG.HIDDEN_LOCATIONS_KEY = 'roadysBDPGHiddenLocations';
+  BDPG.hiddenLocations = {};
+  BDPG.hiddenLocationsWereReset = false;
+  // When on, the table (and only the table) lists hidden rows too, so they
+  // can be restored. Never persisted: a filtered view is a thing you should
+  // have to re-open deliberately.
+  BDPG.showHidden = false;
+
+  BDPG.readHiddenLocations = function () {
+    var raw;
+    try { raw = localStorage.getItem(BDPG.HIDDEN_LOCATIONS_KEY); } catch (e) { return; }
+    if (raw === null) return;
+    var parsed;
+    try { parsed = JSON.parse(raw); } catch (e) { BDPG.hiddenLocationsWereReset = true; return; }
+    // Accepts the array it writes; tolerates an object map from a hand edit.
+    var ids = Array.isArray(parsed) ? parsed
+      : (parsed && typeof parsed === 'object' ? Object.keys(parsed) : null);
+    if (!ids) { BDPG.hiddenLocationsWereReset = true; return; }
+    var out = {};
+    ids.forEach(function (id) { if (typeof id === 'string' && id) out[id] = 1; });
+    BDPG.hiddenLocations = out;
+  };
+
+  BDPG.writeHiddenLocations = function () {
+    var ids = Object.keys(BDPG.hiddenLocations);
+    try {
+      if (!ids.length) localStorage.removeItem(BDPG.HIDDEN_LOCATIONS_KEY);
+      else localStorage.setItem(BDPG.HIDDEN_LOCATIONS_KEY, JSON.stringify(ids));
+      return true;
+    } catch (e) { return false; }
+  };
+
+  BDPG.hiddenCount = function () { return Object.keys(BDPG.hiddenLocations).length; };
+  BDPG.locationIsHidden = function (id) { return hasOwn(BDPG.hiddenLocations, id); };
+
+  // Hidden ids that no longer match a row in the file. Counted separately so
+  // "Hidden: 4" can never exceed the number of rows actually suppressed.
+  BDPG.hiddenOrphanIds = function () {
+    var live = {};
+    BDPG.locations.forEach(function (l) { live[l.id] = 1; });
+    return Object.keys(BDPG.hiddenLocations).filter(function (id) { return !hasOwn(live, id); });
+  };
+
+  BDPG.hiddenActiveCount = function () {
+    return BDPG.hiddenCount() - BDPG.hiddenOrphanIds().length;
+  };
+
+  BDPG.onToggleLocationHidden = function (id) {
+    var prev = BDPG.hiddenLocations;
+    var next = {};
+    Object.keys(prev).forEach(function (k) { next[k] = 1; });
+    if (hasOwn(next, id)) delete next[id]; else next[id] = 1;
+    BDPG.hiddenLocations = next;
+    if (!BDPG.writeHiddenLocations()) { BDPG.hiddenLocations = prev; return; }
+    BDPG.render();
+  };
+
+  BDPG.onToggleShowHidden = function () {
+    BDPG.showHidden = !BDPG.showHidden;
+    BDPG.render();
+  };
+
+  BDPG.onRestoreAllHidden = function () {
+    if (!BDPG.hiddenCount()) return;
+    var prev = BDPG.hiddenLocations;
+    BDPG.hiddenLocations = {};
+    if (!BDPG.writeHiddenLocations()) { BDPG.hiddenLocations = prev; return; }
+    BDPG.showHidden = false;
+    BDPG.render();
+  };
+
+  // The staging-to-permanent handoff: the ids, newline separated, ready to
+  // paste into whatever regenerates network-locations.json. Orphans are
+  // listed apart rather than mixed in -- an id the file no longer contains
+  // is not something to remove from it.
+  BDPG.hiddenExportText = function () {
+    var orphans = BDPG.hiddenOrphanIds();
+    var orphanSet = {};
+    orphans.forEach(function (id) { orphanSet[id] = 1; });
+    var active = Object.keys(BDPG.hiddenLocations)
+      .filter(function (id) { return !hasOwn(orphanSet, id); }).sort();
+    var out = '# Locations hidden in this browser, for removal from network-locations.json\n' +
+      '# ' + active.length + ' id' + (active.length === 1 ? '' : 's') + '\n' +
+      active.join('\n');
+    if (orphans.length) {
+      out += '\n\n# Not in the current file -- already removed, or the id changed. ' +
+        'Nothing to do with these.\n' + orphans.sort().map(function (id) { return '# ' + id; }).join('\n');
+    }
+    return out + '\n';
+  };
+
+  BDPG.onExportHidden = function () {
+    BDPG.copyText(BDPG.hiddenExportText(), 'Hidden location ids copied.');
+  };
+
+  // Every consumer of the network data reads through here. `all` is the
+  // deliberate escape hatch for the table's Show-hidden view -- nothing that
+  // computes a statistic may pass it.
+  BDPG.effectiveLocations = function (all) {
+    var rows = BDPG.locations.map(BDPG.effectiveLocation);
+    if (all) return rows;
+    return rows.filter(function (r) { return !BDPG.locationIsHidden(r.id); });
   };
 
   BDPG.sourceLocation = function (id) {
@@ -2170,10 +2290,46 @@ function getCentroid(pathStr, axis){
   BDPG.adminTabHtml = function () {
     if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
     return BDPG.defInsideCardHtml() +
+      BDPG.hiddenLocationsAdminHtml() +
       BDPG.networkBaselinePanelHtml() +
       BDPG.adminPanelHtml() +
       BDPG.networkContextGeneratorHtml() +
       BDPG.adminPinCardHtml();
+  };
+
+  // The same control as the banner on the Network Locations tab, surfaced
+  // here too. Deliberately duplicated rather than cross-referenced: an admin
+  // who hid rows weeks ago and is now looking at a baseline that seems wrong
+  // will be on this tab, and "why is this number odd" is answered by finding
+  // the filter without having to know to go looking for it.
+  BDPG.hiddenLocationsAdminHtml = function () {
+    var active = BDPG.hiddenActiveCount();
+    var orphans = BDPG.hiddenOrphanIds().length;
+    var total = BDPG.hiddenCount();
+    return '<div class="bdpg-box" style="margin-top:14px' +
+        (total ? ';border-color:var(--yellow)' : '') + '">' +
+      '<div class="sec-hdr" style="margin-bottom:8px"><div class="sec-title" style="font-size:.85em">' +
+        'Hidden locations</div></div>' +
+      '<div style="font-size:.84em">' +
+        (total
+          ? '<b>' + active + ' location' + (active === 1 ? '' : 's') + ' hidden</b> in this browser' +
+            (orphans ? ' (plus ' + orphans + ' stale id' + (orphans === 1 ? '' : 's') +
+              ' not in the current file)' : '') + '. ' +
+            'Every median, count and region delta on this page and in the calculator is computed ' +
+            'over the remaining ' + (BDPG._locationsReady ? BDPG.effectiveLocations().length : '—') + '.'
+          : 'None. Every location in <code>network-locations.json</code> is counted.') +
+      '</div>' +
+      '<div style="font-size:.76em;color:var(--muted);margin-top:6px">' +
+        'Hiding is per-browser and never changes the committed file — see the ✕ column on the ' +
+        '🗺 Network Locations tab. Stored under <code>' +
+        BDPG.escHtml(BDPG.HIDDEN_LOCATIONS_KEY) + '</code>.</div>' +
+      (total
+        ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="btn" onclick="BDPG.onRestoreAllHidden()">Restore all ' + total + '</button>' +
+            '<button class="btn" onclick="BDPG.onExportHidden()">Export hidden ids</button>' +
+          '</div>'
+        : '') +
+    '</div>';
   };
 
   BDPG.escHtml = function (s) {
@@ -2277,7 +2433,10 @@ function getCentroid(pathStr, axis){
     var jsId = BDPG.jsAttr(eff.id);
     var lanes = (eff.dieselLanes === null || eff.dieselLanes === undefined || eff.dieselLanes === '')
       ? '' : String(eff.dieselLanes);
-    return '<tr>' +
+    var hidden = BDPG.locationIsHidden(eff.id);
+    // A hidden row only ever reaches here via the Show-hidden view. Dimmed
+    // and struck so it cannot be mistaken for one that is still counting.
+    return '<tr' + (hidden ? ' style="opacity:.45;text-decoration:line-through"' : '') + '>' +
       '<td style="width:50px;text-align:center">' +
         '<input type="checkbox" id="bdpg-nl-sel-' + idAttr + '"' +
           (BDPG.locSelected[eff.id] ? ' checked' : '') +
@@ -2315,7 +2474,32 @@ function getCentroid(pathStr, axis){
       '<td>' + BDPG.locSelectHtml(eff.id, 'roadway', BDPG_STATS.ROADWAYS, eff.roadway, '') + '</td>' +
       '<td>' + BDPG.locSelectHtml(eff.id, 'distanceToInterstate', BDPG.DISTANCE_OPTIONS, eff.distanceToInterstate, '') + '</td>' +
       '<td id="bdpg-nl-mark-' + idAttr + '" style="white-space:nowrap">' + BDPG.locMarkCellHtml(eff) + '</td>' +
+      // Hide / restore. Always rendered because the whole tab is already
+      // behind the admin PIN -- adminAccessible() gates locationsTabHtml(),
+      // so there is no unlocked-but-not-admin state in which this column
+      // could appear. Gating it a second time here would read as a real
+      // permission boundary and it is not one.
+      '<td style="text-align:center">' + (hidden
+        ? '<button class="btn" style="padding:1px 7px;font-size:.9em" ' +
+            'title="Restore this location to every count and median" ' +
+            'onclick="BDPG.onToggleLocationHidden(\'' + jsId + '\')">↩</button>'
+        : '<button class="btn" style="padding:1px 7px;font-size:.9em;color:var(--red)" ' +
+            'title="Hide this location in this browser only. It drops out of every median, ' +
+            'count and the baseline analysis. network-locations.json is not changed." ' +
+            'onclick="BDPG.onToggleLocationHidden(\'' + jsId + '\')">&#10005;</button>') +
+      '</td>' +
     '</tr>';
+  };
+
+  // One clipboard path for every copy button on the page.
+  BDPG.copyText = function (text, okMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { toast(okMsg || 'Copied to clipboard'); },
+        function () { BDPG.fallbackCopy(text); });
+      return;
+    }
+    BDPG.fallbackCopy(text);
   };
 
   BDPG.locationPassesFilter = function (eff) {
@@ -2502,17 +2686,21 @@ function getCentroid(pathStr, axis){
   BDPG.refreshLocationFilterCount = function () {
     var el = document.getElementById('bdpg-nl-shown');
     if (!el) return;
-    var all = BDPG.effectiveLocations();
+    var all = BDPG.effectiveLocations(BDPG.showHidden);
     var shown = all.filter(BDPG.locationPassesFilter).length;
-    el.textContent = shown === all.length
+    var h = BDPG.hiddenActiveCount();
+    el.textContent = (shown === all.length
       ? ('Showing all ' + all.length + ' locations')
-      : ('Showing ' + shown + ' of ' + all.length + ' locations');
+      : ('Showing ' + shown + ' of ' + all.length + ' locations')) +
+      (h && !BDPG.showHidden ? ' · ' + h + ' hidden' : '');
   };
 
   BDPG.locationRowsHtml = function () {
-    var rows = BDPG.effectiveLocations().filter(BDPG.locationPassesFilter);
+    // The one place allowed to ask for hidden rows: you cannot restore what
+    // you cannot see. Every statistic still reads the filtered set.
+    var rows = BDPG.effectiveLocations(BDPG.showHidden).filter(BDPG.locationPassesFilter);
     if (!rows.length) {
-      return '<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--muted)">' +
+      return '<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--muted)">' +
         'No locations match the current filters.</td></tr>';
     }
     return rows.map(BDPG.locationRowHtml).join('');
@@ -2779,6 +2967,70 @@ function getCentroid(pathStr, axis){
     el.style.color = isErr ? 'var(--red)' : 'var(--green)';
   };
 
+  // The at-a-glance benchmark: what does a Roady's truck stop move in a
+  // month? Two figures, not one, and both labelled.
+  //
+  // The mean is what the brief asked for -- 12-month gallons / 12 / count --
+  // and answers "how much volume does the network carry per site". The
+  // median answers "what does a typical site do", and on this file they are
+  // 17,003 against 7,829. Showing only the mean would put the single largest
+  // number in the tool at the top of the tab, roughly double every baseline
+  // and regional figure the same tool prints elsewhere, with nothing on
+  // screen to explain the gap. Showing only the median would not answer the
+  // question. The caption names what separates them.
+  BDPG.networkSummaryCardHtml = function () {
+    var s = BDPG_STATS.networkSummary(BDPG.effectiveLocations());
+    if (!s.n) return '';
+    var meta = BDPG.locationsMeta;
+    function stat(value, label, accent) {
+      return '<div><div style="font-family:var(--ff);font-size:1.75em;font-weight:800;line-height:1;' +
+        'color:var(--' + (accent ? 'accent' : 'text') + ')">' + value + '</div>' +
+        '<div style="font-size:.74em;color:var(--muted);margin-top:3px;max-width:190px">' + label + '</div></div>';
+    }
+    return '<div class="bdpg-box" style="margin-bottom:10px">' +
+      '<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-title" style="font-size:.85em">' +
+        'Network Average — Truck Stops</div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:30px">' +
+        stat(BDPG.fmtGal(s.meanGalMo), '<b>Mean</b> gal/mo per truck stop — total volume ÷ 12 ÷ ' + s.n, true) +
+        stat(BDPG.fmtGal(s.medianGalMo), '<b>Median</b> gal/mo — what a typical truck stop does', true) +
+        stat(String(s.n), 'reporting truck stops (clear the ' +
+          BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo floor)') +
+        stat(BDPG.fmtGal(s.gallons12mo), 'total 12-month gallons across those locations') +
+      '</div>' +
+      '<div style="font-size:.72em;color:var(--muted);margin-top:10px">' +
+        'Truck Stop and Truck Stop / Service Center only — fuel stops are excluded from both the ' +
+        'gallons and the count, so the figure matches its label. ' +
+        'The mean runs well above the median because a small number of very large sites carry much ' +
+        'of the volume; every baseline and regional figure elsewhere in this tool is a median.' +
+        (meta && meta.asOf ? ' As of ' + BDPG.escHtml(meta.asOf) + '.' : '') +
+      '</div></div>';
+  };
+
+  // Amber whenever the view is filtered, because every median on this tab
+  // and every baseline in the calculator is then computed over a subset the
+  // reader chose and may have forgotten choosing.
+  BDPG.hiddenLocationsBarHtml = function () {
+    var active = BDPG.hiddenActiveCount();
+    var orphans = BDPG.hiddenOrphanIds().length;
+    if (!active && !orphans) return '';
+    return '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.84em">' +
+      '<b>⚠ ' + active + ' location' + (active === 1 ? ' is' : 's are') + ' hidden in this browser.</b> ' +
+      'They are excluded from every median, count, region delta and the baseline analysis — the ' +
+      'figures on this page and in the calculator describe the remaining ' +
+      BDPG.effectiveLocations().length + '. Nothing has been removed from ' +
+      '<code>network-locations.json</code>; this is local to this browser.' +
+      (orphans ? ' <span style="color:var(--muted)">(' + orphans + ' more hidden id' +
+        (orphans === 1 ? ' is' : 's are') + ' not in the current file and suppress nothing.)</span>' : '') +
+      '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="btn" onclick="BDPG.onToggleShowHidden()">' +
+          (BDPG.showHidden ? 'Hide them again' : 'Show hidden (' + active + ')') + '</button>' +
+        '<button class="btn" onclick="BDPG.onRestoreAllHidden()">Restore all</button>' +
+        '<button class="btn" onclick="BDPG.onExportHidden()" ' +
+          'title="Copies the hidden ids, ready to paste into whatever regenerates ' +
+          'network-locations.json for a permanent removal.">Export hidden ids</button>' +
+      '</div></div>';
+  };
+
   BDPG.locationsTabHtml = function () {
     if (!BDPG.adminAccessible()) return BDPG.adminLockedHtml();
 
@@ -2889,6 +3141,8 @@ function getCentroid(pathStr, axis){
         '<b>Network Baseline Analysis</b> on the ⚙ Admin tab is a separate historical record of ' +
         'the Sept 27 study — this panel is the live one.</div>' +
       notices +
+      BDPG.networkSummaryCardHtml() +
+      BDPG.hiddenLocationsBarHtml() +
       '<div id="bdpg-nl-completeness" class="bdpg-box" style="margin-bottom:10px;font-size:.86em">' +
         BDPG.locCompletenessInnerHtml() + '</div>' +
       '<div class="bdpg-box" style="border-color:var(--yellow);margin-bottom:10px;font-size:.8em">' +
@@ -2935,6 +3189,8 @@ function getCentroid(pathStr, axis){
         '<th style="text-align:right">12-Mo Gallons</th>' +
         '<th style="text-align:right">Avg Gal/Month</th>' +
         '<th>Roadway</th><th>Distance to Interstate</th><th>Edited</th>' +
+        '<th title="Hide this location in this browser only. Hidden rows drop out of every ' +
+          'median, count and the baseline analysis. network-locations.json is never changed.">Hide</th>' +
       '</tr></thead><tbody id="bdpg-nl-body">' + BDPG.locationRowsHtml() + '</tbody></table></div>' +
       '<div id="bdpg-nl-msg" style="font-size:.8em;margin-top:8px"></div>' +
     '</div>' +
@@ -3416,9 +3672,14 @@ function getCentroid(pathStr, axis){
       return { label: lvl, pct: BDPG_CONFIG.AMENITY_ADJUST[lvl] };
     });
     var reviewRows = BDPG.tutorialReviewBandRows();
-    var pricingRows = BDPG_CONFIG.PRICING_LEVELS.map(function (lvl) {
-      return { label: lvl, pct: BDPG_CONFIG.PRICING_ADJUST[lvl] };
-    });
+    // The slider is continuous, so the tutorial shows its ends and middle
+    // rather than enumerating options that no longer exist as options.
+    var pr = BDPG_CONFIG.PRICING_RANGE;
+    var pricingRows = [
+      { label: 'No discounts (slider at its lowest)', pct: pr.min },
+      { label: 'Neutral — no posture assumed (default)', pct: 0 },
+      { label: 'Most aggressive (slider at its highest)', pct: pr.max }
+    ];
     var rewardsRows = BDPG_CONFIG.REWARDS_LEVELS.map(function (lvl) {
       return { label: lvl, pct: BDPG_CONFIG.REWARDS_ADJUST[lvl] };
     });
@@ -3466,7 +3727,7 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.tutorialResultsHtml = function () {
-    var pDefaultPct = hasOwn(BDPG_CONFIG.PRICING_ADJUST, BDPG_CONFIG.PRICING_DEFAULT) ? BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT] : 0;
+    var pDefaultPct = BusDevGallonsCalc.pricingAdjustment(BDPG_CONFIG.PRICING_DEFAULT);
     var rDefaultPct = hasOwn(BDPG_CONFIG.REWARDS_ADJUST, BDPG_CONFIG.REWARDS_DEFAULT) ? BDPG_CONFIG.REWARDS_ADJUST[BDPG_CONFIG.REWARDS_DEFAULT] : 0;
     // Derived, not asserted: only claim the two figures match at default
     // settings when the defaults themselves actually net to 0%. If a future
@@ -3799,6 +4060,66 @@ function getCentroid(pathStr, axis){
     return '<div style="' + muted + '"><span class="badge tag-gray">Network default</span> ' + why + '</div>' + count;
   };
 
+  // Low and high ends of the Selected Baseline bar: the smallest and largest
+  // baseline currently in play, live medians where they exist and the static
+  // row where they do not -- so the bar spans exactly the values the cards
+  // above it can show.
+  BDPG.baselineScale = function () {
+    var map = BDPG.profileBaselineMap();
+    var lo = null, hi = null;
+    BDPG_CONFIG.BASELINE_TABLE.forEach(function (r) {
+      var b = map ? map[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)] : null;
+      var v = (b && isNum(b.baseline)) ? b.baseline : r.baseline;
+      if (!isNum(v)) return;
+      if (lo === null || v < lo) lo = v;
+      if (hi === null || v > hi) hi = v;
+    });
+    return { lo: lo === null ? 0 : lo, hi: hi === null ? 0 : hi };
+  };
+
+  BDPG.profileRangeMap = function () {
+    if (!BDPG._locationsReady) return {};
+    return BDPG_STATS.profileRanges(BDPG.networkLocations(), BDPG_CONFIG.BASELINE_TABLE);
+  };
+
+  // The spread behind a card's median: p10 — median — p90, drawn to the
+  // profile's own scale rather than a shared one.
+  //
+  // Per-card scale is the deliberate choice. A shared axis across all eight
+  // cards would squash Fuel stop (614–16,302) into the left eighth of
+  // Large/Interstate's range (1,452–60,545) and make its spread unreadable,
+  // and the cards are read one at a time against their own numbers, not
+  // compared end to end. The printed endpoints carry the absolute values, so
+  // nothing is inferred from bar width alone.
+  //
+  // Nothing is drawn below DYNAMIC_BASELINE_MIN_N: profileRanges() returns
+  // nulls there, and a card whose baseline is the static fallback has no
+  // observed spread to advertise.
+  BDPG.profileRangeBarHtml = function (rg) {
+    if (!rg || rg.low === null || rg.high === null || rg.mid === null) {
+      return '<div class="bdpg-bcard-sub" style="margin-top:6px;color:var(--muted)">' +
+        'range —<span style="font-size:.88em"> (n=' + ((rg && rg.n) || 0) + ')</span></div>';
+    }
+    // Guard the degenerate case: p10 === p90 when every reporting location
+    // in the profile reads the same, which would divide by zero.
+    var span = rg.high - rg.low;
+    var pos = span > 0 ? ((rg.mid - rg.low) / span) * 100 : 50;
+    pos = Math.max(0, Math.min(100, pos));
+    return '<div style="margin-top:7px" title="10th percentile, median and 90th percentile of the ' +
+        rg.n + ' reporting locations in this profile.">' +
+      '<div style="position:relative;height:5px;border-radius:3px;background:var(--border)">' +
+        '<div style="position:absolute;top:0;bottom:0;left:0;right:0;border-radius:3px;' +
+          'background:linear-gradient(90deg,var(--border),var(--accent))"></div>' +
+        '<div style="position:absolute;top:-3px;width:3px;height:11px;border-radius:2px;' +
+          'background:var(--text);left:' + pos.toFixed(1) + '%;transform:translateX(-50%)"></div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:.66em;color:var(--muted);margin-top:3px">' +
+        '<span>Low ' + BDPG.fmtGal(rg.low) + '</span>' +
+        '<span>Avg ' + BDPG.fmtGal(rg.mid) + '</span>' +
+        '<span>High ' + BDPG.fmtGal(rg.high) + '</span>' +
+      '</div></div>';
+  };
+
   BDPG.step1Html = function () {
     var s = BDPG.state;
     var ICONS = { 'Fuel stop': '⛽', 'Small truck stop': '🚏',
@@ -3807,6 +4128,7 @@ function getCentroid(pathStr, axis){
     // duplicate of it, so the grid can't drift from the config.
     // Resolved once per render rather than per card.
     var baseMap = BDPG.profileBaselineMap();
+    var rangeMap = BDPG.profileRangeMap();
     function cardBase(r) {
       var b = baseMap ? baseMap[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)] : null;
       return b || { baseline: r.baseline, total: 0, n: 0, source: 'static' };
@@ -3828,6 +4150,7 @@ function getCentroid(pathStr, axis){
         '<div class="bdpg-bcard-sub">median gal/mo</div>' +
         '<div class="bdpg-bcard-sub" style="margin-top:2px"># of network locations: ' +
           cardBase(r).total + '</div>' +
+        BDPG.profileRangeBarHtml(rangeMap[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)]) +
       '</div>';
     }).join('');
 
@@ -3839,14 +4162,23 @@ function getCentroid(pathStr, axis){
       BDPG.primeLocationsForBaseline();
       var dyn = BDPG.currentBaseline();
       var shown = (dyn && isNum(dyn.baseline)) ? dyn.baseline : row.baseline;
-      var pos = Math.max(0, Math.min(100, ((shown - 2500) / 12500) * 100));
+      // Scale derived from the live card values, not the hardcoded
+      // 2,500–15,000 this used to carry. That pair was the old BASELINE_TABLE
+      // min and max; with the table updated to the observed medians the top
+      // is 20,232, and a fixed 15,000 ceiling pinned the two largest profiles
+      // at 100% -- a tick that cannot move is worse than no tick.
+      var scale = BDPG.baselineScale();
+      var pos = scale.hi > scale.lo
+        ? Math.max(0, Math.min(100, ((shown - scale.lo) / (scale.hi - scale.lo)) * 100))
+        : 50;
       callout = '<div class="bdpg-callout">' +
         '<div class="bdpg-lbl">Selected Baseline</div>' +
         '<div style="font-family:var(--ff);font-size:2em;font-weight:800;color:var(--accent);line-height:1">' +
           BDPG.fmtGal(shown) + '<span style="font-size:.45em;color:var(--muted);margin-left:8px">avg gal/mo baseline</span></div>' +
         BDPG.baselineSourceNoteHtml(dyn) +
         '<div class="bdpg-rangebar"><div class="bdpg-rangebar-tick" style="left:' + pos.toFixed(1) + '%"></div></div>' +
-        '<div class="bdpg-rangebar-ends"><span>2,500</span><span>15,000</span></div>' +
+        '<div class="bdpg-rangebar-ends"><span>' + BDPG.fmtGal(scale.lo) + '</span>' +
+          '<span>' + BDPG.fmtGal(scale.hi) + '</span></div>' +
       '</div>';
     } else {
       callout = '<div class="bdpg-callout" style="color:var(--muted);font-size:.85em">Pick a location profile above to set the baseline.</div>';
@@ -3897,9 +4229,16 @@ function getCentroid(pathStr, axis){
   // the estimate's own inputs, can never see an orphan -- an unrecognised
   // pricingLevel made PRICING_LEVELS.indexOf() return -1 in
   // pitchOpportunities() and silently dropped the pricing bullet).
+  //
+  // Pricing is now a number, and normalizing it means resolving whatever is
+  // stored -- a slider value, a legacy option string off a saved prospect,
+  // or junk -- to the number the formula will actually use. Resolving it
+  // here, once, is what keeps every later reader (the control, the
+  // breakdown, the pitch, the export) from having to know that strings can
+  // still arrive.
   BDPG.normalizeLevels = function () {
     var s = BDPG.state;
-    if (BDPG_CONFIG.PRICING_LEVELS.indexOf(s.pricingLevel) < 0) s.pricingLevel = BDPG_CONFIG.PRICING_DEFAULT;
+    s.pricingLevel = BusDevGallonsCalc.pricingAdjustment(s.pricingLevel);
     if (BDPG_CONFIG.REWARDS_LEVELS.indexOf(s.rewardsLevel) < 0) s.rewardsLevel = BDPG_CONFIG.REWARDS_DEFAULT;
   };
 
@@ -4138,22 +4477,36 @@ function getCentroid(pathStr, axis){
         '<button class="btn" style="margin-left:auto;font-size:.66em" onclick="BDPG.onRatingClear()">No rating found</button>' +
       '</div>';
 
-    var segs = BDPG_CONFIG.PRICING_LEVELS.map(function (lvl, i) {
-      var pct = BDPG_CONFIG.PRICING_ADJUST[lvl];
-      var on = (s.pricingLevel === lvl);
-      // green -> yellow -> red across the row, matching the waterfall's
-      // positive-adjustment-is-green convention. The 2nd stop has no direct
-      // token (it's a green/yellow midpoint), so it's derived from --green
-      // and --yellow with color-mix() -- same technique already used for
-      // the badge tint above -- so it re-tints with the theme instead of
-      // sitting as an untethered literal.
-      var col = ['var(--green)','color-mix(in srgb, var(--green) 55%, var(--yellow))','var(--yellow)','var(--orange)','var(--red)'][i];
-      return '<button class="' + (on ? 'on' : '') + '"' +
-        (on ? ' style="background:' + col + '"' : '') +
-        ' onclick="BDPG.onPricingChange(' + JSON.stringify(lvl).replace(/"/g,'&quot;') + ')">' +
-        BDPG.escHtml(lvl.replace(' (deepest discounts)','')) + '<br>' +
-        '<span style="opacity:.85">' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%</span></button>';
-    }).join('');
+    // Pricing is a continuous -25%..+25% slider, replacing five fixed
+    // buttons that spanned +/-5%. The old row could not describe the gap
+    // between a site running several fleet and aggregator discount programs
+    // and an otherwise identical site running none -- that is a much larger
+    // effect than 5% either way, and the control's range, not the estimate,
+    // was what was wrong.
+    //
+    // Built like the Trucker Path rating slider directly above: an
+    // oninput-driven range plus a live numeric readout, patched in place by
+    // onPricingSlider() rather than re-rendering, so the handle keeps focus
+    // while it is being dragged.
+    var pr = BDPG_CONFIG.PRICING_RANGE;
+    var pcur = BusDevGallonsCalc.pricingAdjustment(s.pricingLevel);
+    var segs = '<div style="display:flex;align-items:center;gap:12px">' +
+        '<input type="range" style="flex:1" ' +
+          'min="' + (pr.min * 100) + '" max="' + (pr.max * 100) + '" step="' + (pr.step * 100) + '" ' +
+          'value="' + (pcur * 100).toFixed(0) + '" ' +
+          'aria-label="Discount and aggregator posture, percent" ' +
+          'oninput="BDPG.onPricingSlider(this.value)">' +
+        '<span id="bdpg-pricing-num" style="font-family:var(--ff);font-size:1.5em;font-weight:800;' +
+          'min-width:3.4em;text-align:right;color:' + BDPG.pricingTone(pcur) + '">' +
+          BDPG.fmtSignedPct(pcur) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:.72em;color:var(--muted);margin-top:2px">' +
+        '<span>No discounts (' + BDPG.fmtSignedPct(pr.min) + ')</span>' +
+        '<span>Neutral (0%)</span>' +
+        '<span>Most aggressive (' + BDPG.fmtSignedPct(pr.max) + ')</span>' +
+      '</div>' +
+      '<div id="bdpg-pricing-desc" style="font-size:.74em;color:var(--muted);margin-top:4px">' +
+        BDPG.pricingDescription(pcur) + '</div>';
 
     // Three fixed tones rather than the pricing row's five-stop gradient:
     // this is a yes / unknown / no posture, not a scale. Keyed by level
@@ -4194,8 +4547,10 @@ function getCentroid(pathStr, axis){
     // lighter weight than the others beside them.
     var right = '<div class="fg">' +
         ratingBlock +
-        '<div class="bdpg-lbl" style="margin-top:14px">Discount / Pricing Posture</div>' +
-        '<div class="bdpg-seg">' + segs + '</div>' +
+        '<div class="bdpg-lbl" style="margin-top:14px">Discount / Aggregator Posture</div>' +
+        // Not .bdpg-seg: that class lays out a segmented button row, and
+        // this is a slider now.
+        '<div>' + segs + '</div>' +
         '<div class="bdpg-lbl" style="margin-top:14px">Roady\'s Rewards Participation</div>' +
         '<div class="bdpg-seg">' + rsegs + '</div>' +
         '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
@@ -4310,7 +4665,53 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
-  // Pricing is a <select> -- no cursor/focus to preserve, full re-render is fine.
+  BDPG.fmtSignedPct = function (frac) {
+    var p = Number(frac) * 100;
+    if (!isFinite(p)) p = 0;
+    // No decimals: the slider steps in whole 5-point increments, so a
+    // "+15.0%" readout would imply a precision the control cannot produce.
+    return (p > 0 ? '+' : (p < 0 ? '−' : '')) + Math.abs(Math.round(p)) + '%';
+  };
+
+  // Same positive-is-green convention the retired button row used, now as a
+  // continuous read rather than five fixed stops.
+  BDPG.pricingTone = function (frac) {
+    var p = Number(frac) || 0;
+    if (p >= 0.15) return 'var(--green)';
+    if (p > 0) return 'color-mix(in srgb, var(--green) 55%, var(--yellow))';
+    if (p === 0) return 'var(--text)';
+    if (p > -0.15) return 'var(--orange)';
+    return 'var(--red)';
+  };
+
+  BDPG.pricingDescription = function (frac) {
+    var p = Number(frac) || 0;
+    if (p === 0) return 'Neutral — no discount posture assumed.';
+    if (p > 0) {
+      return 'Fleet and aggregator discount programs drawing volume in — ' +
+        BDPG.fmtSignedPct(p) + ' on the baseline.';
+    }
+    return 'Little or no discount program relative to competitors — ' +
+      BDPG.fmtSignedPct(p) + ' on the baseline.';
+  };
+
+  // Patched in place, not re-rendered: a full render would rebuild the range
+  // input and drop the handle mid-drag.
+  BDPG.onPricingSlider = function (value) {
+    var frac = (Number(value) || 0) / 100;
+    if (BDPG.state.pricingLevel !== frac) BDPG.invalidateResult();
+    BDPG.state.pricingLevel = frac;
+    var num = document.getElementById('bdpg-pricing-num');
+    if (num) {
+      num.textContent = BDPG.fmtSignedPct(frac);
+      num.style.color = BDPG.pricingTone(frac);
+    }
+    var desc = document.getElementById('bdpg-pricing-desc');
+    if (desc) desc.textContent = BDPG.pricingDescription(frac);
+  };
+
+  // Kept for saved-prospect restore and anything that sets pricing without
+  // touching the slider; a full re-render is correct there.
   BDPG.onPricingChange = function (value) {
     if (BDPG.state.pricingLevel !== value) BDPG.invalidateResult();
     BDPG.state.pricingLevel = value;
@@ -4518,7 +4919,11 @@ function getCentroid(pathStr, axis){
       profile: s.profile, roadway: s.roadway, regionPct: regionPct,
       baseline: dyn ? dyn.baseline : null,
       amenityLevel: s.amenityLevel, restroomLevel: s.restroomLevel, reviewRating: s.truckerPathRating === '' ? null : Number(s.truckerPathRating),
-      pricingLevel: s.pricingLevel || BDPG_CONFIG.PRICING_DEFAULT,
+      // Resolved rather than `|| DEFAULT`: pricing is numeric and 0 is
+      // falsy, so the old idiom would have replaced a deliberate 0 with the
+      // default. They are the same number today, which is exactly why this
+      // would have gone unnoticed if the default ever moved.
+      pricingLevel: BusDevGallonsCalc.pricingAdjustment(s.pricingLevel),
       rewardsLevel: s.rewardsLevel || BDPG_CONFIG.REWARDS_DEFAULT
     });
     if (!estimate) { alert('Pick a valid Location Profile + Roadway combination first.'); return false; }
@@ -4727,17 +5132,19 @@ function getCentroid(pathStr, axis){
         ((0.02 - e.reviewPct) * 100).toFixed(1) + '% — about ' +
         BDPG.fmtGal(Math.round(e.baseline * (0.02 - e.reviewPct))) + ' gal/mo.');
     }
-    var levels = BDPG_CONFIG.PRICING_LEVELS;
-    var nextIdx = levels.indexOf(s.pricingLevel) - 1;
-    if (nextIdx >= 0) {
-      var nextPct = BDPG_CONFIG.PRICING_ADJUST[levels[nextIdx]];
-      var fromLabel = s.pricingLevel.replace(' (deepest discounts)', '');
-      var toLabel = levels[nextIdx].replace(' (deepest discounts)', '');
+    // One step up the slider, rather than "the next option along" -- there
+    // are no options now. Suppressed at the top of the range, where there
+    // is no next step to offer.
+    var pr = BDPG_CONFIG.PRICING_RANGE;
+    var curPct = BusDevGallonsCalc.pricingAdjustment(s.pricingLevel);
+    if (curPct < pr.max) {
+      var nextPct = Math.min(pr.max, curPct + pr.step);
       // Pricing and Rewards are deliberately outside officialSubtotal (see
       // busDevGallonsCalculator.js), so this caveat has to survive here too --
       // otherwise a prospect reads this gain against the Published Calculator
       // Figure, the one number that provably never moves.
-      out.push('Moving from "' + fromLabel + '" to "' + toLabel + '" could add about ' +
+      out.push('Moving your discount posture from ' + BDPG.fmtSignedPct(curPct) + ' to ' +
+        BDPG.fmtSignedPct(nextPct) + ' could add about ' +
         BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) +
         ' gal/mo to your Final Potential Gallons estimate — this does not change Roady\'s BD Calculator Figure.');
     }
@@ -4967,7 +5374,11 @@ function getCentroid(pathStr, axis){
       'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
       'Network-Adjusted Baseline math: ' + e.officialMathLine,
       'Network-Adjusted Baseline: ' + BDPG.fmtGal(e.officialSubtotal),
-      'Pricing Strategy: ' + BDPG.state.pricingLevel,
+      // From the estimate, not from state: e.pricingPct is the value the
+      // math lines above were actually computed with, and a summary whose
+      // stated posture could differ from its own arithmetic is worse than
+      // one that omits it.
+      'Discount / aggregator posture: ' + BDPG.fmtSignedPct(e.pricingPct),
       'Roady\'s Rewards: ' + BDPG.state.rewardsLevel,
       'Final Potential Gallons math: ' + e.finalMathLine,
       'Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons)
@@ -5045,8 +5456,8 @@ function getCentroid(pathStr, axis){
         ' Trucker Path rating already places you in our top service band — drivers rate you well.');
     }
     if (e.pricingPct > 0) {
-      out.push('Your ' + s.pricingLevel.replace(' (deepest discounts)', '') + ' pricing posture is projected to add ' +
-        (e.pricingPct * 100).toFixed(1) + '% in gallon volume.');
+      out.push('Your discount and aggregator posture is projected to add ' +
+        BDPG.fmtSignedPct(e.pricingPct) + ' in gallon volume.');
     }
     if (e.rewardsPct > 0) {
       out.push('Participating in Roady\'s Rewards adds an estimated +' + (e.rewardsPct * 100).toFixed(1) +
@@ -5142,7 +5553,12 @@ function getCentroid(pathStr, axis){
       // describe today's table rather than the figure beside it.
       baselineStamp: e ? BDPG.baselineStamp(e.baseline) : '',
       preEvalSignal: s.prospect.preEvalSignal || '',
-      amenityLevel: s.amenityLevel || '', pricingLevel: s.pricingLevel || '',
+      amenityLevel: s.amenityLevel || '',
+      // Resolved to a number rather than `|| ''`: pricing is numeric now and
+      // 0 is falsy, so the old idiom would have written an empty string for
+      // every prospect saved at the neutral default -- the single most
+      // common value -- and lost it on reopen.
+      pricingLevel: BusDevGallonsCalc.pricingAdjustment(s.pricingLevel),
       rewardsLevel: s.rewardsLevel || ''
     };
   };
@@ -5203,7 +5619,14 @@ function getCentroid(pathStr, axis){
       baselineStamp: str(sum.baselineStamp),
       preEvalSignal: str(sum.preEvalSignal) || str(pr.preEvalSignal),
       amenityLevel: str(sum.amenityLevel) || str(st.amenityLevel),
-      pricingLevel: str(sum.pricingLevel) || str(st.pricingLevel),
+      // Not str(): pricing is a number now, and str() returns '' for one.
+      // pricingAdjustment() takes the number, the legacy option string a
+      // pre-slider record carries, or nothing, and answers with the
+      // percentage in every case -- so an old prospect reopens at the
+      // posture it was quoted at instead of snapping to neutral.
+      pricingLevel: BusDevGallonsCalc.pricingAdjustment(
+        sum.pricingLevel !== undefined && sum.pricingLevel !== null && sum.pricingLevel !== ''
+          ? sum.pricingLevel : st.pricingLevel),
       rewardsLevel: str(sum.rewardsLevel) || str(st.rewardsLevel),
       savedAt: str(p.savedAt)
     };
@@ -5582,10 +6005,11 @@ function getCentroid(pathStr, axis){
       // only the two PERCENTAGES, which come straight from the config maps the
       // levels are keyed by. hasOwn-guarded like every other name-keyed lookup
       // in this file, falling back to 0 so a legacy row with no rewardsLevel
-      // (or a hand-edited orphan string, already coerced to '' by
-      // readSummary's str()) reads as the 0% it is actually computed at,
-      // rather than printing undefined.
-      var pPct = hasOwn(BDPG_CONFIG.PRICING_ADJUST, sum.pricingLevel) ? BDPG_CONFIG.PRICING_ADJUST[sum.pricingLevel] : 0;
+      // (or a hand-edited orphan string) reads as the 0% it is actually
+      // computed at, rather than printing undefined. Pricing goes through
+      // pricingAdjustment() instead, which resolves a slider number, a
+      // legacy option string and junk to the same answer the formula used.
+      var pPct = BusDevGallonsCalc.pricingAdjustment(sum.pricingLevel);
       var rPct = hasOwn(BDPG_CONFIG.REWARDS_ADJUST, sum.rewardsLevel) ? BDPG_CONFIG.REWARDS_ADJUST[sum.rewardsLevel] : 0;
       function pctTxt(v) { return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%'; }
       var diff = sum.finalGallons - sum.officialSubtotal;
@@ -5617,7 +6041,11 @@ function getCentroid(pathStr, axis){
     }
 
     var amenityCell = sum.amenityLevel ? BDPG.escHtml(sum.amenityLevel) : '—';
-    var pricingCell = sum.pricingLevel ? BDPG.escHtml(sum.pricingLevel) : '—';
+    // Formatted, not truthiness-tested: 0% is the default posture and a
+    // falsy check would print "—" for most rows in the tracker.
+    var pricingCell = (sum.pricingLevel === '' || sum.pricingLevel === null ||
+        sum.pricingLevel === undefined)
+      ? '—' : BDPG.escHtml(BDPG.fmtSignedPct(BusDevGallonsCalc.pricingAdjustment(sum.pricingLevel)));
 
     // Tone by posture, via the same hasOwn-guarded map style every other
     // lookup in this file uses, so a hand-edited value can't resolve to an

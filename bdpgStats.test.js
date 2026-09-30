@@ -180,7 +180,7 @@ test('fewer than three reporting locations falls back to the static table', () =
   const b = BDPG_STATS.profileBaselines(locs, TABLE)[k];
   assert.equal(b.n, 2);
   assert.equal(b.source, 'static');
-  assert.equal(b.baseline, 7500);
+  assert.equal(b.baseline, 15705);
   assert.equal(b.median, 45000, 'the observed median is still reported');
 });
 
@@ -541,3 +541,228 @@ test('the excluded types are the three with no retail diesel profile', () => {
   assert.deepEqual(BDPG_STATS.EXCLUDED_NETWORK_TYPES, ['PPO', 'C-Store', 'Service Center']);
 });
 
+
+// ── p10 / p90 ───────────────────────────────────────────────────────────────
+
+test('p10 and p90 are the 10th and 90th percentiles, R-7 like every quantile', () => {
+  const v = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  assert.equal(BDPG_STATS.p10(v), BDPG_STATS.quantile(v, 0.10));
+  assert.equal(BDPG_STATS.p90(v), BDPG_STATS.quantile(v, 0.90));
+  assert.equal(BDPG_STATS.p10(v), 2);
+  assert.equal(BDPG_STATS.p90(v), 10);
+});
+
+test('p10 and p90 interpolate rather than snapping to an order statistic', () => {
+  // [10,20,30,40]: h = 3 * 0.1 = 0.3 -> 10 + 0.3*(20-10) = 13
+  assert.equal(BDPG_STATS.p10([10, 20, 30, 40]), 13);
+  // h = 3 * 0.9 = 2.7 -> 30 + 0.7*(40-30) = 37
+  assert.equal(BDPG_STATS.p90([10, 20, 30, 40]), 37);
+});
+
+test('p10 and p90 are null on an empty sample and equal on a single value', () => {
+  assert.equal(BDPG_STATS.p10([]), null);
+  assert.equal(BDPG_STATS.p90([]), null);
+  assert.equal(BDPG_STATS.p10([42]), 42);
+  assert.equal(BDPG_STATS.p90([42]), 42);
+});
+
+test('an extreme outlier moves p90 far less than it moves the max', () => {
+  // The reason the range bar uses percentiles: one 500k site should widen
+  // the picture, not define it.
+  const base = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
+  const withOutlier = base.concat([500000]);
+  assert.ok(BDPG_STATS.p90(withOutlier) < 60000,
+    'p90 moved to ' + BDPG_STATS.p90(withOutlier));
+  assert.equal(Math.max.apply(null, withOutlier), 500000);
+});
+
+test('p10 never falls below the reporting floor on real reporting data', () => {
+  const vals = require('./network-locations.json').locations
+    .filter((r) => BDPG_STATS.gallonStatus(r.avgGalMo) === 'usable')
+    .map((r) => r.avgGalMo);
+  assert.ok(BDPG_STATS.p10(vals) >= BDPG_STATS.MIN_REPORTING_GAL_MO,
+    'p10 is ' + BDPG_STATS.p10(vals));
+});
+
+// ── profile ranges ──────────────────────────────────────────────────────────
+
+test('a profile range is low / mid / high with low <= mid <= high', () => {
+  const locs = [2000, 4000, 6000, 8000, 10000].map((g, i) =>
+    loc({ id: 'r' + i, avgGalMo: g }));
+  const r = BDPG_STATS.profileRanges(locs, TABLE)[
+    BDPG_STATS.baselineKeyFor('Medium truck stop', 'Highway')];
+  assert.equal(r.n, 5);
+  assert.equal(r.mid, 6000);
+  assert.ok(r.low <= r.mid && r.mid <= r.high, JSON.stringify(r));
+});
+
+test('a profile range mid is the same number profileBaselines calls the median', () => {
+  // The card prints one figure and draws the other; they must not diverge.
+  const locs = require('./network-locations.json').locations;
+  const ranges = BDPG_STATS.profileRanges(locs, TABLE);
+  const bases = BDPG_STATS.profileBaselines(locs, TABLE);
+  Object.keys(ranges).forEach((k) => {
+    if (ranges[k].mid === null) return;
+    assert.equal(ranges[k].mid, bases[k].median, k);
+  });
+});
+
+test('a profile below the dynamic-baseline threshold reports n but no range', () => {
+  const locs = [loc({ id: 'a', avgGalMo: 5000 }), loc({ id: 'b', avgGalMo: 9000 })];
+  const r = BDPG_STATS.profileRanges(locs, TABLE)[
+    BDPG_STATS.baselineKeyFor('Medium truck stop', 'Highway')];
+  assert.equal(r.n, 2);
+  assert.equal(r.low, null);
+  assert.equal(r.mid, null);
+  assert.equal(r.high, null);
+});
+
+test('profileRanges returns an entry for every table row, even with no data', () => {
+  const r = BDPG_STATS.profileRanges([], TABLE);
+  assert.equal(Object.keys(r).length, TABLE.length);
+  TABLE.forEach((row) => {
+    const x = r[BDPG_STATS.baselineKeyFor(row.profile, row.roadway)];
+    assert.equal(x.n, 0);
+    assert.equal(x.mid, null);
+  });
+});
+
+test('non-reporting locations are outside the range as well as the median', () => {
+  const locs = [loc({ id: 'a', avgGalMo: 4000 }), loc({ id: 'b', avgGalMo: 6000 }),
+    loc({ id: 'c', avgGalMo: 8000 }), loc({ id: 'z', avgGalMo: 12 })];
+  const r = BDPG_STATS.profileRanges(locs, TABLE)[
+    BDPG_STATS.baselineKeyFor('Medium truck stop', 'Highway')];
+  assert.equal(r.n, 3);
+  assert.ok(r.low >= BDPG_STATS.MIN_REPORTING_GAL_MO, 'low is ' + r.low);
+});
+
+test('Small/Backroad is the one committed profile with no range to draw', () => {
+  const r = BDPG_STATS.profileRanges(
+    require('./network-locations.json').locations, TABLE);
+  const thin = Object.keys(r).filter((k) => r[k].mid === null);
+  assert.deepEqual(thin, [BDPG_STATS.baselineKeyFor('Small truck stop', 'Backroad')]);
+});
+
+// ── network summary ─────────────────────────────────────────────────────────
+
+test('the network summary counts truck stops only, on both sides of the division', () => {
+  const locs = [
+    loc({ id: 'a', type: 'Truck Stop', gallons12mo: 120000, avgGalMo: 10000 }),
+    loc({ id: 'b', type: 'Truck Stop / Service Center', gallons12mo: 240000, avgGalMo: 20000 }),
+    loc({ id: 'f', type: 'Fuel Stop', gallons12mo: 999999, avgGalMo: 83333 })
+  ];
+  const s = BDPG_STATS.networkSummary(locs);
+  assert.equal(s.n, 2, 'the fuel stop is not a truck stop');
+  assert.equal(s.gallons12mo, 360000, 'nor do its gallons count');
+  assert.equal(s.meanGalMo, 15000);
+  assert.equal(s.medianGalMo, 15000);
+});
+
+test('the network summary mean comes from the 12-month sum, not from avgGalMo', () => {
+  const s = BDPG_STATS.networkSummary([
+    loc({ id: 'a', gallons12mo: 120000, avgGalMo: 10000 }),
+    loc({ id: 'b', gallons12mo: 120000, avgGalMo: 10000 }),
+    // gallons12mo disagrees with avgGalMo: the sum is what the card shows.
+    loc({ id: 'c', gallons12mo: 600000, avgGalMo: 10000 })
+  ]);
+  assert.equal(s.meanGalMo, Math.round(840000 / 12 / 3));
+  assert.equal(s.medianGalMo, 10000);
+});
+
+test('the network summary excludes non-reporting locations from both figures', () => {
+  const s = BDPG_STATS.networkSummary([
+    loc({ id: 'a', gallons12mo: 120000, avgGalMo: 10000 }),
+    loc({ id: 'b', gallons12mo: 120000, avgGalMo: 10000 }),
+    loc({ id: 'z', gallons12mo: 1200, avgGalMo: 100 })
+  ]);
+  assert.equal(s.n, 2);
+  assert.equal(s.gallons12mo, 240000);
+});
+
+test('an empty network summary is nulls, never zeros', () => {
+  // A 0 here would render as a network that pumps nothing.
+  const s = BDPG_STATS.networkSummary([]);
+  assert.equal(s.n, 0);
+  assert.equal(s.meanGalMo, null);
+  assert.equal(s.medianGalMo, null);
+});
+
+test('the committed file summary is the figure the card shows', () => {
+  const s = BDPG_STATS.networkSummary(require('./network-locations.json').locations);
+  assert.equal(s.n, 157);
+  assert.equal(s.gallons12mo, 32033615);
+  assert.equal(s.meanGalMo, 17003);
+  assert.equal(s.medianGalMo, 7829);
+  // The reason the card prints both: they are not close, and a mean shown
+  // alone would contradict every other gallons figure in the tool.
+  assert.ok(s.meanGalMo > s.medianGalMo * 2, 'mean/median ratio is the whole point');
+});
+
+// ── group exclusion ─────────────────────────────────────────────────────────
+
+test('group exclusion drops the group and rebuilds the totals', () => {
+  const nc = BDPG_STATS.normalizeNetworkContext({
+    byRegion: {
+      Midwest: {
+        total: 10,
+        byType: { 'Truck Stop': 10 },
+        byTypeGroup: { 'Truck Stop': { "Roady's": 7, "Roady's Lite": 3 } }
+      }
+    }
+  });
+  assert.equal(nc.byRegion.Midwest.total, 7);
+  assert.equal(nc.byRegion.Midwest.byType['Truck Stop'], 7);
+  assert.deepEqual(nc.byRegion.Midwest.byGroup, { "Roady's": 7 });
+  assert.equal(nc.activeTotal, 7);
+  assert.equal(nc.groupsApplied, true);
+});
+
+test('a type emptied entirely by group exclusion disappears from byType', () => {
+  const nc = BDPG_STATS.normalizeNetworkContext({
+    byRegion: { Midwest: {
+      total: 3,
+      byType: { 'Truck Stop': 3 },
+      byTypeGroup: { 'Truck Stop': { "Roady's Lite": 3 } }
+    } }
+  });
+  assert.deepEqual(nc.byRegion.Midwest.byType, {});
+  assert.equal(nc.byRegion.Midwest.total, 0);
+});
+
+test('without byTypeGroup the type list still applies and groupsApplied says so', () => {
+  // byType alone cannot say which Truck Stop rows are Roady's Lite, so the
+  // group list is unenforceable -- reported rather than silently skipped.
+  const nc = BDPG_STATS.normalizeNetworkContext({
+    byRegion: { Midwest: { total: 9, byType: { 'Truck Stop': 6, PPO: 3 } } }
+  });
+  assert.equal(nc.groupsApplied, false);
+  assert.equal(nc.byRegion.Midwest.total, 6, 'the type list still ran');
+  assert.deepEqual(nc.byRegion.Midwest.byType, { 'Truck Stop': 6 });
+});
+
+test('excluded-group matching ignores case and whitespace, and spares the truck stop type', () => {
+  ["Roady's Lite", "roady's lite", "  Roady's Lite  "].forEach((g) => {
+    assert.equal(BDPG_STATS.isExcludedNetworkGroup(g), true, g);
+  });
+  ["Roady's", 'PTP', 'Unknown', '', null, "Roady's Lite Plus"].forEach((g) => {
+    assert.equal(BDPG_STATS.isExcludedNetworkGroup(g), false, String(g));
+  });
+  // Groups and types are separate axes and must not leak into each other.
+  assert.equal(BDPG_STATS.isExcludedNetworkType("Roady's Lite"), false);
+  assert.equal(BDPG_STATS.isExcludedNetworkGroup('PPO'), false);
+});
+
+test('group and type exclusion compose, and normalizing stays idempotent', () => {
+  const src = { asOf: '2026-09-30', activeTotal: 99, byRegion: { Midwest: {
+    total: 12,
+    byType: { 'Truck Stop': 8, PPO: 4 },
+    byTypeGroup: {
+      'Truck Stop': { "Roady's": 5, "Roady's Lite": 3 },
+      PPO: { "Roady's": 2, "Roady's Lite": 2 }
+    }
+  } } };
+  const once = BDPG_STATS.normalizeNetworkContext(src);
+  assert.equal(once.activeTotal, 5, 'PPO out by type, Lite out by group');
+  assert.deepEqual(BDPG_STATS.normalizeNetworkContext(once), once);
+  assert.equal(src.activeTotal, 99, 'the input is never mutated');
+});

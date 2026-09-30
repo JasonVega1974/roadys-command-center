@@ -33,6 +33,13 @@
 
   function median(values) { return quantile(values, 0.5); }
 
+  // The range a profile actually spans, for the Step 1 cards. p10/p90 rather
+  // than min/max: one 60,000 gal/mo outlier should widen the picture, not
+  // define it, and the same reasoning that made the baseline a median applies
+  // to its endpoints.
+  function p10(values) { return quantile(values, 0.10); }
+  function p90(values) { return quantile(values, 0.90); }
+
   // The single numeric gate for this whole file. Returns null for anything
   // that is not a real number or a string that spells one.
   //
@@ -152,51 +159,79 @@
   // those five locations out of the network with no other symptom.
   var EXCLUDED_NETWORK_TYPES = ['PPO', 'C-Store', 'Service Center'];
 
+  // Groups excluded for the same reason, on a different axis. Roady's Lite
+  // is a branding tier, not a location type -- its rows sit under 'Truck
+  // Stop' in the context file -- so no type-based rule reaches them and this
+  // has to be its own list. The 2026-09-30 network-locations.json dropped all
+  // six; this keeps the context counts in step.
+  var EXCLUDED_NETWORK_GROUPS = ["Roady's Lite"];
+
   function isExcludedNetworkType(type) {
-    var t = String(type || '').trim().toLowerCase();
-    for (var i = 0; i < EXCLUDED_NETWORK_TYPES.length; i++) {
-      if (t === EXCLUDED_NETWORK_TYPES[i].toLowerCase()) return true;
+    return matchesExcluded(type, EXCLUDED_NETWORK_TYPES);
+  }
+
+  function isExcludedNetworkGroup(group) {
+    return matchesExcluded(group, EXCLUDED_NETWORK_GROUPS);
+  }
+
+  function matchesExcluded(value, list) {
+    var v = String(value || '').trim().toLowerCase();
+    if (!v) return false;
+    for (var i = 0; i < list.length; i++) {
+      if (v === list[i].toLowerCase()) return true;
     }
     return false;
   }
 
-  // Rewrites a network-context object with the excluded types dropped and
-  // every total recomputed from what is left. Applied on load rather than
-  // only in the generator, so the file committed today is corrected without
-  // needing the source CSV -- and it is idempotent, so a file regenerated
-  // after this change passes through untouched. Returns a new object; the
-  // input is never mutated.
+  // Rewrites a network-context object with the excluded types AND groups
+  // dropped and every total recomputed from what is left. Applied on load
+  // rather than only in the generator, so the file committed today is
+  // corrected without needing the source CSV -- and it is idempotent, so a
+  // file regenerated after this change passes through untouched. Returns a
+  // new object; the input is never mutated.
+  //
+  // byTypeGroup is the authority whenever it exists, because it is the only
+  // breakdown that carries both axes: byType alone cannot say which of its
+  // 'Truck Stop' rows are Roady's Lite, so deriving totals from it would
+  // drop the excluded TYPES and silently keep every excluded GROUP. A
+  // context file predating byTypeGroup falls back to byType and can only
+  // honour the type list -- `groupsApplied` reports which happened rather
+  // than leaving the caller to guess.
   function normalizeNetworkContext(nc) {
     if (!nc || typeof nc !== 'object' || !nc.byRegion) return nc;
-    var out = { asOf: nc.asOf, activeTotal: 0, byRegion: {} };
+    var out = { asOf: nc.asOf, activeTotal: 0, groupsApplied: true, byRegion: {} };
     Object.keys(nc.byRegion).forEach(function (region) {
       var src = nc.byRegion[region] || {};
       var rd = { total: 0, byType: {}, byGroup: {}, byTypeGroup: {} };
       var byGroup = {};
+      var hasTypeGroup = !!src.byTypeGroup && Object.keys(src.byTypeGroup).length > 0;
 
-      Object.keys(src.byType || {}).forEach(function (type) {
-        if (isExcludedNetworkType(type)) return;
-        var n = toFinite(src.byType[type]);
-        if (n === null) return;
-        rd.byType[type] = n;
-        rd.total += n;
-      });
-
-      // byGroup has to be rebuilt from byTypeGroup: the excluded rows are
-      // spread across groups, so the file's own byGroup totals cannot simply
-      // be carried over. A context file without byTypeGroup leaves byGroup
-      // empty rather than wrong -- nothing in the UI reads it today.
       Object.keys(src.byTypeGroup || {}).forEach(function (type) {
         if (isExcludedNetworkType(type)) return;
         var groups = src.byTypeGroup[type] || {};
-        rd.byTypeGroup[type] = {};
         Object.keys(groups).forEach(function (g) {
+          if (isExcludedNetworkGroup(g)) return;
           var n = toFinite(groups[g]);
           if (n === null) return;
+          rd.byTypeGroup[type] = rd.byTypeGroup[type] || {};
           rd.byTypeGroup[type][g] = n;
           byGroup[g] = (byGroup[g] || 0) + n;
+          rd.byType[type] = (rd.byType[type] || 0) + n;
+          rd.total += n;
         });
       });
+
+      if (!hasTypeGroup) {
+        // No group breakdown to work from. Honour the type list and say so.
+        out.groupsApplied = false;
+        Object.keys(src.byType || {}).forEach(function (type) {
+          if (isExcludedNetworkType(type)) return;
+          var n = toFinite(src.byType[type]);
+          if (n === null) return;
+          rd.byType[type] = n;
+          rd.total += n;
+        });
+      }
       rd.byGroup = byGroup;
 
       out.byRegion[region] = rd;
@@ -375,6 +410,80 @@
   // "based on only X locations" caveat. Not a threshold on using it.
   var REGION_THIN_N = 8;
 
+  // p10 / median / p90 per BASELINE_TABLE profile, for the Step 1 range bars.
+  //
+  // Gated at DYNAMIC_BASELINE_MIN_N, the same threshold profileBaselines()
+  // uses to decide whether it trusts the observed median at all: a profile
+  // whose centre is not worth showing has no business advertising a spread
+  // around it. Below the gate the entry still reports its n, with all three
+  // values null, so the caller renders a placeholder rather than having to
+  // distinguish "no data" from "not asked for".
+  function profileRanges(locations, baselineTable, opts) {
+    var buckets = {};
+    (baselineTable || []).forEach(function (r) {
+      buckets[baselineKeyFor(r.profile, r.roadway)] = [];
+    });
+    (locations || []).forEach(function (loc) {
+      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      var m = matchBaselineProfile(loc, baselineTable);
+      if (m.status !== 'ok' || !m.row) return;
+      var k = baselineKeyFor(m.row.profile, m.row.roadway);
+      if (buckets[k]) buckets[k].push(toFinite(loc.avgGalMo));
+    });
+    var out = {};
+    Object.keys(buckets).forEach(function (k) {
+      var vals = buckets[k];
+      var enough = vals.length >= DYNAMIC_BASELINE_MIN_N;
+      out[k] = {
+        n: vals.length,
+        low: enough ? Math.round(p10(vals)) : null,
+        mid: enough ? Math.round(median(vals)) : null,
+        high: enough ? Math.round(p90(vals)) : null
+      };
+    });
+    return out;
+  }
+
+  // The whole-network benchmark for the Network Locations summary card.
+  //
+  // Truck stops only -- 'Truck Stop' and 'Truck Stop / Service Center', the
+  // two typeClass() calls 'truckstop'. Fuel stops are excluded from BOTH the
+  // gallons sum and the count, because a figure captioned "per truck stop"
+  // that divides fuel-stop gallons by a truck-stop count is measuring
+  // nothing. Reporting rows only, same 500 gal/mo floor as everywhere else.
+  //
+  // Returns mean AND median deliberately. The mean answers "what does the
+  // network move?" and the median "what does a typical site move?", and on
+  // this file they are 17,003 against 7,829 -- a factor of 2.2, because a
+  // handful of very large sites carry the sum. Reporting only the mean would
+  // put a number on screen that contradicts every other gallons figure in
+  // the tool; reporting only the median would not answer the question the
+  // card is for. The caller must label both.
+  function networkSummary(locations, opts) {
+    var vals = [];
+    var gallons12mo = 0;
+    (locations || []).forEach(function (loc) {
+      if (typeClass(loc.type) !== 'truckstop') return;
+      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      vals.push(toFinite(loc.avgGalMo));
+      var g = toFinite(loc.gallons12mo);
+      if (g !== null) gallons12mo += g;
+    });
+    if (!vals.length) {
+      return { n: 0, gallons12mo: 0, meanGalMo: null, medianGalMo: null };
+    }
+    return {
+      n: vals.length,
+      gallons12mo: gallons12mo,
+      // From the 12-month sum, as specified -- not the mean of avgGalMo.
+      // They agree to the gallon here because avgGalMo is gallons12mo/12 in
+      // this file, but the sum is the figure the card describes and is the
+      // one that stays right if a row ever carries only one of the two.
+      meanGalMo: Math.round(gallons12mo / 12 / vals.length),
+      medianGalMo: Math.round(median(vals))
+    };
+  }
+
   // A region's headline gallons figure: the MEDIAN avgGalMo of its reporting
   // locations, with the count it rests on.
   //
@@ -509,9 +618,15 @@
     toFinite: toFinite,
     sortedNumeric: sortedNumeric,
     typeClass: typeClass,
+    p10: p10,
+    p90: p90,
     EXCLUDED_NETWORK_TYPES: EXCLUDED_NETWORK_TYPES,
+    EXCLUDED_NETWORK_GROUPS: EXCLUDED_NETWORK_GROUPS,
     isExcludedNetworkType: isExcludedNetworkType,
+    isExcludedNetworkGroup: isExcludedNetworkGroup,
     normalizeNetworkContext: normalizeNetworkContext,
+    profileRanges: profileRanges,
+    networkSummary: networkSummary,
     gallonStatus: gallonStatus,
     MIN_REPORTING_GAL_MO: MIN_REPORTING_GAL_MO,
     sizeAffectsProfile: sizeAffectsProfile,
