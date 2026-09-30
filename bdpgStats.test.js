@@ -366,3 +366,76 @@ test('completeness counts non-reporting across the whole file', () => {
   assert.equal(c.withGallons, 1, 'withGallons must mean "the medians will use it"');
 });
 
+// ── network-context normalization ───────────────────────────────────────────
+
+const NC = () => ({
+  asOf: '2026-09-24',
+  activeTotal: 10,
+  byRegion: {
+    Midwest: {
+      total: 6,
+      byType: { 'Truck Stop': 3, PPO: 2, 'C-Store': 1 },
+      byGroup: { "Roady's": 5, PTP: 1 },
+      byTypeGroup: {
+        'Truck Stop': { "Roady's": 2, PTP: 1 },
+        PPO: { "Roady's": 2 },
+        'C-Store': { "Roady's": 1 }
+      }
+    },
+    Texas: {
+      total: 4,
+      byType: { 'Fuel Stop': 4 },
+      byGroup: { "Roady's": 4 },
+      byTypeGroup: { 'Fuel Stop': { "Roady's": 4 } }
+    }
+  }
+});
+
+test('normalizing drops the excluded types and recomputes every total', () => {
+  const n = BDPG_STATS.normalizeNetworkContext(NC());
+  assert.deepEqual(Object.keys(n.byRegion.Midwest.byType), ['Truck Stop']);
+  assert.equal(n.byRegion.Midwest.total, 3, 'region total follows the drop');
+  assert.equal(n.byRegion.Texas.total, 4, 'an untouched region is unchanged');
+  assert.equal(n.activeTotal, 7, 'the headline total is resummed, not carried');
+  assert.equal(n.asOf, '2026-09-24');
+});
+
+test('byGroup is rebuilt, not carried over with the dropped rows still in it', () => {
+  // The excluded rows are spread across groups, so the file's own byGroup
+  // cannot survive the drop.
+  const n = BDPG_STATS.normalizeNetworkContext(NC());
+  assert.deepEqual(n.byRegion.Midwest.byGroup, { "Roady's": 2, PTP: 1 });
+  assert.deepEqual(n.byRegion.Midwest.byTypeGroup, { 'Truck Stop': { "Roady's": 2, PTP: 1 } });
+});
+
+test('normalizing is idempotent and never mutates its input', () => {
+  const src = NC();
+  const once = BDPG_STATS.normalizeNetworkContext(src);
+  const twice = BDPG_STATS.normalizeNetworkContext(once);
+  assert.deepEqual(twice, once);
+  assert.equal(src.activeTotal, 10, "the caller's object is untouched");
+  assert.equal(src.byRegion.Midwest.byType.PPO, 2);
+});
+
+test('a missing or malformed context passes straight through', () => {
+  [null, undefined, {}, { activeTotal: 5 }, 'x'].forEach((v) => {
+    assert.equal(BDPG_STATS.normalizeNetworkContext(v), v, JSON.stringify(v));
+  });
+});
+
+test('excluded-type matching ignores case and stray whitespace', () => {
+  ['PPO', 'ppo', ' C-Store ', 'c-store'].forEach((t) => {
+    assert.equal(BDPG_STATS.isExcludedNetworkType(t), true, t);
+  });
+  ['Truck Stop', 'Fuel Stop', 'Service Center', '', null, 'PPO Plus'].forEach((t) => {
+    assert.equal(BDPG_STATS.isExcludedNetworkType(t), false, String(t));
+  });
+});
+
+test('Service Center is deliberately not excluded from the network counts', () => {
+  // It has no baseline profile, but it was never in network-locations.json
+  // either, so dropping it would not reconcile anything. Pinning the decision
+  // so a later "make it consistent" change has to be a deliberate one.
+  assert.deepEqual(BDPG_STATS.EXCLUDED_NETWORK_TYPES, ['PPO', 'C-Store']);
+});
+

@@ -122,14 +122,85 @@
   //
   // 'Truck Stop / Service Center' counts as a truck stop: it is a truck stop
   // that also has bays, and the service side does not change which baseline
-  // profile it belongs to. 'PPO' stays unmapped -- it is not a retail fuel
-  // location and no profile describes it.
+  // profile it belongs to. A type this does not name has no profile -- see
+  // EXCLUDED_NETWORK_TYPES below for the two that are also kept out of the
+  // headline network counts.
   function typeClass(type) {
     var t = String(type || '').trim().toLowerCase().replace(/\s+/g, ' ');
     if (t === 'fuel stop') return 'fuel';
     if (t === 'truck stop') return 'truckstop';
     if (t === 'truck stop / service center') return 'truckstop';
     return 'none';
+  }
+
+  // ── network-context counts ────────────────────────────────────────────────
+  //
+  // network-context.json is a headcount of the whole member list, and the
+  // whole member list is not the fuel network. PPO and C-Store rows were
+  // removed from network-locations.json because no baseline profile describes
+  // them; leaving them inside "400 active locations across the Roady's
+  // network" made the two files disagree about what the network IS, on the
+  // same screen. Dropping them here makes every count the tool shows -- the
+  // pre-evaluation panel, the region chips, the pitch strip -- describe the
+  // same set of locations as the baseline does.
+  //
+  // 'Service Center' (PTP bays) has no profile either but is NOT on this list:
+  // it was never in network-locations.json to begin with, so removing it would
+  // not be reconciling anything. That is a business call, not a consistency
+  // one; add it here if it is ever made.
+  var EXCLUDED_NETWORK_TYPES = ['PPO', 'C-Store'];
+
+  function isExcludedNetworkType(type) {
+    var t = String(type || '').trim().toLowerCase();
+    for (var i = 0; i < EXCLUDED_NETWORK_TYPES.length; i++) {
+      if (t === EXCLUDED_NETWORK_TYPES[i].toLowerCase()) return true;
+    }
+    return false;
+  }
+
+  // Rewrites a network-context object with the excluded types dropped and
+  // every total recomputed from what is left. Applied on load rather than
+  // only in the generator, so the file committed today is corrected without
+  // needing the source CSV -- and it is idempotent, so a file regenerated
+  // after this change passes through untouched. Returns a new object; the
+  // input is never mutated.
+  function normalizeNetworkContext(nc) {
+    if (!nc || typeof nc !== 'object' || !nc.byRegion) return nc;
+    var out = { asOf: nc.asOf, activeTotal: 0, byRegion: {} };
+    Object.keys(nc.byRegion).forEach(function (region) {
+      var src = nc.byRegion[region] || {};
+      var rd = { total: 0, byType: {}, byGroup: {}, byTypeGroup: {} };
+      var byGroup = {};
+
+      Object.keys(src.byType || {}).forEach(function (type) {
+        if (isExcludedNetworkType(type)) return;
+        var n = toFinite(src.byType[type]);
+        if (n === null) return;
+        rd.byType[type] = n;
+        rd.total += n;
+      });
+
+      // byGroup has to be rebuilt from byTypeGroup: the excluded rows are
+      // spread across groups, so the file's own byGroup totals cannot simply
+      // be carried over. A context file without byTypeGroup leaves byGroup
+      // empty rather than wrong -- nothing in the UI reads it today.
+      Object.keys(src.byTypeGroup || {}).forEach(function (type) {
+        if (isExcludedNetworkType(type)) return;
+        var groups = src.byTypeGroup[type] || {};
+        rd.byTypeGroup[type] = {};
+        Object.keys(groups).forEach(function (g) {
+          var n = toFinite(groups[g]);
+          if (n === null) return;
+          rd.byTypeGroup[type][g] = n;
+          byGroup[g] = (byGroup[g] || 0) + n;
+        });
+      });
+      rd.byGroup = byGroup;
+
+      out.byRegion[region] = rd;
+      out.activeTotal += rd.total;
+    });
+    return out;
   }
 
   // One place decides whether a gallon figure is usable, so the medians, the
@@ -402,6 +473,9 @@
     toFinite: toFinite,
     sortedNumeric: sortedNumeric,
     typeClass: typeClass,
+    EXCLUDED_NETWORK_TYPES: EXCLUDED_NETWORK_TYPES,
+    isExcludedNetworkType: isExcludedNetworkType,
+    normalizeNetworkContext: normalizeNetworkContext,
     gallonStatus: gallonStatus,
     MIN_REPORTING_GAL_MO: MIN_REPORTING_GAL_MO,
     sizeAffectsProfile: sizeAffectsProfile,
