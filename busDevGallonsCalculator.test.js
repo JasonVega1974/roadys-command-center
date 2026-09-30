@@ -717,12 +717,23 @@ test('the committed region_variance.json matches the computed deltas', () => {
 
 // ── the pricing slider ──────────────────────────────────────────────────────
 
-test('the pricing range is -25%..+25% in steps of 5, defaulting to neutral', () => {
+test('the pricing range is -50%..+50% in steps of 5, defaulting to neutral', () => {
   const r = BDPG_CONFIG.PRICING_RANGE;
-  assert.equal(r.min, -0.25);
-  assert.equal(r.max, 0.25);
+  assert.equal(r.min, -0.50);
+  assert.equal(r.max, 0.50);
   assert.equal(r.step, 0.05);
   assert.equal(BDPG_CONFIG.PRICING_DEFAULT, 0);
+});
+
+test('the pricing range is symmetric and its step divides it evenly', () => {
+  // A step that does not divide the range leaves the slider unable to
+  // reach its own maximum, which no assertion on min/max alone would
+  // catch. Symmetry is what makes "neutral" the centre of the control.
+  const r = BDPG_CONFIG.PRICING_RANGE;
+  assert.equal(r.min, -r.max, 'neutral must sit at the midpoint');
+  const steps = (r.max - r.min) / r.step;
+  assert.equal(Math.round(steps), steps, 'step must divide the range');
+  assert.equal(steps, 20);
 });
 
 test('pricingAdjustment passes a slider value straight through', () => {
@@ -734,10 +745,15 @@ test('pricingAdjustment passes a slider value straight through', () => {
 test('pricingAdjustment clamps anything outside the range', () => {
   // The slider cannot produce these; a hand-edited record or a stale saved
   // profile can, and an unclamped -3 would quote zero gallons.
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(-3), -0.25);
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(0.9), 0.25);
+  const r = BDPG_CONFIG.PRICING_RANGE;
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(-3), r.min);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(0.9), r.max);
   assert.equal(BusDevGallonsCalc.pricingAdjustment(Infinity), 0);
   assert.equal(BusDevGallonsCalc.pricingAdjustment(-Infinity), 0);
+  // A value saved under the narrower +/-25% control is inside the new
+  // range and must pass through untouched, not be re-clamped to anything.
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(-0.25), -0.25);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(0.25), 0.25);
 });
 
 test('pricingAdjustment accepts a numeric string, as an <input> hands it over', () => {
@@ -756,13 +772,14 @@ test('a prospect saved under the old five options reopens at its own percentage'
   });
 });
 
-test('the new range reaches five times further than the retired options', () => {
+test('the range reaches ten times further than the retired options', () => {
   // The reason for the change: +/-5% could not express the gap between a
-  // site running several fleet and aggregator programs and one running none.
+  // site running several fleet and aggregator programs and one running
+  // none. Widened to +/-25% and then to +/-50% for the same reason.
   const oldMax = Math.max.apply(null,
     Object.keys(BDPG_CONFIG.PRICING_LEGACY_ADJUST).map((k) => BDPG_CONFIG.PRICING_LEGACY_ADJUST[k]));
   assert.equal(oldMax, 0.05);
-  assert.equal(BDPG_CONFIG.PRICING_RANGE.max / oldMax, 5);
+  assert.equal(BDPG_CONFIG.PRICING_RANGE.max / oldMax, 10);
 });
 
 test('every slider step is a term in the formula and nothing else', () => {
@@ -780,26 +797,68 @@ test('every slider step is a term in the formula and nothing else', () => {
   }
 });
 
-test('the extremes of the slider move the final figure by a quarter of the baseline', () => {
+test('the extremes of the slider span a full baseline, end to end', () => {
+  // Read from the range rather than restated, so widening it again cannot
+  // leave this test quietly asserting the old span from inside the new one.
+  const r = BDPG_CONFIG.PRICING_RANGE;
   const args = { profile: 'Large truck stop', roadway: 'Interstate', baseline: 20000,
     regionPct: 0, amenityLevel: 'Average', reviewRating: 4.0,
     rewardsLevel: 'Undecided / unknown' };
-  const lo = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: -0.25 }));
-  const hi = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: 0.25 }));
-  assert.equal(hi.finalGallons - lo.finalGallons, 10000, '0.5 x 20,000');
+  const lo = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: r.min }));
+  const hi = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: r.max }));
+  assert.equal(hi.finalGallons - lo.finalGallons, Math.round(20000 * (r.max - r.min)));
+  assert.equal(hi.finalGallons - lo.finalGallons, 20000, 'at +/-50% the ends differ by 1x baseline');
   assert.equal(lo.officialSubtotal, hi.officialSubtotal, 'the published figure never moves');
 });
 
 test('the slider cannot drive the estimate negative', () => {
-  // -25% pricing on top of a deeply negative region is what the multiplier
-  // floor exists for.
+  // The bottom of the slider on top of a deeply negative region is what the
+  // multiplier floor exists for.
   const e = BusDevGallonsCalc.calculateEstimate({
     profile: 'Medium truck stop', roadway: 'Interstate', baseline: 10000,
     regionPct: -1, amenityLevel: 'Very limited', reviewRating: 2.0,
-    pricingLevel: -0.25, rewardsLevel: 'Not participating'
+    pricingLevel: BDPG_CONFIG.PRICING_RANGE.min, rewardsLevel: 'Not participating'
   });
   assert.equal(e.finalGallons, 0);
   assert.ok(e.finalGallons >= 0);
+});
+
+test('the worst stack a rep can actually select now lands just above zero', () => {
+  // What widening to +/-50% actually changed, measured rather than assumed.
+  // Every value here is one a rep can legitimately pick: the worst real
+  // region (Upper Midwest, -32.6%), "Very limited" amenities, worn
+  // restrooms, a sub-3.0 rating, no rewards, and the bottom of the slider.
+  // Together they leave a multiplier of 0.0040 -- 40 gal/mo on a 10,000
+  // baseline, against 2,540 at the old -25% bottom.
+  //
+  // So the floor is not reached, but the margin is now 0.4% rather than
+  // 25%. One more negative term, or a region worse than any observed
+  // today, tips it under -- which is the whole reason the floor stays.
+  const args = { profile: 'Medium truck stop', roadway: 'Interstate', baseline: 10000,
+    regionPct: -0.326, amenityLevel: 'Very limited', restroomLevel: 'Dated / worn',
+    reviewRating: 2.0, rewardsLevel: 'Not participating' };
+
+  const atMin = BusDevGallonsCalc.calculateEstimate(
+    Object.assign({}, args, { pricingLevel: BDPG_CONFIG.PRICING_RANGE.min }));
+  assert.equal(atMin.finalGallons, 40);
+  assert.ok(atMin.finalGallons > 0, 'not floored -- but only just');
+  assert.ok(atMin.officialSubtotal > 0, 'the published figure is unaffected by pricing');
+
+  const atOldMin = BusDevGallonsCalc.calculateEstimate(
+    Object.assign({}, args, { pricingLevel: -0.25 }));
+  assert.equal(atOldMin.finalGallons, 2540, 'the margin the old range left');
+});
+
+test('one step past the worst selectable stack is what the floor catches', () => {
+  // The floor is load-bearing at this range: nudge the region a further 1%
+  // -- still well inside what a future recomputation could produce -- and
+  // the unclamped multiplier goes negative.
+  const e = BusDevGallonsCalc.calculateEstimate({
+    profile: 'Medium truck stop', roadway: 'Interstate', baseline: 10000,
+    regionPct: -0.336, amenityLevel: 'Very limited', restroomLevel: 'Dated / worn',
+    reviewRating: 2.0, pricingLevel: -0.50, rewardsLevel: 'Not participating'
+  });
+  assert.equal(e.finalGallons, 0, 'clamped, never negative');
 });
 
 test('the retired option list is gone from the config surface', () => {
