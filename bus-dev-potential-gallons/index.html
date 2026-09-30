@@ -4042,47 +4042,51 @@ function getCentroid(pathStr, axis){
         '</select>';
     }
 
-    // The amenity level is now exactly what the four detail answers imply.
-    // The "Confirmed Amenity Level" dropdown that used to sit between them is
-    // gone: it asked the rep to re-state a value the rule had already derived
-    // from their own answers, which is the redundancy Scott objected to.
+    // Amenities are optional. The level is whatever the rule makes of the
+    // answers given; with no answers there is no level and no adjustment.
     //
-    // The hole it was covering is real and is now closed differently.
-    // suggestAmenityLevel({}) returns the BOTTOM band ("Very limited", -5%) --
-    // an empty details object satisfies every "no showers / no truck parking /
-    // no real food" test at once, so *unanswered* reads identically to
-    // *answered badly*. Amenities sit inside the Network-Adjusted Baseline, so
-    // an unsurveyed prospect would pick up -5% on the strength of questions
-    // nobody had asked.
+    // This is the fix for a real asymmetry rather than a relaxation of one.
+    // suggestAmenityLevel({}) returns the BOTTOM band ("Very limited", -5%):
+    // an empty details object satisfies every "no showers / no truck parking
+    // / no real food" test at once, so *unanswered* used to read identically
+    // to *answered badly*, and that -5% landed inside the Network-Adjusted
+    // Baseline on a site nobody had surveyed. The old gate made that safe by
+    // refusing to Generate until all four were answered; leaving the level
+    // unset when none are answered makes it harmless instead, which is the
+    // better trade -- a rep without the information should be able to run the
+    // number, just not be penalised for the gap.
     //
-    // The gate is therefore on the four details the rule actually reads --
-    // showers, food, scale, parking. Not "at least one": one answer plus three
-    // blanks still produces a level derived mostly from silence. Not all six
-    // either, because `service` and `defReefer` were never read and have been
-    // removed from the form entirely.
-    var suggestion = BusDevGallonsCalc.suggestAmenityLevel(s.amenityDetails);
-    s.amenityLevel = suggestion.level;
-
+    // Unset, not 'Average'. amenityAdjustment() returns 0 for any level it
+    // does not recognise, so '' gives the required neutral 0% without
+    // asserting that the site was assessed and found average. The two are
+    // the same arithmetic and a different claim.
+    //
+    // A PARTIAL set still goes through the rule, as specified: some answers
+    // are evidence, and the rule reads a blank as a "no". A rep who answers
+    // two of four gets a level derived partly from silence -- shown below
+    // with its count so that is visible rather than implied.
     var answered = BDPG.amenityAnsweredCount();
-    var amenityAssumed = answered < BDPG.AMENITY_RULE_FIELDS.length;
-    var assumedPct = hasOwn(BDPG_CONFIG.AMENITY_ADJUST, suggestion.level)
+    var suggestion = answered > 0
+      ? BusDevGallonsCalc.suggestAmenityLevel(s.amenityDetails)
+      : null;
+    s.amenityLevel = suggestion ? suggestion.level : '';
+
+    var levelPct = (suggestion && hasOwn(BDPG_CONFIG.AMENITY_ADJUST, suggestion.level))
       ? BDPG_CONFIG.AMENITY_ADJUST[suggestion.level] : 0;
-    var assumedPctTxt = (assumedPct >= 0 ? '+' : '') + (assumedPct * 100).toFixed(1) + '%';
-    var amenityNotice = amenityAssumed
-      ? '<div class="bdpg-box" style="margin-top:10px;border-color:var(--yellow);color:var(--yellow);font-size:.8em;line-height:1.55">' +
-          '⚠ <b>' + answered + ' of ' + BDPG.AMENITY_RULE_FIELDS.length +
-          ' amenity questions answered — the level below is partly an assumption.</b><br>' +
-          'Unanswered reads the same as answered badly, so the calculator currently lands on <b>' +
-          BDPG.escHtml(suggestion.level) + '</b> and applies <b>' + assumedPctTxt +
-          '</b> inside the Network-Adjusted Baseline. Answer all ' + BDPG.AMENITY_RULE_FIELDS.length +
-          ' above to enable Generate.' +
-        '</div>'
-      : '';
-    var suggestLine = amenityAssumed
-      ? ''
+    var levelPctTxt = (levelPct >= 0 ? '+' : '') + (levelPct * 100).toFixed(1) + '%';
+    var amenityNotice = '';
+    var suggestLine = !suggestion
+      ? '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">' +
+          'Amenity level: <b>not assessed</b> (+0.0%) — optional. Answer any of the four ' +
+          'above to apply an amenity adjustment.</div>'
       : '<div style="margin-top:10px;font-size:.82em;color:var(--muted)">Amenity level: <b>' +
-          BDPG.escHtml(suggestion.level) + '</b> (' + assumedPctTxt + ') — ' +
-          BDPG.escHtml(suggestion.reason) + '</div>';
+          BDPG.escHtml(suggestion.level) + '</b> (' + levelPctTxt + ') — ' +
+          BDPG.escHtml(suggestion.reason) +
+          (answered < BDPG.AMENITY_RULE_FIELDS.length
+            ? ' <span style="color:var(--yellow)">Based on ' + answered + ' of ' +
+              BDPG.AMENITY_RULE_FIELDS.length + ' answers; the rule reads a blank as a "no".</span>'
+            : '') +
+        '</div>';
 
     var left = '<div class="fg">' +
         '<label>State</label>' +
@@ -4336,14 +4340,6 @@ function getCentroid(pathStr, axis){
   };
   // An explicit confirmation, not merely a suggestion that was adopted by
   // default. Tapping the six amenity cards produces real data and therefore a
-  // real suggestion, but the rep still has to confirm it -- that final click
-  // is what turns an assumption into a decision, and it is the only thing
-  // that distinguishes "surveyed and genuinely sparse" from "nobody asked
-  // yet". A rep who taps all six cards and stops has real data feeding
-  // suggestAmenityLevel(), but has not confirmed anything -- amenityConfirmed()
-  // must still read false, or the gate would be a proxy for "any amenity
-  // interaction happened" rather than the deliberate sign-off it exists to
-  // require.
   BDPG.AMENITY_RULE_FIELDS = ['showers', 'food', 'scale', 'parking'];
 
   BDPG.amenityAnsweredCount = function () {
@@ -4353,23 +4349,14 @@ function getCentroid(pathStr, axis){
     return n;
   };
 
-  // The Generate gate. All four rule-reading details, because the rule cannot
-  // tell an unanswered question from a bad answer: suggestAmenityLevel({})
-  // returns "Very limited" (-5%) and that lands inside the Network-Adjusted
-  // Baseline. Requiring only one answer would let three silences set a
-  // prospect-facing number.
-  BDPG.amenityConfirmed = function () {
-    return BDPG.amenityAnsweredCount() === BDPG.AMENITY_RULE_FIELDS.length &&
-      BDPG_CONFIG.AMENITY_LEVELS.indexOf(BDPG.state.amenityLevel) >= 0;
-  };
-
-
   BDPG.generateButtonHtml = function () {
     var s = BDPG.state;
-    var amenityOk = BDPG.amenityConfirmed();
-    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state && amenityOk);
+    // Amenities are deliberately absent from this list. They are optional
+    // now that an unanswered set carries no adjustment, so gating on them
+    // would block a rep who simply does not have the information.
+    var can = !!(BDPG.prospectDone() && s.profile && s.roadway && s.state);
     var title = can ? '' :
-      ' title="Complete Prospect Profile, Steps 1 and 2, and confirm an Amenity Level to generate."';
+      ' title="Complete the Prospect Profile and pick a location profile and state to generate."';
     return '<button id="bdpg-generate-btn" class="bdpg-go"' + (can ? '' : ' disabled' + title) +
       ' onclick="BDPG.onGenerate()">🚛 Generate Value Profile</button>';
   };
@@ -4494,20 +4481,6 @@ function getCentroid(pathStr, axis){
   // alone whether the attempt even ran.
   BDPG.onGenerate = function () {
     var s = BDPG.state;
-    // The amenity confirmation gate (Task 11) belongs HERE, not only in
-    // generateButtonHtml()'s `can` check. The disabled attribute only stops a
-    // click on the visible button -- it does nothing for BDPG.onTrackerExport(),
-    // which calls this function directly, or for any future caller that does
-    // the same. The harm the gate exists to prevent (an unsurveyed site's
-    // suggestAmenityLevel({}) -5% presented to an owner as an observed fact)
-    // reaches the customer through whichever path gets to window.print(), and
-    // onExportPdf() -- the only caller of window.print() -- gates on nothing
-    // but BDPG.state.result being set. So this is the one chokepoint that
-    // actually protects every route to that result, current and future.
-    if (!BDPG.amenityConfirmed()) {
-      alert('Answer all four Amenity Details in Step 2 before generating -- an unanswered question reads the same as a bad answer, so a partly-filled set would put an assumed amenity adjustment inside the prospect-facing number.');
-      return false;
-    }
     // Before anything reads them: the estimate below, and the pitch builders
     // that read s.pricingLevel / s.rewardsLevel live off state once a result
     // exists, must all see the same in-list value. See BDPG.normalizeLevels().
@@ -5760,22 +5733,6 @@ function getCentroid(pathStr, axis){
     // dialog -- all before BDPG.state is touched.
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
       toast('This saved prospect is missing a Location Profile/Roadway and can\'t produce an Export Pitch Summary.', 'err');
-      return;
-    }
-    // Same mirror-the-internal-check idea as the baseline-row check just
-    // above, this time for BDPG.onGenerate()'s amenity confirmation gate
-    // (Task 11): BDPG.amenityConfirmed() reads BDPG.state, which does not yet
-    // hold this record (onLoadProfile() has not run), so the saved record's
-    // own fields are read the same way here. Without this, an unconfirmed
-    // legacy profile would fail silently-ish inside the try/catch below and
-    // surface only the generic "Could not generate" toast -- true, but it
-    // does not tell the rep the one thing they can actually do about it:
-    // open the profile and confirm an Amenity Level in Step 2.
-    // Records saved before 2026-09-30 carry amenityOverridden; it is no longer
-    // read. What matters is the same thing it always stood for -- that the
-    // stored level is a real one -- which the level check alone now answers.
-    if (BDPG_CONFIG.AMENITY_LEVELS.indexOf(st.amenityLevel) < 0) {
-      toast('This saved prospect has no amenity level -- open it and answer the four Amenity Details in Step 2 before exporting.', 'err');
       return;
     }
 

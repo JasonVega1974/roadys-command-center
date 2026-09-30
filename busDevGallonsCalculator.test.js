@@ -446,12 +446,37 @@ test('the amenity rule reads exactly the four details the UI still asks for', ()
     'Good / full service');
 });
 
-test('an untouched amenity form still returns Very limited, which is why the gate exists', () => {
-  // The -5% that the removed confirmation dropdown was built to catch. The
-  // Generate gate now requires all four rule-reading details to be answered,
-  // so this value can never reach a headline unobserved.
+test('an untouched amenity form still returns Very limited from the rule itself', () => {
+  // Unchanged engine behaviour, and the reason the page stopped calling the
+  // rule at all when nothing is answered: an empty object satisfies every
+  // "no showers / no parking / no food" test at once, so the rule cannot
+  // tell unanswered from answered-badly. The page now leaves the level unset
+  // in that case rather than gating on it -- see the comment in step2Html.
   assert.equal(BusDevGallonsCalc.suggestAmenityLevel({}).level, 'Very limited');
   assert.equal(BDPG_CONFIG.AMENITY_ADJUST['Very limited'], -0.05);
+});
+
+test('an unset amenity level contributes exactly nothing', () => {
+  // How the page expresses "not assessed": no level, therefore no
+  // adjustment. amenityAdjustment() returns 0 for anything it does not
+  // recognise, so '' is neutral without asserting the site is Average.
+  assert.equal(BusDevGallonsCalc.amenityAdjustment(''), 0);
+  assert.equal(BusDevGallonsCalc.amenityAdjustment(null), 0);
+  assert.equal(BusDevGallonsCalc.amenityAdjustment(undefined), 0);
+  assert.equal(BusDevGallonsCalc.amenityAdjustment('Average'), 0);
+});
+
+test('an unset amenity level and Average give the same number for different reasons', () => {
+  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0,
+    reviewRating: 4.0, pricingLevel: 'Standard / moderate',
+    rewardsLevel: 'Undecided / unknown' };
+  const unset = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { amenityLevel: '' }));
+  const avg = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { amenityLevel: 'Average' }));
+  assert.equal(unset.amenityPct, 0);
+  assert.equal(unset.officialSubtotal, avg.officialSubtotal);
+  // And neither is the -5% an unsurveyed site used to collect.
+  const vl = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { amenityLevel: 'Very limited' }));
+  assert.ok(vl.officialSubtotal < unset.officialSubtotal);
 });
 
 // ── dynamic baseline lookup ─────────────────────────────────────────────────
