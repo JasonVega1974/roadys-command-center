@@ -136,19 +136,21 @@
   // ── network-context counts ────────────────────────────────────────────────
   //
   // network-context.json is a headcount of the whole member list, and the
-  // whole member list is not the fuel network. PPO and C-Store rows were
-  // removed from network-locations.json because no baseline profile describes
-  // them; leaving them inside "400 active locations across the Roady's
-  // network" made the two files disagree about what the network IS, on the
-  // same screen. Dropping them here makes every count the tool shows -- the
-  // pre-evaluation panel, the region chips, the pitch strip -- describe the
-  // same set of locations as the baseline does.
+  // whole member list is not the fuel network. PPO, C-Store and Service
+  // Center rows are not retail diesel locations and no baseline profile
+  // describes any of them; leaving them inside "400 active locations across
+  // the Roady's network" made that number and the baseline card beside it
+  // disagree about what the network IS, on the same screen. Dropping them
+  // here makes every count the tool shows -- the pre-evaluation panel, the
+  // region chips, the pitch strip -- describe the same set of locations the
+  // baseline does.
   //
-  // 'Service Center' (PTP bays) has no profile either but is NOT on this list:
-  // it was never in network-locations.json to begin with, so removing it would
-  // not be reconciling anything. That is a business call, not a consistency
-  // one; add it here if it is ever made.
-  var EXCLUDED_NETWORK_TYPES = ['PPO', 'C-Store'];
+  // 'Truck Stop / Service Center' is NOT excluded and must never be: it is a
+  // truck stop that also has bays, typeClass() maps it to 'truckstop', and it
+  // is in network-locations.json. The match below is exact-string on purpose
+  // for exactly this reason -- a substring or prefix test would silently take
+  // those five locations out of the network with no other symptom.
+  var EXCLUDED_NETWORK_TYPES = ['PPO', 'C-Store', 'Service Center'];
 
   function isExcludedNetworkType(type) {
     var t = String(type || '').trim().toLowerCase();
@@ -373,6 +375,40 @@
   // "based on only X locations" caveat. Not a threshold on using it.
   var REGION_THIN_N = 8;
 
+  // A region's headline gallons figure: the MEDIAN avgGalMo of its reporting
+  // locations, with the count it rests on.
+  //
+  // Median, not mean, for the same reason profileBaselines() uses one -- a
+  // handful of very large sites set a regional mean and nothing else does.
+  // Measured on the real file the two answer different questions entirely:
+  // Southeast's mean is 15,740 against a median of 5,985, so the mean
+  // describes a region almost none of its locations resemble.
+  //
+  // This is deliberately NOT a like-for-like figure. regionDeltas() answers
+  // "does this region outperform its own profile mix?" and is the number the
+  // engine applies; this one answers "what does a location in this region
+  // actually pump?" and is only ever displayed. They are different questions
+  // and must never be assigned to each other.
+  function regionAverages(locations, resolveRegion, opts) {
+    var byRegion = {};
+    (locations || []).forEach(function (loc) {
+      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      var reg = resolveRegion ? resolveRegion(loc.state) : loc.region;
+      if (!reg) return;
+      (byRegion[reg] = byRegion[reg] || []).push(toFinite(loc.avgGalMo));
+    });
+    var out = {};
+    Object.keys(byRegion).forEach(function (reg) {
+      var med = median(byRegion[reg]);
+      out[reg] = {
+        region: reg,
+        n: byRegion[reg].length,
+        median: med === null ? null : Math.round(med)
+      };
+    });
+    return out;
+  }
+
   // Per-profile roll-up over every location, in BASELINE_TABLE order.
   //
   // `n` counts locations that mapped AND carry a usable gallon figure -- those
@@ -484,6 +520,7 @@
     profileBaselines: profileBaselines,
     baselineKeyFor: baselineKeyFor,
     regionDeltas: regionDeltas,
+    regionAverages: regionAverages,
     REGION_THIN_N: REGION_THIN_N,
     DYNAMIC_BASELINE_MIN_N: DYNAMIC_BASELINE_MIN_N,
     matchBaselineProfile: matchBaselineProfile,

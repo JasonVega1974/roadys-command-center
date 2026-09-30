@@ -3765,6 +3765,15 @@ function getCentroid(pathStr, axis){
       BusDevGallonsCalc.resolveRegion);
   };
 
+  // Live per-region median gallons, from the same file and the same reporting
+  // floor as the baselines. Distinct from networkRegionDeltas() above: that is
+  // the like-for-like ratio the engine applies, this is the plain observed
+  // figure the results page displays. See regionAverages()' comment.
+  BDPG.networkRegionAverages = function () {
+    if (!BDPG._locationsReady) return {};
+    return BDPG_STATS.regionAverages(BDPG.networkLocations(), BusDevGallonsCalc.resolveRegion);
+  };
+
   BDPG.baselineSourceNoteHtml = function (d) {
     if (!d) return '';
     var muted = 'font-size:.78em;color:var(--muted);margin-top:6px';
@@ -4542,45 +4551,85 @@ function getCentroid(pathStr, axis){
   // unconditionally and a future chart would land here.
   BDPG.drawCharts = function () {};
 
+  // The region's headline gallons figure, preferring the live file over the
+  // config. Returns null when neither has anything to say about the region.
+  //
+  // network-locations.json is the source; BDPG_NETWORK_BASELINES is a
+  // fallback for a region the file is too thin to speak for -- the same
+  // shape currentBaseline() already uses against BASELINE_TABLE, and for the
+  // same reason: one source of truth, with the static table catching the
+  // case where the observed sample cannot carry the claim.
+  //
+  // The config figures are means from a retired 12-month gallon report and
+  // read much higher than the file's medians (Southeast 10,373 against
+  // 5,985). Mixing them per-region is the price of the fallback existing at
+  // all, which is why `source` is returned and the caption says which one
+  // produced the number rather than presenting both as the same measurement.
+  BDPG.effectiveNetworkAverage = function (region) {
+    var live = BDPG.networkRegionAverages()[region] || null;
+    if (live && live.median !== null && live.n >= BDPG_STATS.DYNAMIC_BASELINE_MIN_N) {
+      return {
+        avgGalMo: live.median, n: live.n, source: 'network',
+        // Same threshold the admin panel's like-for-like delta uses, so a
+        // region flagged thin in one place is flagged thin in both.
+        lowSample: live.n < BDPG_STATS.REGION_THIN_N,
+        asOf: (BDPG.locationsMeta && BDPG.locationsMeta.asOf) || BDPG_CONFIG.NETWORK_BASELINE_META.asOf
+      };
+    }
+    if (!hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, region)) return null;
+    var b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[region];
+    var n = isFinite(Number(b.n)) && Number(b.n) > 0 ? Number(b.n) : null;
+    return {
+      avgGalMo: b.avgGalMo, n: n, source: 'static',
+      lowSample: !!b.lowSample,
+      asOf: BDPG_CONFIG.NETWORK_BASELINE_META.asOf
+    };
+  };
+
   BDPG.networkAverageLineHtml = function () {
     var r = BDPG.state.result;
     var key = r && r.region;
-    if (!key || !hasOwn(BDPG_CONFIG.BDPG_NETWORK_BASELINES, key)) return '';
-    var b = BDPG_CONFIG.BDPG_NETWORK_BASELINES[key];
-    var meta = BDPG_CONFIG.NETWORK_BASELINE_META;
+    if (!key) return '';
+    var b = BDPG.effectiveNetworkAverage(key);
+    if (!b) return '';
 
     // The caption has to describe THIS region's sample, not the network's.
-    // meta.locations (227) is the size of the whole 12-month network report;
-    // captioning a per-region average with it told an owner the figure was far
-    // better evidenced than it is -- Texas' 7,003 gal/mo comes from 13
-    // locations, and the config says so (lowSample/n), but that caveat only
-    // ever reached the admin panel.
-    //
-    // Two shapes, and the second must never borrow the first's number:
-    //   n known   -> caption the region's own count, plus the low-sample
-    //                caveat when the config flags it.
-    //   n unknown -> say what IS known (the figure comes out of the
-    //                227-location network report) and attribute 227 to the
-    //                REPORT, never to the region.
-    // Nothing here hardcodes Texas or 13; both come from the config entry.
-    var hasN = isFinite(Number(b.n)) && Number(b.n) > 0;
-    var sample = hasN
-      ? ('12mo avg of ' + BDPG.escHtml(String(Number(b.n))) + ' Roady\'s locations in this region, as of ' +
-         BDPG.escHtml(meta.asOf))
-      : ('12mo avg, as of ' + BDPG.escHtml(meta.asOf) + ' · from Roady\'s ' +
-         BDPG.escHtml(String(meta.locations)) + '-location network report');
+    // It used to fall back to "from Roady's 227-location network report" --
+    // the size of a gallon report that no longer backs anything else on the
+    // page. Citing a dataset the rest of the tool has stopped using told an
+    // owner the figure was both better evidenced and differently sourced
+    // than it is. Now the number and its count come from the same file, so
+    // the caption names the region's own reporting locations and nothing
+    // else. Do not reintroduce a whole-network count here: a per-region
+    // figure captioned with a network-sized n overstates its own evidence,
+    // which is the exact defect this replaced.
+    var hasN = b.n !== null;
+    var sample;
+    if (b.source === 'network') {
+      sample = '12mo median of ' + BDPG.escHtml(String(b.n)) +
+        ' reporting Roady\'s locations in this region, as of ' + BDPG.escHtml(String(b.asOf));
+    } else if (hasN) {
+      sample = '12mo avg of ' + BDPG.escHtml(String(b.n)) +
+        ' Roady\'s locations in this region, as of ' + BDPG.escHtml(String(b.asOf));
+    } else {
+      // Static fallback with no count of its own: say the region is too
+      // thinly reported to measure rather than borrowing a number from
+      // somewhere that did not measure it.
+      sample = '12mo avg, as of ' + BDPG.escHtml(String(b.asOf)) +
+        ' · too few reporting locations in this region to measure directly';
+    }
 
     // var(--muted), not var(--yellow): inside #bdpg-print-only the @media print
     // block re-points --muted to #555 but leaves --yellow alone, so a yellow
     // caveat would print illegibly on white and break the packet's
     // everything-is-black-ink property. The glyph carries the signal.
     var lowSampleLine = b.lowSample
-      ? '<div style="font-size:.72em;color:var(--muted);margin-top:2px">&#9888; Small sample — this regional average is drawn from ' +
-        (hasN ? (BDPG.escHtml(String(Number(b.n))) + ' locations') : 'a small number of locations') + '.</div>'
+      ? '<div style="font-size:.72em;color:var(--muted);margin-top:2px">&#9888; Small sample — this regional figure is drawn from ' +
+        (hasN ? (BDPG.escHtml(String(b.n)) + ' locations') : 'a small number of locations') + '.</div>'
       : '';
 
     return '<div style="margin-top:6px;font-size:.85em">' +
-      '<span class="bdpg-lbl" style="display:inline">Roady\'s Network Average (your region):</span> ' +
+      '<span class="bdpg-lbl" style="display:inline">Roady\'s Network Median (your region):</span> ' +
       '<b>' + BDPG.fmtGal(b.avgGalMo) + ' gal/mo</b>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
         BDPG.escHtml(BDPG.regionDisplayName(key)) + ' · ' + sample + '</div>' +

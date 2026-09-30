@@ -251,6 +251,87 @@ test('the thin-region threshold is 8', () => {
   assert.equal(BDPG_STATS.REGION_THIN_N, 8);
 });
 
+// ── per-region displayed median ─────────────────────────────────────────────
+
+test('a region average is the median of its reporting locations, with its n', () => {
+  const locs = [
+    loc({ id: 'a', state: 'OH', avgGalMo: 4000 }),
+    loc({ id: 'b', state: 'OH', avgGalMo: 6000 }),
+    loc({ id: 'c', state: 'OH', avgGalMo: 11000 }),
+    loc({ id: 'd', state: 'TX', avgGalMo: 9000 })
+  ];
+  const a = BDPG_STATS.regionAverages(locs, RR);
+  assert.equal(a.Midwest.median, 6000);
+  assert.equal(a.Midwest.n, 3);
+  assert.equal(a.Texas.median, 9000);
+  assert.equal(a.Texas.n, 1);
+});
+
+test('one very large site cannot set a region figure', () => {
+  // The whole reason this is a median. On the real file Southeast's mean is
+  // 15,740 against a median of 5,985 -- the mean describes a region almost
+  // none of its locations resemble.
+  const locs = [
+    loc({ id: 'a', state: 'OH', avgGalMo: 5000 }),
+    loc({ id: 'b', state: 'OH', avgGalMo: 6000 }),
+    loc({ id: 'c', state: 'OH', avgGalMo: 7000 }),
+    loc({ id: 'd', state: 'OH', avgGalMo: 400000 })
+  ];
+  const a = BDPG_STATS.regionAverages(locs, RR);
+  const mean = (5000 + 6000 + 7000 + 400000) / 4;
+  assert.equal(a.Midwest.median, 6500);
+  assert.ok(a.Midwest.median < mean / 15, 'the mean would be ' + Math.round(mean));
+});
+
+test('non-reporting and unplaceable locations are left out of the region figure', () => {
+  const locs = [
+    loc({ id: 'a', state: 'OH', avgGalMo: 8000 }),
+    loc({ id: 'b', state: 'OH', avgGalMo: 8000 }),
+    loc({ id: 'z', state: 'OH', avgGalMo: 10 }),      // under the floor
+    loc({ id: 'y', state: 'OH', avgGalMo: null }),    // no figure
+    loc({ id: 'x', state: 'ZZ', avgGalMo: 8000 })     // no region
+  ];
+  const a = BDPG_STATS.regionAverages(locs, RR);
+  assert.equal(a.Midwest.n, 2);
+  assert.equal(Object.keys(a).length, 1);
+});
+
+test('the region figure counts every type, unlike the like-for-like delta', () => {
+  // regionAverages() asks "what does a location here pump?" -- a fuel stop
+  // counts. regionDeltas() asks "does this region beat its own profile mix?"
+  // and needs a profile to compare against. Same file, different questions.
+  const locs = [
+    loc({ id: 'a', state: 'OH', type: 'Fuel Stop', dieselLanes: null, roadway: '', avgGalMo: 3000 }),
+    loc({ id: 'b', state: 'OH', avgGalMo: 9000 }),
+    loc({ id: 'c', state: 'OH', avgGalMo: 9000 })
+  ];
+  assert.equal(BDPG_STATS.regionAverages(locs, RR).Midwest.n, 3);
+});
+
+test('an empty or regionless file yields no region figures at all', () => {
+  assert.deepEqual(BDPG_STATS.regionAverages([], RR), {});
+  assert.deepEqual(BDPG_STATS.regionAverages(null, RR), {});
+});
+
+test('the committed file gives every region a usable median and a real count', () => {
+  // The fallback path in effectiveNetworkAverage() exists for a region the
+  // file cannot speak for. Today none is in that state -- if this fails, a
+  // region has gone thin and the results page is quietly showing a mean from
+  // the retired report beside medians everywhere else.
+  const locs = require('./network-locations.json').locations;
+  const { BusDevGallonsCalc: Calc } = require('./busDevGallonsCalculator.js');
+  const a = BDPG_STATS.regionAverages(locs, Calc.resolveRegion);
+  const expect = { Northwest: [8377, 22], West: [5370, 8], Southwest: [7443, 13],
+    Texas: [9423, 9], 'Upper Midwest': [6018, 27], Midwest: [13697, 33],
+    Northeast: [15307, 7], Southeast: [5985, 47] };
+  Object.keys(expect).forEach((reg) => {
+    assert.equal(a[reg].median, expect[reg][0], reg + ' median');
+    assert.equal(a[reg].n, expect[reg][1], reg + ' n');
+    assert.ok(a[reg].n >= BDPG_STATS.DYNAMIC_BASELINE_MIN_N, reg + ' must not need the fallback');
+  });
+  assert.equal(Object.values(a).reduce((s, x) => s + x.n, 0), 166);
+});
+
 // ── completeness under the new statuses ─────────────────────────────────────
 
 test('completeness separates backroad-over from incomplete-but-fixable', () => {
@@ -424,18 +505,39 @@ test('a missing or malformed context passes straight through', () => {
 });
 
 test('excluded-type matching ignores case and stray whitespace', () => {
-  ['PPO', 'ppo', ' C-Store ', 'c-store'].forEach((t) => {
+  ['PPO', 'ppo', ' C-Store ', 'c-store', 'Service Center', ' service center '].forEach((t) => {
     assert.equal(BDPG_STATS.isExcludedNetworkType(t), true, t);
   });
-  ['Truck Stop', 'Fuel Stop', 'Service Center', '', null, 'PPO Plus'].forEach((t) => {
+  ['Truck Stop', 'Fuel Stop', '', null, 'PPO Plus'].forEach((t) => {
     assert.equal(BDPG_STATS.isExcludedNetworkType(t), false, String(t));
   });
 });
 
-test('Service Center is deliberately not excluded from the network counts', () => {
-  // It has no baseline profile, but it was never in network-locations.json
-  // either, so dropping it would not reconcile anything. Pinning the decision
-  // so a later "make it consistent" change has to be a deliberate one.
-  assert.deepEqual(BDPG_STATS.EXCLUDED_NETWORK_TYPES, ['PPO', 'C-Store']);
+test('"Truck Stop / Service Center" survives the Service Center exclusion', () => {
+  // The one case a sloppier match would break: these five are truck stops
+  // with bays, they map to the truckstop profile class, and they are in
+  // network-locations.json. Excluding them would take them out of every
+  // count with no other symptom.
+  assert.equal(BDPG_STATS.isExcludedNetworkType('Truck Stop / Service Center'), false);
+  assert.equal(BDPG_STATS.typeClass('Truck Stop / Service Center'), 'truckstop');
+
+  const nc = BDPG_STATS.normalizeNetworkContext({
+    byRegion: {
+      Midwest: {
+        total: 4,
+        byType: { 'Truck Stop / Service Center': 3, 'Service Center': 1 },
+        byTypeGroup: {
+          'Truck Stop / Service Center': { "Roady's": 3 },
+          'Service Center': { PTP: 1 }
+        }
+      }
+    }
+  });
+  assert.deepEqual(Object.keys(nc.byRegion.Midwest.byType), ['Truck Stop / Service Center']);
+  assert.equal(nc.activeTotal, 3);
+});
+
+test('the excluded types are the three with no retail diesel profile', () => {
+  assert.deepEqual(BDPG_STATS.EXCLUDED_NETWORK_TYPES, ['PPO', 'C-Store', 'Service Center']);
 });
 
