@@ -2967,6 +2967,91 @@ function getCentroid(pathStr, axis){
     el.style.color = isErr ? 'var(--red)' : 'var(--green)';
   };
 
+  // The whole network's spread, one row per baseline profile.
+  //
+  // Same numbers as the Step 1 cards -- one profileRanges() call feeds both
+  // -- but laid out for comparison rather than for choosing. On the cards
+  // each bar is scaled to its own profile, because a card is read against
+  // its own figures; here every bar shares ONE axis running from the
+  // smallest p10 to the largest p90 across all profiles, because the point
+  // of stacking them is to see that Large/Interstate spans further than
+  // Fuel stop. Per-profile scaling would draw every row the same width and
+  // destroy exactly the comparison the panel exists for.
+  //
+  // Sits on the Network Locations tab, already behind the admin PIN via
+  // locationsTabHtml()'s adminAccessible() gate.
+  BDPG.networkDistributionPanelHtml = function () {
+    if (!BDPG._locationsReady) return '';
+    var ranges = BDPG.profileRangeMap();
+    var rows = BDPG_CONFIG.BASELINE_TABLE.map(function (r) {
+      return { row: r, rg: ranges[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)] || { n: 0 } };
+    });
+    var drawable = rows.filter(function (x) { return x.rg.low !== null && x.rg.low !== undefined; });
+    if (!drawable.length) return '';
+
+    // The shared axis. Derived from what is actually drawn, so one profile
+    // dropping below the threshold cannot leave dead space at either end.
+    var lo = null, hi = null;
+    drawable.forEach(function (x) {
+      if (lo === null || x.rg.low < lo) lo = x.rg.low;
+      if (hi === null || x.rg.high > hi) hi = x.rg.high;
+    });
+    var span = hi - lo;
+    function pct(v) {
+      if (span <= 0) return 0;
+      return Math.max(0, Math.min(100, ((v - lo) / span) * 100));
+    }
+
+    var body = rows.map(function (x) {
+      var label = '<div style="font-size:.76em;line-height:1.25">' +
+        '<div style="font-weight:600">' + BDPG.escHtml(x.row.profile) + '</div>' +
+        '<div style="color:var(--muted);font-size:.9em">' + BDPG.escHtml(x.row.roadway) + '</div></div>';
+
+      if (x.rg.low === null || x.rg.low === undefined) {
+        return '<div style="display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;' +
+            'padding:7px 0;border-top:1px solid var(--border)">' + label +
+          '<div style="font-size:.74em;color:var(--muted);font-style:italic">' +
+            'insufficient data (n=' + (x.rg.n || 0) + ')</div></div>';
+      }
+
+      var l = pct(x.rg.low), m = pct(x.rg.mid), h = pct(x.rg.high);
+      return '<div style="display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;' +
+          'padding:7px 0;border-top:1px solid var(--border)">' + label +
+        '<div>' +
+          '<div style="position:relative;height:14px" title="' + x.rg.n +
+              ' reporting locations. Bar spans the 10th to the 90th percentile; the marker is the median.">' +
+            // The track: full width, so every row is visibly measured
+            // against the same axis rather than against itself.
+            '<div style="position:absolute;top:6px;left:0;right:0;height:3px;border-radius:2px;' +
+              'background:var(--border)"></div>' +
+            '<div style="position:absolute;top:4px;height:7px;border-radius:4px;' +
+              'background:linear-gradient(90deg,var(--dim),var(--teal));' +
+              'left:' + l.toFixed(1) + '%;width:' + Math.max(0.6, h - l).toFixed(1) + '%"></div>' +
+            '<div style="position:absolute;top:0;width:3px;height:14px;border-radius:2px;' +
+              'background:var(--accent);left:' + m.toFixed(1) + '%;transform:translateX(-50%)"></div>' +
+          '</div>' +
+          '<div style="font-size:.7em;color:var(--muted);margin-top:2px">' +
+            'Low ' + BDPG.fmtGal(x.rg.low) + ' · <span style="color:var(--accent)">Avg ' +
+            BDPG.fmtGal(x.rg.mid) + '</span> · High ' + BDPG.fmtGal(x.rg.high) +
+            ' <span style="opacity:.75">(n=' + x.rg.n + ')</span></div>' +
+        '</div></div>';
+    }).join('');
+
+    return '<div class="bdpg-box" style="margin-bottom:10px">' +
+      '<div class="sec-hdr" style="margin-bottom:6px"><div class="sec-title" style="font-size:.85em">' +
+        'Distribution by Baseline Profile</div></div>' +
+      '<div style="font-size:.74em;color:var(--muted);margin-bottom:4px">' +
+        'Each bar spans the 10th to 90th percentile of reporting locations in that profile, with the ' +
+        'median marked in amber. All eight share one axis (' + BDPG.fmtGal(lo) + '–' +
+        BDPG.fmtGal(hi) + ' gal/mo) so the spreads are comparable to each other.</div>' +
+      body +
+      '<div style="font-size:.7em;color:var(--muted);margin-top:8px;padding-top:7px;' +
+        'border-top:1px solid var(--border)">Profiles with fewer than ' +
+        BDPG_STATS.DYNAMIC_BASELINE_MIN_N + ' reporting locations are not drawn — the same threshold ' +
+        'that decides whether a profile gets an observed baseline at all.</div>' +
+    '</div>';
+  };
+
   // The at-a-glance benchmark: what does a Roady's truck stop move in a
   // month? Two figures, not one, and both labelled.
   //
@@ -3142,6 +3227,7 @@ function getCentroid(pathStr, axis){
         'the Sept 27 study — this panel is the live one.</div>' +
       notices +
       BDPG.networkSummaryCardHtml() +
+      BDPG.networkDistributionPanelHtml() +
       BDPG.hiddenLocationsBarHtml() +
       '<div id="bdpg-nl-completeness" class="bdpg-box" style="margin-bottom:10px;font-size:.86em">' +
         BDPG.locCompletenessInnerHtml() + '</div>' +
@@ -4675,13 +4761,24 @@ function getCentroid(pathStr, axis){
 
   // Same positive-is-green convention the retired button row used, now as a
   // continuous read rather than five fixed stops.
+  //
+  // The saturation point is a FRACTION of the range, not a fixed
+  // percentage. It was a hardcoded 0.15 against a +/-25% slider -- 60% of
+  // the way out. Left alone when the range doubled it would have saturated
+  // at 30% of the travel, so two thirds of the slider would have read the
+  // same solid green or red and the colour would have stopped carrying
+  // information. Derived here so any future widening keeps the same feel.
+  BDPG.PRICING_TONE_SATURATION = 0.6;
+
   BDPG.pricingTone = function (frac) {
     var p = Number(frac) || 0;
-    if (p >= 0.15) return 'var(--green)';
-    if (p > 0) return 'color-mix(in srgb, var(--green) 55%, var(--yellow))';
+    var r = BDPG_CONFIG.PRICING_RANGE;
     if (p === 0) return 'var(--text)';
-    if (p > -0.15) return 'var(--orange)';
-    return 'var(--red)';
+    if (p > 0) {
+      return p >= r.max * BDPG.PRICING_TONE_SATURATION
+        ? 'var(--green)' : 'color-mix(in srgb, var(--green) 55%, var(--yellow))';
+    }
+    return p <= r.min * BDPG.PRICING_TONE_SATURATION ? 'var(--red)' : 'var(--orange)';
   };
 
   BDPG.pricingDescription = function (frac) {

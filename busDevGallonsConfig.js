@@ -181,18 +181,27 @@
   ];
 
   // 4th adjustment: discount / aggregator posture. Additive, same mechanism
-  // as Region/Amenities/Review. A continuous -25%..+25% term, step 5.
+  // as Region/Amenities/Review. A continuous -50%..+50% term, step 5.
   //
   // Was five fixed options spanning +/-5%, which could not describe what the
   // network actually does. A site carrying several fleet and aggregator
   // discount programs runs dramatically more volume than an otherwise
   // identical site carrying none, and +/-5% could not express the gap -- the
-  // control's range, not the estimate, was the thing that was wrong.
+  // control's range, not the estimate, was the thing that was wrong. Widened
+  // again to +/-50% on 2026-09-30 for the same reason: +/-25% was still
+  // short of the real spread.
   //
   // Default is 0: neutral, no assumed posture. The old default was
   // 'Standard / moderate', which was also 0, so a prospect saved under the
   // old control and reopened under this one lands on the same number.
-  var PRICING_RANGE = { min: -0.25, max: 0.25, step: 0.05 };
+  //
+  // Widening the range does NOT change the formula, but it does change what
+  // the formula can reach: at -50% the multiplier floor in
+  // calculateEstimate() is now reachable from ordinary inputs rather than
+  // only from a pathological region value. That floor is what keeps the
+  // tool from quoting negative gallons, and it is tested against this
+  // range -- do not remove it if this range widens again.
+  var PRICING_RANGE = { min: -0.50, max: 0.50, step: 0.05 };
   var PRICING_DEFAULT = 0;
 
   // The retired five. Kept ONLY so a saved prospect carrying one of these
