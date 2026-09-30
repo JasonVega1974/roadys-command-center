@@ -744,7 +744,14 @@ function getCentroid(pathStr, axis){
     if (BDPG._networkContextLoaded) { if (onDone) onDone(); return; }
     BDPG._networkContextLoaded = true;
     fetch('../network-context.json').then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (json) { BDPG.networkContext = json; if (onDone) onDone(); })
+      // Normalized here, at the single point every count surface reads
+      // through -- the pre-evaluation panel, the region chips and the pitch
+      // strip all take BDPG.networkContext, so none of them can be updated
+      // and one of them forgotten.
+      .then(function (json) {
+        BDPG.networkContext = BDPG_STATS.normalizeNetworkContext(json);
+        if (onDone) onDone();
+      })
       .catch(function () { if (onDone) onDone(); });
   };
 
@@ -1043,6 +1050,10 @@ function getCentroid(pathStr, axis){
       if (!region) return;
       var type = (row[idx.type] || '').trim() || 'Unknown';
       var group = (row[idx.group] || '').trim() || 'Unknown';
+      // Same exclusion the loader applies, done at source so a regenerated
+      // file needs no correcting. normalizeNetworkContext() is idempotent,
+      // so doing it in both places is belt-and-braces, not double-counting.
+      if (BDPG_STATS.isExcludedNetworkType(type)) return;
 
       var rd = byRegion[region];
       rd.total += 1;
@@ -1857,8 +1868,10 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.LOCATION_EDITABLE = ['dieselLanes', 'size', 'roadway', 'distanceToInterstate'];
-  // C-Store removed 2026-09-30 -- the regenerated file carries none.
-  BDPG.LOCATION_TYPES = ['Truck Stop', 'Truck Stop / Service Center', 'Fuel Stop', 'PPO'];
+  // C-Store and PPO removed 2026-09-30 -- the regenerated file carries none
+  // of either, and they are filtered out of the network counts as well
+  // (BDPG_STATS.EXCLUDED_NETWORK_TYPES).
+  BDPG.LOCATION_TYPES = ['Truck Stop', 'Truck Stop / Service Center', 'Fuel Stop'];
   BDPG.DISTANCE_OPTIONS = ['On exit', '1-5 mi', '5-15 mi', '15+ mi'];
 
   BDPG.locations = [];
@@ -2518,7 +2531,7 @@ function getCentroid(pathStr, axis){
         c.incomplete + ' incomplete — ' + c.needLanes + ' need a diesel lane count, ' + c.needRoadway +
         ' need Roadway, ' + c.backroadOver + ' are Backroad with 5+ lanes (no profile exists), ' +
         c.noProfile + ' have no matching profile. ' + c.notApplicable +
-        ' not applicable (PPO / Service Center — no baseline profile exists, so they are not counted as incomplete).</div>' +
+        ' not applicable (a location type no baseline profile describes, so they are not counted as incomplete).</div>' +
       '<div style="font-size:.78em;color:var(--muted);margin-top:4px">' +
         c.nonReporting + ' of ' + c.total + ' locations report under ' +
         BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and are treated as non-reporting ' +
@@ -2825,7 +2838,7 @@ function getCentroid(pathStr, axis){
     if (BDPG.locationsSizeIgnored > 0) {
       notices += '<div style="font-size:.78em;color:var(--muted);margin-bottom:8px">' +
         BDPG.locationsSizeIgnored + ' file-supplied size' + (BDPG.locationsSizeIgnored === 1 ? ' was' : 's were') +
-        ' ignored on Fuel Stop / C-Store / PPO rows, where Size plays no part in the baseline ' +
+        ' ignored on Fuel Stop rows and any other type where Size plays no part in the baseline ' +
         'profile. Honouring them would let an inert value block a profile from Apply.</div>';
     }
     if (BDPG.locationEditOrphans.length) {

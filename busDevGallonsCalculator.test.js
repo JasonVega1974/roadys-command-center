@@ -655,10 +655,23 @@ test('the committed network file reproduces the agreed region deltas', () => {
   });
 });
 
-test('the committed network file carries no C-Stores', () => {
+test('the committed network file carries no C-Stores and no PPOs', () => {
   const locs = require('./network-locations.json').locations;
-  assert.equal(locs.filter((r) => r.type === 'C-Store').length, 0);
-  assert.equal(locs.length, 233);
+  BDPG_STATS.EXCLUDED_NETWORK_TYPES.forEach((t) => {
+    assert.equal(locs.filter((r) => r.type === t).length, 0, t);
+  });
+  assert.equal(locs.length, 225);
+});
+
+test('the committed network file and network-context agree on what the network is', () => {
+  // The two files are built from different sources; if one counts a type the
+  // other has dropped, the pitch strip and the baseline card describe
+  // different networks on the same screen.
+  const nc = BDPG_STATS.normalizeNetworkContext(require('./network-context.json'));
+  const seen = new Set();
+  Object.values(nc.byRegion).forEach((r) => Object.keys(r.byType).forEach((t) => seen.add(t)));
+  BDPG_STATS.EXCLUDED_NETWORK_TYPES.forEach((t) => assert.ok(!seen.has(t), t));
+  assert.equal(nc.activeTotal, 251);   // 400 less 128 PPO and 21 C-Store
 });
 
 test('the committed region_variance.json matches the computed deltas', () => {
