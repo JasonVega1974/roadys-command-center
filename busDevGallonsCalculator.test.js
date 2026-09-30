@@ -26,7 +26,7 @@ test('getValidRoadways never offers Backroad for Medium or Large (open item 2)',
 
 test('getBaselineRow returns the exact row for a valid combination', () => {
   assert.deepEqual(BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Interstate'), {
-    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10492
+    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10210
   });
 });
 
@@ -634,33 +634,68 @@ test('the committed network file reproduces the agreed profile baselines', () =>
   const locs = require('./network-locations.json').locations;
   const b = BDPG_STATS.profileBaselines(locs, BDPG_CONFIG.BASELINE_TABLE);
   const K = BDPG_STATS.baselineKeyFor;
+  // Recomputed 2026-09-30 after the manual roadway/diesel-lane sizing pass.
   const expect = [
-    ['Fuel stop', 'Any', 3318, 9], ['Small truck stop', 'Backroad', 10157, 2],
-    ['Small truck stop', 'Highway', 5031, 6], ['Small truck stop', 'Interstate', 8024, 14],
-    ['Medium truck stop', 'Highway', 15705, 12], ['Medium truck stop', 'Interstate', 10492, 49],
-    ['Large truck stop', 'Highway', 8606, 6], ['Large truck stop', 'Interstate', 20232, 28]
+    ['Fuel stop', 'Any', 3318, 9], ['Small truck stop', 'Backroad', 6174, 4],
+    ['Small truck stop', 'Highway', 2338, 12], ['Small truck stop', 'Interstate', 7647, 15],
+    ['Medium truck stop', 'Highway', 4013, 36], ['Medium truck stop', 'Interstate', 10210, 53],
+    ['Large truck stop', 'Highway', 3216, 9], ['Large truck stop', 'Interstate', 20232, 28]
   ];
   expect.forEach((e) => {
     const x = b[K(e[0], e[1])];
     assert.equal(x.n, e[3], e[0] + '/' + e[1] + ' n');
     assert.equal(x.median, e[2], e[0] + '/' + e[1] + ' median');
   });
-  // Small/Backroad is the one profile below the threshold; it falls back.
-  assert.equal(b[K('Small truck stop', 'Backroad')].source, 'static');
-  assert.equal(b[K('Small truck stop', 'Backroad')].baseline, 3000);
-  assert.equal(b[K('Medium truck stop', 'Interstate')].source, 'network');
+  // Every profile now clears the threshold, so all eight read from the
+  // network and BASELINE_TABLE is displayed nowhere. It is still kept in
+  // step with these figures -- see its comment.
+  Object.keys(b).forEach((k) => {
+    assert.equal(b[k].source, 'network', k + ' should not be on the static fallback');
+    assert.equal(b[k].baseline, b[k].median, k + ' baseline must be its observed median');
+  });
+});
+
+test('BASELINE_TABLE agrees with the medians it is the fallback for', () => {
+  // The table is displayed nowhere today, which is exactly how it rotted
+  // last time: Medium/Highway sat at 7,500 against an observed 15,705 and
+  // nothing contradicted it. This is the contradiction.
+  const locs = require('./network-locations.json').locations;
+  const b = BDPG_STATS.profileBaselines(locs, BDPG_CONFIG.BASELINE_TABLE);
+  BDPG_CONFIG.BASELINE_TABLE.forEach((row) => {
+    const x = b[BDPG_STATS.baselineKeyFor(row.profile, row.roadway)];
+    if (x.median === null) return;   // no observation to check against
+    assert.equal(row.baseline, x.median,
+      row.profile + '/' + row.roadway + ': table says ' + row.baseline +
+      ', the file says ' + x.median);
+  });
 });
 
 test('the committed network file reproduces the agreed region deltas', () => {
   const locs = require('./network-locations.json').locations;
   const d = BDPG_STATS.regionDeltas(locs, BDPG_CONFIG.BASELINE_TABLE, BusDevGallonsCalc.resolveRegion);
-  const expect = { Midwest: [48.9, 29], Northeast: [77.9, 7], West: [22.2, 5],
-    Northwest: [11.2, 19], Texas: [7.6, 6], Southeast: [-2.7, 23],
-    Southwest: [-24, 11], 'Upper Midwest': [-32.6, 26] };
+  // Recomputed 2026-09-30 after the manual roadway/diesel-lane sizing pass.
+  const expect = { Midwest: [91.5, 33], Northeast: [87, 7], West: [-26.1, 8],
+    Northwest: [3.3, 22], Texas: [19.3, 9], Southeast: [-2.1, 47],
+    Southwest: [-25.1, 13], 'Upper Midwest': [-6.6, 27] };
   Object.keys(expect).forEach((reg) => {
     assert.equal(d[reg].n, expect[reg][1], reg + ' n');
     assert.equal(d[reg].pct, expect[reg][0], reg + ' delta');
   });
+});
+
+test('no location carries a size that contradicts the lane rule', () => {
+  // Size is derived from dieselLanes + roadway and the file's own `size`
+  // column is ignored, so a row where the two disagree is a contradiction
+  // nothing in the running tool would ever surface. Two did -- R01835 and
+  // R01965, both 4-lane Backroad labelled Medium -- and between them they
+  // moved Small/Backroad's median by 1,523 and flipped West's delta by 36
+  // points, depending on which rule you read the file with. Corrected in
+  // the file; pinned here so a future regeneration cannot reintroduce the
+  // ambiguity silently.
+  const locs = require('./network-locations.json').locations;
+  const bad = locs.filter((r) => BDPG_STATS.sizeAffectsProfile(r.type) &&
+    r.size !== BDPG_STATS.sizeForLanes(r.dieselLanes, r.roadway));
+  assert.deepEqual(bad.map((r) => r.id), []);
 });
 
 test('the committed network file carries no C-Stores and no PPOs', () => {

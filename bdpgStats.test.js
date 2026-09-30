@@ -178,9 +178,14 @@ test('fewer than three reporting locations falls back to the static table', () =
   const locs = [loc({ id: 'a', avgGalMo: 40000 }), loc({ id: 'b', avgGalMo: 50000 })];
   const k = BDPG_STATS.baselineKeyFor('Medium truck stop', 'Highway');
   const b = BDPG_STATS.profileBaselines(locs, TABLE)[k];
+  // Read from the table rather than restated: this test is about the
+  // fallback MECHANISM, and hardcoding the figure made it fail every time a
+  // median was recomputed, which says nothing about whether the fallback works.
+  const fromTable = TABLE.find(
+    (r) => r.profile === 'Medium truck stop' && r.roadway === 'Highway').baseline;
   assert.equal(b.n, 2);
   assert.equal(b.source, 'static');
-  assert.equal(b.baseline, 15705);
+  assert.equal(b.baseline, fromTable);
   assert.equal(b.median, 45000, 'the observed median is still reported');
 });
 
@@ -636,11 +641,21 @@ test('non-reporting locations are outside the range as well as the median', () =
   assert.ok(r.low >= BDPG_STATS.MIN_REPORTING_GAL_MO, 'low is ' + r.low);
 });
 
-test('Small/Backroad is the one committed profile with no range to draw', () => {
+test('every committed profile now has a range to draw', () => {
+  // Small/Backroad was the one profile below the threshold at n=2. The
+  // manual sizing pass moved two Backroad sites into it, so it reaches n=4
+  // and the distribution panel draws all eight. The placeholder branch in
+  // profileRangeBarHtml() is therefore unexercised by the committed file --
+  // kept because a future file can drop a profile back under the gate, and
+  // covered by its own fixture test above.
   const r = BDPG_STATS.profileRanges(
     require('./network-locations.json').locations, TABLE);
   const thin = Object.keys(r).filter((k) => r[k].mid === null);
-  assert.deepEqual(thin, [BDPG_STATS.baselineKeyFor('Small truck stop', 'Backroad')]);
+  assert.deepEqual(thin, []);
+  Object.keys(r).forEach((k) => {
+    assert.ok(r[k].n >= BDPG_STATS.DYNAMIC_BASELINE_MIN_N, k + ' n=' + r[k].n);
+    assert.ok(r[k].low <= r[k].mid && r[k].mid <= r[k].high, k);
+  });
 });
 
 // ── network summary ─────────────────────────────────────────────────────────

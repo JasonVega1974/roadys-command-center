@@ -57,18 +57,25 @@
   //     table made "the network disagrees with the baseline" the normal case
   //     and trained the reader to ignore the one warning that matters.
   //
-  // Small/Backroad stays at the static 3,000 deliberately: its observed
-  // median is 10,157 over n=2, which is not evidence, and raising it would
-  // make the fallback the least trustworthy number in the table rather than
-  // the most conservative. Revisit once the backroad address analysis lands.
+  // Recomputed 2026-09-30 after the manual sizing pass: roadway and
+  // dieselLanes were corrected on 47 locations, which reassigns profiles and
+  // moves most medians. Several moved a long way -- Medium/Highway 15,705 ->
+  // 4,013 on n=12 -> n=36, Large/Highway 8,606 -> 3,216 -- because the
+  // corrected lane counts pulled a lot of previously mis-profiled sites into
+  // different rows, not because any location's gallons changed.
+  //
+  // Small/Backroad now has an observed median (6,174 over n=4) and is no
+  // longer on the static fallback. Every one of the eight is `source:
+  // network` as of this file, so nothing below is currently displayed --
+  // see the paragraph above about why they are kept accurate anyway.
   var BASELINE_TABLE = [
     { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 3318 },
-    { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-4', baseline: 3000 },
-    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '1-3', baseline: 5031 },
-    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 8024 },
-    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 15705 },
-    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10492 },
-    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 8606 },
+    { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-4', baseline: 6174 },
+    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '1-3', baseline: 2338 },
+    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 7647 },
+    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 4013 },
+    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10210 },
+    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 3216 },
     { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 20232 }
   ];
 
