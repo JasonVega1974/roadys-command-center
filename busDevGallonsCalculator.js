@@ -56,9 +56,25 @@
     return { pct: band ? band.pct : last.pct, flagged: false };
   }
 
+  // Accepts the slider's number, or one of the five retired option strings
+  // off a saved prospect. A string is translated rather than rejected: a
+  // prospect saved at 'Most aggressive' must reopen at +0.05, not snap to
+  // the 0 default and quietly restate its own estimate.
+  //
+  // Clamped to PRICING_RANGE. The slider cannot produce an out-of-range
+  // value, but a hand-edited localStorage record or a stale saved profile
+  // can, and an unclamped -3.0 would drive the multiplier to its floor and
+  // quote zero gallons on a customer sheet.
   function pricingAdjustment(level) {
-    if (BDPG_CONFIG.PRICING_ADJUST.hasOwnProperty(level)) return BDPG_CONFIG.PRICING_ADJUST[level];
-    return BDPG_CONFIG.PRICING_ADJUST[BDPG_CONFIG.PRICING_DEFAULT];
+    if (typeof level === 'string' && BDPG_CONFIG.PRICING_LEGACY_ADJUST.hasOwnProperty(level)) {
+      return BDPG_CONFIG.PRICING_LEGACY_ADJUST[level];
+    }
+    var r = BDPG_CONFIG.PRICING_RANGE;
+    if (level === null || level === undefined || level === '' ||
+        typeof level === 'boolean' || typeof level === 'object') return BDPG_CONFIG.PRICING_DEFAULT;
+    var n = Number(level);
+    if (!isFinite(n)) return BDPG_CONFIG.PRICING_DEFAULT;
+    return Math.max(r.min, Math.min(r.max, n));
   }
 
   function rewardsAdjustment(level) {

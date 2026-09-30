@@ -38,15 +38,38 @@
   // avgGalMo of the network locations in each profile (BDPG_STATS
   // .profileBaselines); the row below is used when a profile has fewer than
   // three reporting locations.
+  //
+  // Baselines updated 2026-09-30 to the observed network medians.
+  //
+  // These are the FALLBACK, not the live figure. profileBaselines() computes
+  // each profile's median from network-locations.json and only reaches this
+  // table when a profile has fewer than DYNAMIC_BASELINE_MIN_N reporting
+  // locations -- today Small/Backroad alone, at n=2. That is exactly why the
+  // old values were allowed to rot: nothing displayed them, so nothing
+  // contradicted them, and Medium/Highway sat at 7,500 against an observed
+  // 15,705.
+  //
+  // Two things that rot cost, now fixed:
+  //   * a profile that goes thin falls back to a number in the right
+  //     neighbourhood instead of one off by 2x, and
+  //   * BASELINE_DIVERGENCE_FLAG stops firing on seven profiles that are not
+  //     anomalous. It compares the live median against this table, so a stale
+  //     table made "the network disagrees with the baseline" the normal case
+  //     and trained the reader to ignore the one warning that matters.
+  //
+  // Small/Backroad stays at the static 3,000 deliberately: its observed
+  // median is 10,157 over n=2, which is not evidence, and raising it would
+  // make the fallback the least trustworthy number in the table rather than
+  // the most conservative. Revisit once the backroad address analysis lands.
   var BASELINE_TABLE = [
-    { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 2500 },
+    { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 3318 },
     { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-4', baseline: 3000 },
-    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '1-3', baseline: 4000 },
-    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 7500 },
-    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 7500 },
-    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 12500 },
-    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 10000 },
-    { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 15000 }
+    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '1-3', baseline: 5031 },
+    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 8024 },
+    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 15705 },
+    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10492 },
+    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 8606 },
+    { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 20232 }
   ];
 
   // Geographic-variance regions for the calculator only. Not the GS-territory
@@ -157,24 +180,33 @@
     { max: 5.0, pct: 0.02 }
   ];
 
-  // 4th adjustment (new): pricing/discount posture. Additive, same mechanism
-  // as Region/Amenities/Review. Default is "Standard / moderate" (0%).
-  var PRICING_LEVELS = [
-    'Most aggressive (deepest discounts)',
-    'Aggressive',
-    'Standard / moderate',
-    'Light discounting',
-    'No discounts'
-  ];
+  // 4th adjustment: discount / aggregator posture. Additive, same mechanism
+  // as Region/Amenities/Review. A continuous -25%..+25% term, step 5.
+  //
+  // Was five fixed options spanning +/-5%, which could not describe what the
+  // network actually does. A site carrying several fleet and aggregator
+  // discount programs runs dramatically more volume than an otherwise
+  // identical site carrying none, and +/-5% could not express the gap -- the
+  // control's range, not the estimate, was the thing that was wrong.
+  //
+  // Default is 0: neutral, no assumed posture. The old default was
+  // 'Standard / moderate', which was also 0, so a prospect saved under the
+  // old control and reopened under this one lands on the same number.
+  var PRICING_RANGE = { min: -0.25, max: 0.25, step: 0.05 };
+  var PRICING_DEFAULT = 0;
 
-  var PRICING_ADJUST = {
+  // The retired five. Kept ONLY so a saved prospect carrying one of these
+  // strings reopens at the percentage it was calculated with rather than
+  // silently snapping to the default -- pricingAdjustment() reads this when
+  // it is handed a string. Nothing renders these, and nothing should add to
+  // them; the control is a number now.
+  var PRICING_LEGACY_ADJUST = {
     'Most aggressive (deepest discounts)': 0.05,
     'Aggressive': 0.025,
     'Standard / moderate': 0.00,
     'Light discounting': -0.025,
     'No discounts': -0.05
   };
-  var PRICING_DEFAULT = 'Standard / moderate';
 
   // 5th adjustment: Roady's Rewards participation. Additive, same mechanism as
   // Region/Amenities/Review/Pricing, and like Pricing it sits OUTSIDE
@@ -257,8 +289,8 @@
     AMENITY_LEVELS: AMENITY_LEVELS,
     AMENITY_ADJUST: AMENITY_ADJUST,
     REVIEW_BANDS: REVIEW_BANDS,
-    PRICING_LEVELS: PRICING_LEVELS,
-    PRICING_ADJUST: PRICING_ADJUST,
+    PRICING_RANGE: PRICING_RANGE,
+    PRICING_LEGACY_ADJUST: PRICING_LEGACY_ADJUST,
     PRICING_DEFAULT: PRICING_DEFAULT,
     REWARDS_LEVELS: REWARDS_LEVELS,
     REWARDS_ADJUST: REWARDS_ADJUST,
