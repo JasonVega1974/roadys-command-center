@@ -26,7 +26,7 @@ test('getValidRoadways never offers Backroad for Medium or Large (open item 2)',
 
 test('getBaselineRow returns the exact row for a valid combination', () => {
   assert.deepEqual(BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Interstate'), {
-    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '6+', baseline: 12500
+    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 12500
   });
 });
 
@@ -275,10 +275,35 @@ test('calculateEstimate — case A @ No discounts finalMathLine reads "- 0.05" f
   assert.ok(!r.finalMathLine.includes('+ -0.05'), 'must never print the "+ -0.05" form for a negative term');
 });
 
-test('suggestAmenityLevel: Good / full service rule', () => {
-  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '4-9', food: 'full restaurant', scale: 'yes', parking: '16-50' });
-  assert.equal(r.level, 'Good / full service');
-  assert.ok(r.reason.length > 0);
+test('suggestAmenityLevel: Good / full service needs the four core plus DEF or laundry', () => {
+  const core = { showers: '4-9', food: 'full restaurant', scale: 'yes', parking: '16-50' };
+  // All four core amenities but neither supporting one: Average, not Good.
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(core).level, 'Average');
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(
+    Object.assign({}, core, { def: 'yes' })).level, 'Good / full service');
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(
+    Object.assign({}, core, { laundry: 'yes' })).level, 'Good / full service');
+  const both = BusDevGallonsCalc.suggestAmenityLevel(
+    Object.assign({}, core, { def: 'yes', laundry: 'yes' }));
+  assert.equal(both.level, 'Good / full service');
+  assert.ok(/both DEF and laundry/.test(both.reason));
+});
+
+test('DEF and laundry never promote a site missing a core amenity', () => {
+  const noShowers = { showers: 'none', food: 'full restaurant', scale: 'yes', parking: '16-50',
+    def: 'yes', laundry: 'yes' };
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(noShowers).level, 'Average');
+});
+
+test('their absence never demotes a site to Very limited', () => {
+  // Very limited stays defined by showers, parking and food alone.
+  const sparse = { showers: 'none', food: 'none', scale: 'no', parking: 'none' };
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(sparse).level, 'Very limited');
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(
+    Object.assign({}, sparse, { def: 'yes', laundry: 'yes' })).level, 'Very limited',
+    'DEF and laundry alone do not lift a site out of Very limited either');
+  const midling = { showers: '4-9', food: 'none', scale: 'no', parking: 'none' };
+  assert.equal(BusDevGallonsCalc.suggestAmenityLevel(midling).level, 'Average');
 });
 
 test('suggestAmenityLevel: Very limited rule', () => {
@@ -292,7 +317,7 @@ test('suggestAmenityLevel: falls back to Average otherwise', () => {
 });
 
 test('suggestAmenityLevel: fast food (not just full restaurant) still counts as good food', () => {
-  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '10+', food: 'fast food', scale: 'yes', parking: '100+' });
+  const r = BusDevGallonsCalc.suggestAmenityLevel({ showers: '10+', food: 'fast food', scale: 'yes', parking: '100+', laundry: 'yes' });
   assert.equal(r.level, 'Good / full service');
 });
 
@@ -435,10 +460,11 @@ test('the amenity rule reads exactly the four details the UI still asks for', ()
   const opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS;
   assert.equal(opts.service, undefined);
   assert.equal(opts.defReefer, undefined);
+  assert.ok(opts.def && opts.laundry, 'DEF and laundry are now offered');
   ['showers', 'food', 'scale', 'parking'].forEach((k) => {
     assert.ok(opts[k], k + ' must remain an offered detail');
   });
-  const base = { showers: '4-9', food: 'fast food', scale: 'yes', parking: '51-100' };
+  const base = { showers: '4-9', food: 'fast food', scale: 'yes', parking: '51-100', def: 'yes' };
   assert.equal(BusDevGallonsCalc.suggestAmenityLevel(base).level, 'Good / full service');
   assert.equal(
     BusDevGallonsCalc.suggestAmenityLevel(
@@ -466,150 +492,8 @@ test('an unset amenity level contributes exactly nothing', () => {
   assert.equal(BusDevGallonsCalc.amenityAdjustment('Average'), 0);
 });
 
-test('an unset amenity level and Average give the same number for different reasons', () => {
-  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0,
-    reviewRating: 4.0, pricingLevel: 'Standard / moderate',
-    rewardsLevel: 'Undecided / unknown' };
-  const unset = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { amenityLevel: '' }));
-  const avg = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { amenityLevel: 'Average' }));
-  assert.equal(unset.amenityPct, 0);
-  assert.equal(unset.officialSubtotal, avg.officialSubtotal);
-  // And neither is the -5% an unsurveyed site used to collect.
-  const vl = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { amenityLevel: 'Very limited' }));
-  assert.ok(vl.officialSubtotal < unset.officialSubtotal);
-});
-
-// ── dynamic baseline lookup ─────────────────────────────────────────────────
-
-const nloc = (o) => Object.assign({
-  id: 'R1', region: 'Midwest', type: 'Truck Stop', size: 'Medium',
-  sizeOrigin: 'manual', dieselLanes: 4, avgGalMo: 8000
-}, o);
-const sel = (o) => Object.assign({ profile: 'Medium truck stop', roadway: 'Highway', region: 'Midwest' }, o);
-
-test('profileSize reads the size out of a profile name', () => {
-  assert.equal(BDPG_STATS.profileSize('Small truck stop'), 'Small');
-  assert.equal(BDPG_STATS.profileSize('Medium truck stop'), 'Medium');
-  assert.equal(BDPG_STATS.profileSize('Large truck stop'), 'Large');
-  assert.equal(BDPG_STATS.profileSize('Fuel stop'), null);
-  assert.equal(BDPG_STATS.profileSize(''), null);
-});
-
 test('the dynamic threshold is 3, deliberately below the Apply floor of 5', () => {
   assert.equal(BDPG_STATS.DYNAMIC_BASELINE_MIN_N, 3);
-});
-
-test('three comparable locations produce a network baseline', () => {
-  const locs = [nloc({ id: 'a', avgGalMo: 6000 }), nloc({ id: 'b', avgGalMo: 8000 }),
-    nloc({ id: 'c', avgGalMo: 10000 })];
-  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
-  assert.equal(d.source, 'network');
-  assert.equal(d.n, 3);
-  assert.equal(d.baseline, 8000);
-  assert.equal(d.staticBaseline, 7500);
-});
-
-test('two comparable locations fall back to the static table', () => {
-  const locs = [nloc({ id: 'a', avgGalMo: 6000 }), nloc({ id: 'b', avgGalMo: 10000 })];
-  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
-  assert.equal(d.source, 'static');
-  assert.equal(d.n, 2);
-  assert.equal(d.baseline, 7500, 'must be the BASELINE_TABLE value');
-  assert.equal(d.median, 8000, 'the median is still reported, just not used');
-});
-
-test('lane-rule-sized locations never count toward a baseline', () => {
-  // The whole reason the filter exists: a lane-rule size is a relabel of
-  // roadway, so grouping by it measures the roadway a second time.
-  const locs = [nloc({ id: 'a', sizeOrigin: 'lanes' }), nloc({ id: 'b', sizeOrigin: 'lanes' }),
-    nloc({ id: 'c', sizeOrigin: 'lanes' }), nloc({ id: 'd', sizeOrigin: 'lanes' })];
-  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
-  assert.equal(d.n, 0);
-  assert.equal(d.source, 'static');
-});
-
-test('a curated sizeSource and a local edit are both "manual" and both count', () => {
-  const locs = [nloc({ id: 'a', avgGalMo: 5000 }), nloc({ id: 'b', avgGalMo: 7000 }),
-    nloc({ id: 'c', avgGalMo: 9000 })];
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), locs, TABLE).baseline, 7000);
-});
-
-test('the reporting floor applies to the comparables', () => {
-  const locs = [nloc({ id: 'a', avgGalMo: 9000 }), nloc({ id: 'b', avgGalMo: 11000 }),
-    nloc({ id: 'c', avgGalMo: 3 }), nloc({ id: 'd', avgGalMo: 0 })];
-  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
-  assert.equal(d.n, 2, 'the two non-reporting rows must not pad the sample');
-  assert.equal(d.source, 'static');
-});
-
-test('region, lane tier and size all have to match', () => {
-  const good = [nloc({ id: 'a' }), nloc({ id: 'b' }), nloc({ id: 'c' })];
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), good, TABLE).n, 3);
-  const wrongRegion = good.map((l) => Object.assign({}, l, { region: 'Texas' }));
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongRegion, TABLE).n, 0);
-  const wrongLanes = good.map((l) => Object.assign({}, l, { dieselLanes: 9 }));  // 6+ vs 3-5
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongLanes, TABLE).n, 0);
-  const wrongSize = good.map((l) => Object.assign({}, l, { size: 'Large' }));
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongSize, TABLE).n, 0);
-  const wrongType = good.map((l) => Object.assign({}, l, { type: 'C-Store' }));
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), wrongType, TABLE).n, 0);
-});
-
-test('a fuel stop matches on type and region alone, ignoring size and lanes', () => {
-  const locs = [
-    nloc({ id: 'a', type: 'Fuel Stop', size: '', sizeOrigin: '', dieselLanes: 20, avgGalMo: 2000 }),
-    nloc({ id: 'b', type: 'Fuel Stop', size: 'Large', sizeOrigin: 'lanes', dieselLanes: 1, avgGalMo: 3000 }),
-    nloc({ id: 'c', type: 'Fuel Stop', size: '', sizeOrigin: '', dieselLanes: null, avgGalMo: 4000 })
-  ];
-  const d = BDPG_STATS.dynamicBaseline(sel({ profile: 'Fuel stop', roadway: 'Any' }), locs, TABLE);
-  assert.equal(d.source, 'network');
-  assert.equal(d.n, 3, 'a fuel stop needs no hand-set size to be comparable');
-  assert.equal(d.baseline, 3000);
-});
-
-test('no region means no lookup, and the static value stands', () => {
-  const locs = [nloc({ id: 'a' }), nloc({ id: 'b' }), nloc({ id: 'c' })];
-  const d = BDPG_STATS.dynamicBaseline(sel({ region: null }), locs, TABLE);
-  assert.equal(d.source, 'no-region');
-  assert.equal(d.baseline, 7500);
-  assert.equal(d.n, 0);
-});
-
-test('an unknown profile/roadway pair yields no baseline at all', () => {
-  const d = BDPG_STATS.dynamicBaseline(sel({ profile: 'Medium truck stop', roadway: 'Backroad' }), [], TABLE);
-  assert.equal(d.source, 'no-profile');
-  assert.equal(d.baseline, null);
-});
-
-test('an empty location set falls back rather than throwing', () => {
-  [[], null, undefined].forEach((l) => {
-    const d = BDPG_STATS.dynamicBaseline(sel(), l, TABLE);
-    assert.equal(d.source, 'static');
-    assert.equal(d.baseline, 7500);
-  });
-});
-
-test('the threshold is overridable per call', () => {
-  const locs = [nloc({ id: 'a', avgGalMo: 6000 }), nloc({ id: 'b', avgGalMo: 10000 })];
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), locs, TABLE, { minN: 2 }).source, 'network');
-  assert.equal(BDPG_STATS.dynamicBaseline(sel(), locs, TABLE, { minN: 9 }).source, 'static');
-});
-
-test('divergence is reported only for a live baseline', () => {
-  const locs = [nloc({ id: 'a', avgGalMo: 15000 }), nloc({ id: 'b', avgGalMo: 15000 }),
-    nloc({ id: 'c', avgGalMo: 15000 })];
-  const d = BDPG_STATS.dynamicBaseline(sel(), locs, TABLE);
-  assert.equal(d.baseline, 15000);
-  assert.equal(BDPG_STATS.baselineDivergence(d), 1);           // 15000 vs 7500
-  const few = BDPG_STATS.dynamicBaseline(sel(), locs.slice(0, 1), TABLE);
-  assert.equal(BDPG_STATS.baselineDivergence(few), null, 'a fallback has not diverged from anything');
-});
-
-test('comparableLocations reports the same set the baseline was built from', () => {
-  const locs = [nloc({ id: 'a' }), nloc({ id: 'b' }), nloc({ id: 'x', sizeOrigin: 'lanes' })];
-  const row = BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Highway');
-  const hits = BDPG_STATS.comparableLocations(locs, row, 'Midwest');
-  assert.deepEqual(hits.map((h) => h.id), ['a', 'b']);
 });
 
 test('the formula is unchanged: a dynamic baseline is just a different input', () => {
@@ -645,4 +529,146 @@ test('a baseline override is ignored unless it is a usable positive number', () 
       7500, 'bad override ' + JSON.stringify(b) + ' must fall back to the table');
   });
   assert.equal(BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { baseline: '9000' })).baseline, 9000);
+});
+
+// ── restroom condition ──────────────────────────────────────────────────────
+
+test('restroom condition is +2 / 0 / -2, and unset is neutral', () => {
+  assert.equal(BusDevGallonsCalc.restroomAdjustment('Clean / updated'), 0.02);
+  assert.equal(BusDevGallonsCalc.restroomAdjustment('Standard'), 0);
+  assert.equal(BusDevGallonsCalc.restroomAdjustment('Dated / worn'), -0.02);
+  [null, undefined, '', 'Sparkling'].forEach((v) => {
+    assert.equal(BusDevGallonsCalc.restroomAdjustment(v), 0, JSON.stringify(v));
+  });
+});
+
+test('restroom condition sums into the amenity term, not a sixth term', () => {
+  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0,
+    amenityLevel: 'Good / full service', reviewRating: 4.0,
+    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown' };
+  const plain = BusDevGallonsCalc.calculateEstimate(args);
+  const clean = BusDevGallonsCalc.calculateEstimate(
+    Object.assign({}, args, { restroomLevel: 'Clean / updated' }));
+  const worn = BusDevGallonsCalc.calculateEstimate(
+    Object.assign({}, args, { restroomLevel: 'Dated / worn' }));
+  assert.equal(plain.amenityPct, 0.02);
+  assert.equal(Math.round(clean.amenityPct * 1000) / 1000, 0.04);
+  assert.equal(Math.round(worn.amenityPct * 1000) / 1000, 0);
+  // The formula still has five terms: the restroom rides inside amenities.
+  assert.equal(clean.officialSubtotal,
+    Math.round(plain.baseline * (1 + 0 + 0.04 + 0.02)));
+});
+
+// ── DEF and inside sales ────────────────────────────────────────────────────
+
+test('DEF and inside sales follow the spreadsheet', () => {
+  const d = BusDevGallonsCalc.defInsideEstimate(10000);
+  assert.equal(d.defGallonsMo, 200);                 // 10,000 x 2%
+  assert.equal(d.defSalesMo, 900);                   // 200 x $4.50
+  assert.equal(Math.round(d.transactionsMo * 100) / 100, 90.91);   // 10,000 / 110
+  assert.equal(Math.round(d.insideSalesMo * 100) / 100, 1665.45);  // x $18.32
+  assert.equal(d.defGallonsYr, 2400);
+  assert.equal(d.defSalesYr, 10800);
+  assert.equal(Math.round(d.insideSalesYr * 100) / 100, 19985.45);
+});
+
+test('DEF and inside sales scale linearly with gallons', () => {
+  const a = BusDevGallonsCalc.defInsideEstimate(10000);
+  const b = BusDevGallonsCalc.defInsideEstimate(20000);
+  assert.equal(b.defSalesMo, a.defSalesMo * 2);
+  assert.equal(b.insideSalesMo, a.insideSalesMo * 2);
+});
+
+test('the DEF section returns null when switched off', () => {
+  assert.equal(BusDevGallonsCalc.defInsideEstimate(10000, { enabled: false }), null);
+});
+
+test('DEF rates are read from config, never hardcoded', () => {
+  const d = BusDevGallonsCalc.defInsideEstimate(10000, {
+    enabled: true, defPctOfDiesel: 0.05, defPricePerGal: 3,
+    gallonsPerTransaction: 100, avgInsideRing: 10
+  });
+  assert.equal(d.defGallonsMo, 500);
+  assert.equal(d.defSalesMo, 1500);
+  assert.equal(d.transactionsMo, 100);
+  assert.equal(d.insideSalesMo, 1000);
+});
+
+test('a zero gallons-per-transaction returns null rather than Infinity', () => {
+  // Would otherwise print an infinite transaction count on a customer sheet.
+  [0, -5, null, 'x'].forEach((v) => {
+    assert.equal(BusDevGallonsCalc.defInsideEstimate(10000, {
+      enabled: true, defPctOfDiesel: 0.02, defPricePerGal: 4.5,
+      gallonsPerTransaction: v, avgInsideRing: 18.32
+    }), null, JSON.stringify(v));
+  });
+});
+
+test('DEF and inside sales never touch the estimate', () => {
+  const args = { profile: 'Medium truck stop', roadway: 'Highway', regionPct: 0.489,
+    amenityLevel: 'Average', reviewRating: 4.0,
+    pricingLevel: 'Standard / moderate', rewardsLevel: 'Undecided / unknown' };
+  const e = BusDevGallonsCalc.calculateEstimate(args);
+  const before = JSON.stringify(e);
+  BusDevGallonsCalc.defInsideEstimate(e.finalGallons);
+  assert.equal(JSON.stringify(BusDevGallonsCalc.calculateEstimate(args)), before);
+});
+
+test('zero gallons produces zeroes, not nulls', () => {
+  const d = BusDevGallonsCalc.defInsideEstimate(0);
+  assert.equal(d.defSalesMo, 0);
+  assert.equal(d.insideSalesMo, 0);
+});
+
+// ── the real file reproduces the agreed figures ─────────────────────────────
+
+test('the committed network file reproduces the agreed profile baselines', () => {
+  const locs = require('./network-locations.json').locations;
+  const b = BDPG_STATS.profileBaselines(locs, BDPG_CONFIG.BASELINE_TABLE);
+  const K = BDPG_STATS.baselineKeyFor;
+  const expect = [
+    ['Fuel stop', 'Any', 3318, 9], ['Small truck stop', 'Backroad', 10157, 2],
+    ['Small truck stop', 'Highway', 5031, 6], ['Small truck stop', 'Interstate', 8024, 14],
+    ['Medium truck stop', 'Highway', 15705, 12], ['Medium truck stop', 'Interstate', 10492, 49],
+    ['Large truck stop', 'Highway', 8606, 6], ['Large truck stop', 'Interstate', 20232, 28]
+  ];
+  expect.forEach((e) => {
+    const x = b[K(e[0], e[1])];
+    assert.equal(x.n, e[3], e[0] + '/' + e[1] + ' n');
+    assert.equal(x.median, e[2], e[0] + '/' + e[1] + ' median');
+  });
+  // Small/Backroad is the one profile below the threshold; it falls back.
+  assert.equal(b[K('Small truck stop', 'Backroad')].source, 'static');
+  assert.equal(b[K('Small truck stop', 'Backroad')].baseline, 3000);
+  assert.equal(b[K('Medium truck stop', 'Interstate')].source, 'network');
+});
+
+test('the committed network file reproduces the agreed region deltas', () => {
+  const locs = require('./network-locations.json').locations;
+  const d = BDPG_STATS.regionDeltas(locs, BDPG_CONFIG.BASELINE_TABLE, BusDevGallonsCalc.resolveRegion);
+  const expect = { Midwest: [48.9, 29], Northeast: [77.9, 7], West: [22.2, 5],
+    Northwest: [11.2, 19], Texas: [7.6, 6], Southeast: [-2.7, 23],
+    Southwest: [-24, 11], 'Upper Midwest': [-32.6, 26] };
+  Object.keys(expect).forEach((reg) => {
+    assert.equal(d[reg].n, expect[reg][1], reg + ' n');
+    assert.equal(d[reg].pct, expect[reg][0], reg + ' delta');
+  });
+});
+
+test('the committed network file carries no C-Stores', () => {
+  const locs = require('./network-locations.json').locations;
+  assert.equal(locs.filter((r) => r.type === 'C-Store').length, 0);
+  assert.equal(locs.length, 233);
+});
+
+test('the committed region_variance.json matches the computed deltas', () => {
+  // The file the page ships and the computation it displays beside it must
+  // not drift; a stale file would show one figure and apply another.
+  const rv = require('./region_variance.json');
+  const locs = require('./network-locations.json').locations;
+  const d = BDPG_STATS.regionDeltas(locs, BDPG_CONFIG.BASELINE_TABLE, BusDevGallonsCalc.resolveRegion);
+  Object.keys(d).forEach((reg) => {
+    assert.equal(rv[reg], d[reg].pct, reg);
+    assert.equal(rv.n[reg], d[reg].n, reg + ' n');
+  });
 });

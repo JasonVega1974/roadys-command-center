@@ -23,15 +23,30 @@
   // stop the "more lanes than this row expects" warning from ever firing.
   // The en-dash form is presentation only -- preEvalMappedProfile() applies
   // .replace('-', '–') when it renders.
+  // 2026-09-30: lanes and roadway are now INDEPENDENT dimensions. Size is
+  // defined by diesel lane count (Small 1-3, Medium 4-6, Large 7+) and the
+  // roadway is a separate axis, so a 4-lane Interstate is simply
+  // Medium/Interstate rather than a contradiction. The old table paired the
+  // two rigidly -- Backroad<->1-2, Highway<->3-5, Interstate<->6+ -- which is
+  // what produced the lanes/roadway "conflict" state that no longer exists.
+  //
+  // Backroad is the one exception and has no Medium or Large: 1-4 lanes is
+  // Small/Backroad, and 5+ on a backroad is left unmapped for review rather
+  // than forced into a profile. See BDPG_STATS.sizeForLanes().
+  //
+  // These baselines are now the FALLBACK only. The live figure is the median
+  // avgGalMo of the network locations in each profile (BDPG_STATS
+  // .profileBaselines); the row below is used when a profile has fewer than
+  // three reporting locations.
   var BASELINE_TABLE = [
-    { profile: 'Fuel stop',         roadway: 'Any',        lanes: '1-2', baseline: 2500 },
-    { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-2', baseline: 3000 },
-    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '3-5', baseline: 4000 },
-    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '6+',  baseline: 7500 },
-    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '3-5', baseline: 7500 },
-    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '6+',  baseline: 12500 },
-    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '3-5', baseline: 10000 },
-    { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '6+',  baseline: 15000 }
+    { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 2500 },
+    { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-4', baseline: 3000 },
+    { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '1-3', baseline: 4000 },
+    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 7500 },
+    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 7500 },
+    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 12500 },
+    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 10000 },
+    { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 15000 }
   ];
 
   // Geographic-variance regions for the calculator only. Not the GS-territory
@@ -172,9 +187,40 @@
     food: ['none', 'grab-and-go', 'fast food', 'full restaurant'],
     scale: ['yes', 'no'],
     parking: ['none', '1-15', '16-50', '51-100', '100+'],
+    def: ['yes', 'no'],
+    laundry: ['yes', 'no'],
     goodFood: ['fast food', 'full restaurant'],
     limitedFood: ['none', 'grab-and-go'],
     goodParking: ['16-50', '51-100', '100+']
+  };
+
+  // Restroom / shower condition. A separate additive term, summed with the
+  // amenity level's own percentage into the single Amenities figure the
+  // breakdown shows -- it is a judgement about upkeep, which the level (a
+  // judgement about what exists) cannot express. Default Standard is 0%, so
+  // it stays inert until somebody actually assesses the site.
+  var RESTROOM_LEVELS = ['Clean / updated', 'Standard', 'Dated / worn'];
+  var RESTROOM_ADJUST = {
+    'Clean / updated': 0.02,
+    'Standard': 0.00,
+    'Dated / worn': -0.02
+  };
+  var RESTROOM_DEFAULT = 'Standard';
+
+  // DEF and inside-sales estimates, from the calculator spreadsheet. Applied
+  // to FINAL monthly gallons, never to the baseline -- they are a consequence
+  // of the fuel volume, not an input to it, and nothing here touches
+  // calculateEstimate().
+  //
+  // Every figure is an editable admin value rather than a literal, because
+  // all four are commercial assumptions that will be revised without a code
+  // change. `enabled` removes the whole section from every surface.
+  var DEF_INSIDE_DEFAULTS = {
+    enabled: true,
+    defPctOfDiesel: 0.02,
+    defPricePerGal: 4.50,
+    gallonsPerTransaction: 110,
+    avgInsideRing: 18.32
   };
 
   var BDPG_CONFIG = {
@@ -192,7 +238,11 @@
     REWARDS_LEVELS: REWARDS_LEVELS,
     REWARDS_ADJUST: REWARDS_ADJUST,
     REWARDS_DEFAULT: REWARDS_DEFAULT,
-    AMENITY_DETAIL_OPTIONS: AMENITY_DETAIL_OPTIONS
+    AMENITY_DETAIL_OPTIONS: AMENITY_DETAIL_OPTIONS,
+    RESTROOM_LEVELS: RESTROOM_LEVELS,
+    RESTROOM_ADJUST: RESTROOM_ADJUST,
+    RESTROOM_DEFAULT: RESTROOM_DEFAULT,
+    DEF_INSIDE_DEFAULTS: DEF_INSIDE_DEFAULTS
   };
 
   if (typeof module !== 'undefined' && module.exports) {

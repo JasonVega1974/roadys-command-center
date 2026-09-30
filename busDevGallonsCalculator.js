@@ -84,6 +84,18 @@
     return (n < 0 ? ' - ' : ' + ') + fmtPct(n);
   }
 
+  // DEF and Laundry are SUPPORTING criteria, not core ones.
+  //
+  // "Good / full service" needs all four core amenities -- showers, real
+  // food, a certified scale, 16+ parking -- plus at least one of DEF or
+  // laundry. Making them core instead would have put the top band out of
+  // reach of most of the network for the sake of two conveniences; making
+  // them count for nothing would have ignored the brief. So they separate
+  // a fully-equipped site from a merely adequate one, and nothing else:
+  //
+  //   * they never promote a site that is missing a core amenity, and
+  //   * their absence never demotes a site to "Very limited", which stays
+  //     defined by the absence of showers, parking and food.
   function suggestAmenityLevel(details) {
     var d = details || {};
     var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS;
@@ -94,14 +106,69 @@
     var goodFood = opts.goodFood.indexOf(d.food) !== -1;
     var noParking = d.parking === 'none' || !d.parking;
     var limitedFood = opts.limitedFood.indexOf(d.food) !== -1 || !d.food;
+    var hasDef = d.def === 'yes';
+    var hasLaundry = d.laundry === 'yes';
+    var allCore = hasShowers && goodFood && hasScale && goodParking;
 
-    if (hasShowers && goodFood && hasScale && goodParking) {
-      return { level: 'Good / full service', reason: 'Showers, food service, a certified scale, and 16+ parking spots.' };
+    if (allCore && (hasDef || hasLaundry)) {
+      return {
+        level: 'Good / full service',
+        reason: 'Showers, food service, a certified scale, 16+ parking spots, and ' +
+          (hasDef && hasLaundry ? 'both DEF and laundry.' : (hasDef ? 'DEF.' : 'laundry.'))
+      };
+    }
+    if (allCore) {
+      return {
+        level: 'Average',
+        reason: 'All four core amenities, but neither DEF nor laundry.'
+      };
     }
     if (!hasShowers && noParking && limitedFood) {
       return { level: 'Very limited', reason: 'No showers, no truck parking, and no real food service.' };
     }
     return { level: 'Average', reason: 'Falls between the Good and Very limited thresholds.' };
+  }
+
+  // Restroom / shower condition, a term of its own. Unrecognised or unset
+  // reads as 0 -- the same neutral-by-default rule the amenity level follows.
+  function restroomAdjustment(level) {
+    return BDPG_CONFIG.RESTROOM_ADJUST.hasOwnProperty(level)
+      ? BDPG_CONFIG.RESTROOM_ADJUST[level] : 0;
+  }
+
+  // DEF and inside-sales estimates, derived from FINAL monthly gallons.
+  //
+  // Downstream of the formula, never an input to it: these are consequences
+  // of the fuel volume. Every rate is read from the passed config rather than
+  // hardcoded, because all four are commercial assumptions an admin can edit.
+  // Returns null when disabled so callers omit the section rather than
+  // rendering zeros.
+  function defInsideEstimate(finalGallons, cfg) {
+    var c = cfg || BDPG_CONFIG.DEF_INSIDE_DEFAULTS;
+    if (!c || c.enabled === false) return null;
+    var g = Number(finalGallons);
+    if (!isFinite(g) || g < 0) return null;
+
+    var defPct = Number(c.defPctOfDiesel);
+    var defPrice = Number(c.defPricePerGal);
+    var perTxn = Number(c.gallonsPerTransaction);
+    var ring = Number(c.avgInsideRing);
+    if (!isFinite(defPct) || !isFinite(defPrice) || !isFinite(ring)) return null;
+    // A zero or missing gallons-per-transaction would divide by zero and
+    // report Infinity transactions on a customer-facing sheet.
+    if (!isFinite(perTxn) || perTxn <= 0) return null;
+
+    var defGal = g * defPct;
+    var defSales = defGal * defPrice;
+    var txns = g / perTxn;
+    var insideSales = txns * ring;
+    return {
+      defGallonsMo: defGal, defGallonsYr: defGal * 12,
+      defSalesMo: defSales, defSalesYr: defSales * 12,
+      transactionsMo: txns, transactionsYr: txns * 12,
+      insideSalesMo: insideSales, insideSalesYr: insideSales * 12,
+      rates: { defPct: defPct, defPrice: defPrice, perTxn: perTxn, ring: ring }
+    };
   }
 
   function atLeastZero(n) { return n < 0 ? 0 : n; }
@@ -129,7 +196,11 @@
     }
 
     var regionPct = Number(opts.regionPct) || 0;
-    var amenityPct = amenityAdjustment(opts.amenityLevel);
+    // The amenity term is the level plus the restroom condition. One figure
+    // in the formula and one row in the breakdown: both are statements about
+    // amenities, and splitting them would add a sixth term to a formula the
+    // brief says is unchanged.
+    var amenityPct = amenityAdjustment(opts.amenityLevel) + restroomAdjustment(opts.restroomLevel);
     var review = reviewAdjustment(opts.reviewRating);
     var pricingPct = pricingAdjustment(opts.pricingLevel);
     var rewardsPct = rewardsAdjustment(opts.rewardsLevel);
@@ -188,6 +259,8 @@
     getBaselineRow: getBaselineRow,
     resolveRegion: resolveRegion,
     amenityAdjustment: amenityAdjustment,
+    restroomAdjustment: restroomAdjustment,
+    defInsideEstimate: defInsideEstimate,
     reviewAdjustment: reviewAdjustment,
     pricingAdjustment: pricingAdjustment,
     rewardsAdjustment: rewardsAdjustment,
