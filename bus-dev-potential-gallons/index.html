@@ -600,7 +600,6 @@ function getCentroid(pathStr, axis){
       // BDPG.invalidateResult(). Never serialized into a saved record.
       resultStale: false,
       supportingOpen: false,
-      preEvalOpen: true,
       // "How this calculator works" tutorial widget -- a disclosure toggle
       // and a tab selector, not prospect data. Both live in SIG_SKIP below
       // so opening the tutorial or flipping tabs never reads as unsaved work.
@@ -624,13 +623,15 @@ function getCentroid(pathStr, axis){
       // to an owner. The file backs the baselines, the ranges, the region
       // figures and the counts, so nothing here may paint before it lands.
       if (!BDPG._locationsLoaded) { BDPG.loadLocations(BDPG.render); return; }
+      // Hoisted out of the branches. updatePreEvalSignal() is the sole
+      // assignor of prospect.preEvalSignal, which the Prospects tracker reads
+      // for its Signal column and its signal counts. It used to be reached on
+      // the calculator tab as a side effect of rendering the Pre-Evaluation
+      // card; that card is gone, so without this line the signal would only
+      // ever refresh on the Prospects tab and a prospect saved from the
+      // calculator would carry whatever was last computed.
+      BDPG.updatePreEvalSignal();
       if (BDPG.activeTab === 'prospects') {
-        // updatePreEvalSignal() is documented as the sole assignor of
-        // prospect.preEvalSignal, and every other render path reaches it
-        // through preEvalCardHtml(). This branch doesn't render the ⓪ card,
-        // so it has to call it directly -- otherwise this is the one route
-        // that can leave the signal stale while the tracker reads it.
-        BDPG.updatePreEvalSignal();
         el.innerHTML = BDPG.dataTrustBannerHtml() + BDPG.prospectsHtml();
         return;
       }
@@ -652,7 +653,6 @@ function getCentroid(pathStr, axis){
         // here, collapsed, now lives behind the ? button in the header --
         // see BDPG.tutorialModalHtml().
         BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
-        BDPG.preEvalCardHtml() +
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.actualLanesHtml() + BDPG.stepCardClose() +
         BDPG.stepCardOpen(2, 'Step 2 — Adjustments', BDPG.step2Done()) + BDPG.step2Html() + BDPG.stepCardClose() +
         // No admin control appears on this tab. The region % panel and the
@@ -676,8 +676,8 @@ function getCentroid(pathStr, axis){
       // Baseline for "does the rep have unsaved work?", captured after the
       // first complete calc render rather than off the state literal: both
       // step2Html() (pricingLevel/amenityLevel defaults) and
-      // preEvalCardHtml() (preEvalSignal) write to state while building the
-      // markup above, so a signature taken any earlier would never match.
+      // updatePreEvalSignal() (preEvalSignal) write to state during the
+      // render above, so a signature taken any earlier would never match.
       if (BDPG.savedSig === null) BDPG.savedSig = BDPG.stateSig();
     }
   };
@@ -3901,7 +3901,6 @@ function getCentroid(pathStr, axis){
   // full BDPG.render() (that would steal focus mid-word).
   BDPG.onProspectInput = function (field, value) {
     BDPG.state.prospect[field] = value;
-    BDPG.maybeOpenPreEval();
     // The rendered hero names the prospect, and the packet reads live state at
     // export -- so a name typed after Generate has to reach the already-drawn
     // hero or the screen and the leave-behind disagree. Targeted patch only.
@@ -3909,11 +3908,11 @@ function getCentroid(pathStr, axis){
     if (field === 'name' || field === 'city') {
       var btn = document.getElementById('bdpg-generate-btn');
       if (btn) { btn.outerHTML = BDPG.generateButtonHtml(); }
-      // Name/city are two of the Pre-Evaluation panel's four prerequisites --
-      // refresh it so the "what's missing" prompt clears the instant the last
-      // one is filled, without stealing focus via a full BDPG.render().
-      BDPG.refreshPreEvalCard();
     }
+    // Name and city are two of the four inputs the tracker's Signal reads.
+    // Nothing renders it here any more, but Save can happen without an
+    // intervening render, so keep the stored value true to the fields.
+    BDPG.updatePreEvalSignal();
     BDPG.updateStepCardBadge(0, BDPG.prospectDone());
   };
 
@@ -3929,20 +3928,10 @@ function getCentroid(pathStr, axis){
     'Fuel Stop': { auto: 'Fuel stop', roadway: 'Any' }
   };
 
-  // Change 9: the pre-evaluation panel opens itself as soon as Name + City +
-  // State + Location Type are all present. Only ever opens -- a rep who has
-  // deliberately collapsed it and then edits a field should not have it
-  // reopen under them, so this never sets false.
-  BDPG.maybeOpenPreEval = function () {
-    var p = BDPG.state.prospect;
-    if (BDPG.state.preEvalOpen) return;
-    if (p.name && p.city && BDPG.state.state && p.locationType) BDPG.state.preEvalOpen = true;
-  };
-
   BDPG.onLocationType = function (v) {
     var s = BDPG.state;
     s.prospect.locationType = v;
-    BDPG.maybeOpenPreEval();
+    BDPG.updatePreEvalSignal();
     var rule = BDPG.LOCTYPE_PROFILE[v];
     s.autoSetNote = '';
     s.suggestProfiles = [];
@@ -3960,12 +3949,19 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
-  // ── Pre-Evaluation panel (spec §4.5) ──────────────────────────────────
-  // Read-only summary computed from data the tool already has (region map,
-  // network-context.json, region_variance.json, BASELINE_TABLE). Never
+  // ── the prospect signal ───────────────────────────────────────────────
+  //
+  // This WAS the Pre-Evaluation panel, a card between Prospect Profile and
+  // Step 1. The panel is gone: every chip on it either repeated something
+  // Step 1 and Step 2 already showed, or had nothing to say until the rep
+  // had filled the form in anyway, so it occupied the most valuable space
+  // on the page to tell you what was two cards further down.
+  //
+  // The computation survives because one thing it produced is still read
+  // elsewhere: the Strong / Moderate / Review signal, which the Prospects
+  // tracker renders per row and counts in its summary chips. Nothing below
   // writes anything the calculator consumes -- the only state it touches is
-  // BDPG.state.prospect.preEvalSignal (for the Prospects tracker) and its
-  // own open/closed flag.
+  // BDPG.state.prospect.preEvalSignal.
 
   BDPG.preEvalPrereqsMissing = function () {
     var p = BDPG.state.prospect;
@@ -4088,20 +4084,6 @@ function getCentroid(pathStr, axis){
     return { chips: [c1, c2, c3, c4, c5, c6, cRewards, c7], signal: signal };
   };
 
-  BDPG.togglePreEval = function () {
-    BDPG.state.preEvalOpen = !BDPG.state.preEvalOpen;
-    BDPG.refreshPreEvalCard();
-  };
-
-  // Targeted DOM patch -- shared by every field that can change what the
-  // pre-eval panel shows (name/city gating, typed state, location type via
-  // full render()) without forcing an unrelated full-panel rebuild.
-  BDPG.refreshPreEvalCard = function () {
-    var card = document.getElementById('bdpg-preeval-card');
-    if (!card) return;
-    card.outerHTML = BDPG.preEvalCardHtml();
-  };
-
   // ── "How this calculator works" tutorial widget ─────────────────────────
   // Visible to everyone (not admin-gated), collapsed by default, toggled by
   // the ? button in the static page header. Five tabs inside one card; a tab
@@ -4172,7 +4154,8 @@ function getCentroid(pathStr, axis){
     BDPG.refreshTutorialCard();
   };
 
-  // Targeted DOM patch -- mirrors BDPG.refreshPreEvalCard() above. Neither
+  // Targeted DOM patch, the same shape the prospect-field handlers use.
+  // Neither
   // the ? header button nor a tab click may ever route through a full
   // BDPG.render(): that would blow away caret position in any field the rep
   // is mid-edit elsewhere on the page and re-run the map draw for no reason.
@@ -4382,14 +4365,19 @@ function getCentroid(pathStr, axis){
   };
 
   // Keeps BDPG.state.prospect.preEvalSignal in sync with the four
-  // prerequisites and BDPG.preEval() *regardless of whether the card is
-  // currently rendered open* -- Task 7 saves this value into the record,
-  // Task 8 shows it as the tracker's Pre-Eval column, and Task 9 counts it
-  // in the summary chips, so it must never go stale just because the panel
-  // is collapsed. Clears the signal back to '' the moment a prerequisite
-  // stops being met, rather than leaving a previously-computed value
-  // sitting there. BDPG.preEval() itself stays a pure function -- this is
-  // the one and only place that writes to state.
+  // prerequisites and BDPG.preEval(). The record saves this value, the
+  // tracker shows it per row, and the summary chips count it, so it must
+  // never go stale.
+  //
+  // It used to be reached as a side effect of rendering the Pre-Evaluation
+  // card. With that card gone it is called from render() and from each
+  // prospect-field handler instead -- the handlers matter because Save can
+  // happen without an intervening render, and a stale signal would be
+  // written into the record.
+  //
+  // Clears back to '' the moment a prerequisite stops being met, rather
+  // than leaving a previously-computed value sitting there. BDPG.preEval()
+  // itself stays a pure function -- this is the one place that writes.
   BDPG.updatePreEvalSignal = function () {
     var missing = BDPG.preEvalPrereqsMissing();
     if (missing.length) {
@@ -4399,48 +4387,6 @@ function getCentroid(pathStr, axis){
     var result = BDPG.preEval();
     BDPG.state.prospect.preEvalSignal = result.signal;
     return result;
-  };
-
-  // Purely presentational -- takes the already-computed result (or null,
-  // when prerequisites aren't met) rather than computing/assigning anything
-  // itself.
-  BDPG.preEvalHtml = function (result) {
-    var missing = BDPG.preEvalPrereqsMissing();
-    if (!result || missing.length) {
-      return '<div style="color:var(--muted);font-size:.85em">Fill in ' + missing.map(BDPG.escHtml).join(', ') +
-        ' above to see a pre-evaluation.</div>';
-    }
-
-    var judged = result.chips.slice(0, result.chips.length - 1);
-    var overall = result.chips[result.chips.length - 1];
-    var judgementChips = judged.map(function (c) {
-      return '<div>' +
-        '<div style="font-size:.68em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:5px">' +
-          BDPG.escHtml(c.label) + '</div>' +
-        '<span class="badge tag-' + c.tone + '">' + BDPG.escHtml(c.text) + '</span>' +
-      '</div>';
-    }).join('');
-    return '<div class="bdpg-grid-3">' + judgementChips + '</div>' +
-      '<div class="bdpg-callout" style="text-align:center">' +
-        '<div class="bdpg-lbl">' + BDPG.escHtml(overall.label) + '</div>' +
-        '<span class="badge tag-' + overall.tone + '" style="font-size:1.1em;padding:6px 16px">' + BDPG.escHtml(overall.text) + '</span>' +
-      '</div>';
-  };
-
-  BDPG.preEvalCardHtml = function () {
-    var open = BDPG.state.preEvalOpen;
-    // Computed unconditionally -- must happen whether or not the card is
-    // open, so state.prospect.preEvalSignal never freezes at a stale value
-    // while collapsed (see BDPG.updatePreEvalSignal's comment).
-    var result = BDPG.updatePreEvalSignal();
-    return '<div class="bdpg-step" id="bdpg-preeval-card">' +
-      '<div class="bdpg-step-hd" style="cursor:pointer" onclick="BDPG.togglePreEval()">' +
-        '<div class="bdpg-badge">' + (open ? '▾' : '▸') + '</div>' +
-        '<div class="bdpg-step-title">Pre-Evaluation</div>' +
-      '</div>' +
-      '<div style="font-size:.78em;color:var(--muted);margin:-8px 0 12px">complete the calculator below for a full analysis.</div>' +
-      (open ? BDPG.preEvalHtml(result) : '') +
-    '</div>';
   };
 
   BDPG.prospectHtml = function () {
@@ -5288,7 +5234,7 @@ function getCentroid(pathStr, axis){
     // that re-types the same letter is a no-op.
     if (BDPG.state.state !== next) BDPG.invalidateResult();
     BDPG.state.state = next;
-    BDPG.maybeOpenPreEval();
+    BDPG.updatePreEvalSignal();
     // Two inputs can call this now (Step 2's own "type a state code" field,
     // and the Prospect Profile card's State field added in Task 4) -- only
     // refocus Step 2's field below if it was the one actually being typed
@@ -5321,10 +5267,6 @@ function getCentroid(pathStr, axis){
     // The outerHTML swap above destroyed the map's <svg> along with the rest
     // of #bdpg-step2 -- rebuild it so typing a state code updates the map too.
     BDPG.renderMap();
-    // State drives three of the seven Pre-Evaluation chips (region, region
-    // performance, network presence) -- keep it in step with every other
-    // targeted patch this handler already does.
-    BDPG.refreshPreEvalCard();
   };
 
   BDPG.starsHtml = function (v) {
@@ -5699,7 +5641,7 @@ function getCentroid(pathStr, axis){
   // changes they never made.
   BDPG.SIG_SKIP = {
     result: 1, resultStale: 1, adminOpen: 1, adminSavedJson: 1,
-    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1, preEvalOpen: 1,
+    ncGeneratorOpen: 1, myProfilesOpen: 1, supportingOpen: 1,
     tutorialOpen: 1, tutorialTab: 1
   };
   BDPG.stateSig = function () {
@@ -5918,8 +5860,8 @@ function getCentroid(pathStr, axis){
   // change: the prospect's name. The name is display-only, so editing it
   // deliberately does NOT invalidate the result -- but onExportPdf() rebuilds
   // the packet from live state, so without this the laptop showed one name
-  // while the sheet handed over carried another. Same shape as
-  // refreshPreEvalCard(): patch the node, never BDPG.render(), which would
+  // while the sheet handed over carried another. Same shape as every other
+  // handler on this card: patch the node, never BDPG.render(), which would
   // destroy the input mid-word.
   //
   // textContent, not innerHTML: the value comes straight from a text field, so
@@ -6567,11 +6509,11 @@ function getCentroid(pathStr, axis){
     // correct for their own field, but the adjacency made the next one added
     // a coin flip. One rule now, no exceptions: each guard tests that the
     // field HAS THE TYPE it must have, never whether it is truthy. That keeps
-    // a legitimate falsy value (preEvalOpen:false means the rep collapsed the
-    // panel, not that it is unset) and still replaces a missing field --
-    // or a hand-edited one of the wrong type, which `=== undefined` would
-    // have waved through into the DOM as "[object Object]".
-    if (typeof BDPG.state.preEvalOpen !== 'boolean') BDPG.state.preEvalOpen = true;
+    // a legitimate falsy value (tutorialOpen:false means the help modal is
+    // closed, not that the field is unset) and still replaces a missing
+    // field -- or a hand-edited one of the wrong type, which `=== undefined`
+    // would have waved through into the DOM as "[object Object]".
+    if (typeof BDPG.state.tutorialOpen !== 'boolean') BDPG.state.tutorialOpen = false;
     // A profile saved before the rewards term existed has no rewardsLevel;
     // one saved with a since-renamed label carries an orphan string. Both
     // resolve to the documented default here (and pricingLevel with it), so
