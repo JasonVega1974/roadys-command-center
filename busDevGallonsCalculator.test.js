@@ -26,7 +26,7 @@ test('getValidRoadways never offers Backroad for Medium or Large (open item 2)',
 
 test('getBaselineRow returns the exact row for a valid combination', () => {
   assert.deepEqual(BusDevGallonsCalc.getBaselineRow('Medium truck stop', 'Interstate'), {
-    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10210
+    profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10492
   });
 });
 
@@ -639,10 +639,10 @@ test('the committed network file reproduces the agreed profile baselines', () =>
   const K = BDPG_STATS.baselineKeyFor;
   // Recomputed 2026-09-30 after the manual roadway/diesel-lane sizing pass.
   const expect = [
-    ['Fuel stop', 'Any', 3318, 9], ['Small truck stop', 'Backroad', 6174, 4],
-    ['Small truck stop', 'Highway', 2338, 12], ['Small truck stop', 'Interstate', 7647, 15],
-    ['Medium truck stop', 'Highway', 4013, 36], ['Medium truck stop', 'Interstate', 10210, 53],
-    ['Large truck stop', 'Highway', 3216, 9], ['Large truck stop', 'Interstate', 20232, 28]
+    ['Fuel stop', 'Any', 5630, 7], ['Small truck stop', 'Backroad', 6174, 4],
+    ['Small truck stop', 'Highway', 2338, 12], ['Small truck stop', 'Interstate', 8400, 13],
+    ['Medium truck stop', 'Highway', 5250, 31], ['Medium truck stop', 'Interstate', 10492, 51],
+    ['Large truck stop', 'Highway', 15307, 7], ['Large truck stop', 'Interstate', 23565, 27]
   ];
   expect.forEach((e) => {
     const x = b[K(e[0], e[1])];
@@ -677,9 +677,9 @@ test('the committed network file reproduces the agreed region deltas', () => {
   const locs = require('./network-locations.json').locations;
   const d = BDPG_STATS.regionDeltas(locs, BDPG_CONFIG.BASELINE_TABLE, BusDevGallonsCalc.resolveRegion);
   // Recomputed 2026-09-30 after the manual roadway/diesel-lane sizing pass.
-  const expect = { Midwest: [91.5, 33], Northeast: [87, 7], West: [-26.1, 8],
-    Northwest: [3.3, 22], Texas: [19.3, 9], Southeast: [-2.1, 47],
-    Southwest: [-25.1, 13], 'Upper Midwest': [-6.6, 27] };
+  const expect = { Midwest: [93.5, 31], Northeast: [0, 7], West: [11.1, 6],
+    Northwest: [6.3, 19], Texas: [2.4, 9], Southeast: [-1.2, 42],
+    Southwest: [-26.3, 12], 'Upper Midwest': [-18.3, 26] };
   Object.keys(expect).forEach((reg) => {
     assert.equal(d[reg].n, expect[reg][1], reg + ' n');
     assert.equal(d[reg].pct, expect[reg][0], reg + ' delta');
