@@ -422,6 +422,13 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
     <button id="bdpg-tab-prospects" class="impl-sub-tab" onclick="BDPG.switchTab('prospects')">📋 Prospects</button>
   </div>
   <div class="container" id="bdpg-content"></div>
+  <!-- The help modal lives OUTSIDE #bdpg-content on purpose. Everything in
+       that container is replaced wholesale by BDPG.render(), so a modal
+       rendered inside it could not be opened or have its tab switched
+       without a full re-render -- which would discard caret position in any
+       field the rep is mid-edit. Its own host means opening help is a patch
+       of one element and touches nothing else on the page. -->
+  <div id="bdpg-tutorial-host"></div>
   <div class="toast" id="toast"></div>
 <script>
 // restore saved theme before first render
@@ -624,7 +631,7 @@ function getCentroid(pathStr, axis){
         // so it has to call it directly -- otherwise this is the one route
         // that can leave the signal stale while the tracker reads it.
         BDPG.updatePreEvalSignal();
-        el.innerHTML = BDPG.dataTrustBannerHtml() + BDPG.tutorialCardHtml() + BDPG.prospectsHtml();
+        el.innerHTML = BDPG.dataTrustBannerHtml() + BDPG.prospectsHtml();
         return;
       }
       if (BDPG.activeTab === 'weights') {
@@ -641,12 +648,9 @@ function getCentroid(pathStr, axis){
       }
       el.innerHTML =
         BDPG.dataTrustBannerHtml() +
-        // Visible on every tab, collapsed by default, above the ⓪ card --
-        // see BDPG.tutorialCardHtml(). Toggling it or switching its five
-        // tabs never comes back through here (BDPG.refreshTutorialCard()
-        // patches #bdpg-tutorial-card directly), so this line only matters
-        // for the initial render and for tab switches between calc/prospects.
-        BDPG.tutorialCardHtml() +
+        // Nothing above Prospect Profile. The help content that used to sit
+        // here, collapsed, now lives behind the ? button in the header --
+        // see BDPG.tutorialModalHtml().
         BDPG.stepCardOpen(0, 'Prospect Profile', BDPG.prospectDone()) + BDPG.prospectHtml() + BDPG.stepCardClose() +
         BDPG.preEvalCardHtml() +
         BDPG.stepCardOpen(1, 'Step 1 — Select Location Profile', BDPG.step1Done()) + BDPG.step1Html() + BDPG.actualLanesHtml() + BDPG.stepCardClose() +
@@ -4144,8 +4148,22 @@ function getCentroid(pathStr, axis){
     return rows;
   };
 
+  // ── help, behind the ? button only ───────────────────────────────────────
+  //
+  // This content used to sit collapsed at the top of every tab, above the
+  // Prospect Profile card. A permanently-present "How This Calculator Works"
+  // header is a row of furniture a rep scrolls past on every single visit to
+  // reach the thing they came for, and it was closed essentially always. The
+  // ? button in the header already existed and already opened it; now that
+  // is the only way in, and the page opens on Prospect Profile.
   BDPG.toggleTutorial = function () {
     BDPG.state.tutorialOpen = !BDPG.state.tutorialOpen;
+    BDPG.refreshTutorialCard();
+  };
+
+  BDPG.closeTutorial = function () {
+    if (!BDPG.state.tutorialOpen) return;
+    BDPG.state.tutorialOpen = false;
     BDPG.refreshTutorialCard();
   };
 
@@ -4159,13 +4177,13 @@ function getCentroid(pathStr, axis){
   // BDPG.render(): that would blow away caret position in any field the rep
   // is mid-edit elsewhere on the page and re-run the map draw for no reason.
   BDPG.refreshTutorialCard = function () {
-    var card = document.getElementById('bdpg-tutorial-card');
-    if (!card) return;
-    card.outerHTML = BDPG.tutorialCardHtml();
+    var host = document.getElementById('bdpg-tutorial-host');
+    if (!host) return;
+    host.innerHTML = BDPG.tutorialModalHtml();
   };
 
-  BDPG.tutorialCardHtml = function () {
-    var open = BDPG.state.tutorialOpen;
+  BDPG.tutorialModalHtml = function () {
+    if (!BDPG.state.tutorialOpen) return '';
     var tab = BDPG.state.tutorialTab || 'overview';
     var active = null, i;
     for (i = 0; i < BDPG.TUTORIAL_TABS.length; i++) {
@@ -4188,16 +4206,28 @@ function getCentroid(pathStr, axis){
         BDPG.escHtml(t.tab) + '</button>';
     }).join('');
 
-    return '<div class="bdpg-step" id="bdpg-tutorial-card">' +
-      '<div class="bdpg-step-hd" style="cursor:pointer" onclick="BDPG.toggleTutorial()">' +
-        '<div class="bdpg-badge">' + (open ? '▾' : '▸') + '</div>' +
-        '<div class="bdpg-step-title">How This Calculator Works</div>' +
-      '</div>' +
-      (open ?
+    // The backdrop closes on a click of ITSELF only -- event.target === this
+    // -- so a click that lands on the panel, or a drag that starts inside it
+    // and releases outside, does not dismiss a page of reference text the
+    // reader is part-way through.
+    return '<div id="bdpg-tutorial-modal" ' +
+        'onclick="if(event.target===this)BDPG.closeTutorial()" ' +
+        'role="dialog" aria-modal="true" aria-label="How this calculator works" ' +
+        'style="position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.6);' +
+          'display:flex;align-items:flex-start;justify-content:center;' +
+          'overflow-y:auto;padding:4vh 12px">' +
+      '<div class="bdpg-step" style="max-width:860px;width:100%;margin:0;' +
+          'background:var(--surface2);max-height:92vh;overflow-y:auto">' +
+        '<div class="bdpg-step-hd" style="margin-bottom:12px">' +
+          '<div class="bdpg-step-title">How This Calculator Works</div>' +
+          '<div style="flex:1"></div>' +
+          '<button class="btn" aria-label="Close" ' +
+            'onclick="BDPG.closeTutorial()">✕ Close</button>' +
+        '</div>' +
         '<div class="bdpg-seg" style="margin-bottom:12px">' + tabBtns + '</div>' +
         '<div class="cc-lbl" style="margin-bottom:6px">' + BDPG.escHtml(active.title) + '</div>' +
-        BDPG.tutorialTabBodyHtml(tab)
-      : '') +
+        BDPG.tutorialTabBodyHtml(tab) +
+      '</div>' +
     '</div>';
   };
 
@@ -7098,6 +7128,13 @@ BDPG.toggleTheme = function () {
   document.body.classList.toggle('day-mode');
   try { localStorage.setItem('roadysBDPGTheme', document.body.classList.contains('day-mode') ? 'day' : 'night'); } catch (e) {}
 };
+
+// Escape closes the help modal. It is the only full-screen overlay a reader
+// can be left stuck behind with no keyboard route out -- the Add Location
+// dialog is DEV-only and has its own Cancel in reach.
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && BDPG.state && BDPG.state.tutorialOpen) BDPG.closeTutorial();
+});
 
 document.addEventListener('DOMContentLoaded', function () { BDPG.render(); });
 </script>
