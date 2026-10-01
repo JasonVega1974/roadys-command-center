@@ -5061,11 +5061,26 @@ function getCentroid(pathStr, axis){
     // 🧪, a lab test tube, which read as chemistry rather than as the thing a
     // driver pulls off the island.
     //
-    // Deliberately WIDER than tall (28x24 viewBox at 1.17em x 1em). Height is
-    // what aligns it with the emoji beside it; width is what lets three
-    // letters be legible at a ~17px badge. Squeezing "DEF" into a true square
-    // at this size turns the text into a smudge, and the text is the half of
-    // the decal a driver actually recognises.
+    // Deliberately WIDER than tall. Height is what matches the emoji beside
+    // it; width is what lets three letters be legible, and squeezing "DEF"
+    // into a true square at this size turns the text into a smudge.
+    //
+    // SIZE: matched to the emoji's INK, measured rather than guessed. The
+    // emoji are rasterised at the card's own 19.6px font and their painted
+    // glyphs are ~20px tall. The first version of this badge sat inside a
+    // 1em box AND was inset 2.5 units top and bottom within its viewBox, so
+    // it only ever painted 15.5px -- 78% of its neighbours, which is why it
+    // read as the small one in the row. Two separate shrinks compounding:
+    // the box, and the inset inside the box.
+    //
+    // Fixed at both levels. The badge now fills its viewBox bar a half-unit
+    // (enough to keep the rounded corners off the edge, where antialiasing
+    // would flatten them), and the box is sized so the PAINTED badge lands
+    // on 20px: 23 of 24 viewBox units at 1.07em of a 19.6px font.
+    //
+    // Sized in em, not px, so it tracks .bdpg-acard-ico's 1.4em if the type
+    // scale ever changes -- a px icon beside em-sized emoji drifts apart the
+    // first time anyone touches the base font size.
     //
     // currentColor is deliberately NOT used: these cards grey their text when
     // unset, and a greyed-out DEF badge would stop reading as DEF signage.
@@ -5073,29 +5088,35 @@ function getCentroid(pathStr, axis){
     var DEF_ICON =
       // display:block, not inline-block. An inline SVG sits on a text baseline
       // and the descender space below it grows the line box, which made this
-      // card's icon row 20.6px against the emoji's 19.6 -- a 1px taller card
-      // in a row of six. As a block with auto margins it takes exactly its own
-      // height and stays centred in the card.
-      '<svg viewBox="0 0 28 24" width="1.17em" height="1em" aria-hidden="true" focusable="false" ' +
-        'style="display:block;margin:0 auto">' +
-        // The badge. Full-bleed vertically so the blue carries at small sizes;
-        // rx scaled to read as rounded rather than as a circle.
-        '<rect x="0.5" y="2.5" width="27" height="19" rx="4" fill="' + DEF_BLUE + '"/>' +
+      // card's icon row taller than the other five. As a block with auto
+      // margins it takes exactly its own height and stays centred.
+      //
+      // The negative vertical margin is the deliberate half of that: the box
+      // is 21px so the badge can PAINT at the emoji's 20px, but the emoji's
+      // own line box is 19.6px, and a 21px box would make this one card
+      // taller than the other five in the grid. Pulling 0.7px back at each
+      // end lets the artwork match its neighbours while the layout box
+      // still measures like theirs. Matching the apparent size is the goal;
+      // matching the boxes is what keeps the grid honest about it.
+      '<svg viewBox="0 0 28 24" width="1.25em" height="1.07em" aria-hidden="true" focusable="false" ' +
+        'style="display:block;margin:-0.036em auto">' +
+        // Half-unit inset only: the badge IS the icon, so every unit it gives
+        // back to padding is a unit it loses against the emoji next to it.
+        '<rect x="0.5" y="0.5" width="27" height="23" rx="5" fill="' + DEF_BLUE + '"/>' +
         // "DEF". textLength pins the glyph run to an exact width so the layout
         // cannot shift between the fonts this page may fall back to -- without
         // it a wider system font pushes the text under the nozzle.
-        '<text x="3" y="15.6" textLength="13.4" lengthAdjust="spacingAndGlyphs" ' +
-          'font-family="Helvetica Neue,Arial,sans-serif" font-size="9.4" font-weight="700" ' +
+        '<text x="2.9" y="16.3" textLength="14.6" lengthAdjust="spacingAndGlyphs" ' +
+          'font-family="Helvetica Neue,Arial,sans-serif" font-size="11" font-weight="700" ' +
           'fill="#fff">DEF</text>' +
-        // Nozzle: filled rather than stroked. A 1px stroke on a ~17px badge
-        // renders as a grey smear once the browser antialiases it; solid
-        // shapes stay crisp.
-        '<rect x="18.4" y="6.9" width="3.5" height="6.1" rx="1.2" fill="#fff"/>' +
+        // Nozzle: filled rather than stroked. A 1px stroke on a badge this
+        // small antialiases into a grey smear; solid shapes stay crisp.
+        '<rect x="19" y="7.2" width="3.7" height="6.6" rx="1.3" fill="#fff"/>' +
         // Spout arm over to the fill point.
-        '<path d="M21.9 8.6h1.5a1.15 1.15 0 0 1 1.15 1.15v1.9" fill="none" stroke="#fff" ' +
-          'stroke-width="1.25" stroke-linecap="round"/>' +
+        '<path d="M22.7 9.1h1.5a1.2 1.2 0 0 1 1.2 1.2v2" fill="none" stroke="#fff" ' +
+          'stroke-width="1.35" stroke-linecap="round"/>' +
         // The droplet, the other half of the standard decal.
-        '<path d="M24.55 12.2c.7.95 1.15 1.62 1.15 2.24a1.15 1.15 0 0 1-2.3 0c0-.62.45-1.29 1.15-2.24z" ' +
+        '<path d="M25.4 13c.73 1 1.2 1.7 1.2 2.35a1.2 1.2 0 0 1-2.4 0c0-.65.47-1.35 1.2-2.35z" ' +
           'fill="#fff"/>' +
       '</svg>';
 
