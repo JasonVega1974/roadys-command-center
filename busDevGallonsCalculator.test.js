@@ -777,18 +777,34 @@ test('pricingAdjustment passes a slider value straight through', () => {
   });
 });
 
-test('pricingAdjustment clamps anything outside the range', () => {
-  // The slider cannot produce these; a hand-edited record or a stale saved
-  // profile can, and an unclamped -3 would quote zero gallons.
-  const r = BDPG_CONFIG.PRICING_RANGE;
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(-3), r.min);
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(0.9), r.max);
+test('pricingAdjustment clamps only at the hard limit, not the fallback range', () => {
+  // Clamped to the HARD LIMIT, not to the fallback range: the slider's ends
+  // are per-profile now and legitimately exceed +/-50% (Large/Highway tops
+  // out near +780%), so clamping the formula at the fallback would truncate
+  // the figure the control was showing. The envelope only rejects corruption.
+  const h = BDPG_CONFIG.PRICING_HARD_LIMIT;
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(-50), h.min);
+  assert.equal(BusDevGallonsCalc.pricingAdjustment(9999), h.max);
   assert.equal(BusDevGallonsCalc.pricingAdjustment(Infinity), 0);
   assert.equal(BusDevGallonsCalc.pricingAdjustment(-Infinity), 0);
-  // A value saved under the narrower +/-25% control is inside the new
-  // range and must pass through untouched, not be re-clamped to anything.
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(-0.25), -0.25);
-  assert.equal(BusDevGallonsCalc.pricingAdjustment(0.25), 0.25);
+  // Everything a real profile range can produce passes through untouched.
+  [-0.93, -0.5, -0.25, 0.25, 0.5, 1.15, 4.59, 7.71].forEach((v) => {
+    assert.equal(BusDevGallonsCalc.pricingAdjustment(v), v, String(v));
+  });
+});
+
+test('the hard limit is far wider than any profile range can reach', () => {
+  // If a future file produced a p90 ratio above the envelope, the envelope
+  // would start silently truncating real postures -- the exact failure it
+  // was widened to avoid. This fails first if that day comes.
+  const locs = require('./network-locations.json').locations;
+  const ranges = BDPG_STATS.profileRanges(locs, BDPG_CONFIG.BASELINE_TABLE);
+  const h = BDPG_CONFIG.PRICING_HARD_LIMIT;
+  Object.keys(ranges).forEach((k) => {
+    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
+    assert.ok(pr.min >= h.min, k + ' low end ' + pr.min + ' is outside the envelope');
+    assert.ok(pr.max <= h.max, k + ' high end ' + pr.max + ' is outside the envelope');
+  });
 });
 
 test('pricingAdjustment accepts a numeric string, as an <input> hands it over', () => {
