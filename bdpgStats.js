@@ -564,6 +564,96 @@
     return ((pricingPositionForPct(pct, range) + N) / (2 * N)) * 100;
   }
 
+  // ── the prospect signal ───────────────────────────────────────────────────
+  //
+  // Strong / Moderate / Review for one prospect, plus the list of fields that
+  // are still blank. The Prospects tracker renders this per row and counts it
+  // in its summary chips, and each saved record carries it.
+  //
+  // It lives here, pure, because it is the last thing in the tool that the
+  // page writes into a saved record with no test behind it. It used to be
+  // computed as a side effect of rendering the Pre-Evaluation card, which at
+  // least meant you could see it; that card is gone, so the only evidence it
+  // still works is a badge on a tab nobody opens while filling the form in.
+  //
+  // Four judgements drive it, and ONLY these four:
+  //   1. did the state resolve to a region
+  //   2. is that region's measured delta positive, zero or negative
+  //   3. how many locations the network has in that region
+  //   4. how many of the prospect's own type it has there
+  // Any red -> Review. All green -> Strong. Otherwise Moderate.
+  //
+  // The informational chips the old card also drew -- baseline range,
+  // estimated profile, rewards posture -- are deliberately NOT here. They
+  // never fed the signal (rewards especially: it is a posture the rep
+  // chooses, and letting it flip a verdict about the prospect's market would
+  // have been wrong), and nothing renders them any more.
+  //
+  // Counts, not percentages, set tones 3 and 4: more than 20 locations is
+  // green, 10 to 20 yellow, fewer than 10 red.
+  var SIGNAL_COUNT_GREEN_ABOVE = 20;
+  var SIGNAL_COUNT_YELLOW_FROM = 10;
+
+  function networkCountTone(n) {
+    var v = toFinite(n);
+    if (v === null) return 'red';
+    return v > SIGNAL_COUNT_GREEN_ABOVE ? 'green'
+      : (v >= SIGNAL_COUNT_YELLOW_FROM ? 'yellow' : 'red');
+  }
+
+  // `o.regionPct` is the region's delta as a fraction (the sign is all that
+  // is read). `o.regionData` is one region's entry from a normalized
+  // network-context, or null when the region is unknown or absent from it.
+  function prospectSignal(o) {
+    var i = o || {};
+    var missing = [];
+    if (!i.name) missing.push('Truck Stop Name');
+    if (!i.city) missing.push('City');
+    if (!i.stateCode) missing.push('State');
+    if (!i.locationType) missing.push('Location Type');
+
+    var region = i.region || null;
+    var rd = i.regionData || null;
+
+    // 1. A region either resolved or it did not. Never red: an unrecognised
+    //    state code is a typo to fix, not a verdict about the prospect.
+    var t1 = region ? 'green' : 'yellow';
+
+    // 2. Zero reads yellow rather than green -- an unconfigured region and a
+    //    genuinely average one are not the same claim, and 0% is far more
+    //    often the former.
+    var pct = region ? toFinite(i.regionPct) : null;
+    var t2 = pct === null ? 'yellow' : (pct > 0 ? 'green' : (pct === 0 ? 'yellow' : 'red'));
+
+    // 3. No data for the region is yellow, not red: "we cannot see" is not
+    //    "we looked and it is bad".
+    var t3 = !rd ? 'yellow' : networkCountTone(rd.total);
+
+    // 4. Same rule for the prospect's own type within that region.
+    var t4;
+    if (!i.locationType) t4 = 'yellow';
+    else if (!rd || !rd.byType || !hasOwnProp(rd.byType, i.locationType)) t4 = 'yellow';
+    else t4 = networkCountTone(rd.byType[i.locationType]);
+
+    var tones = [t1, t2, t3, t4];
+    var anyRed = false, allGreen = true, k;
+    for (k = 0; k < tones.length; k++) {
+      if (tones[k] === 'red') anyRed = true;
+      if (tones[k] !== 'green') allGreen = false;
+    }
+    var signal = anyRed ? 'Review' : (allGreen ? 'Strong' : 'Moderate');
+
+    return {
+      missing: missing,
+      tones: { region: t1, regionPct: t2, networkPresence: t3, typePresence: t4 },
+      // Blank while any prerequisite is unfilled, so a half-entered prospect
+      // never carries a verdict. This gate is part of the contract: the three
+      // handlers and render() all rely on it to clear a stale signal the
+      // moment a field is emptied, rather than leaving the last one computed.
+      signal: missing.length ? '' : signal
+    };
+  }
+
   // ── dated localStorage ────────────────────────────────────────────────────
   //
   // Decides whether a stored blob still describes the committed data. Lives
@@ -858,6 +948,8 @@
     pricingPctForPosition: pricingPctForPosition,
     pricingPositionForPct: pricingPositionForPct,
     pricingTrackFraction: pricingTrackFraction,
+    networkCountTone: networkCountTone,
+    prospectSignal: prospectSignal,
     datedStoreState: datedStoreState,
     validateNewLocation: validateNewLocation,
     normalizeAddedLocation: normalizeAddedLocation,

@@ -1182,3 +1182,235 @@ test('the percentages the split scale reaches are the ones the formula uses', ()
       key + ': the centre must be the profile average exactly');
   });
 });
+
+// ── the prospect signal ─────────────────────────────────────────────────────
+//
+// This value is written into every saved record and rendered by the Prospects
+// tracker. Until now it was computed as a side effect of rendering the
+// Pre-Evaluation card, so "the card looks right" was the whole of its
+// verification. That card is gone, which left the only live writer of a
+// persisted field with no coverage at all.
+
+const SIG = (o) => BDPG_STATS.prospectSignal(o);
+
+// A complete, Strong-scoring prospect. Every test below starts here and
+// changes one thing, so what moved the signal is never ambiguous.
+const FULL = (o) => Object.assign({
+  name: 'Acme Truck Plaza', city: 'Logan', stateCode: 'OH',
+  locationType: 'Truck Stop', region: 'Midwest', regionPct: 0.915,
+  regionData: { total: 38, byType: { 'Truck Stop': 37 } }
+}, o);
+
+test('a complete prospect in a strong region reads Strong', () => {
+  const r = SIG(FULL());
+  assert.deepEqual(r.missing, []);
+  assert.equal(r.signal, 'Strong');
+  assert.deepEqual(r.tones,
+    { region: 'green', regionPct: 'green', networkPresence: 'green', typePresence: 'green' });
+});
+
+// ── the prerequisite gate ───────────────────────────────────────────────────
+
+test('each missing prerequisite is named, and names nothing else', () => {
+  assert.deepEqual(SIG(FULL({ name: '' })).missing, ['Truck Stop Name']);
+  assert.deepEqual(SIG(FULL({ city: '' })).missing, ['City']);
+  assert.deepEqual(SIG(FULL({ stateCode: '' })).missing, ['State']);
+  assert.deepEqual(SIG(FULL({ locationType: '' })).missing, ['Location Type']);
+});
+
+test('missing prerequisites are listed in form order, not discovery order', () => {
+  assert.deepEqual(SIG({}).missing,
+    ['Truck Stop Name', 'City', 'State', 'Location Type']);
+});
+
+test('an incomplete prospect carries NO signal, not a provisional one', () => {
+  // The gate that matters most. A half-entered prospect saved from the
+  // calculator must not land in the tracker wearing a verdict computed from
+  // the fields that happen to be filled.
+  ['name', 'city', 'stateCode', 'locationType'].forEach((field) => {
+    const r = SIG(FULL({ [field]: '' }));
+    assert.equal(r.signal, '', 'blank ' + field + ' must clear the signal');
+  });
+});
+
+test('the signal clears again when a filled prospect is emptied', () => {
+  // The stale-value failure this gate exists to prevent: compute Strong,
+  // then blank a field and compute again. The second answer must not be
+  // the first one left lying around.
+  assert.equal(SIG(FULL()).signal, 'Strong');
+  assert.equal(SIG(FULL({ city: '' })).signal, '');
+});
+
+test('whitespace and falsy junk count as unfilled', () => {
+  [undefined, null, '', 0, false].forEach((v) => {
+    assert.equal(SIG(FULL({ name: v })).signal, '', JSON.stringify(v));
+  });
+});
+
+// ── the four judgements ─────────────────────────────────────────────────────
+
+test('an unresolved region is yellow, never red', () => {
+  // A state code the map does not know is a typo to fix, not a verdict about
+  // the prospect. Red here would read as "we assessed this and it is bad".
+  const r = SIG(FULL({ region: null, regionPct: null }));
+  assert.equal(r.tones.region, 'yellow');
+  assert.notEqual(r.signal, 'Review');
+  assert.equal(r.signal, 'Moderate');
+});
+
+test('region delta: positive green, negative red, zero yellow', () => {
+  assert.equal(SIG(FULL({ regionPct: 0.915 })).tones.regionPct, 'green');
+  assert.equal(SIG(FULL({ regionPct: -0.066 })).tones.regionPct, 'red');
+  // Zero is yellow rather than green on purpose: an unconfigured region and
+  // a genuinely average one are different claims, and 0 is usually the first.
+  assert.equal(SIG(FULL({ regionPct: 0 })).tones.regionPct, 'yellow');
+});
+
+test('a negative region delta alone drops the whole prospect to Review', () => {
+  const r = SIG(FULL({ regionPct: -0.066 }));
+  assert.equal(r.signal, 'Review');
+});
+
+test('network presence tones on the count, and missing data is not failure', () => {
+  assert.equal(SIG(FULL({ regionData: { total: 38, byType: { 'Truck Stop': 37 } } })).tones.networkPresence, 'green');
+  assert.equal(SIG(FULL({ regionData: { total: 15, byType: { 'Truck Stop': 37 } } })).tones.networkPresence, 'yellow');
+  assert.equal(SIG(FULL({ regionData: { total: 4, byType: { 'Truck Stop': 37 } } })).tones.networkPresence, 'red');
+  // No entry for the region at all: "we cannot see" is not "we looked and
+  // it is bad", so yellow and never red.
+  assert.equal(SIG(FULL({ regionData: null })).tones.networkPresence, 'yellow');
+  assert.notEqual(SIG(FULL({ regionData: null })).signal, 'Review');
+});
+
+test('the count thresholds are >20 green, 10..20 yellow, <10 red', () => {
+  // Boundaries pinned because they are the difference between a Strong and a
+  // Moderate badge on a tracker row.
+  const t = BDPG_STATS.networkCountTone;
+  assert.equal(t(21), 'green');
+  assert.equal(t(20), 'yellow', '20 is NOT green -- the rule is strictly greater');
+  assert.equal(t(10), 'yellow');
+  assert.equal(t(9), 'red');
+  assert.equal(t(0), 'red');
+});
+
+test('an unusable count reads red rather than throwing or passing', () => {
+  const t = BDPG_STATS.networkCountTone;
+  [null, undefined, '', 'x', NaN, {}].forEach((v) => {
+    assert.equal(t(v), 'red', JSON.stringify(v));
+  });
+});
+
+test('type presence looks up the prospect own type, not any type', () => {
+  const rd = { total: 38, byType: { 'Truck Stop': 37, 'Fuel Stop': 1 } };
+  assert.equal(SIG(FULL({ regionData: rd, locationType: 'Truck Stop' })).tones.typePresence, 'green');
+  assert.equal(SIG(FULL({ regionData: rd, locationType: 'Fuel Stop' })).tones.typePresence, 'red');
+});
+
+test('a type absent from the region is yellow, not red', () => {
+  const r = SIG(FULL({ regionData: { total: 38, byType: { 'Fuel Stop': 1 } } }));
+  assert.equal(r.tones.typePresence, 'yellow');
+});
+
+test('type presence cannot be satisfied by an inherited property', () => {
+  // byType comes from a parsed JSON file; a key like "constructor" must not
+  // resolve through the prototype into a count.
+  const r = SIG(FULL({ locationType: 'constructor',
+    regionData: { total: 38, byType: {} } }));
+  assert.equal(r.tones.typePresence, 'yellow');
+});
+
+// ── the roll-up ─────────────────────────────────────────────────────────────
+
+test('any red means Review, whichever judgement it came from', () => {
+  assert.equal(SIG(FULL({ regionPct: -0.1 })).signal, 'Review');
+  assert.equal(SIG(FULL({ regionData: { total: 2, byType: { 'Truck Stop': 37 } } })).signal, 'Review');
+  assert.equal(SIG(FULL({ regionData: { total: 38, byType: { 'Truck Stop': 2 } } })).signal, 'Review');
+});
+
+test('red outranks green: one bad judgement is not averaged away', () => {
+  // Three greens and a red is Review, not Moderate. The signal is a flag for
+  // attention, not a score.
+  const r = SIG(FULL({ regionData: { total: 38, byType: { 'Truck Stop': 1 } } }));
+  assert.equal(r.tones.region, 'green');
+  assert.equal(r.tones.regionPct, 'green');
+  assert.equal(r.tones.networkPresence, 'green');
+  assert.equal(r.tones.typePresence, 'red');
+  assert.equal(r.signal, 'Review');
+});
+
+test('Strong requires all four green; one yellow makes it Moderate', () => {
+  assert.equal(SIG(FULL()).signal, 'Strong');
+  assert.equal(SIG(FULL({ regionPct: 0 })).signal, 'Moderate');
+  assert.equal(SIG(FULL({ regionData: { total: 15, byType: { 'Truck Stop': 37 } } })).signal, 'Moderate');
+  assert.equal(SIG(FULL({ regionData: { total: 38, byType: {} } })).signal, 'Moderate');
+});
+
+test('the signal is only ever one of four values', () => {
+  const seen = new Set();
+  [0.9, 0, -0.1, null].forEach((pct) => {
+    [null, { total: 38, byType: { 'Truck Stop': 37 } }, { total: 5, byType: {} }].forEach((rd) => {
+      ['', 'Truck Stop'].forEach((lt) => {
+        seen.add(SIG(FULL({ regionPct: pct, regionData: rd, locationType: lt,
+          region: pct === null ? null : 'Midwest' })).signal);
+      });
+    });
+  });
+  [...seen].forEach((s) => {
+    assert.ok(['', 'Strong', 'Moderate', 'Review'].includes(s), 'unexpected signal ' + s);
+  });
+});
+
+test('every signal the tracker can receive has a tone to render it with', () => {
+  // The tracker maps signal -> badge colour. A value this function can emit
+  // that the map does not know would render as an unstyled grey chip.
+  const TRACKER_TONES = { Strong: 'green', Moderate: 'yellow', Review: 'red' };
+  ['Strong', 'Moderate', 'Review'].forEach((s) => {
+    assert.ok(TRACKER_TONES[s], s + ' has no tracker tone');
+  });
+  // '' is the fourth, and the tracker renders it as an em dash rather than a
+  // badge -- deliberately not in the map.
+  assert.equal(TRACKER_TONES[''], undefined);
+});
+
+// ── hardening ───────────────────────────────────────────────────────────────
+
+test('no input at all answers blank rather than throwing', () => {
+  [undefined, null, {}].forEach((v) => {
+    const r = SIG(v);
+    assert.equal(r.signal, '');
+    assert.equal(r.missing.length, 4);
+  });
+});
+
+test('a malformed regionData cannot crash the signal', () => {
+  [{}, { total: null }, { byType: null }, { total: 'x', byType: 'y' }].forEach((rd) => {
+    const r = SIG(FULL({ regionData: rd }));
+    assert.ok(['Strong', 'Moderate', 'Review'].includes(r.signal), JSON.stringify(rd));
+  });
+});
+
+test('the function is pure: it does not mutate what it is handed', () => {
+  // It is called from render() and from three field handlers; one of those
+  // writing back into page state would be a very hard bug to find.
+  const input = FULL();
+  const snapshot = JSON.stringify(input);
+  SIG(input);
+  assert.equal(JSON.stringify(input), snapshot);
+});
+
+test('the committed region data produces the signal the tracker will show', () => {
+  // End to end against the real files, so a future recompute that flips a
+  // region negative shows up here rather than on a prospect sheet.
+  const nc = BDPG_STATS.normalizeNetworkContext(require('./network-context.json'));
+  const rv = require('./region_variance.json');
+  const r = SIG(FULL({
+    region: 'Midwest', regionPct: rv.Midwest / 100, regionData: nc.byRegion.Midwest
+  }));
+  assert.equal(r.signal, 'Strong', 'Midwest is +91.5% over 38 locations');
+
+  const sw = SIG(FULL({
+    region: 'Southwest', regionPct: rv.Southwest / 100,
+    regionData: nc.byRegion.Southwest, locationType: 'Truck Stop'
+  }));
+  assert.equal(sw.tones.regionPct, 'red', 'Southwest is -25.1%');
+  assert.equal(sw.signal, 'Review');
+});

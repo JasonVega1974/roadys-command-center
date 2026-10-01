@@ -3952,136 +3952,34 @@ function getCentroid(pathStr, axis){
   // ── the prospect signal ───────────────────────────────────────────────
   //
   // This WAS the Pre-Evaluation panel, a card between Prospect Profile and
-  // Step 1. The panel is gone: every chip on it either repeated something
-  // Step 1 and Step 2 already showed, or had nothing to say until the rep
-  // had filled the form in anyway, so it occupied the most valuable space
-  // on the page to tell you what was two cards further down.
+  // Step 1. The panel is gone; the Strong / Moderate / Review signal it
+  // produced is not, because the Prospects tracker renders it per row,
+  // counts it in the summary chips, and every saved record carries it.
   //
-  // The computation survives because one thing it produced is still read
-  // elsewhere: the Strong / Moderate / Review signal, which the Prospects
-  // tracker renders per row and counts in its summary chips. Nothing below
-  // writes anything the calculator consumes -- the only state it touches is
-  // BDPG.state.prospect.preEvalSignal.
-
-  BDPG.preEvalPrereqsMissing = function () {
-    var p = BDPG.state.prospect;
-    var missing = [];
-    if (!p.name) missing.push('Truck Stop Name');
-    if (!p.city) missing.push('City');
-    if (!BDPG.state.state) missing.push('State');
-    if (!p.locationType) missing.push('Location Type');
-    return missing;
-  };
-
-  // Reuses the Task 5 Location Type -> profile coupling as the only source of
-  // "what profile does this location type suggest" -- never invents a new
-  // mapping for the types LOCTYPE_PROFILE doesn't cover (plain 'Truck Stop',
-  // 'C-Store'), which is why those two correctly fall through to null (chips
-  // 5/6 render '—') rather than guessing a business rule that doesn't exist
-  // anywhere else in the app.
-  BDPG.preEvalMappedProfile = function (locationType) {
-    var rule = BDPG.LOCTYPE_PROFILE[locationType];
-    if (!rule) return null;
-    if (rule.auto) return { profile: rule.auto, roadway: rule.roadway };
-    if (rule.suggest && rule.suggest.length) {
-      var profile = rule.suggest[0];
-      var roadways = BusDevGallonsCalc.getValidRoadways(profile);
-      if (!roadways.length) return null;
-      return { profile: profile, roadway: roadways[0] };
-    }
-    return null;
-  };
-
-  BDPG.preEval = function () {
+  // The rule itself now lives in BDPG_STATS.prospectSignal, under test. It
+  // moved there because this was the last value the page wrote into a saved
+  // record with nothing but a rendered card to prove it still worked -- and
+  // that card no longer exists. All that remains here is gathering the five
+  // page-level facts it needs.
+  //
+  // The card also drew three informational chips -- baseline range, estimated
+  // profile, rewards posture -- which never fed the signal and which nothing
+  // renders now. They are gone with it rather than left computing output no
+  // caller reads.
+  BDPG.prospectSignalInput = function () {
     var s = BDPG.state, p = s.prospect;
     var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
     var nc = BDPG.networkContext;
+    return {
+      name: p.name, city: p.city, stateCode: s.state, locationType: p.locationType,
+      region: region,
+      regionPct: region ? BDPG.effectiveRegionPct(region) : null,
+      regionData: (region && nc && nc.byRegion) ? nc.byRegion[region] : null
+    };
+  };
 
-    function countTone(n) { return n > 20 ? 'green' : (n >= 10 ? 'yellow' : 'red'); }
-
-    // #1 Region identified
-    var c1;
-    if (region) c1 = { label: 'Region identified', text: region, tone: 'green' };
-    else if (!s.state) c1 = { label: 'Region identified', text: 'State not entered', tone: 'yellow' };
-    else c1 = { label: 'Region identified', text: 'Not a recognized state code', tone: 'yellow' };
-
-    // #2 Region performance
-    var pct = region ? BDPG.effectiveRegionPct(region) * 100 : null;
-    var c2;
-    if (pct === null) c2 = { label: 'Region performance', text: '—', tone: 'yellow' };
-    else if (pct > 0) c2 = { label: 'Region performance', text: '+' + pct.toFixed(1) + '%', tone: 'green' };
-    else if (pct === 0) c2 = { label: 'Region performance', text: '0% (not configured)', tone: 'yellow' };
-    else c2 = { label: 'Region performance', text: pct.toFixed(1) + '%', tone: 'red' };
-
-    // #3 Network presence (region total)
-    var c3;
-    var regionData = (region && nc && nc.byRegion) ? nc.byRegion[region] : null;
-    if (!regionData) c3 = { label: 'Network presence (region total)', text: '—', tone: 'yellow' };
-    else c3 = { label: 'Network presence (region total)', text: regionData.total + ' locations in ' + region, tone: countTone(regionData.total) };
-
-    // #4 Location type in network
-    var c4;
-    var locType = p.locationType;
-    if (!locType) {
-      c4 = { label: 'Location type in network', text: 'Location type not set', tone: 'yellow' };
-    } else if (!regionData || !regionData.byType || !regionData.byType.hasOwnProperty(locType)) {
-      c4 = { label: 'Location type in network', text: '—', tone: 'yellow' };
-    } else {
-      var typeCount = regionData.byType[locType];
-      c4 = { label: 'Location type in network', text: typeCount + ' ' + locType + ' in ' + region, tone: countTone(typeCount) };
-    }
-
-    // #5 Baseline range for type -- always blue, informational only
-    var mapped = BDPG.preEvalMappedProfile(locType);
-    var c5;
-    if (mapped) {
-      var rows = BDPG_CONFIG.BASELINE_TABLE.filter(function (r) { return r.profile === mapped.profile; });
-      var baselines = rows.map(function (r) { return r.baseline; });
-      var lo = Math.min.apply(null, baselines), hi = Math.max.apply(null, baselines);
-      c5 = { label: 'Baseline range for type', text: BDPG.fmtGal(lo) + '–' + BDPG.fmtGal(hi), tone: 'blue' };
-    } else {
-      c5 = { label: 'Baseline range for type', text: '—', tone: 'blue' };
-    }
-
-    // #6 Estimated profile -- always blue, suggestion only
-    var c6;
-    var mappedRow = mapped ? BusDevGallonsCalc.getBaselineRow(mapped.profile, mapped.roadway) : null;
-    if (mappedRow) {
-      var lanesDisp = String(mappedRow.lanes).replace('-', '–');
-      c6 = { label: 'Estimated profile', text: mappedRow.profile + ' · ' + mappedRow.roadway + ' · ' + lanesDisp + ' lanes · ' + BDPG.fmtGal(mappedRow.baseline) + ' baseline', tone: 'blue' };
-    } else {
-      c6 = { label: 'Estimated profile', text: '—', tone: 'blue' };
-    }
-
-    // Rewards posture -- informational only. Deliberately NOT part of the
-    // `judged` roll-up below: rewards is a posture the rep sets, not a fact
-    // about the prospect's market, and folding it in would let that choice
-    // flip a "Strong candidate" verdict.
-    //
-    // The percentage is rendered from rewardsPct itself, never a literal: the
-    // band lives in BDPG_CONFIG.REWARDS_ADJUST, and a hardcoded "+5%" here
-    // would keep saying 5% with no error the day that config changes. Same
-    // drift class as the index-keyed REWARD_COLS Task 5 was sent to fix.
-    // Math.abs + the typographic minus keeps the existing chip typography
-    // (−5%, not -5.0%) while the number itself stays derived.
-    var rewardsPct = BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel);
-    var rewardsPctTxt = 'Rewards: ' + (rewardsPct > 0 ? '+' : '−') +
-      (Math.abs(rewardsPct) * 100).toFixed(1).replace(/\.0$/, '') + '%';
-    var cRewards;
-    if (rewardsPct > 0) cRewards = { label: 'Rewards signal', text: rewardsPctTxt, tone: 'green' };
-    else if (rewardsPct < 0) cRewards = { label: 'Rewards signal', text: rewardsPctTxt, tone: 'red' };
-    else cRewards = { label: 'Rewards signal', text: 'Rewards: undecided', tone: 'yellow' };
-
-    // #7 Overall signal -- rolled up from #1-4 only; #5/#6/rewards carry no judgement.
-    var judged = [c1, c2, c3, c4];
-    var anyRed = judged.some(function (c) { return c.tone === 'red'; });
-    var allGreen = judged.every(function (c) { return c.tone === 'green'; });
-    var signal, c7;
-    if (anyRed) { signal = 'Review'; c7 = { label: 'Overall signal', text: 'Review carefully', tone: 'red' }; }
-    else if (allGreen) { signal = 'Strong'; c7 = { label: 'Overall signal', text: 'Strong candidate', tone: 'green' }; }
-    else { signal = 'Moderate'; c7 = { label: 'Overall signal', text: 'Moderate opportunity', tone: 'yellow' }; }
-
-    return { chips: [c1, c2, c3, c4, c5, c6, cRewards, c7], signal: signal };
+  BDPG.preEvalPrereqsMissing = function () {
+    return BDPG_STATS.prospectSignal(BDPG.prospectSignalInput()).missing;
   };
 
   // ── "How this calculator works" tutorial widget ─────────────────────────
@@ -4364,27 +4262,17 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
-  // Keeps BDPG.state.prospect.preEvalSignal in sync with the four
-  // prerequisites and BDPG.preEval(). The record saves this value, the
-  // tracker shows it per row, and the summary chips count it, so it must
-  // never go stale.
+  // The one and only writer of BDPG.state.prospect.preEvalSignal.
   //
-  // It used to be reached as a side effect of rendering the Pre-Evaluation
-  // card. With that card gone it is called from render() and from each
-  // prospect-field handler instead -- the handlers matter because Save can
-  // happen without an intervening render, and a stale signal would be
-  // written into the record.
+  // Called from render() and from each prospect-field handler. Both matter:
+  // render() covers tab switches and the initial paint, and the handlers
+  // cover the case render() cannot -- Save can happen without an intervening
+  // render, and a stale signal would be written straight into the record.
   //
-  // Clears back to '' the moment a prerequisite stops being met, rather
-  // than leaving a previously-computed value sitting there. BDPG.preEval()
-  // itself stays a pure function -- this is the one place that writes.
+  // The '' -on-incomplete gate lives in BDPG_STATS.prospectSignal and is
+  // tested there; this function just stores what it is told.
   BDPG.updatePreEvalSignal = function () {
-    var missing = BDPG.preEvalPrereqsMissing();
-    if (missing.length) {
-      BDPG.state.prospect.preEvalSignal = '';
-      return null;
-    }
-    var result = BDPG.preEval();
+    var result = BDPG_STATS.prospectSignal(BDPG.prospectSignalInput());
     BDPG.state.prospect.preEvalSignal = result.signal;
     return result;
   };
@@ -6616,7 +6504,7 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
-  // Signal -> chip tone, mirrors the tones BDPG.preEval() itself assigns
+  // Signal -> chip tone, mirrors the tones BDPG_STATS.prospectSignal assigns
   // (see the c7 overall-signal chip): Strong=green, Moderate=yellow, Review=red.
   BDPG.PREEVAL_SIGNAL_TONES = { Strong: 'green', Moderate: 'yellow', Review: 'red' };
 
