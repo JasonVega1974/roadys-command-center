@@ -1873,7 +1873,11 @@ function getCentroid(pathStr, axis){
   // a format check -- the id's only contract is that it is unique per row and
   // stable between regenerations.
   BDPG.LOCATION_FIELDS = ['id', 'city', 'state', 'group', 'type', 'dieselLanes',
-    'size', 'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo'];
+    'size', 'roadway', 'distanceToInterstate', 'gallons12mo', 'avgGalMo',
+    // Months in the 12-month gallon report where this location reported
+    // above zero. Half of the qualifying rule -- see
+    // BDPG_STATS.locationQualifies.
+    'reportingMonths'];
 
   // Escapes a value for use as an argument inside a single-quoted JS string
   // that itself sits inside a double-quoted HTML attribute -- the shape every
@@ -2206,6 +2210,7 @@ function getCentroid(pathStr, axis){
       id: loc.id, city: str(loc.city), state: str(loc.state),
       group: str(loc.group), type: str(loc.type),
       gallons12mo: loc.gallons12mo, avgGalMo: loc.avgGalMo,
+      reportingMonths: loc.reportingMonths,
       dieselLanes: loc.dieselLanes, roadway: str(loc.roadway),
       distanceToInterstate: str(loc.distanceToInterstate),
       // Seeded from the file, then overridden below by any admin edit. The
@@ -2719,12 +2724,10 @@ function getCentroid(pathStr, axis){
         (BDPG_STATS.toFinite(eff.avgGalMo) !== null ? BDPG.fmtGal(eff.avgGalMo) : '—') +
         // Number first, marker after -- the delegated sorter parseFloats this
         // cell, so a leading badge would make the column sort as text.
-        (BDPG_STATS.gallonStatus(eff.avgGalMo) === 'non-reporting'
-          ? ' <span class="badge tag-gray" title="Below the ' +
-            BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo reporting floor, so this ' +
-            'location is treated as non-reporting rather than low-volume: excluded from every ' +
-            'average and from anything Apply writes, but still counted and shown.">non-reporting</span>'
-          : '') + '</td>' +
+        BDPG.locDisqualifiedBadgeHtml(eff) + '</td>' +
+      '<td style="text-align:right">' +
+        (BDPG_STATS.toFinite(eff.reportingMonths) !== null
+          ? BDPG_STATS.toFinite(eff.reportingMonths) : '—') + '</td>' +
       '<td>' + BDPG.locSelectHtml(eff.id, 'roadway', BDPG_STATS.ROADWAYS, eff.roadway, '') + '</td>' +
       '<td>' + BDPG.locSelectHtml(eff.id, 'distanceToInterstate', BDPG.DISTANCE_OPTIONS, eff.distanceToInterstate, '') + '</td>' +
       '<td id="bdpg-nl-mark-' + idAttr + '" style="white-space:nowrap">' + BDPG.locMarkCellHtml(eff) + '</td>' +
@@ -2743,6 +2746,52 @@ function getCentroid(pathStr, axis){
             'onclick="BDPG.onToggleLocationHidden(\'' + jsId + '\')">&#10005;</button>') +
       '</td>' +
     '</tr>';
+  };
+
+  // Why a row feeds nothing, said in the row itself.
+  //
+  // A bare "non-reporting" was enough when there was one floor. There are two
+  // rules now and they fail for different reasons -- a site doing 400 gal/mo
+  // across the full year and a site doing 9,000 gal/mo for three months are
+  // both excluded, and telling them apart is the difference between "this
+  // location is quiet" and "we have not measured this location yet". Failing
+  // both is its own case and reads as such rather than picking one.
+  BDPG.locDisqualifiedBadgeHtml = function (eff) {
+    var q = BDPG_STATS.locationQualifies(eff);
+    if (q.ok) return '';
+    var lowGal = q.reasons.indexOf('below-gallons') !== -1;
+    var noGal = q.reasons.indexOf('no-gallons') !== -1;
+    var lowMon = q.reasons.indexOf('below-months') !== -1;
+    var noMon = q.reasons.indexOf('no-months') !== -1;
+
+    var label, why;
+    if ((lowGal || noGal) && (lowMon || noMon)) {
+      // "under both" claims a measured figure that came in below the floor.
+      // A row with no figure at all was never measured, so it keeps the
+      // stronger and more accurate label and lets the tooltip carry the
+      // months half -- otherwise six unmeasured locations read on screen as
+      // six quiet ones.
+      label = noGal ? 'no gallons' : 'under both';
+      why = 'Fails both halves of the qualifying rule: ' +
+        (noGal ? 'no gallons figure' : 'under ' + BDPG.fmtGal(q.minGalMo) + ' gal/mo') + ', and ' +
+        (noMon ? 'no reporting-month count' : 'only ' + q.reportingMonths + ' reporting month' +
+          (q.reportingMonths === 1 ? '' : 's')) + '.';
+    } else if (lowGal || noGal) {
+      label = noGal ? 'no gallons' : 'under ' + BDPG.fmtGal(q.minGalMo);
+      why = noGal
+        ? 'No gallons figure at all, which is not the same as reporting a zero.'
+        : 'Under the ' + BDPG.fmtGal(q.minGalMo) + ' gal/mo floor. A site that sells almost ' +
+          'nothing is not a measurement of a working location.';
+    } else {
+      label = noMon ? 'no months' : q.reportingMonths + ' of ' + q.minMonths + ' months';
+      why = noMon
+        ? 'No reporting-month count on this row, so it cannot be shown to be representative.'
+        : 'Reported in only ' + q.reportingMonths + ' of the 12 months, under the ' +
+          q.minMonths + '-month floor. Its monthly average describes part of a year, not a year.';
+    }
+    return ' <span class="badge tag-gray" title="' + BDPG.escHtml(why) +
+      ' Excluded from every average, median, range, region delta and count — but still ' +
+      'listed and counted here.">' + BDPG.escHtml(label) + '</span>';
   };
 
   // One clipboard path for every copy button on the page.
@@ -2954,7 +3003,7 @@ function getCentroid(pathStr, axis){
     // you cannot see. Every statistic still reads the filtered set.
     var rows = BDPG.effectiveLocations(BDPG.showHidden).filter(BDPG.locationPassesFilter);
     if (!rows.length) {
-      return '<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--muted)">' +
+      return '<tr><td colspan="16" style="text-align:center;padding:20px;color:var(--muted)">' +
         'No locations match the current filters.</td></tr>';
     }
     return rows.map(BDPG.locationRowHtml).join('');
@@ -2967,17 +3016,20 @@ function getCentroid(pathStr, axis){
     // and having a gallon figure are two different things -- a median
     // captioned with the larger count overstates its own evidence.
     return '<b>' + c.complete + ' of ' + c.total + '</b> locations have complete profile data' +
-      ' <span style="color:var(--muted)">(' + c.withGallons + ' of those also clear the ' +
-      BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo reporting floor and feed an average)</span>' +
+      ' <span style="color:var(--muted)">(' + c.withGallons + ' of those also qualify — at least ' +
+      BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and at least ' +
+      BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months — and feed an average)</span>' +
       '<div style="font-size:.78em;color:var(--muted);margin-top:4px">' +
         c.incomplete + ' incomplete — ' + c.needLanes + ' need a diesel lane count, ' + c.needRoadway +
         ' need Roadway, ' + c.backroadOver + ' are Backroad with 5+ lanes (no profile exists), ' +
         c.noProfile + ' have no matching profile. ' + c.notApplicable +
         ' not applicable (a location type no baseline profile describes, so they are not counted as incomplete).</div>' +
       '<div style="font-size:.78em;color:var(--muted);margin-top:4px">' +
-        c.nonReporting + ' of ' + c.total + ' locations report under ' +
-        BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and are treated as non-reporting ' +
-        'rather than low-volume — excluded from every average and from Apply, counted here instead.</div>';
+        c.nonReporting + ' of ' + c.total + ' locations have a gallon figure but do not qualify — ' +
+        'under ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo, under ' +
+        BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months, or both' +
+        (c.missingGallons ? '; a further ' + c.missingGallons + ' have no gallon figure at all' : '') +
+        '. Excluded from every average and from Apply, counted here instead.</div>';
   };
 
   // The single Apply gate. Three independent conditions, each of which has
@@ -2996,8 +3048,9 @@ function getCentroid(pathStr, axis){
   BDPG.baselineApplySkipReason = function (r) {
     if (r.median === null) {
       return r.nNonReporting > 0
-        ? 'every mapped location is below the ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) +
-          ' gal/mo reporting floor, or has no gallon figure'
+        ? 'no mapped location qualifies — each is under ' +
+          BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo, under ' +
+          BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months, or has no gallon figure'
         : 'no locations with a gallon figure';
     }
     if (r.n < 5) return 'n=' + r.n + ' usable, below the n≥5 floor';
@@ -3035,10 +3088,11 @@ function getCentroid(pathStr, axis){
       // rather than folded away, so "n" can never read as the whole sample.
       var nCell = r.n + ' usable' +
         (r.nNonReporting > 0
-          ? '<span style="font-size:.72em;color:var(--muted)" title="Below the ' +
-            BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo floor: ' +
+          ? '<span style="font-size:.72em;color:var(--muted)" title="Do not qualify — under ' +
+            BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo, under ' +
+            BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months, or both: ' +
             BDPG.escHtml(r.nonReportingIds.join(', ')) + '">, ' + r.nNonReporting +
-            ' non-reporting excluded</span>'
+            ' excluded</span>'
           : '') +
         (r.nMissingGallons > 0
           ? '<span style="font-size:.72em;color:var(--muted)" title="Mapped to this profile but carrying no gallon figure at all.">, ' +
@@ -3069,10 +3123,13 @@ function getCentroid(pathStr, axis){
         'profile <i>and</i> carry a gallon figure are counted.</div>' +
       conflictLine +
       '<div style="font-size:.78em;color:var(--muted);margin-bottom:10px">' +
-        'Locations reporting under ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) +
-        ' gal/mo are treated as non-reporting and excluded from every average and from Apply ' +
-        '(' + counts.nonReporting + ' of ' + all.length + ' across the file). A site that sold nine ' +
-        'gallons in a year is not a measurement of a working location.</div>' +
+        'A location feeds the averages only if it reports at least ' +
+        BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and at least ' +
+        BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months. ' +
+        'Anything failing either is excluded from every average and from Apply (' +
+        counts.nonReporting + ' of ' + all.length + ' across the file). The gallons floor keeps a site ' +
+        'that sold almost nothing out of a median; the months floor keeps out a part-year site whose ' +
+        'monthly average describes a few weeks rather than a year.</div>' +
       '<div class="tw" style="margin-bottom:10px"><table class="dt" style="font-size:.8em">' +
         '<thead><tr>' +
           '<th>Baseline Profile</th>' +
@@ -3295,9 +3352,11 @@ function getCentroid(pathStr, axis){
       '<div class="sec-hdr" style="margin-bottom:6px"><div class="sec-title" style="font-size:.85em">' +
         'Distribution by Baseline Profile</div></div>' +
       '<div style="font-size:.74em;color:var(--muted);margin-bottom:4px">' +
-        'Each bar spans the 10th to 90th percentile of reporting locations in that profile, with the ' +
-        'average marked in amber. All eight share one axis (' + BDPG.fmtGal(lo) + '–' +
-        BDPG.fmtGal(hi) + ' gal/mo) so the spreads are comparable to each other.</div>' +
+        'Each bar spans the 10th to 90th percentile of QUALIFYING locations in that profile — at ' +
+        'least ' + BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and at least ' +
+        BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months — with the average marked in amber. ' +
+        'All eight share one axis (' + BDPG.fmtGal(lo) + '–' + BDPG.fmtGal(hi) +
+        ' gal/mo) so the spreads are comparable to each other.</div>' +
       body +
       '<div style="font-size:.7em;color:var(--muted);margin-top:8px;padding-top:7px;' +
         'border-top:1px solid var(--border)">Profiles with fewer than ' +
@@ -3338,8 +3397,9 @@ function getCentroid(pathStr, axis){
         // which is clearer than either label was.
         stat(BDPG.fmtGal(s.meanGalMo), '<b>Total ÷ locations</b> — all network volume ÷ 12 ÷ ' + s.n, true) +
         stat(BDPG.fmtGal(s.medianGalMo), '<b>Average</b> gal/mo — what a typical truck stop does', true) +
-        stat(String(s.n), 'reporting truck stops (clear the ' +
-          BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo floor)') +
+        stat(String(s.n), 'qualifying truck stops (at least ' +
+          BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and at least ' +
+          BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months)') +
         stat(BDPG.fmtGal(s.gallons12mo), 'total 12-month gallons across those locations') +
       '</div>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:10px">' +
@@ -3389,7 +3449,7 @@ function getCentroid(pathStr, axis){
 
   BDPG.blankAddForm = function () {
     return { id: '', city: '', state: '', group: "Roady's", type: 'Truck Stop',
-             dieselLanes: '', roadway: '', gallons12mo: '' };
+             dieselLanes: '', roadway: '', gallons12mo: '', reportingMonths: '' };
   };
 
   BDPG.onOpenAddLocation = function () {
@@ -3472,7 +3532,8 @@ function getCentroid(pathStr, axis){
     if (!f) return;
     // Read straight from the DOM: the per-field handlers patch state as you
     // type, but a field still focused on click may not have fired change yet.
-    ['id', 'city', 'state', 'group', 'type', 'dieselLanes', 'roadway', 'gallons12mo'].forEach(function (k) {
+    ['id', 'city', 'state', 'group', 'type', 'dieselLanes', 'roadway', 'gallons12mo',
+      'reportingMonths'].forEach(function (k) {
       var el = document.getElementById('bdpg-add-' + k);
       if (el) f[k] = el.value;
     });
@@ -3515,7 +3576,8 @@ function getCentroid(pathStr, axis){
         id: a.id, city: a.city, state: a.state, group: a.group, type: a.type,
         dieselLanes: a.dieselLanes, size: a.size, roadway: a.roadway,
         distanceToInterstate: a.distanceToInterstate,
-        gallons12mo: a.gallons12mo, avgGalMo: a.avgGalMo
+        gallons12mo: a.gallons12mo, avgGalMo: a.avgGalMo,
+        reportingMonths: a.reportingMonths
       };
     });
     return JSON.stringify(rows, null, 2);
@@ -3578,6 +3640,9 @@ function getCentroid(pathStr, axis){
           select('roadway', 'Roadway', [''].concat(BDPG_STATS.ROADWAYS), 'Drives Size with the lane count.') +
           field('gallons12mo', '12-month gallons', 'type="number" min="0" step="1"',
             'Leave blank for a non-reporting site. Monthly average is derived as this ÷ 12.') +
+          field('reportingMonths', 'Reporting months', 'type="number" min="0" max="12" step="1"',
+            'Months of the 12 with gallons above zero. Needs ' +
+            BDPG_STATS.MIN_REPORTING_MONTHS + '+ to feed any average.') +
         '</div>' +
         '<div style="margin-top:12px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:.8em">' +
           '<span class="bdpg-lbl" style="display:inline">Size (derived, read-only)</span> ' +
@@ -3773,6 +3838,10 @@ function getCentroid(pathStr, axis){
         '<th>Baseline Profile Fit</th>' +
         '<th style="text-align:right">12-Mo Gallons</th>' +
         '<th style="text-align:right">Avg Gal/Month</th>' +
+        '<th style="text-align:right" title="Months in the 12-month gallon report where this ' +
+          'location reported above zero. A location needs at least ' + BDPG_STATS.MIN_REPORTING_MONTHS +
+          ' to feed any average -- a part-year site can post a healthy monthly figure that ' +
+          'describes a few weeks rather than a year.">Reporting Months</th>' +
         '<th>Roadway</th><th>Distance to Interstate</th><th>Edited</th>' +
         '<th title="Hide this location in this browser only. Hidden rows drop out of every ' +
           'average, count and the baseline analysis. network-locations.json is never changed.">Hide</th>' +
@@ -3783,6 +3852,18 @@ function getCentroid(pathStr, axis){
       BDPG.locAnalysisInnerHtml() + '</div>' +
     BDPG.addLocationModalHtml();
   };
+
+  // The asterisk that hangs off every headline gallons figure that leaves
+  // this screen: the on-screen value profile, the exported packet and the
+  // Copy Summary. ONE string, because three hand-written copies of a
+  // disclosure drift, and the one that drifts is the one on the sheet a
+  // prospect keeps.
+  //
+  // The wording is the client's, verbatim. Note it says "more than 1,000"
+  // while the implemented rule is >= 1,000 -- the gap is one location at
+  // exactly 1,000 gal/mo, of which the committed file has none.
+  BDPG.QUALIFYING_NOTE = '* Based on Roady\'s locations with at least 6 months of reporting '
+    + 'data and more than 1,000 gallons per month.';
 
   BDPG.fmtGal = function (n) { return Math.round(n).toLocaleString(); };
 
@@ -4581,8 +4662,19 @@ function getCentroid(pathStr, axis){
         // the Selected Baseline callout below it cannot disagree.
         '<div class="bdpg-bcard-gal">' + BDPG.fmtGal(cardBase(r).baseline) + '</div>' +
         '<div class="bdpg-bcard-sub">average gal/mo</div>' +
-        '<div class="bdpg-bcard-sub" style="margin-top:2px"># of network locations: ' +
-          cardBase(r).total + '</div>' +
+        // The qualifying n, not the total that match the profile. The card
+        // puts a location count directly under an average, so the count has
+        // to be the sample that produced the average. Under the qualifying
+        // rule the two diverge sharply -- 29 fuel stops in the network, 7 of
+        // them behind the 5,630 -- and printing the larger number here claims
+        // evidence the average does not have. The total stays, as the second
+        // half of "7 of 29", because the footprint is worth knowing too.
+        '<div class="bdpg-bcard-sub" style="margin-top:2px" title="' +
+          cardBase(r).total + ' network locations match this profile; ' + cardBase(r).n +
+          ' of them clear the qualifying rule (at least ' +
+          BDPG.fmtGal(BDPG_STATS.MIN_REPORTING_GAL_MO) + ' gal/mo and at least ' +
+          BDPG_STATS.MIN_REPORTING_MONTHS + ' reporting months) and feed this average.">' +
+          'qualifying locations: ' + cardBase(r).n + ' of ' + cardBase(r).total + '</div>' +
         BDPG.profileRangeBarHtml(rangeMap[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)]) +
       '</div>';
     }).join('');
@@ -5727,7 +5819,7 @@ function getCentroid(pathStr, axis){
       // wording now says so. The number did not change; the claim about it did.
       '<div class="bdpg-hero-num" style="font-size:2.3em;line-height:1.15">' +
         'For a location similar to <span class="bdpg-hero-who">' + who + '</span>, ' +
-        'Roady\'s network averages ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month</div>' +
+        'Roady\'s network averages ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month*</div>' +
       '<div style="font-size:.95em;color:var(--muted);margin-top:8px">' +
         'Estimated from Roady\'s network averages for comparable locations — actual results vary.</div>' +
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
@@ -5741,6 +5833,12 @@ function getCentroid(pathStr, axis){
           'Baseline with region, amenities and rating applied — before pricing and rewards.</div>' +
         BDPG.networkAverageLineHtml() +
       '</div>' +
+      // The asterisk on the headline figure. One string, BDPG.QUALIFYING_NOTE,
+      // shared by this card, the exported packet and the Copy Summary -- the
+      // three places the figure leaves the screen, and three places a
+      // separately-worded footnote would eventually drift apart.
+      '<div style="font-size:.7em;color:var(--muted);margin-top:10px;padding-top:8px;' +
+        'border-top:1px solid var(--border)">' + BDPG.escHtml(BDPG.QUALIFYING_NOTE) + '</div>' +
     '</div>';
   };
 
@@ -6032,7 +6130,7 @@ function getCentroid(pathStr, axis){
       // Same reframing as the on-screen hero and the packet: this is a
       // network average for comparable locations, not a promise to this one.
       'For a location similar to this, Roady\'s network averages ' +
-        BDPG.fmtGal(e.finalGallons) + ' gal/mo — ' + BDPG.fmtGal(e.finalGallons * 12) +
+        BDPG.fmtGal(e.finalGallons) + '* gal/mo — ' + BDPG.fmtGal(e.finalGallons * 12) +
         ' gal/yr. Estimated from network averages; actual results vary.',
       '',
       'Location Profile: ' + BDPG.state.profile + ' / ' + BDPG.state.roadway,
@@ -6056,6 +6154,10 @@ function getCentroid(pathStr, axis){
       lines.push('Inside sales: ' + BDPG.fmtMoney(di.insideSalesMo) + ' /mo · ' + BDPG.fmtMoney(di.insideSalesYr) + ' /yr');
       lines.push('(DEF and inside sales are estimates based on network averages.)');
     }
+    // Last, after the optional DEF block, so the asterisk is answered at the
+    // foot of the message wherever that foot happens to fall.
+    lines.push('');
+    lines.push(BDPG.QUALIFYING_NOTE);
     // An absent location or GS name leaves its slot as '' next to the
     // deliberate blank separator below it. Collapse only those runs -- the
     // single blanks that structure the message stay.

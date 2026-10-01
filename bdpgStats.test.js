@@ -61,8 +61,13 @@ test('sortedNumeric sorts numerically, not lexicographically', () => {
 
 // ── size from lanes ─────────────────────────────────────────────────────────
 
+// reportingMonths: 12 by default -- a fixture has to CLEAR the months half
+// of the qualifying rule, or every test written about the gallons half
+// would quietly be testing the months half instead. Tests about months set
+// it explicitly.
 const loc = (o) => Object.assign(
-  { id: 'R1', type: 'Truck Stop', roadway: 'Highway', dieselLanes: 5, avgGalMo: 8000 }, o);
+  { id: 'R1', type: 'Truck Stop', roadway: 'Highway', dieselLanes: 5,
+    avgGalMo: 8000, reportingMonths: 12 }, o);
 
 test('size tiers: Small 1-3, Medium 4-6, Large 7+', () => {
   const S = (n) => BDPG_STATS.sizeForLanes(n, 'Highway');
@@ -326,15 +331,15 @@ test('the committed file gives every region a usable median and a real count', (
   const locs = require('./network-locations.json').locations;
   const { BusDevGallonsCalc: Calc } = require('./busDevGallonsCalculator.js');
   const a = BDPG_STATS.regionAverages(locs, Calc.resolveRegion);
-  const expect = { Northwest: [8377, 22], West: [5370, 8], Southwest: [7443, 13],
-    Texas: [9423, 9], 'Upper Midwest': [6018, 27], Midwest: [13697, 33],
-    Northeast: [15307, 7], Southeast: [5985, 47] };
+  const expect = { Northwest: [9173, 19], West: [10612, 6], Southwest: [7871, 12],
+    Texas: [9423, 9], 'Upper Midwest': [6226, 26], Midwest: [16102, 31],
+    Northeast: [15307, 7], Southeast: [7658, 42] };
   Object.keys(expect).forEach((reg) => {
     assert.equal(a[reg].median, expect[reg][0], reg + ' median');
     assert.equal(a[reg].n, expect[reg][1], reg + ' n');
     assert.ok(a[reg].n >= BDPG_STATS.DYNAMIC_BASELINE_MIN_N, reg + ' must not need the fallback');
   });
-  assert.equal(Object.values(a).reduce((s, x) => s + x.n, 0), 166);
+  assert.equal(Object.values(a).reduce((s, x) => s + x.n, 0), 152);
 });
 
 // ── completeness under the new statuses ─────────────────────────────────────
@@ -359,8 +364,9 @@ test('completeness separates backroad-over from incomplete-but-fixable', () => {
 
 // ── plausibility floor ──────────────────────────────────────────────────────
 
-test('the reporting floor is 500 gal/mo', () => {
-  assert.equal(BDPG_STATS.MIN_REPORTING_GAL_MO, 500);
+test('the qualifying floors are 1,000 gal/mo and 6 months', () => {
+  assert.equal(BDPG_STATS.MIN_REPORTING_GAL_MO, 1000);
+  assert.equal(BDPG_STATS.MIN_REPORTING_MONTHS, 6);
 });
 
 test('gallonStatus separates missing from non-reporting from usable', () => {
@@ -369,9 +375,9 @@ test('gallonStatus separates missing from non-reporting from usable', () => {
   assert.equal(BDPG_STATS.gallonStatus(''), 'missing');
   // A reported zero is a claim about the location; a missing figure is not.
   assert.equal(BDPG_STATS.gallonStatus(0), 'non-reporting');
-  assert.equal(BDPG_STATS.gallonStatus(499), 'non-reporting');
-  assert.equal(BDPG_STATS.gallonStatus(500), 'usable');
-  assert.equal(BDPG_STATS.gallonStatus(501), 'usable');
+  assert.equal(BDPG_STATS.gallonStatus(999), 'non-reporting');
+  assert.equal(BDPG_STATS.gallonStatus(1000), 'usable');
+  assert.equal(BDPG_STATS.gallonStatus(1001), 'usable');
 });
 
 test('the floor is tunable per call', () => {
@@ -415,11 +421,13 @@ test('the real Fuel Stop sample no longer produces a 152 gal/mo baseline', () =>
 
   const floored = BDPG_STATS.summarizeByProfile(locs, TABLE)
     .find((x) => x.profile === 'Fuel stop');
-  // 570, 625, 2067, 2694, 3318, 5630, 5667, 16014, 17455
-  assert.equal(floored.n, 9);
-  assert.equal(floored.nNonReporting, 15);
+  // At the 1,000 floor: 2067, 2694, 3318, 5630, 5667, 16014, 17455.
+  // The 570 and 625 that survived the old 500 floor no longer do.
+  assert.equal(floored.n, 7);
+  // 17 excluded now, not 15 -- the two that sat between 500 and 1,000.
+  assert.equal(floored.nNonReporting, 17);
   assert.equal(floored.n + floored.nNonReporting, 24);
-  assert.equal(floored.median, 3318);
+  assert.equal(floored.median, 5630);
   // Drawn only from locations that actually sell fuel, and now ABOVE the
   // 2,500 live baseline rather than 94% below it.
   assert.ok(floored.median > 2500);
@@ -641,7 +649,7 @@ test('non-reporting locations are outside the range as well as the median', () =
   assert.ok(r.low >= BDPG_STATS.MIN_REPORTING_GAL_MO, 'low is ' + r.low);
 });
 
-test('every committed profile now has a range to draw', () => {
+test('every committed profile still has a range to draw under the new rule', () => {
   // Small/Backroad was the one profile below the threshold at n=2. The
   // manual sizing pass moved two Backroad sites into it, so it reaches n=4
   // and the distribution panel draws all eight. The placeholder branch in
@@ -704,13 +712,20 @@ test('an empty network summary is nulls, never zeros', () => {
 
 test('the committed file summary is the figure the card shows', () => {
   const s = BDPG_STATS.networkSummary(require('./network-locations.json').locations);
-  assert.equal(s.n, 157);
-  assert.equal(s.gallons12mo, 32033615);
-  assert.equal(s.meanGalMo, 17003);
-  assert.equal(s.medianGalMo, 7829);
+  assert.equal(s.n, 145);
+  assert.equal(s.gallons12mo, 31894422);
+  assert.equal(s.meanGalMo, 18330);
+  assert.equal(s.medianGalMo, 9423);
   // The reason the card prints both: they are not close, and a mean shown
   // alone would contradict every other gallons figure in the tool.
-  assert.ok(s.meanGalMo > s.medianGalMo * 2, 'mean/median ratio is the whole point');
+  //
+  // The gap NARROWED under the qualifying rule -- 2.17x before, 1.95x now
+  // -- which is the months floor doing its job: part-year sites with a
+  // flattering monthly average were stretching the mean away from the
+  // typical site. Still far enough apart to be worth printing both.
+  const ratio = s.meanGalMo / s.medianGalMo;
+  assert.ok(ratio > 1.5, 'mean/median ratio is the whole point, got ' + ratio.toFixed(2));
+  assert.ok(ratio < 2.2, 'if this ever matches the old 2.17x the rule stopped filtering');
 });
 
 // ── group exclusion ─────────────────────────────────────────────────────────
@@ -915,7 +930,8 @@ const TYPES = ['Truck Stop', 'Truck Stop / Service Center', 'Fuel Stop'];
 const RR2 = (st) => ({ UT: 'West', OH: 'Midwest' }[st] || null);
 const FORM = (o) => Object.assign({
   id: 'R09001', city: 'Testville', state: 'UT', group: "Roady's",
-  type: 'Truck Stop', dieselLanes: '9', roadway: 'Interstate', gallons12mo: '600000'
+  type: 'Truck Stop', dieselLanes: '9', roadway: 'Interstate', gallons12mo: '600000',
+  reportingMonths: '12'
 }, o);
 const VOPTS = { existingIds: ['R00001'], allowedTypes: TYPES, roadways: BDPG_STATS.ROADWAYS, resolveRegion: RR2 };
 
@@ -981,7 +997,7 @@ test('an added location carries only allowlisted fields', () => {
   assert.equal(row.address, undefined);
   assert.deepEqual(Object.keys(row).sort(), ['addedLocally', 'avgGalMo', 'city',
     'dieselLanes', 'distanceToInterstate', 'gallons12mo', 'group', 'id',
-    'roadway', 'size', 'state', 'type'].sort());
+    'reportingMonths', 'roadway', 'size', 'state', 'type'].sort());
 });
 
 test('an unmappable Backroad lane count gets no size rather than a wrong one', () => {
@@ -1405,12 +1421,289 @@ test('the committed region data produces the signal the tracker will show', () =
   const r = SIG(FULL({
     region: 'Midwest', regionPct: rv.Midwest / 100, regionData: nc.byRegion.Midwest
   }));
-  assert.equal(r.signal, 'Strong', 'Midwest is +91.5% over 38 locations');
+  assert.equal(r.signal, 'Strong', 'Midwest is +93.5% over 38 locations');
 
   const sw = SIG(FULL({
     region: 'Southwest', regionPct: rv.Southwest / 100,
     regionData: nc.byRegion.Southwest, locationType: 'Truck Stop'
   }));
-  assert.equal(sw.tones.regionPct, 'red', 'Southwest is -25.1%');
+  assert.equal(sw.tones.regionPct, 'red', 'Southwest is -26.3%');
   assert.equal(sw.signal, 'Review');
+});
+
+// ── the qualifying rule ─────────────────────────────────────────────────────
+//
+// Two independent floors, and a location feeds the averages only if it clears
+// BOTH. They catch different failures: the gallons floor keeps out a site
+// that sells almost nothing, the months floor keeps out a site whose
+// twelve-month average actually describes a few weeks.
+
+const Q = (o) => BDPG_STATS.locationQualifies(o);
+
+test('a location clearing both floors qualifies, with no reasons', () => {
+  const q = Q({ avgGalMo: 8000, reportingMonths: 12 });
+  assert.equal(q.ok, true);
+  assert.deepEqual(q.reasons, []);
+  // The verdict carries the floors it applied, because the table prints them.
+  assert.equal(q.minGalMo, 1000);
+  assert.equal(q.minMonths, 6);
+});
+
+test('rule 1 alone: the gallons floor is inclusive at exactly 1,000', () => {
+  assert.equal(Q({ avgGalMo: 1001, reportingMonths: 12 }).ok, true);
+  assert.equal(Q({ avgGalMo: 1000, reportingMonths: 12 }).ok, true);
+  assert.equal(Q({ avgGalMo: 999, reportingMonths: 12 }).ok, false);
+  assert.deepEqual(Q({ avgGalMo: 999, reportingMonths: 12 }).reasons, ['below-gallons']);
+});
+
+test('rule 2 alone: the months floor is inclusive at exactly 6', () => {
+  assert.equal(Q({ avgGalMo: 8000, reportingMonths: 7 }).ok, true);
+  assert.equal(Q({ avgGalMo: 8000, reportingMonths: 6 }).ok, true);
+  assert.equal(Q({ avgGalMo: 8000, reportingMonths: 5 }).ok, false);
+  assert.deepEqual(Q({ avgGalMo: 8000, reportingMonths: 5 }).reasons, ['below-months']);
+});
+
+test('high gallons buy no pass on months', () => {
+  // The case rule 2 exists for: a site that opened in month 11 can post an
+  // excellent monthly average off three weeks of trading.
+  assert.deepEqual(Q({ avgGalMo: 40000, reportingMonths: 2 }).reasons, ['below-months']);
+});
+
+test('a full year of reporting buys no pass on gallons', () => {
+  assert.deepEqual(Q({ avgGalMo: 120, reportingMonths: 12 }).reasons, ['below-gallons']);
+});
+
+test('the combined gate reports both failures, not whichever was checked first', () => {
+  // The table says which rule a row failed, and "under both" is a real and
+  // common state -- a site with no gallons usually has no months either.
+  const q = Q({ avgGalMo: 0, reportingMonths: 0 });
+  assert.equal(q.ok, false);
+  assert.deepEqual(q.reasons, ['below-gallons', 'below-months']);
+});
+
+test('absent data fails rather than passing by omission', () => {
+  // A file predating reportingMonths must not qualify every row on gallons
+  // alone and silently reinstate the old single-floor rule.
+  assert.deepEqual(Q({ avgGalMo: 8000 }).reasons, ['no-months']);
+  assert.deepEqual(Q({ reportingMonths: 12 }).reasons, ['no-gallons']);
+  assert.deepEqual(Q({}).reasons, ['no-gallons', 'no-months']);
+  assert.equal(Q(null).ok, false);
+});
+
+test('"no figure" is distinguished from "figure below the floor"', () => {
+  // Different words in front of a reader, and a different bucket in the
+  // per-profile summary.
+  assert.deepEqual(Q({ avgGalMo: null, reportingMonths: 12 }).reasons, ['no-gallons']);
+  assert.deepEqual(Q({ avgGalMo: 5, reportingMonths: 12 }).reasons, ['below-gallons']);
+  assert.deepEqual(Q({ avgGalMo: 8000, reportingMonths: null }).reasons, ['no-months']);
+  assert.deepEqual(Q({ avgGalMo: 8000, reportingMonths: 0 }).reasons, ['below-months']);
+});
+
+test('both floors are overridable per call, and independently', () => {
+  const loose = { minReportingGalMo: 0, minReportingMonths: 0 };
+  assert.equal(Q({ avgGalMo: 1, reportingMonths: 1 }).ok, false);
+  assert.equal(BDPG_STATS.locationQualifies({ avgGalMo: 1, reportingMonths: 1 }, loose).ok, true);
+  assert.equal(BDPG_STATS.locationQualifies(
+    { avgGalMo: 1, reportingMonths: 12 }, { minReportingGalMo: 0 }).ok, true,
+  'relaxing gallons must not relax months');
+  assert.equal(BDPG_STATS.locationQualifies(
+    { avgGalMo: 8000, reportingMonths: 1 }, { minReportingMonths: 0 }).ok, true,
+  'relaxing months must not relax gallons');
+});
+
+test('qualifies() is the boolean form of the same rule', () => {
+  [{ avgGalMo: 8000, reportingMonths: 12 }, { avgGalMo: 10, reportingMonths: 12 },
+    { avgGalMo: 8000, reportingMonths: 1 }, { avgGalMo: 0, reportingMonths: 0 }, {}]
+    .forEach((l) => {
+      assert.equal(BDPG_STATS.qualifies(l), BDPG_STATS.locationQualifies(l).ok,
+        JSON.stringify(l));
+    });
+});
+
+// ── the gate reaches every computation ──────────────────────────────────────
+
+test('a short-reporting location is excluded from the median it would have moved', () => {
+  const locs = [
+    loc({ id: 'a', avgGalMo: 4000 }), loc({ id: 'b', avgGalMo: 6000 }),
+    loc({ id: 'c', avgGalMo: 8000 }),
+    // Plenty of gallons, almost no year behind them.
+    loc({ id: 'short', avgGalMo: 90000, reportingMonths: 2 })
+  ];
+  const b = BDPG_STATS.profileBaselines(locs, TABLE)[
+    BDPG_STATS.baselineKeyFor('Medium truck stop', 'Highway')];
+  assert.equal(b.n, 3, 'the 2-month site must not count');
+  assert.equal(b.median, 6000, 'and must not drag the median up either');
+});
+
+test('the months floor reaches the ranges, the region figures and the deltas', () => {
+  // Five call sites read the gate. A new computation that forgot it would
+  // publish a figure built from part-year sites.
+  const base = [
+    loc({ id: 'a', state: 'OH', avgGalMo: 4000 }), loc({ id: 'b', state: 'OH', avgGalMo: 6000 }),
+    loc({ id: 'c', state: 'OH', avgGalMo: 8000 })
+  ];
+  const withShort = base.concat([
+    loc({ id: 's', state: 'OH', avgGalMo: 90000, reportingMonths: 3 })]);
+  const K = BDPG_STATS.baselineKeyFor('Medium truck stop', 'Highway');
+  assert.equal(BDPG_STATS.profileRanges(withShort, TABLE)[K].n, 3, 'ranges');
+  assert.equal(BDPG_STATS.regionAverages(withShort, RR).Midwest.n, 3, 'region averages');
+  assert.equal(BDPG_STATS.regionDeltas(withShort, TABLE, RR).Midwest.n, 3, 'region deltas');
+  assert.equal(BDPG_STATS.networkSummary(withShort).n, 3, 'network summary');
+  assert.equal(BDPG_STATS.completenessCounts(withShort, TABLE).withGallons, 3, 'completeness');
+});
+
+test('an excluded location is still counted and still listed', () => {
+  // The rule removes rows from the MATHS, not from the table.
+  const locs = [
+    loc({ id: 'a', avgGalMo: 4000 }), loc({ id: 'b', avgGalMo: 6000 }),
+    loc({ id: 'c', avgGalMo: 8000 }),
+    loc({ id: 'short', avgGalMo: 90000, reportingMonths: 2 }),
+    loc({ id: 'low', avgGalMo: 200 })
+  ];
+  const c = BDPG_STATS.completenessCounts(locs, TABLE);
+  assert.equal(c.total, 5, 'every row is still counted');
+  assert.equal(c.complete, 5, 'and still has a complete profile');
+  assert.equal(c.withGallons, 3, 'but only three feed an average');
+  assert.equal(c.nonReporting, 2, 'two have a figure and still do not qualify');
+});
+
+test('the profile summary separates "no figure" from "does not qualify"', () => {
+  const locs = [
+    loc({ id: 'a', avgGalMo: 4000 }), loc({ id: 'b', avgGalMo: 6000 }),
+    loc({ id: 'low', avgGalMo: 200 }),
+    loc({ id: 'short', avgGalMo: 90000, reportingMonths: 1 }),
+    loc({ id: 'none', avgGalMo: null })
+  ];
+  const r = BDPG_STATS.summarizeByProfile(locs, TABLE)
+    .find((x) => x.profile === 'Medium truck stop' && x.roadway === 'Highway');
+  assert.equal(r.n, 2);
+  assert.equal(r.nNonReporting, 2, 'low gallons and short reporting both land here');
+  assert.equal(r.nMissingGallons, 1, 'a missing figure is its own case');
+  assert.deepEqual(r.nonReportingIds.slice().sort(), ['low', 'short']);
+});
+
+// ── the committed file under the new rule ───────────────────────────────────
+
+test('the committed file qualifies 152 of its 219 locations', () => {
+  const locs = require('./network-locations.json').locations;
+  assert.equal(locs.length, 219);
+  assert.equal(locs.filter((l) => BDPG_STATS.qualifies(l)).length, 152);
+});
+
+test('every committed location carries a reportingMonths within 0..12', () => {
+  // A row missing it would silently drop out of every average; a row reading
+  // 13 would mean the generator is counting something other than months.
+  require('./network-locations.json').locations.forEach((l) => {
+    const m = BDPG_STATS.toFinite(l.reportingMonths);
+    assert.ok(m !== null, l.id + ' has no reportingMonths');
+    assert.ok(m >= 0 && m <= 12, l.id + ' has reportingMonths ' + m);
+  });
+});
+
+test('the qualifying 152 are exactly the locations behind the eight medians', () => {
+  // Cross-check on the pinned per-profile n values in
+  // busDevGallonsCalculator.test.js: if they sum to anything but 152, a
+  // median is being reached by a route that skips the gate.
+  const b = BDPG_STATS.profileBaselines(
+    require('./network-locations.json').locations, BDPG_CONFIG.BASELINE_TABLE);
+  const total = Object.keys(b).reduce((s, k) => s + b[k].n, 0);
+  assert.equal(total, 152);
+});
+
+test('raising a floor can only shrink a sample, never grow one', () => {
+  // A property rather than a pinned number: guards against a future edit
+  // inverting one of the two comparisons.
+  const locs = require('./network-locations.json').locations;
+  const loose = BDPG_STATS.profileBaselines(locs, BDPG_CONFIG.BASELINE_TABLE,
+    { minReportingGalMo: 0, minReportingMonths: 0 });
+  const live = BDPG_STATS.profileBaselines(locs, BDPG_CONFIG.BASELINE_TABLE);
+  Object.keys(live).forEach((k) => {
+    assert.ok(live[k].n <= loose[k].n,
+      k + ': strict n ' + live[k].n + ' > loose n ' + loose[k].n);
+  });
+});
+
+test('the new rule actually bites -- the old 500 floor admitted more', () => {
+  // Proof this is a change in which locations count, not a relabelling.
+  const locs = require('./network-locations.json').locations;
+  const oldRule = locs.filter((l) => {
+    const g = BDPG_STATS.toFinite(l.avgGalMo);
+    return g !== null && g >= 500;
+  }).length;
+  assert.equal(oldRule, 166);
+  assert.equal(locs.filter((l) => BDPG_STATS.qualifies(l)).length, 152);
+});
+
+test('an added location needs reporting months to count, and can carry them', () => {
+  // Without reportingMonths on the add path a locally added location would
+  // join the table, be marked LOCAL, and then contribute to nothing.
+  const withMonths = BDPG_STATS.normalizeAddedLocation(FORM(), { allowedTypes: TYPES });
+  assert.equal(withMonths.reportingMonths, 12);
+  assert.equal(BDPG_STATS.qualifies(withMonths), true);
+
+  const without = BDPG_STATS.normalizeAddedLocation(
+    FORM({ reportingMonths: '' }), { allowedTypes: TYPES });
+  assert.equal(without.reportingMonths, null);
+  assert.equal(BDPG_STATS.qualifies(without), false,
+    'and it says so on the row rather than quietly counting');
+});
+
+test('an added location clamps reporting months to the 12 that exist', () => {
+  const mk = (m) => BDPG_STATS.normalizeAddedLocation(
+    FORM({ reportingMonths: m }), { allowedTypes: TYPES }).reportingMonths;
+  assert.equal(mk('99'), 12);
+  assert.equal(mk('-3'), 0);
+  assert.equal(mk('7.8'), 7, 'a part month is not a reporting month');
+  assert.equal(mk('abc'), null);
+});
+
+test('"measured and short" is held apart from "never measured"', () => {
+  // The caption prints both, and a reader who cannot add the printed numbers
+  // up to the total reasonably assumes some rows went missing.
+  const locs = [
+    loc({ id: 'ok', avgGalMo: 8000 }),
+    loc({ id: 'low', avgGalMo: 200 }),
+    loc({ id: 'short', avgGalMo: 90000, reportingMonths: 2 }),
+    loc({ id: 'none', avgGalMo: null }),
+    loc({ id: 'none2', avgGalMo: null, reportingMonths: 0 })
+  ];
+  const c = BDPG_STATS.completenessCounts(locs, TABLE);
+  assert.equal(c.withGallons, 1);
+  assert.equal(c.nonReporting, 2, 'low gallons and short reporting: measured, excluded');
+  assert.equal(c.missingGallons, 2, 'no figure at all, whatever the months say');
+  assert.equal(c.withGallons + c.nonReporting + c.missingGallons, c.total,
+    'the three buckets must partition the file, with no row in two of them');
+});
+
+test('the committed file partitions into 152 + 61 + 6', () => {
+  // The three numbers the Network Locations card prints. They have to add up
+  // to 219 on screen.
+  const c = BDPG_STATS.completenessCounts(
+    require('./network-locations.json').locations, BDPG_CONFIG.BASELINE_TABLE);
+  assert.equal(c.total, 219);
+  assert.equal(c.withGallons, 152, 'qualify and feed the averages');
+  assert.equal(c.nonReporting, 61, 'have a figure and still fail a floor');
+  assert.equal(c.missingGallons, 6, 'have no figure at all');
+  assert.equal(c.withGallons + c.nonReporting + c.missingGallons, 219);
+});
+
+test('the committed file carries exactly the twelve fields the page expects', () => {
+  // The page warns in red about any key it does not recognise, because an
+  // unexpected field in a public file is how a member name or phone number
+  // would leak. Nothing was testing it, and `sizeSource` sat in the committed
+  // file firing that warning until someone happened to look -- a guard whose
+  // alarm nobody checks is not a guard.
+  //
+  // This list must stay identical to BDPG.LOCATION_FIELDS in
+  // bus-dev-potential-gallons/index.html. It is duplicated rather than
+  // imported because that allowlist lives inside the page's inline script,
+  // which has no module boundary to require across.
+  const ALLOWED = ['avgGalMo', 'city', 'dieselLanes', 'distanceToInterstate',
+    'gallons12mo', 'group', 'id', 'reportingMonths', 'roadway', 'size', 'state', 'type'];
+  const locs = require('./network-locations.json').locations;
+  const seen = [...new Set(locs.flatMap((l) => Object.keys(l)))].sort();
+  assert.deepEqual(seen, ALLOWED.slice().sort());
+  // Deliberately absent: `name`. Its absence is what makes the page's
+  // unexpected-key warning fire if names ever leak into the public file.
+  assert.ok(!seen.includes('name'));
 });

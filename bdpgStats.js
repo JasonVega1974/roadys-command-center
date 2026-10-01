@@ -101,25 +101,39 @@
   var SIZES = ['Small', 'Medium', 'Large'];
   var ROADWAYS = ['Backroad', 'Highway', 'Interstate'];
 
-  // A location reporting less than this many gallons a month is treated as
-  // non-reporting, not as a low-volume site: excluded from every median and
-  // from anything the Apply button writes, but kept visible and counted.
+  // ── the qualifying rule ───────────────────────────────────────────────────
   //
-  // This is a PLAUSIBILITY floor, and it is a different guard from the n>=5
-  // sample-size floor -- the two catch different failures and neither
-  // substitutes for the other. Measured on the real 249-location file: 27
-  // locations report exactly 0 and 35 report under 100. The 24 Fuel Stops
-  // there run 0, 0, 0, 0, 2, 9, 12, 14, 27, 48, 112, ... with a median of 152
-  // against a live baseline of 2,500. n=24 clears the sample-size floor
-  // comfortably, so without this constant a two-click Apply would have cut
-  // that baseline by 94% and the calculator would have started quoting
-  // prospects ~150 gal/mo. A site that sold nine gallons in a year is not a
-  // measurement of a working location.
+  // A location feeds the averages, medians, p10/p90, region deltas and counts
+  // only if BOTH hold:
   //
-  // Tunable on purpose: the right threshold is a business judgement about
-  // what counts as an active location, not a property of the maths. Pass
-  // opts.minReportingGalMo to override.
-  var MIN_REPORTING_GAL_MO = 500;
+  //   avgGalMo        >= MIN_REPORTING_GAL_MO   (1,000)
+  //   reportingMonths >= MIN_REPORTING_MONTHS   (6)
+  //
+  // Anything failing either is still shown in the Network Locations table,
+  // marked with the reason, but contributes to nothing.
+  //
+  // The two catch DIFFERENT failures, which is why neither replaces the
+  // other:
+  //
+  //   The gallons floor is a plausibility guard. Measured on the real file:
+  //   locations reporting exactly 0, and others in single and double digits.
+  //   A site that sold nine gallons in a year is not a measurement of a
+  //   working location, and letting it into a median drags the baseline
+  //   toward the floor -- an earlier version of this file would have cut the
+  //   Fuel stop baseline by 94% without this guard.
+  //
+  //   The months floor is a REPRESENTATIVENESS guard, and it catches what the
+  //   gallons floor cannot: a location that opened in month 11, or closed in
+  //   month 2, can post a perfectly healthy avgGalMo while that average
+  //   describes a few weeks rather than a year. Its gallons look fine; its
+  //   twelve-month average is an artefact of the window.
+  //
+  // Raised from 500 and introduced respectively on 2026-10-01. Both are
+  // business judgements about what counts as an active, measurable location,
+  // not properties of the maths -- override per call with
+  // opts.minReportingGalMo / opts.minReportingMonths.
+  var MIN_REPORTING_GAL_MO = 1000;
+  var MIN_REPORTING_MONTHS = 6;
 
   // Type -> how a location reaches a baseline profile at all.
   //   'fuel'      one profile, reached on Type alone
@@ -246,6 +260,12 @@
   //   'usable'         a real figure at or above the floor
   //   'non-reporting'  a real figure below the floor
   //   'missing'        no figure at all -- not the same as reporting a zero
+  //
+  // This is HALF the qualifying rule. Nothing that feeds a computation may
+  // call it alone -- use locationQualifies(), which also applies the months
+  // floor. It stays separate because the table distinguishes "reports almost
+  // nothing" from "reports plenty, but only briefly", and those need
+  // different words in front of a reader.
   function gallonStatus(avgGalMo, opts) {
     var floor = optFloor(opts);
     var g = toFinite(avgGalMo);
@@ -257,6 +277,45 @@
     var f = opts && toFinite(opts.minReportingGalMo);
     return f === null || f === undefined ? MIN_REPORTING_GAL_MO : f;
   }
+
+  function optMonths(opts) {
+    var m = opts && toFinite(opts.minReportingMonths);
+    return m === null || m === undefined ? MIN_REPORTING_MONTHS : m;
+  }
+
+  // The single gate every computation reads through.
+  //
+  // Returns the verdict AND why, because the table has to tell a reader
+  // which rule a row failed -- and because "fails both" is a real and
+  // common state (a site with no gallons usually has no reporting months
+  // either), so the reasons are a list rather than a first-match string.
+  //
+  // Months missing entirely is a FAILURE, not a pass. A file predating the
+  // reportingMonths field would otherwise qualify every row on gallons
+  // alone and silently reinstate the old rule; better that such a file
+  // visibly qualifies nothing until it is regenerated.
+  function locationQualifies(loc, opts) {
+    var l = loc || {};
+    var floor = optFloor(opts);
+    var minMonths = optMonths(opts);
+    var g = toFinite(l.avgGalMo);
+    var m = toFinite(l.reportingMonths);
+    var reasons = [];
+    if (g === null) reasons.push('no-gallons');
+    else if (g < floor) reasons.push('below-gallons');
+    if (m === null) reasons.push('no-months');
+    else if (m < minMonths) reasons.push('below-months');
+    return {
+      ok: reasons.length === 0,
+      reasons: reasons,
+      avgGalMo: g,
+      reportingMonths: m,
+      minGalMo: floor,
+      minMonths: minMonths
+    };
+  }
+
+  function qualifies(loc, opts) { return locationQualifies(loc, opts).ok; }
 
   // Does Size participate in this type's profile lookup at all? Only truck
   // stops -- a fuel stop reaches its single profile on Type alone.
@@ -348,7 +407,7 @@
       // `total` counts every location in the profile, reporting or not --
       // it is what the Step 1 card shows as "# of network locations".
       b.total++;
-      if (gallonStatus(loc.avgGalMo, opts) === 'usable') b.gallons.push(toFinite(loc.avgGalMo));
+      if (qualifies(loc, opts)) b.gallons.push(toFinite(loc.avgGalMo));
     });
     var out = {};
     Object.keys(byKey).forEach(function (k) {
@@ -385,7 +444,7 @@
     var bases = profileBaselines(locations, baselineTable, opts);
     var byRegion = {};
     (locations || []).forEach(function (loc) {
-      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      if (!qualifies(loc, opts)) return;
       var m = matchBaselineProfile(loc, baselineTable);
       if (m.status !== 'ok' || !m.row) return;
       var b = bases[baselineKeyFor(m.row.profile, m.row.roadway)];
@@ -424,7 +483,7 @@
       buckets[baselineKeyFor(r.profile, r.roadway)] = [];
     });
     (locations || []).forEach(function (loc) {
-      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      if (!qualifies(loc, opts)) return;
       var m = matchBaselineProfile(loc, baselineTable);
       if (m.status !== 'ok' || !m.row) return;
       var k = baselineKeyFor(m.row.profile, m.row.roadway);
@@ -753,7 +812,16 @@
       dieselLanes: (lanes === null || lanes < 0 || lanes > 99) ? null : Math.floor(lanes),
       roadway: roadway,
       distanceToInterstate: null,
-      gallons12mo: (g12 === null || g12 < 0) ? null : g12
+      gallons12mo: (g12 === null || g12 < 0) ? null : g12,
+      // Carried, and clamped to 0..12. Without it an added location could
+      // never satisfy the months half of the qualifying rule, so it would
+      // join the table, be marked LOCAL, and then contribute to nothing --
+      // a feature that looks like it works and silently does not.
+      reportingMonths: (function () {
+        var m = toFinite(row.reportingMonths);
+        if (m === null) return null;
+        return Math.max(0, Math.min(12, Math.floor(m)));
+      })()
     };
     out.avgGalMo = out.gallons12mo === null ? null : Math.round(out.gallons12mo / 12);
     var size = sizeForLanes(out.dieselLanes, out.roadway);
@@ -781,7 +849,7 @@
     var gallons12mo = 0;
     (locations || []).forEach(function (loc) {
       if (typeClass(loc.type) !== 'truckstop') return;
-      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      if (!qualifies(loc, opts)) return;
       vals.push(toFinite(loc.avgGalMo));
       var g = toFinite(loc.gallons12mo);
       if (g !== null) gallons12mo += g;
@@ -818,7 +886,7 @@
   function regionAverages(locations, resolveRegion, opts) {
     var byRegion = {};
     (locations || []).forEach(function (loc) {
-      if (gallonStatus(loc.avgGalMo, opts) !== 'usable') return;
+      if (!qualifies(loc, opts)) return;
       var reg = resolveRegion ? resolveRegion(loc.state) : loc.region;
       if (!reg) return;
       (byRegion[reg] = byRegion[reg] || []).push(toFinite(loc.avgGalMo));
@@ -862,14 +930,17 @@
       if (!Object.prototype.hasOwnProperty.call(buckets, k)) return;
       var b = buckets[k];
       b.nMapped++;
-      var st = gallonStatus(loc.avgGalMo, opts);
-      if (st === 'usable') b.gallons.push(toFinite(loc.avgGalMo));
-      else if (st === 'non-reporting') {
+      var qa = locationQualifies(loc, opts);
+      if (qa.ok) b.gallons.push(qa.avgGalMo);
+      else if (qa.reasons.indexOf('no-gallons') !== -1) b.nMissingGallons++;
+      else {
+        // Everything that has a gallon figure but fails the rule -- on
+        // volume, on months, or on both. Ids are carried so the Apply
+        // confirmation can name what it dropped rather than report a bare
+        // count.
         b.nNonReporting++;
-        // Ids are carried so the Apply confirmation can name what it dropped
-        // rather than report a bare count.
         b.nonReportingIds.push(String(loc.id));
-      } else b.nMissingGallons++;
+      }
     });
 
     return order.map(function (k) {
@@ -904,18 +975,29 @@
       needLanes: 0, needRoadway: 0,
       // Counted across the whole file, not just mapped rows: a non-reporting
       // location is non-reporting whether or not anyone has sized it yet.
-      nonReporting: 0
+      //
+      // The two are disjoint and deliberately so: 'nonReporting' is "we
+      // measured it and it does not clear the bar", 'missingGallons' is "we
+      // have not measured it". Held apart because the caption has to
+      // reconcile -- withGallons + nonReporting + missingGallons is the whole
+      // file, and a reader who cannot add the printed numbers up to the total
+      // reasonably assumes some rows went missing.
+      nonReporting: 0,
+      missingGallons: 0
     };
     (locations || []).forEach(function (loc) {
       out.total++;
-      if (gallonStatus(loc.avgGalMo, opts) === 'non-reporting') out.nonReporting++;
+      var qc = locationQualifies(loc, opts);
+      if (qc.reasons.indexOf('no-gallons') !== -1) out.missingGallons++;
+      else if (!qc.ok) out.nonReporting++;
       var m = matchBaselineProfile(loc, baselineTable);
       if (m.status === 'ok') {
         out.complete++;
         // "withGallons" means a figure the medians will actually use, so the
-        // floor applies here too -- otherwise this count would promise
-        // evidence the analysis then declines to use.
-        if (gallonStatus(loc.avgGalMo, opts) === 'usable') out.withGallons++;
+        // FULL qualifying rule applies here, not just the gallons half --
+        // otherwise this count would promise evidence the analysis then
+        // declines to use.
+        if (qc.ok) out.withGallons++;
       } else if (m.status === 'not-applicable') {
         out.notApplicable++;
       } else {
@@ -955,7 +1037,10 @@
     normalizeAddedLocation: normalizeAddedLocation,
     networkSummary: networkSummary,
     gallonStatus: gallonStatus,
+    locationQualifies: locationQualifies,
+    qualifies: qualifies,
     MIN_REPORTING_GAL_MO: MIN_REPORTING_GAL_MO,
+    MIN_REPORTING_MONTHS: MIN_REPORTING_MONTHS,
     sizeAffectsProfile: sizeAffectsProfile,
     sizeForLanes: sizeForLanes,
     BACKROAD_MAX_LANES: BACKROAD_MAX_LANES,

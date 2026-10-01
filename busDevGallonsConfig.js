@@ -69,15 +69,21 @@
   // network` as of this file, so nothing below is currently displayed --
   // see the paragraph above about why they are kept accurate anyway.
 
+  // Recomputed 2026-10-01 under the qualifying rule (>= 1,000 gal/mo AND
+  // >= 6 reporting months). 152 of 219 locations qualify, down from 166
+  // under the old 500 gal/mo floor alone. Most medians rose, several a long
+  // way -- Large/Highway 3,216 -> 15,307 -- because the months floor removes
+  // part-year locations whose twelve-month average was an artefact of a
+  // short window rather than a measurement of a working site.
   var BASELINE_TABLE = [
-    { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 3318 },
+    { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 5630 },
     { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-4', baseline: 6174 },
     { profile: 'Small truck stop',  roadway: 'Highway',    lanes: '1-3', baseline: 2338 },
-    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 7647 },
-    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 4013 },
-    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10210 },
-    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 3216 },
-    { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 20232 }
+    { profile: 'Small truck stop',  roadway: 'Interstate', lanes: '1-3', baseline: 8400 },
+    { profile: 'Medium truck stop', roadway: 'Highway',    lanes: '4-6', baseline: 5250 },
+    { profile: 'Medium truck stop', roadway: 'Interstate', lanes: '4-6', baseline: 10492 },
+    { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 15307 },
+    { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 23565 }
   ];
 
   // ── data version ──────────────────────────────────────────────────────────
@@ -103,7 +109,7 @@
   // deliberately not pinned to this -- it is a separate export on its own
   // cadence. It still gets the cache-buster; the param only has to change
   // when anything in the data set does.
-  var DATA_ASOF = '2026-09-30';
+  var DATA_ASOF = '2026-10-01';
 
   // Geographic-variance regions for the calculator only. Not the GS-territory
   // REGIONS map already in index.html — different partition, different purpose.
