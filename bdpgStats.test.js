@@ -781,3 +781,294 @@ test('group and type exclusion compose, and normalizing stays idempotent', () =>
   assert.deepEqual(BDPG_STATS.normalizeNetworkContext(once), once);
   assert.equal(src.activeTotal, 99, 'the input is never mutated');
 });
+
+// ── item 1: the data version keeps the cache key and the migration honest ───
+
+test('DATA_ASOF matches the committed data files it versions', () => {
+  // Two jobs ride on this constant: the ?v= cache key and the localStorage
+  // migration cutoff. If it drifts from the files, the cache pins to a stale
+  // key AND stale per-browser overrides are waved through as current -- the
+  // exact pair of failures it was added to end.
+  assert.equal(BDPG_CONFIG.DATA_ASOF, require('./network-locations.json').asOf);
+  assert.equal(BDPG_CONFIG.DATA_ASOF, require('./region_variance.json').asOf);
+});
+
+test('an undated store is stale, whatever it contains', () => {
+  // Every pre-migration browser holds one of these: a bare map of edits with
+  // no asOf. It was written against lane counts and roadways that have since
+  // been corrected in the file, so none of it can be trusted to still mean
+  // anything.
+  const bare = { R001: { roadway: 'Backroad' }, R002: { dieselLanes: 2 } };
+  const st = BDPG_STATS.datedStoreState(bare, '2026-09-30', 'edits');
+  assert.equal(st.stale, true);
+  assert.equal(st.dated, false);
+  assert.equal(st.asOf, null);
+  assert.deepEqual(st.body, bare, 'the body still comes back so it can be counted in the notice');
+});
+
+test('a store stamped with the current asOf is kept', () => {
+  const st = BDPG_STATS.datedStoreState(
+    { asOf: '2026-09-30', edits: { R001: { roadway: 'Highway' } } }, '2026-09-30', 'edits');
+  assert.equal(st.stale, false);
+  assert.equal(st.dated, true);
+  assert.equal(st.asOf, '2026-09-30');
+  assert.deepEqual(st.body, { R001: { roadway: 'Highway' } });
+});
+
+test('a store stamped with any other asOf is stale', () => {
+  ['2026-09-24', '2026-10-01', '', 'nonsense'].forEach((v) => {
+    const st = BDPG_STATS.datedStoreState({ asOf: v, edits: { A: 1 } }, '2026-09-30', 'edits');
+    assert.equal(st.stale, true, JSON.stringify(v));
+  });
+});
+
+test('the dated-store check reads whichever body key it is given', () => {
+  // Edits store under `edits`, hidden rows under `ids`. One rule, two stores.
+  const hidden = { asOf: '2026-09-30', ids: ['R001', 'R002'] };
+  assert.deepEqual(
+    BDPG_STATS.datedStoreState(hidden, '2026-09-30', 'ids').body, ['R001', 'R002']);
+  // Asked for the wrong key, the blob does not look dated at all -- so it is
+  // treated as stale rather than silently read as empty.
+  assert.equal(BDPG_STATS.datedStoreState(hidden, '2026-09-30', 'edits').stale, true);
+});
+
+test('nothing stored means nothing to clear', () => {
+  [null, undefined, 'x', 7].forEach((v) => {
+    const st = BDPG_STATS.datedStoreState(v, '2026-09-30', 'edits');
+    assert.equal(st.stale, false, JSON.stringify(v));
+    assert.equal(st.body, null);
+  });
+});
+
+// ── item 4: the profile-anchored slider ────────────────────────────────────
+
+const RANGES = () => BDPG_STATS.profileRanges(
+  require('./network-locations.json').locations, BDPG_CONFIG.BASELINE_TABLE);
+
+test('the slider ends are the percentages that land on p10 and p90', () => {
+  const pr = BDPG_STATS.pricingRangeForProfile(
+    { n: 9, low: 673, mid: 3216, high: 28006 }, BDPG_CONFIG.PRICING_RANGE);
+  assert.equal(pr.source, 'profile');
+  // (673 / 3216) - 1 = -0.7907...   (28006 / 3216) - 1 = 7.7083...
+  assert.equal(Math.round(pr.lowPct * 100), -79);
+  assert.equal(Math.round(pr.highPct * 100), 771);
+  // Ends snap OUTWARD, so the real percentiles stay inside reach.
+  assert.ok(pr.min <= pr.lowPct, pr.min + ' must not exclude ' + pr.lowPct);
+  assert.ok(pr.max >= pr.highPct, pr.max + ' must not exclude ' + pr.highPct);
+});
+
+test('0% is exactly on the step grid for every committed profile', () => {
+  // "Default position is 0%" is only true if 0 is a position the control can
+  // produce. min is snapped to a whole multiple of step, which makes it so.
+  const ranges = RANGES();
+  Object.keys(ranges).forEach((k) => {
+    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
+    const stepPts = Math.round(pr.step * 100);
+    const minPts = Math.round(pr.min * 100);
+    // Math.abs: a negative min gives -0 from %, and strict equality treats
+    // -0 and 0 as different values even though the grid check passed.
+    assert.equal(Math.abs(minPts % stepPts), 0,
+      k + ': min ' + minPts + ' is off the ' + stepPts + ' grid');
+    assert.ok(pr.min <= 0 && pr.max >= 0, k + ': 0 must be inside the range');
+  });
+});
+
+test('the max is reachable: every range is a whole number of steps wide', () => {
+  // An <input type=range> whose max is not a whole multiple of its step from
+  // min simply cannot be dragged to its own maximum.
+  const ranges = RANGES();
+  Object.keys(ranges).forEach((k) => {
+    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
+    const steps = (Math.round(pr.max * 100) - Math.round(pr.min * 100)) / Math.round(pr.step * 100);
+    assert.equal(Math.round(steps), steps, k + ' is ' + steps + ' steps wide');
+  });
+});
+
+test('the step keeps every profile within a usable number of positions', () => {
+  // The reason the step is adaptive: a fixed 5% gives Small/Backroad 33
+  // positions and Large/Highway 170. Aiming at ~100 keeps the feel even.
+  const ranges = RANGES();
+  Object.keys(ranges).forEach((k) => {
+    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
+    const steps = (Math.round(pr.max * 100) - Math.round(pr.min * 100)) / Math.round(pr.step * 100);
+    assert.ok(steps >= 40 && steps <= 200, k + ' has ' + steps + ' positions');
+    assert.ok([1, 5, 10, 25].includes(Math.round(pr.step * 100)),
+      k + ' step ' + pr.step + ' is not a round number');
+  });
+});
+
+test('pricingStepFor aims at about a hundred positions', () => {
+  assert.equal(BDPG_STATS.pricingStepFor(166), 1);    // 166 positions
+  assert.equal(BDPG_STATS.pricingStepFor(473), 5);    // 95
+  assert.equal(BDPG_STATS.pricingStepFor(850), 10);   // 85
+  assert.equal(BDPG_STATS.pricingStepFor(3000), 25);  // 120
+});
+
+test('a profile with too few locations falls back to the flat range', () => {
+  const fb = BDPG_CONFIG.PRICING_RANGE;
+  [{ n: 2, low: null, mid: null, high: null }, { n: 0, low: null, mid: null, high: null }]
+    .forEach((rg) => {
+      const pr = BDPG_STATS.pricingRangeForProfile(rg, fb);
+      assert.equal(pr.source, 'fallback');
+      assert.equal(pr.min, fb.min);
+      assert.equal(pr.max, fb.max);
+      assert.equal(pr.lowPct, null, 'nothing to attribute the ends to');
+    });
+});
+
+test('a degenerate or unusable spread falls back rather than dividing by zero', () => {
+  const fb = BDPG_CONFIG.PRICING_RANGE;
+  // p10 === p90: every reporting location reads the same, so there is no
+  // spread to anchor to and (high/mid - 1) === (low/mid - 1).
+  assert.equal(BDPG_STATS.pricingRangeForProfile(
+    { n: 5, low: 5000, mid: 5000, high: 5000 }, fb).source, 'fallback');
+  // A zero or negative median would make the ratios meaningless.
+  assert.equal(BDPG_STATS.pricingRangeForProfile(
+    { n: 5, low: 0, mid: 0, high: 0 }, fb).source, 'fallback');
+  assert.equal(BDPG_STATS.pricingRangeForProfile(null, fb).source, 'fallback');
+});
+
+test('the anchors are the same figures the range bars draw', () => {
+  // The slider caption names p10/average/p90 and the Step 1 bar draws them.
+  // If these ever came from different calls the page would contradict itself.
+  const ranges = RANGES();
+  Object.keys(ranges).forEach((k) => {
+    const rg = ranges[k];
+    if (rg.mid === null) return;
+    const pr = BDPG_STATS.pricingRangeForProfile(rg, BDPG_CONFIG.PRICING_RANGE);
+    assert.equal(pr.low, rg.low, k);
+    assert.equal(pr.mid, rg.mid, k);
+    assert.equal(pr.high, rg.high, k);
+    assert.equal(pr.n, rg.n, k);
+  });
+});
+
+test('the slider ends really do reproduce p10 and p90 gallons', () => {
+  // The end-to-end claim: baseline x (1 + endPct) lands on the percentile the
+  // end was derived from. This is what makes the percentages attributable.
+  const ranges = RANGES();
+  Object.keys(ranges).forEach((k) => {
+    const rg = ranges[k];
+    if (rg.mid === null) return;
+    const pr = BDPG_STATS.pricingRangeForProfile(rg, BDPG_CONFIG.PRICING_RANGE);
+    assert.equal(Math.round(rg.mid * (1 + pr.lowPct)), rg.low, k + ' low end');
+    assert.equal(Math.round(rg.mid * (1 + pr.highPct)), rg.high, k + ' high end');
+  });
+});
+
+// ── item 6: adding a location ──────────────────────────────────────────────
+
+const TYPES = ['Truck Stop', 'Truck Stop / Service Center', 'Fuel Stop'];
+const RR2 = (st) => ({ UT: 'West', OH: 'Midwest' }[st] || null);
+const FORM = (o) => Object.assign({
+  id: 'R09001', city: 'Testville', state: 'UT', group: "Roady's",
+  type: 'Truck Stop', dieselLanes: '9', roadway: 'Interstate', gallons12mo: '600000'
+}, o);
+const VOPTS = { existingIds: ['R00001'], allowedTypes: TYPES, roadways: BDPG_STATS.ROADWAYS, resolveRegion: RR2 };
+
+test('a well-formed new location validates', () => {
+  assert.equal(BDPG_STATS.validateNewLocation(FORM(), VOPTS), '');
+});
+
+test('a LID is required and must be unique', () => {
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ id: '' }), VOPTS), /required/);
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ id: '   ' }), VOPTS), /required/);
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ id: 'R00001' }), VOPTS), /already exists/);
+});
+
+test('a LID may not carry characters that would break an onclick attribute', () => {
+  // Ids are interpolated into onclick handlers all over this tab.
+  ["R'01", 'R"01', 'R 01', 'R<01', 'R\\01'].forEach((id) => {
+    assert.match(BDPG_STATS.validateNewLocation(FORM({ id: id }), VOPTS),
+      /letters, digits, hyphens/, id);
+  });
+});
+
+test('the state must map to a region, because the region delta depends on it', () => {
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ state: '' }), VOPTS), /state code is required/);
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ state: 'DC' }), VOPTS), /not a state/);
+  assert.equal(BDPG_STATS.validateNewLocation(FORM({ state: 'ut' }), VOPTS), '', 'case insensitive');
+});
+
+test('lanes, roadway and gallons are optional but must be sane when given', () => {
+  assert.equal(BDPG_STATS.validateNewLocation(
+    FORM({ dieselLanes: '', roadway: '', gallons12mo: '' }), VOPTS), '',
+    'a non-reporting, unsized site is a legitimate row');
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ dieselLanes: '120' }), VOPTS), /0 to 99/);
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ dieselLanes: '-2' }), VOPTS), /0 to 99/);
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ roadway: 'Motorway' }), VOPTS), /Roadway must be/);
+  assert.match(BDPG_STATS.validateNewLocation(FORM({ gallons12mo: '-5' }), VOPTS), /non-negative/);
+});
+
+test('an added location derives its size and its monthly average', () => {
+  const row = BDPG_STATS.normalizeAddedLocation(FORM(), { allowedTypes: TYPES });
+  assert.equal(row.size, 'Large', '9 lanes on an Interstate');
+  assert.equal(row.avgGalMo, 50000, '600,000 / 12');
+  assert.equal(row.dieselLanes, 9);
+  assert.equal(row.state, 'UT');
+  assert.equal(row.addedLocally, true);
+});
+
+test('a stored avgGalMo is ignored in favour of the derived one', () => {
+  // One figure, one source. A row whose avgGalMo disagreed with its own
+  // annual total would land in a different profile average than its gallons imply.
+  const row = BDPG_STATS.normalizeAddedLocation(
+    FORM({ gallons12mo: '120000', avgGalMo: 99999 }), { allowedTypes: TYPES });
+  assert.equal(row.avgGalMo, 10000);
+});
+
+test('an added location carries only allowlisted fields', () => {
+  // The same protection the file loader has: a hand-edited store must not be
+  // able to introduce a member name that the table would then render.
+  const row = BDPG_STATS.normalizeAddedLocation(
+    FORM({ name: "Bob's Truck Stop", phone: '555-0100', address: '1 Main St' }),
+    { allowedTypes: TYPES });
+  assert.equal(row.name, undefined);
+  assert.equal(row.phone, undefined);
+  assert.equal(row.address, undefined);
+  assert.deepEqual(Object.keys(row).sort(), ['addedLocally', 'avgGalMo', 'city',
+    'dieselLanes', 'distanceToInterstate', 'gallons12mo', 'group', 'id',
+    'roadway', 'size', 'state', 'type'].sort());
+});
+
+test('an unmappable Backroad lane count gets no size rather than a wrong one', () => {
+  const row = BDPG_STATS.normalizeAddedLocation(
+    FORM({ roadway: 'Backroad', dieselLanes: '7' }), { allowedTypes: TYPES });
+  assert.equal(row.size, null, '7 lanes on a Backroad has no profile');
+});
+
+test('a blank gallons figure makes a non-reporting row, not a zero one', () => {
+  const row = BDPG_STATS.normalizeAddedLocation(
+    FORM({ gallons12mo: '' }), { allowedTypes: TYPES });
+  assert.equal(row.gallons12mo, null);
+  assert.equal(row.avgGalMo, null);
+  assert.equal(BDPG_STATS.gallonStatus(row.avgGalMo), 'missing',
+    'missing, not a measured zero');
+});
+
+test('an unrecognised type falls back to the first allowed one, never through', () => {
+  const row = BDPG_STATS.normalizeAddedLocation(
+    FORM({ type: 'Casino' }), { allowedTypes: TYPES });
+  assert.equal(row.type, 'Truck Stop');
+});
+
+test('a row with no id cannot be added', () => {
+  [{ id: '' }, { id: '   ' }, {}, null, 'x'].forEach((v) => {
+    assert.equal(BDPG_STATS.normalizeAddedLocation(v, { allowedTypes: TYPES }), null,
+      JSON.stringify(v));
+  });
+});
+
+test('an added location changes the averages it joins', () => {
+  // The whole point of the feature, and the whole reason it has to be marked
+  // local: it moves the numbers.
+  const locs = require('./network-locations.json').locations;
+  const K = BDPG_STATS.baselineKeyFor('Large truck stop', 'Interstate');
+  const before = BDPG_STATS.profileBaselines(locs, BDPG_CONFIG.BASELINE_TABLE)[K];
+  const added = BDPG_STATS.normalizeAddedLocation(
+    FORM({ id: 'R09999', gallons12mo: '600000' }), { allowedTypes: TYPES });
+  const after = BDPG_STATS.profileBaselines(
+    locs.concat([added]), BDPG_CONFIG.BASELINE_TABLE)[K];
+  assert.equal(after.n, before.n + 1);
+  assert.notEqual(after.median, before.median);
+});

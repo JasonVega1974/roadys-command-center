@@ -444,6 +444,186 @@
     return out;
   }
 
+  // ── the discount slider's range, anchored to one profile's own spread ─────
+  //
+  // 0% on the slider is the profile's average (its median). The ends are the
+  // percentages that land on the profile's own p10 and p90:
+  //
+  //     lowPct = p10 / median - 1        highPct = p90 / median - 1
+  //
+  // So the control cannot express a posture the network has never produced
+  // for that kind of site, and the figures it does reach are attributable to
+  // real locations rather than to a round number somebody picked. The spread
+  // is wide on purpose -- Large/Highway runs -79% to +771%, because its p10
+  // site does 673 gal/mo and its p90 does 28,006.
+  //
+  // STEP: aimed at roughly 100 positions across whatever the span turns out
+  // to be, snapped to 1 / 5 / 10 / 25 points so the readout is always a round
+  // number. A fixed step cannot serve both ends of this range -- 5 points
+  // gives Small/Backroad (166 points wide) 33 positions, too coarse to aim,
+  // while giving Large/Highway (850) 170, a long drag at a precision the
+  // underlying p10/p90 does not support at n=9.
+  //
+  // The ends are snapped OUTWARD to whole steps, which does two things: it
+  // keeps the real p10/p90 inside the reachable range rather than just
+  // outside it, and it guarantees 0 lands exactly on a step so "the profile
+  // average" is a position the rep can actually return to. The snapped ends
+  // are what the control reports; lowPct/highPct carry the true percentile
+  // figures for the caption, so neither number has to stand in for the other.
+  var PRICING_STEP_CANDIDATES = [1, 5, 10, 25];
+  var PRICING_TARGET_STEPS = 100;
+
+  function pricingStepFor(spanPoints) {
+    var best = PRICING_STEP_CANDIDATES[0];
+    var bestMiss = Infinity;
+    for (var i = 0; i < PRICING_STEP_CANDIDATES.length; i++) {
+      var c = PRICING_STEP_CANDIDATES[i];
+      var miss = Math.abs((spanPoints / c) - PRICING_TARGET_STEPS);
+      if (miss < bestMiss) { bestMiss = miss; best = c; }
+    }
+    return best;
+  }
+
+  // `rg` is one entry from profileRanges(). `fallback` is the flat range used
+  // when the profile has no observed spread to anchor to.
+  function pricingRangeForProfile(rg, fallback) {
+    var fb = fallback || { min: -0.5, max: 0.5, step: 0.05 };
+    var flat = {
+      min: fb.min, max: fb.max, step: fb.step,
+      source: 'fallback', n: (rg && rg.n) || 0,
+      low: null, mid: null, high: null, lowPct: null, highPct: null
+    };
+    if (!rg || rg.mid === null || rg.low === null || rg.high === null) return flat;
+    if (!(rg.mid > 0)) return flat;
+
+    var lowPct = (rg.low / rg.mid) - 1;
+    var highPct = (rg.high / rg.mid) - 1;
+    // A profile whose p10 and p90 coincide has no spread to anchor to.
+    if (!(highPct > lowPct)) return flat;
+
+    var stepPts = pricingStepFor((highPct - lowPct) * 100);
+    var step = stepPts / 100;
+    var min = Math.floor(lowPct / step) * step;
+    var max = Math.ceil(highPct / step) * step;
+    // Floating point: 0.05 * 3 is 0.15000000000000002, and an input whose
+    // min/max/step do not land on exact multiples silently makes its own
+    // maximum unreachable. Round to whole points, which every value here is.
+    function pts(v) { return Math.round(v * 100) / 100; }
+    return {
+      min: pts(min), max: pts(max), step: pts(step),
+      source: 'profile', n: rg.n,
+      low: rg.low, mid: rg.mid, high: rg.high,
+      lowPct: lowPct, highPct: highPct
+    };
+  }
+
+  // ── dated localStorage ────────────────────────────────────────────────────
+  //
+  // Decides whether a stored blob still describes the committed data. Lives
+  // here rather than in the page so the rule can be tested: it is the thing
+  // standing between a viewer and a browser that quietly shows different
+  // medians from everyone else's, and "we believe it clears correctly" is not
+  // good enough for that.
+  //
+  // Shape going forward is { asOf, <bodyKey> }. An undated blob is stale by
+  // definition -- it was written before dating existed, against a file whose
+  // lane counts and roadways have since been corrected wholesale.
+  function datedStoreState(parsed, currentAsOf, bodyKey) {
+    var key = bodyKey || 'edits';
+    if (!parsed || typeof parsed !== 'object') {
+      return { stale: false, asOf: null, body: null, dated: false };
+    }
+    var dated = hasOwnProp(parsed, 'asOf') && hasOwnProp(parsed, key);
+    if (!dated) return { stale: true, asOf: null, body: parsed, dated: false };
+    return {
+      stale: String(parsed.asOf) !== String(currentAsOf),
+      asOf: parsed.asOf === null || parsed.asOf === undefined ? null : String(parsed.asOf),
+      body: parsed[key],
+      dated: true
+    };
+  }
+
+  function hasOwnProp(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+
+  // ── a new, locally added location ─────────────────────────────────────────
+  //
+  // Validation and normalization for the Add Location form, kept pure so the
+  // rules can be tested without a DOM. Returns '' when the form is good.
+  //
+  // The id check is the load-bearing one: ids are the key every edit, hidden
+  // row, average and count joins on, so two rows sharing one would collide
+  // everywhere at once.
+  function validateNewLocation(form, opts) {
+    var f = form || {};
+    var o = opts || {};
+    var existing = o.existingIds || [];
+    var types = o.allowedTypes || [];
+    var roads = o.roadways || ROADWAYS;
+    var id = String(f.id === null || f.id === undefined ? '' : f.id).trim();
+
+    if (!id) return 'A Location ID (LID) is required.';
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) return 'The LID may only contain letters, digits, hyphens and underscores.';
+    for (var i = 0; i < existing.length; i++) {
+      if (existing[i] === id) return 'LID ' + id + ' already exists.';
+    }
+    var st = String(f.state === null || f.state === undefined ? '' : f.state).trim().toUpperCase();
+    if (!st) return 'A 2-letter state code is required.';
+    if (o.resolveRegion && !o.resolveRegion(st)) return st + ' is not a state this tool maps to a region.';
+    if (types.length && types.indexOf(String(f.type)) === -1) return 'Pick a location Type.';
+
+    var lanesRaw = String(f.dieselLanes === null || f.dieselLanes === undefined ? '' : f.dieselLanes).trim();
+    if (lanesRaw !== '') {
+      var lanes = toFinite(lanesRaw);
+      if (lanes === null || lanes < 0 || lanes > 99) return 'Diesel lanes must be a whole number from 0 to 99, or blank.';
+    }
+    var roadRaw = String(f.roadway === null || f.roadway === undefined ? '' : f.roadway).trim();
+    if (roadRaw !== '' && roads.indexOf(roadRaw) === -1) {
+      return 'Roadway must be one of ' + roads.join(', ') + ', or blank.';
+    }
+    var galRaw = String(f.gallons12mo === null || f.gallons12mo === undefined ? '' : f.gallons12mo).trim();
+    if (galRaw !== '') {
+      var g = toFinite(galRaw);
+      if (g === null || g < 0) return '12-month gallons must be a non-negative number, or blank.';
+    }
+    return '';
+  }
+
+  // Same allowlist discipline as the file loader: only known fields survive,
+  // so a hand-edited store cannot introduce a member name or a stray key.
+  //
+  // avgGalMo is DERIVED from gallons12mo and never carried through, because
+  // one figure needs one source: a stored avgGalMo disagreeing with its own
+  // annual total would place the row in a different profile average than its
+  // gallons imply.
+  function normalizeAddedLocation(row, opts) {
+    if (!row || typeof row !== 'object') return null;
+    var o = opts || {};
+    var types = o.allowedTypes || [];
+    var id = String(row.id === null || row.id === undefined ? '' : row.id).trim();
+    if (!id) return null;
+
+    function s(v) { return String(v === null || v === undefined ? '' : v).trim(); }
+    var lanes = toFinite(row.dieselLanes);
+    var g12 = toFinite(row.gallons12mo);
+    var roadway = ROADWAYS.indexOf(s(row.roadway)) === -1 ? '' : s(row.roadway);
+    var out = {
+      id: id,
+      addedLocally: true,
+      city: s(row.city),
+      state: s(row.state).toUpperCase().slice(0, 2),
+      group: s(row.group),
+      type: (types.length && types.indexOf(s(row.type)) === -1) ? types[0] : s(row.type),
+      dieselLanes: (lanes === null || lanes < 0 || lanes > 99) ? null : Math.floor(lanes),
+      roadway: roadway,
+      distanceToInterstate: null,
+      gallons12mo: (g12 === null || g12 < 0) ? null : g12
+    };
+    out.avgGalMo = out.gallons12mo === null ? null : Math.round(out.gallons12mo / 12);
+    var size = sizeForLanes(out.dieselLanes, out.roadway);
+    out.size = (size === 'over' || !size) ? null : size;
+    return out;
+  }
+
   // The whole-network benchmark for the Network Locations summary card.
   //
   // Truck stops only -- 'Truck Stop' and 'Truck Stop / Service Center', the
@@ -626,6 +806,11 @@
     isExcludedNetworkGroup: isExcludedNetworkGroup,
     normalizeNetworkContext: normalizeNetworkContext,
     profileRanges: profileRanges,
+    pricingStepFor: pricingStepFor,
+    pricingRangeForProfile: pricingRangeForProfile,
+    datedStoreState: datedStoreState,
+    validateNewLocation: validateNewLocation,
+    normalizeAddedLocation: normalizeAddedLocation,
     networkSummary: networkSummary,
     gallonStatus: gallonStatus,
     MIN_REPORTING_GAL_MO: MIN_REPORTING_GAL_MO,

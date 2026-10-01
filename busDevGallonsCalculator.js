@@ -61,15 +61,17 @@
   // prospect saved at 'Most aggressive' must reopen at +0.05, not snap to
   // the 0 default and quietly restate its own estimate.
   //
-  // Clamped to PRICING_RANGE. The slider cannot produce an out-of-range
-  // value, but a hand-edited localStorage record or a stale saved profile
-  // can, and an unclamped -3.0 would drive the multiplier to its floor and
-  // quote zero gallons on a customer sheet.
+  // Clamped to PRICING_HARD_LIMIT, NOT to PRICING_RANGE. The slider's actual
+  // ends are derived per profile from its own p10/p90 and routinely exceed
+  // the fallback range -- Large/Highway reaches +771% -- so clamping here to
+  // +/-50% would truncate the very figure the control was showing the rep.
+  // The envelope exists only to reject a corrupted stored value; it is far
+  // outside anything a profile range can produce.
   function pricingAdjustment(level) {
     if (typeof level === 'string' && BDPG_CONFIG.PRICING_LEGACY_ADJUST.hasOwnProperty(level)) {
       return BDPG_CONFIG.PRICING_LEGACY_ADJUST[level];
     }
-    var r = BDPG_CONFIG.PRICING_RANGE;
+    var r = BDPG_CONFIG.PRICING_HARD_LIMIT;
     if (level === null || level === undefined || level === '' ||
         typeof level === 'boolean' || typeof level === 'object') return BDPG_CONFIG.PRICING_DEFAULT;
     var n = Number(level);

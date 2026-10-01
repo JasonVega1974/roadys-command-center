@@ -68,6 +68,7 @@
   // longer on the static fallback. Every one of the eight is `source:
   // network` as of this file, so nothing below is currently displayed --
   // see the paragraph above about why they are kept accurate anyway.
+
   var BASELINE_TABLE = [
     { profile: 'Fuel stop',         roadway: 'Any',        lanes: 'any', baseline: 3318 },
     { profile: 'Small truck stop',  roadway: 'Backroad',   lanes: '1-4', baseline: 6174 },
@@ -78,6 +79,31 @@
     { profile: 'Large truck stop',  roadway: 'Highway',    lanes: '7+',  baseline: 3216 },
     { profile: 'Large truck stop',  roadway: 'Interstate', lanes: '7+',  baseline: 20232 }
   ];
+
+  // ── data version ──────────────────────────────────────────────────────────
+  //
+  // The committed data files' `asOf`, held once so it can do two jobs:
+  //
+  //   1. Cache-bust the three JSON fetches (?v=DATA_ASOF). Without it a
+  //      browser can keep serving a pre-deploy copy of
+  //      network-locations.json out of its HTTP cache, and every figure the
+  //      page shows is then quietly a version behind.
+  //   2. Date the per-browser localStorage. Stored per-row edits and hidden
+  //      rows predating this value describe a file that no longer exists --
+  //      they were made against different lane counts and roadways -- so
+  //      they are cleared on load rather than left to shadow the committed
+  //      data with no way for a viewer to know.
+  //
+  // A test asserts this equals network-locations.json's and
+  // region_variance.json's own asOf, because a constant that silently drifts
+  // from the files it versions is worse than no constant: it would pin the
+  // cache to a stale key and wave stale localStorage through.
+  //
+  // network-context.json carries its own earlier asOf (2026-09-24) and is
+  // deliberately not pinned to this -- it is a separate export on its own
+  // cadence. It still gets the cache-buster; the param only has to change
+  // when anything in the data set does.
+  var DATA_ASOF = '2026-09-30';
 
   // Geographic-variance regions for the calculator only. Not the GS-territory
   // REGIONS map already in index.html — different partition, different purpose.
@@ -188,28 +214,47 @@
   ];
 
   // 4th adjustment: discount / aggregator posture. Additive, same mechanism
-  // as Region/Amenities/Review. A continuous -50%..+50% term, step 5.
+  // as Region/Amenities/Review.
   //
-  // Was five fixed options spanning +/-5%, which could not describe what the
-  // network actually does. A site carrying several fleet and aggregator
-  // discount programs runs dramatically more volume than an otherwise
-  // identical site carrying none, and +/-5% could not express the gap -- the
-  // control's range, not the estimate, was the thing that was wrong. Widened
-  // again to +/-50% on 2026-09-30 for the same reason: +/-25% was still
-  // short of the real spread.
+  // This constant is now the FALLBACK range only -- used when the selected
+  // profile has fewer than DYNAMIC_BASELINE_MIN_N reporting locations and so
+  // has no observed spread to anchor a slider to. The live control is derived
+  // from that profile's own p10/p90 (BDPG_STATS.pricingRangeForProfile), so
+  // its ends differ per profile and are much wider than this: Large/Highway
+  // runs -80% to +780%.
   //
-  // Default is 0: neutral, no assumed posture. The old default was
-  // 'Standard / moderate', which was also 0, so a prospect saved under the
-  // old control and reopened under this one lands on the same number.
+  // The history, because the direction of travel is the point: five fixed
+  // options spanning +/-5%, then a flat +/-25%, then a flat +/-50%, now the
+  // profile's own measured range. Each widening was for the same reason --
+  // the control could not express what the network actually does, and a site
+  // carrying several fleet and aggregator discount programs genuinely runs
+  // many times the volume of an identical site carrying none.
   //
-  // Widening the range does NOT change the formula, but it does change what
-  // the formula can reach: at -50% the multiplier floor in
-  // calculateEstimate() is now reachable from ordinary inputs rather than
-  // only from a pathological region value. That floor is what keeps the
-  // tool from quoting negative gallons, and it is tested against this
-  // range -- do not remove it if this range widens again.
+  // Default is 0: the profile's average, no assumed posture. The original
+  // default was 'Standard / moderate', which was also 0, so a prospect saved
+  // under any past version of this control reopens on the same number.
+  //
+  // None of this changes the formula, but it does change what the formula can
+  // reach, and the multiplier floor in calculateEstimate() is what keeps a
+  // deeply negative posture from quoting negative gallons. It is tested
+  // against these ranges -- do not remove it.
   var PRICING_RANGE = { min: -0.50, max: 0.50, step: 0.05 };
   var PRICING_DEFAULT = 0;
+
+  // The envelope pricingAdjustment() clamps to, and the only clamp the
+  // FORMULA knows about. It has to be far wider than the fallback range
+  // because a profile-anchored slider legitimately reaches its own p90:
+  // Large/Highway tops out at +771%, so clamping the formula at +50% would
+  // silently truncate the figure the control was showing.
+  //
+  //   max 20  -- +2000%, generous headroom over the widest observed p90 ratio
+  //              (+7.71). A number past this is a corrupted record, not a
+  //              posture, and flattening it to the top of the range would
+  //              quote a prospect an enormous figure rather than a wrong one.
+  //   min -1  -- -100% exactly cancels the baseline. Nothing below it means
+  //              anything; calculateEstimate()'s multiplier floor handles the
+  //              rest of the sum going negative.
+  var PRICING_HARD_LIMIT = { min: -1, max: 20 };
 
   // The retired five. Kept ONLY so a saved prospect carrying one of these
   // strings reopens at the percentage it was calculated with rather than
@@ -297,6 +342,7 @@
   };
 
   var BDPG_CONFIG = {
+    DATA_ASOF: DATA_ASOF,
     BASELINE_TABLE: BASELINE_TABLE,
     BDPG_REGION_MAP: BDPG_REGION_MAP,
     BDPG_REGION_DISPLAY: BDPG_REGION_DISPLAY,
@@ -306,6 +352,7 @@
     AMENITY_ADJUST: AMENITY_ADJUST,
     REVIEW_BANDS: REVIEW_BANDS,
     PRICING_RANGE: PRICING_RANGE,
+    PRICING_HARD_LIMIT: PRICING_HARD_LIMIT,
     PRICING_LEGACY_ADJUST: PRICING_LEGACY_ADJUST,
     PRICING_DEFAULT: PRICING_DEFAULT,
     REWARDS_LEVELS: REWARDS_LEVELS,
