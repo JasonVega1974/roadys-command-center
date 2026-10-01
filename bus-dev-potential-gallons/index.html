@@ -175,9 +175,6 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .bdpg-bcard-sub{font-size:.72em;color:var(--muted);margin-top:2px;}
 .bdpg-bcard-gal{font-family:var(--ff);font-size:1.35em;font-weight:800;color:var(--muted);margin-top:8px;}
 .bdpg-bcard.on .bdpg-bcard-gal{color:var(--accent);}
-.bdpg-rangebar{position:relative;height:8px;background:var(--surface);border:1px solid var(--border);border-radius:5px;margin-top:8px;}
-.bdpg-rangebar-tick{position:absolute;top:-4px;width:3px;height:14px;background:var(--accent);border-radius:2px;}
-.bdpg-rangebar-ends{display:flex;justify-content:space-between;font-size:.66em;color:var(--muted);margin-top:4px;}
 #bdpg-usa-svg{width:100%;height:auto;display:block;}
 #bdpg-usa-svg path{cursor:pointer;stroke:#0A0E1A;stroke-width:.5;transition:all .15s;}
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
@@ -4649,23 +4646,6 @@ function getCentroid(pathStr, axis){
     return '<div style="' + muted + '"><span class="badge tag-gray">Network default</span> ' + why + '</div>' + count;
   };
 
-  // Low and high ends of the Selected Baseline bar: the smallest and largest
-  // baseline currently in play, live medians where they exist and the static
-  // row where they do not -- so the bar spans exactly the values the cards
-  // above it can show.
-  BDPG.baselineScale = function () {
-    var map = BDPG.profileBaselineMap();
-    var lo = null, hi = null;
-    BDPG_CONFIG.BASELINE_TABLE.forEach(function (r) {
-      var b = map ? map[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)] : null;
-      var v = (b && isNum(b.baseline)) ? b.baseline : r.baseline;
-      if (!isNum(v)) return;
-      if (lo === null || v < lo) lo = v;
-      if (hi === null || v > hi) hi = v;
-    });
-    return { lo: lo === null ? 0 : lo, hi: hi === null ? 0 : hi };
-  };
-
   BDPG.profileRangeMap = function () {
     if (!BDPG._locationsReady) return {};
     return BDPG_STATS.profileRanges(BDPG.networkLocations(), BDPG_CONFIG.BASELINE_TABLE);
@@ -4751,23 +4731,28 @@ function getCentroid(pathStr, axis){
       BDPG.primeLocationsForBaseline();
       var dyn = BDPG.currentBaseline();
       var shown = (dyn && isNum(dyn.baseline)) ? dyn.baseline : row.baseline;
-      // Scale derived from the live card values, not the hardcoded
-      // 2,500–15,000 this used to carry. That pair was the old BASELINE_TABLE
-      // min and max; with the table updated to the observed medians the top
-      // is 20,232, and a fixed 15,000 ceiling pinned the two largest profiles
-      // at 100% -- a tick that cannot move is worse than no tick.
-      var scale = BDPG.baselineScale();
-      var pos = scale.hi > scale.lo
-        ? Math.max(0, Math.min(100, ((shown - scale.lo) / (scale.hi - scale.lo)) * 100))
-        : 50;
+      // The range bar that used to sit here is GONE, deliberately.
+      //
+      // It plotted this baseline on an axis spanning every profile's baseline
+      // (2,338 to 20,232), which answered "how does this profile compare to
+      // the other seven?" -- a different question from the one the card
+      // directly above it answers with Low / Avg / High for THIS profile. Two
+      // bars, two axes, no labels distinguishing them: the reader had no way
+      // to know they measured different things, and the cross-profile one
+      // looked like a contradiction of the per-profile one.
+      //
+      // Rescaling it to this profile's own p10/p90 was the other option, and
+      // it was worse: it would have drawn the SAME bar as the selected card
+      // immediately above, twice, inches apart.
+      //
+      // The cross-profile comparison it was reaching for still exists, done
+      // properly -- the Distribution by Baseline Profile panel on the DEV tab
+      // puts all eight on one shared axis with every end labelled.
       callout = '<div class="bdpg-callout">' +
         '<div class="bdpg-lbl">Selected Baseline</div>' +
         '<div style="font-family:var(--ff);font-size:2em;font-weight:800;color:var(--accent);line-height:1">' +
           BDPG.fmtGal(shown) + '<span style="font-size:.45em;color:var(--muted);margin-left:8px">avg gal/mo baseline</span></div>' +
         BDPG.baselineSourceNoteHtml(dyn) +
-        '<div class="bdpg-rangebar"><div class="bdpg-rangebar-tick" style="left:' + pos.toFixed(1) + '%"></div></div>' +
-        '<div class="bdpg-rangebar-ends"><span>' + BDPG.fmtGal(scale.lo) + '</span>' +
-          '<span>' + BDPG.fmtGal(scale.hi) + '</span></div>' +
       '</div>';
     } else {
       callout = '<div class="bdpg-callout" style="color:var(--muted);font-size:.85em">Pick a location profile above to set the baseline.</div>';
@@ -5115,27 +5100,43 @@ function getCentroid(pathStr, axis){
     // while it is being dragged.
     var pr = BDPG.pricingRange();
     var pcur = BDPG.currentPricingPct();
+    var N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+    // The control's value is a POSITION, not a percentage -- see the split
+    // scale in bdpgStats. min/max/step are therefore fixed and identical for
+    // every profile; what differs per profile is what each position MEANS.
+    // That is what puts 0% at the midpoint on all eight instead of at 7% of
+    // the travel on the widest one.
     var segs = '<div style="display:flex;align-items:center;gap:12px">' +
-        '<input id="bdpg-pricing-slider" type="range" style="flex:1" ' +
-          // Rounded onto whole points before it reaches the attributes. The
-          // range values are exact to the point, but 1.15 * 100 is
-          // 114.99999999999999 in binary floating point, and an <input
-          // type=range> whose max is not a whole multiple of its step cannot
-          // reach its own maximum -- the handle stops one step short with no
-          // indication why.
-          'min="' + Math.round(pr.min * 100) + '" max="' + Math.round(pr.max * 100) + '" ' +
-          'step="' + Math.round(pr.step * 100) + '" ' +
-          'value="' + Math.round(pcur * 100) + '" ' +
-          'aria-label="Discount and aggregator posture, percent" ' +
-          'oninput="BDPG.onPricingSlider(this.value)">' +
+        // The track and its midpoint marker share one wrapper so the marker
+        // can be positioned against the same box the handle travels in.
+        '<div style="position:relative;flex:1;display:flex;align-items:center">' +
+          '<input id="bdpg-pricing-slider" type="range" style="width:100%;position:relative;z-index:2" ' +
+            'min="' + (-N) + '" max="' + N + '" step="1" ' +
+            'value="' + BDPG_STATS.pricingPositionForPct(pcur, pr) + '" ' +
+            'aria-label="Discount and aggregator posture. Centre is this profile&#39;s average; ' +
+              'left reaches ' + BDPG.fmtSignedPct(pr.min) + ', right reaches ' + BDPG.fmtSignedPct(pr.max) + '" ' +
+            'aria-valuetext="' + BDPG.escHtml(BDPG.fmtSignedPct(pcur)) + '" ' +
+            'oninput="BDPG.onPricingSlider(this.value)">' +
+          // Drawn at the fraction the shared mapping reports for 0 rather than
+          // a hardcoded 50%: if the two ever disagreed, the marker would be
+          // lying about where the average is, which is the original bug.
+          '<div aria-hidden="true" style="position:absolute;z-index:1;top:50%;margin-top:-9px;' +
+            'width:2px;height:18px;background:var(--muted);opacity:.7;' +
+            'left:' + BDPG_STATS.pricingTrackFraction(0, pr).toFixed(2) + '%;' +
+            'transform:translateX(-50%)"></div>' +
+        '</div>' +
         '<span id="bdpg-pricing-num" style="font-family:var(--ff);font-size:1.5em;font-weight:800;' +
           'min-width:4.2em;text-align:right;color:' + BDPG.pricingTone(pcur) + '">' +
           BDPG.fmtSignedPct(pcur) + '</span>' +
       '</div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:.72em;color:var(--muted);margin-top:2px">' +
-        '<span>No discounts (' + BDPG.fmtSignedPct(pr.min) + ')</span>' +
-        '<span>Profile average (0%)</span>' +
-        '<span>Most aggressive (' + BDPG.fmtSignedPct(pr.max) + ')</span>' +
+      // Three labels on a three-column grid, not space-between: the centre
+      // label has to sit under the centre MARK, and space-between would place
+      // it by its own width instead.
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-size:.72em;' +
+          'color:var(--muted);margin-top:2px">' +
+        '<span style="text-align:left">No discounts<br>' + BDPG.fmtSignedPct(pr.min) + '</span>' +
+        '<span style="text-align:center;color:var(--text)">▲ Profile average<br>0%</span>' +
+        '<span style="text-align:right">Most aggressive<br>' + BDPG.fmtSignedPct(pr.max) + '</span>' +
       '</div>' +
       // The live figure, so the rep sees gallons rather than having to
       // translate a percentage against a baseline they cannot see from here.
@@ -5305,8 +5306,9 @@ function getCentroid(pathStr, axis){
   BDPG.fmtSignedPct = function (frac) {
     var p = Number(frac) * 100;
     if (!isFinite(p)) p = 0;
-    // No decimals: the slider steps in whole 5-point increments, so a
-    // "+15.0%" readout would imply a precision the control cannot produce.
+    // No decimals: every position on the split-scale track lands on a whole
+    // percentage, so a "+15.0%" readout would imply a precision the control
+    // cannot produce and the percentiles do not support.
     return (p > 0 ? '+' : (p < 0 ? '−' : '')) + Math.abs(Math.round(p)) + '%';
   };
 
@@ -5340,14 +5342,14 @@ function getCentroid(pathStr, axis){
   BDPG.currentPricingPct = function () {
     var pr = BDPG.pricingRange();
     var p = BusDevGallonsCalc.pricingAdjustment(BDPG.state.pricingLevel);
-    // Snapped in whole points rather than fractions: 1.15 / 0.05 is
-    // 22.999999999999996 in binary floating point, which would floor to the
-    // wrong step.
-    var stepPts = Math.round(pr.step * 100);
-    if (stepPts > 0) {
-      p = (Math.round(Math.round(p * 100) / stepPts) * stepPts) / 100;
-    }
-    return Math.max(pr.min, Math.min(pr.max, p));
+    p = Math.max(pr.min, Math.min(pr.max, p));
+    // Round-tripped through the position scale, which is the snap: a value is
+    // only representable if some position produces it. Doing it this way
+    // rather than with a separate rounding rule is what guarantees the handle,
+    // the readout and the estimate are the same number -- they all come from
+    // one mapping instead of three that have to be kept in agreement.
+    return BDPG_STATS.pricingPctForPosition(
+      BDPG_STATS.pricingPositionForPct(p, pr), pr);
   };
 
   // Called whenever the profile selection changes: if the stored posture no
@@ -5436,13 +5438,15 @@ function getCentroid(pathStr, axis){
       'p10 ' + BDPG.fmtGal(r.low) + ' gal/mo (' + BDPG.fmtSignedPct(r.lowPct) + ') · ' +
       'average ' + BDPG.fmtGal(r.mid) + ' (0%) · ' +
       'p90 ' + BDPG.fmtGal(r.high) + ' (' + BDPG.fmtSignedPct(r.highPct) + ').' +
-      ' The slider steps in ' + Math.round(r.step * 100) + '% increments.</div>';
+      ' The track is split at the average, so each half gets half the width ' +
+      'and the two halves step at different rates.</div>';
   };
 
   // Patched in place, not re-rendered: a full render would rebuild the range
   // input and drop the handle mid-drag.
+  // `value` is a POSITION off the split-scale track, not a percentage.
   BDPG.onPricingSlider = function (value) {
-    var frac = (Number(value) || 0) / 100;
+    var frac = BDPG_STATS.pricingPctForPosition(value, BDPG.pricingRange());
     if (BDPG.state.pricingLevel !== frac) BDPG.invalidateResult();
     BDPG.state.pricingLevel = frac;
     var num = document.getElementById('bdpg-pricing-num');
@@ -5880,13 +5884,17 @@ function getCentroid(pathStr, axis){
         ((0.02 - e.reviewPct) * 100).toFixed(1) + '% — about ' +
         BDPG.fmtGal(Math.round(e.baseline * (0.02 - e.reviewPct))) + ' gal/mo.');
     }
-    // One step up the slider, rather than "the next option along" -- there
-    // are no options now. Suppressed at the top of the range, where there
-    // is no next step to offer.
+    // One position up the slider, rather than "the next option along" --
+    // there are no options now, and the step in percentage points differs
+    // between the two halves of the split track. Stepping by POSITION is the
+    // only definition that stays right on both sides. Suppressed at the top
+    // of the range, where there is no next position to offer.
     var pr = BDPG.pricingRange();
     var curPct = BDPG.currentPricingPct();
     if (curPct < pr.max) {
-      var nextPct = Math.min(pr.max, curPct + pr.step);
+      var nextPos = BDPG_STATS.pricingPositionForPct(curPct, pr) + 1;
+      var nextPct = BDPG_STATS.pricingPctForPosition(nextPos, pr);
+      if (nextPct <= curPct) nextPct = pr.max;
       // Pricing and Rewards are deliberately outside officialSubtotal (see
       // busDevGallonsCalculator.js), so this caveat has to survive here too --
       // otherwise a prospect reads this gain against the Published Calculator

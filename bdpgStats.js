@@ -457,39 +457,21 @@
   // is wide on purpose -- Large/Highway runs -79% to +771%, because its p10
   // site does 673 gal/mo and its p90 does 28,006.
   //
-  // STEP: aimed at roughly 100 positions across whatever the span turns out
-  // to be, snapped to 1 / 5 / 10 / 25 points so the readout is always a round
-  // number. A fixed step cannot serve both ends of this range -- 5 points
-  // gives Small/Backroad (166 points wide) 33 positions, too coarse to aim,
-  // while giving Large/Highway (850) 170, a long drag at a precision the
-  // underlying p10/p90 does not support at n=9.
+  // The ends are snapped OUTWARD to whole percentage points so the figures
+  // the caption quotes are the figures the control can actually produce.
   //
-  // The ends are snapped OUTWARD to whole steps, which does two things: it
-  // keeps the real p10/p90 inside the reachable range rather than just
-  // outside it, and it guarantees 0 lands exactly on a step so "the profile
-  // average" is a position the rep can actually return to. The snapped ends
-  // are what the control reports; lowPct/highPct carry the true percentile
-  // figures for the caption, so neither number has to stand in for the other.
-  var PRICING_STEP_CANDIDATES = [1, 5, 10, 25];
-  var PRICING_TARGET_STEPS = 100;
-
-  function pricingStepFor(spanPoints) {
-    var best = PRICING_STEP_CANDIDATES[0];
-    var bestMiss = Infinity;
-    for (var i = 0; i < PRICING_STEP_CANDIDATES.length; i++) {
-      var c = PRICING_STEP_CANDIDATES[i];
-      var miss = Math.abs((spanPoints / c) - PRICING_TARGET_STEPS);
-      if (miss < bestMiss) { bestMiss = miss; best = c; }
-    }
-    return best;
-  }
-
+  // There is deliberately no `step` on the returned object. The control's
+  // granularity is the position scale below, which steps at different rates
+  // on either side of the average -- a single `step` field would be a number
+  // that looks authoritative, matches nothing, and invites the next reader to
+  // wire the slider back to a uniform grid.
+  //
   // `rg` is one entry from profileRanges(). `fallback` is the flat range used
   // when the profile has no observed spread to anchor to.
   function pricingRangeForProfile(rg, fallback) {
-    var fb = fallback || { min: -0.5, max: 0.5, step: 0.05 };
+    var fb = fallback || { min: -0.5, max: 0.5 };
     var flat = {
-      min: fb.min, max: fb.max, step: fb.step,
+      min: fb.min, max: fb.max,
       source: 'fallback', n: (rg && rg.n) || 0,
       low: null, mid: null, high: null, lowPct: null, highPct: null
     };
@@ -501,20 +483,85 @@
     // A profile whose p10 and p90 coincide has no spread to anchor to.
     if (!(highPct > lowPct)) return flat;
 
-    var stepPts = pricingStepFor((highPct - lowPct) * 100);
-    var step = stepPts / 100;
-    var min = Math.floor(lowPct / step) * step;
-    var max = Math.ceil(highPct / step) * step;
-    // Floating point: 0.05 * 3 is 0.15000000000000002, and an input whose
-    // min/max/step do not land on exact multiples silently makes its own
-    // maximum unreachable. Round to whole points, which every value here is.
+    // Whole percentage points, snapped outward so neither percentile falls
+    // outside what the control can reach.
     function pts(v) { return Math.round(v * 100) / 100; }
+    var min = pts(Math.floor(lowPct * 100) / 100);
+    var max = pts(Math.ceil(highPct * 100) / 100);
     return {
-      min: pts(min), max: pts(max), step: pts(step),
+      min: min, max: max,
       source: 'profile', n: rg.n,
       low: rg.low, mid: rg.mid, high: rg.high,
       lowPct: lowPct, highPct: highPct
     };
+  }
+
+  // ── the slider's SPLIT SCALE ──────────────────────────────────────────────
+  //
+  // The range a profile spans is wildly asymmetric -- Small/Highway runs -50%
+  // to +640% -- because gallons distributions are right-skewed: a site can be
+  // several times its profile's average but cannot be less than nothing. On a
+  // plain linear track that put 0% (the profile's AVERAGE) at 7% of the
+  // travel, so the handle sat hard left while the number meant "typical". A
+  // rep reading position rather than text saw "almost no discounts". That is
+  // not a cosmetic complaint: position is the first thing read on a slider.
+  //
+  // So the track is split. The control's value is a POSITION in
+  // -N..+N, and position maps to a percentage piecewise-linearly:
+  //
+  //     position -N  ->  min   (the p10 percentage)
+  //     position  0  ->  0     (the profile average, dead centre)
+  //     position +N  ->  max   (the p90 percentage)
+  //
+  // Each half gets half the pixels regardless of how many percentage points
+  // it covers, so the two halves have different scales -- which is the point.
+  // The percentages themselves are untouched: real, uncapped, derived from
+  // the observed percentiles.
+  //
+  // Why a position scale rather than nice equal steps on both sides: forcing
+  // both halves onto a round step AND the same step count drags the ends off
+  // the real percentiles by up to 24 points, and on several profiles pushes
+  // the low end to exactly -100% -- a quote of zero gallons that the data
+  // never suggested. Keeping the ends exact and letting the step fall where
+  // it may costs nothing a reader can see, because every position still
+  // lands on a whole percentage.
+  var PRICING_POSITIONS_PER_SIDE = 50;
+
+  function pricingPctForPosition(pos, range) {
+    var N = PRICING_POSITIONS_PER_SIDE;
+    var p = toFinite(pos);
+    if (p === null) return 0;
+    p = Math.max(-N, Math.min(N, Math.round(p)));
+    if (p === 0) return 0;
+    var r = range || {};
+    // Rounded to whole percentage points, so the readout can never show a
+    // figure like +457.3% that implies precision the percentiles do not have.
+    var pts = p < 0
+      ? Math.round((r.min || 0) * 100 * (-p / N))
+      : Math.round((r.max || 0) * 100 * (p / N));
+    return pts / 100;
+  }
+
+  function pricingPositionForPct(pct, range) {
+    var N = PRICING_POSITIONS_PER_SIDE;
+    var v = toFinite(pct);
+    if (v === null || v === 0) return 0;
+    var r = range || {};
+    if (v < 0) {
+      if (!(r.min < 0)) return 0;
+      return Math.max(-N, Math.min(0, -Math.round(N * (v / r.min))));
+    }
+    if (!(r.max > 0)) return 0;
+    return Math.max(0, Math.min(N, Math.round(N * (v / r.max))));
+  }
+
+  // Where a percentage sits along the track, 0..100. Exists so the midpoint
+  // marker and the handle are placed by ONE rule -- a marker drawn at a
+  // hardcoded 50% beside a handle positioned by any other formula is the same
+  // bug this split scale was built to fix.
+  function pricingTrackFraction(pct, range) {
+    var N = PRICING_POSITIONS_PER_SIDE;
+    return ((pricingPositionForPct(pct, range) + N) / (2 * N)) * 100;
   }
 
   // ── dated localStorage ────────────────────────────────────────────────────
@@ -806,8 +853,11 @@
     isExcludedNetworkGroup: isExcludedNetworkGroup,
     normalizeNetworkContext: normalizeNetworkContext,
     profileRanges: profileRanges,
-    pricingStepFor: pricingStepFor,
     pricingRangeForProfile: pricingRangeForProfile,
+    PRICING_POSITIONS_PER_SIDE: PRICING_POSITIONS_PER_SIDE,
+    pricingPctForPosition: pricingPctForPosition,
+    pricingPositionForPct: pricingPositionForPct,
+    pricingTrackFraction: pricingTrackFraction,
     datedStoreState: datedStoreState,
     validateNewLocation: validateNewLocation,
     normalizeAddedLocation: normalizeAddedLocation,
