@@ -857,53 +857,6 @@ test('the slider ends are the percentages that land on p10 and p90', () => {
   assert.ok(pr.max >= pr.highPct, pr.max + ' must not exclude ' + pr.highPct);
 });
 
-test('0% is exactly on the step grid for every committed profile', () => {
-  // "Default position is 0%" is only true if 0 is a position the control can
-  // produce. min is snapped to a whole multiple of step, which makes it so.
-  const ranges = RANGES();
-  Object.keys(ranges).forEach((k) => {
-    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
-    const stepPts = Math.round(pr.step * 100);
-    const minPts = Math.round(pr.min * 100);
-    // Math.abs: a negative min gives -0 from %, and strict equality treats
-    // -0 and 0 as different values even though the grid check passed.
-    assert.equal(Math.abs(minPts % stepPts), 0,
-      k + ': min ' + minPts + ' is off the ' + stepPts + ' grid');
-    assert.ok(pr.min <= 0 && pr.max >= 0, k + ': 0 must be inside the range');
-  });
-});
-
-test('the max is reachable: every range is a whole number of steps wide', () => {
-  // An <input type=range> whose max is not a whole multiple of its step from
-  // min simply cannot be dragged to its own maximum.
-  const ranges = RANGES();
-  Object.keys(ranges).forEach((k) => {
-    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
-    const steps = (Math.round(pr.max * 100) - Math.round(pr.min * 100)) / Math.round(pr.step * 100);
-    assert.equal(Math.round(steps), steps, k + ' is ' + steps + ' steps wide');
-  });
-});
-
-test('the step keeps every profile within a usable number of positions', () => {
-  // The reason the step is adaptive: a fixed 5% gives Small/Backroad 33
-  // positions and Large/Highway 170. Aiming at ~100 keeps the feel even.
-  const ranges = RANGES();
-  Object.keys(ranges).forEach((k) => {
-    const pr = BDPG_STATS.pricingRangeForProfile(ranges[k], BDPG_CONFIG.PRICING_RANGE);
-    const steps = (Math.round(pr.max * 100) - Math.round(pr.min * 100)) / Math.round(pr.step * 100);
-    assert.ok(steps >= 40 && steps <= 200, k + ' has ' + steps + ' positions');
-    assert.ok([1, 5, 10, 25].includes(Math.round(pr.step * 100)),
-      k + ' step ' + pr.step + ' is not a round number');
-  });
-});
-
-test('pricingStepFor aims at about a hundred positions', () => {
-  assert.equal(BDPG_STATS.pricingStepFor(166), 1);    // 166 positions
-  assert.equal(BDPG_STATS.pricingStepFor(473), 5);    // 95
-  assert.equal(BDPG_STATS.pricingStepFor(850), 10);   // 85
-  assert.equal(BDPG_STATS.pricingStepFor(3000), 25);  // 120
-});
-
 test('a profile with too few locations falls back to the flat range', () => {
   const fb = BDPG_CONFIG.PRICING_RANGE;
   [{ n: 2, low: null, mid: null, high: null }, { n: 0, low: null, mid: null, high: null }]
@@ -1071,4 +1024,161 @@ test('an added location changes the averages it joins', () => {
     locs.concat([added]), BDPG_CONFIG.BASELINE_TABLE)[K];
   assert.equal(after.n, before.n + 1);
   assert.notEqual(after.median, before.median);
+});
+
+// ── the split-scale track ───────────────────────────────────────────────────
+
+const PR = (profile, roadway) => BDPG_STATS.pricingRangeForProfile(
+  BDPG_STATS.profileRanges(require('./network-locations.json').locations,
+    BDPG_CONFIG.BASELINE_TABLE)[BDPG_STATS.baselineKeyFor(profile, roadway)],
+  BDPG_CONFIG.PRICING_RANGE);
+
+const ALL_PR = () => {
+  const ranges = BDPG_STATS.profileRanges(
+    require('./network-locations.json').locations, BDPG_CONFIG.BASELINE_TABLE);
+  return BDPG_CONFIG.BASELINE_TABLE.map((r) => ({
+    key: r.profile + '/' + r.roadway,
+    pr: BDPG_STATS.pricingRangeForProfile(
+      ranges[BDPG_STATS.baselineKeyFor(r.profile, r.roadway)], BDPG_CONFIG.PRICING_RANGE)
+  }));
+};
+
+test('0% maps to the visual midpoint of the track on every profile', () => {
+  // The whole reason the split scale exists. On a plain linear track 0% --
+  // the profile AVERAGE -- rendered at 7.2% of the travel on Small/Highway
+  // and under 15% on four others, so the handle read as "almost no
+  // discounts" while the number meant "typical for this kind of site".
+  ALL_PR().forEach(({ key, pr }) => {
+    assert.equal(BDPG_STATS.pricingTrackFraction(0, pr), 50, key);
+    assert.equal(BDPG_STATS.pricingPositionForPct(0, pr), 0, key);
+  });
+});
+
+test('the fallback range centres 0 too, by the same rule', () => {
+  // A profile below the measurement threshold gets the flat +/-50%, which is
+  // already symmetric -- but it must go through the same mapping, or the one
+  // case nobody checks is the one that drifts.
+  const fb = BDPG_STATS.pricingRangeForProfile(
+    { n: 2, low: null, mid: null, high: null }, BDPG_CONFIG.PRICING_RANGE);
+  assert.equal(fb.source, 'fallback');
+  assert.equal(BDPG_STATS.pricingTrackFraction(0, fb), 50);
+});
+
+test('the track ends land exactly on the real p10 and p90 percentages', () => {
+  // The asymmetry is preserved, not flattened: only the pixel mapping
+  // changed. Forcing both halves onto a shared round step would have dragged
+  // these ends up to 24 points off the percentile they are named for.
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    assert.equal(BDPG_STATS.pricingPctForPosition(-N, pr), pr.min, key + ' low end');
+    assert.equal(BDPG_STATS.pricingPctForPosition(N, pr), pr.max, key + ' high end');
+  });
+});
+
+test('each half of the track gets exactly half the positions', () => {
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    assert.equal(BDPG_STATS.pricingTrackFraction(pr.min, pr), 0, key);
+    assert.equal(BDPG_STATS.pricingTrackFraction(pr.max, pr), 100, key);
+  });
+  assert.equal(N, 50);
+});
+
+test('every reachable position is a whole percentage', () => {
+  // "+457.3%" would imply precision the percentiles cannot support at n=9.
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    for (let p = -N; p <= N; p++) {
+      const pts = BDPG_STATS.pricingPctForPosition(p, pr) * 100;
+      assert.equal(Math.abs(pts - Math.round(pts)) < 1e-9, true,
+        key + ' position ' + p + ' gives ' + pts + '%');
+    }
+  });
+});
+
+test('the mapping is monotonic, so dragging right never lowers the figure', () => {
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    let prev = -Infinity;
+    for (let p = -N; p <= N; p++) {
+      const v = BDPG_STATS.pricingPctForPosition(p, pr);
+      assert.ok(v >= prev, key + ': position ' + p + ' went backwards (' + v + ' after ' + prev + ')');
+      prev = v;
+    }
+  });
+});
+
+test('position and percentage round-trip, so handle and readout cannot disagree', () => {
+  // The defect this replaced: a value in range but off the grid left the
+  // browser moving the handle while state held something else.
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    for (let p = -N; p <= N; p++) {
+      const pct = BDPG_STATS.pricingPctForPosition(p, pr);
+      const back = BDPG_STATS.pricingPositionForPct(pct, pr);
+      assert.equal(BDPG_STATS.pricingPctForPosition(back, pr), pct,
+        key + ' position ' + p + ' did not round-trip');
+    }
+  });
+});
+
+test('the left half is finer than the right on every real profile', () => {
+  // Not an accident -- it is the split doing its job. Every profile's spread
+  // is right-skewed (a site can be many times its average but not less than
+  // nothing), so equal pixels mean a gentler scale below the average.
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    if (pr.source !== 'profile') return;
+    const leftSpan = Math.abs(pr.min);
+    const rightSpan = pr.max;
+    assert.ok(rightSpan > leftSpan, key + ' is not right-skewed: ' + pr.min + '..' + pr.max);
+    // One position near the centre is worth more gallons on the right.
+    const oneLeft = Math.abs(BDPG_STATS.pricingPctForPosition(-1, pr));
+    const oneRight = BDPG_STATS.pricingPctForPosition(1, pr);
+    assert.ok(oneRight >= oneLeft, key + ': ' + oneRight + ' vs ' + oneLeft);
+  });
+});
+
+test('a stored posture outside the current range is pulled to the nearest end', () => {
+  const pr = PR('Small truck stop', 'Backroad');   // -51% .. +115%
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  // A +459% carried over from Medium/Interstate cannot be shown here.
+  assert.equal(BDPG_STATS.pricingPositionForPct(4.59, pr), N);
+  assert.equal(BDPG_STATS.pricingPositionForPct(-9, pr), -N);
+});
+
+test('an unusable position or range answers 0 rather than NaN', () => {
+  const pr = PR('Medium truck stop', 'Highway');
+  [null, undefined, '', 'x', NaN, {}].forEach((v) => {
+    assert.equal(BDPG_STATS.pricingPctForPosition(v, pr), 0, JSON.stringify(v));
+  });
+  // A degenerate range has no halves to split.
+  assert.equal(BDPG_STATS.pricingPositionForPct(0.5, { min: 0, max: 0 }), 0);
+  assert.equal(BDPG_STATS.pricingPositionForPct(-0.5, { min: 0, max: 0 }), 0);
+  assert.equal(BDPG_STATS.pricingTrackFraction(0, { min: 0, max: 0 }), 50);
+});
+
+test('positions beyond the ends clamp instead of running off the track', () => {
+  const pr = PR('Large truck stop', 'Highway');
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  assert.equal(BDPG_STATS.pricingPctForPosition(-999, pr), pr.min);
+  assert.equal(BDPG_STATS.pricingPctForPosition(999, pr), pr.max);
+  assert.equal(BDPG_STATS.pricingPctForPosition(-N - 1, pr), pr.min);
+  assert.equal(BDPG_STATS.pricingPctForPosition(N + 1, pr), pr.max);
+});
+
+test('the percentages the split scale reaches are the ones the formula uses', () => {
+  // The presentation changed; the numbers did not. Every end still reproduces
+  // the percentile gallons it was derived from.
+  const { BusDevGallonsCalc: Calc } = require('./busDevGallonsCalculator.js');
+  const N = BDPG_STATS.PRICING_POSITIONS_PER_SIDE;
+  ALL_PR().forEach(({ key, pr }) => {
+    if (pr.source !== 'profile') return;
+    [-N, 0, N].forEach((p) => {
+      const pct = BDPG_STATS.pricingPctForPosition(p, pr);
+      assert.equal(Calc.pricingAdjustment(pct), pct, key + ' at position ' + p);
+    });
+    assert.equal(Math.round(pr.mid * (1 + BDPG_STATS.pricingPctForPosition(0, pr))), pr.mid,
+      key + ': the centre must be the profile average exactly');
+  });
 });

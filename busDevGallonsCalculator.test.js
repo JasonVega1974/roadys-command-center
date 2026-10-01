@@ -216,9 +216,12 @@ test('calculateEstimate — case C @ Aggressive pricing: officialSubtotal unchan
 
 test('calculateEstimate — officialSubtotal is invariant across every pricing band', () => {
   const { BDPG_CONFIG } = require('./busDevGallonsConfig.js');
+  // Swept at a literal 5 points: the control has no uniform step any more
+  // (its track is split at the profile average), and this test is about the
+  // FORMULA being invariant to pricing, not about the control's granularity.
   const r = BDPG_CONFIG.PRICING_RANGE;
   const bands = [];
-  for (let p = r.min; p <= r.max + 1e-9; p += r.step) bands.push(Math.round(p * 1000) / 1000);
+  for (let p = r.min; p <= r.max + 1e-9; p += 0.05) bands.push(Math.round(p * 1000) / 1000);
   const subtotals = bands.map(level => BusDevGallonsCalc.calculateEstimate({
     profile: 'Large truck stop', roadway: 'Interstate', baseline: 15000,
     regionPct: -0.03, amenityLevel: 'Average', reviewRating: 3.5, pricingLevel: level
@@ -756,7 +759,6 @@ test('the pricing range is -50%..+50% in steps of 5, defaulting to neutral', () 
   const r = BDPG_CONFIG.PRICING_RANGE;
   assert.equal(r.min, -0.50);
   assert.equal(r.max, 0.50);
-  assert.equal(r.step, 0.05);
   assert.equal(BDPG_CONFIG.PRICING_DEFAULT, 0);
 });
 
@@ -766,9 +768,10 @@ test('the pricing range is symmetric and its step divides it evenly', () => {
   // catch. Symmetry is what makes "neutral" the centre of the control.
   const r = BDPG_CONFIG.PRICING_RANGE;
   assert.equal(r.min, -r.max, 'neutral must sit at the midpoint');
-  const steps = (r.max - r.min) / r.step;
-  assert.equal(Math.round(steps), steps, 'step must divide the range');
-  assert.equal(steps, 20);
+  // The fallback range carries no step: granularity comes from the position
+  // scale, which gives both halves the same number of positions by design.
+  assert.equal(r.step, undefined, 'the range must not claim a uniform step');
+  assert.equal(BDPG_STATS.pricingTrackFraction(0, r), 50, 'neutral is centred');
 });
 
 test('pricingAdjustment passes a slider value straight through', () => {
@@ -838,7 +841,7 @@ test('every slider step is a term in the formula and nothing else', () => {
   const args = { profile: 'Medium truck stop', roadway: 'Interstate', baseline: 10000,
     regionPct: 0.10, amenityLevel: 'Average', reviewRating: 4.0,
     rewardsLevel: 'Undecided / unknown' };
-  for (let p = r.min; p <= r.max + 1e-9; p += r.step) {
+  for (let p = r.min; p <= r.max + 1e-9; p += 0.05) {
     const pct = Math.round(p * 1000) / 1000;
     const e = BusDevGallonsCalc.calculateEstimate(Object.assign({}, args, { pricingLevel: pct }));
     assert.equal(e.pricingPct, pct, String(pct));

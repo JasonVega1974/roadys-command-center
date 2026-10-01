@@ -238,7 +238,7 @@
   // reach, and the multiplier floor in calculateEstimate() is what keeps a
   // deeply negative posture from quoting negative gallons. It is tested
   // against these ranges -- do not remove it.
-  var PRICING_RANGE = { min: -0.50, max: 0.50, step: 0.05 };
+  var PRICING_RANGE = { min: -0.50, max: 0.50 };
   var PRICING_DEFAULT = 0;
 
   // The envelope pricingAdjustment() clamps to, and the only clamp the
