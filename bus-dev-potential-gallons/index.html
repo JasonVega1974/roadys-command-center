@@ -5053,32 +5053,50 @@ function getCentroid(pathStr, axis){
     // has all four core amenities into "Good / full service", and can never
     // promote one that is missing a core amenity or demote one to
     // "Very limited". See suggestAmenityLevel().
-    // DEF is the one inline SVG among the emoji: it was 🧪, a lab test tube,
-    // which reads as chemistry rather than as the thing a driver pulls off the
-    // island. This is a pump nozzle with a fluid drop, in green, the colour
-    // DEF is signed in at the pump.
+    // DEF is the one inline SVG among the emoji, and it is the pump decal:
+    // a blue rounded badge, "DEF" in white, white nozzle and droplet to the
+    // right of the text. It replaces a green version of the same idea --
+    // DEF is signed BLUE at the pump (ISO 22241), and a green DEF decal would
+    // be read as diesel by anyone who fuels for a living. Before that it was
+    // 🧪, a lab test tube, which read as chemistry rather than as the thing a
+    // driver pulls off the island.
     //
-    // Sized in `em` and given width/height plus vertical-align so it sits on
-    // the same baseline and at the same visual weight as the emoji beside it
-    // -- .bdpg-acard-ico is font-size:1.4em with line-height:1, so an SVG at
-    // 1em of that inherited size matches their cap height rather than towering
-    // over them. currentColor is deliberately NOT used: these cards grey their
-    // text when unset, and DEF should stay recognisably DEF either way.
+    // Deliberately WIDER than tall (28x24 viewBox at 1.17em x 1em). Height is
+    // what aligns it with the emoji beside it; width is what lets three
+    // letters be legible at a ~17px badge. Squeezing "DEF" into a true square
+    // at this size turns the text into a smudge, and the text is the half of
+    // the decal a driver actually recognises.
+    //
+    // currentColor is deliberately NOT used: these cards grey their text when
+    // unset, and a greyed-out DEF badge would stop reading as DEF signage.
+    var DEF_BLUE = '#4400EE';
     var DEF_ICON =
-      '<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false" ' +
-        'style="vertical-align:-0.08em;display:inline-block">' +
-        // nozzle body + grip
-        '<path d="M6.5 4.25h6.25a2 2 0 0 1 2 2v5.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-5.5a2 2 0 0 1 2-2z" ' +
-          'fill="none" stroke="#00D68F" stroke-width="1.7" stroke-linejoin="round"/>' +
-        // spout to the fill point
-        '<path d="M14.75 7.5h3.1a1.9 1.9 0 0 1 1.9 1.9v3.35" fill="none" stroke="#00D68F" ' +
-          'stroke-width="1.7" stroke-linecap="round"/>' +
-        // hose
-        '<path d="M4.5 16.5v1.25a2 2 0 0 0 2 2h4" fill="none" stroke="#00D68F" ' +
-          'stroke-width="1.7" stroke-linecap="round"/>' +
-        // the fluid drop, filled so it carries at small sizes
-        '<path d="M19.75 14.6c.95 1.3 1.55 2.2 1.55 3.05a1.55 1.55 0 0 1-3.1 0c0-.85.6-1.75 1.55-3.05z" ' +
-          'fill="#00D68F"/>' +
+      // display:block, not inline-block. An inline SVG sits on a text baseline
+      // and the descender space below it grows the line box, which made this
+      // card's icon row 20.6px against the emoji's 19.6 -- a 1px taller card
+      // in a row of six. As a block with auto margins it takes exactly its own
+      // height and stays centred in the card.
+      '<svg viewBox="0 0 28 24" width="1.17em" height="1em" aria-hidden="true" focusable="false" ' +
+        'style="display:block;margin:0 auto">' +
+        // The badge. Full-bleed vertically so the blue carries at small sizes;
+        // rx scaled to read as rounded rather than as a circle.
+        '<rect x="0.5" y="2.5" width="27" height="19" rx="4" fill="' + DEF_BLUE + '"/>' +
+        // "DEF". textLength pins the glyph run to an exact width so the layout
+        // cannot shift between the fonts this page may fall back to -- without
+        // it a wider system font pushes the text under the nozzle.
+        '<text x="3" y="15.6" textLength="13.4" lengthAdjust="spacingAndGlyphs" ' +
+          'font-family="Helvetica Neue,Arial,sans-serif" font-size="9.4" font-weight="700" ' +
+          'fill="#fff">DEF</text>' +
+        // Nozzle: filled rather than stroked. A 1px stroke on a ~17px badge
+        // renders as a grey smear once the browser antialiases it; solid
+        // shapes stay crisp.
+        '<rect x="18.4" y="6.9" width="3.5" height="6.1" rx="1.2" fill="#fff"/>' +
+        // Spout arm over to the fill point.
+        '<path d="M21.9 8.6h1.5a1.15 1.15 0 0 1 1.15 1.15v1.9" fill="none" stroke="#fff" ' +
+          'stroke-width="1.25" stroke-linecap="round"/>' +
+        // The droplet, the other half of the standard decal.
+        '<path d="M24.55 12.2c.7.95 1.15 1.62 1.15 2.24a1.15 1.15 0 0 1-2.3 0c0-.62.45-1.29 1.15-2.24z" ' +
+          'fill="#fff"/>' +
       '</svg>';
 
     var AICONS = { showers:'🚿', food:'🍔', scale:'⚖️', parking:'🅿️', def:DEF_ICON, laundry:'🧺' };
