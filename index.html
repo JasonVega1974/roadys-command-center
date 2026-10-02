@@ -516,6 +516,14 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
 .dt-fin tbody td:first-child{position:sticky;left:0;background:var(--surface);z-index:1;}
 .fin-tbl-toolbar{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center;}
 .fin-scroll-btn{font-size:.74em!important;padding:5px 10px!important;}
+/* P&L import failure notice. Sits above the Financials header so it cannot be
+   mistaken for part of the data; .fatal is the "reload before trusting this"
+   case, where the rollback redraw itself failed. */
+.pl-import-error{display:flex;gap:12px;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:.82em;
+  border:1px solid var(--red);background:rgba(255,59,92,.10);color:var(--text);}
+.pl-import-error.fatal{border-width:2px;background:rgba(255,59,92,.20);font-weight:600;}
+.pl-import-error .btn{flex:none;font-size:.78em;}
 .dt{width:100%;border-collapse:collapse;font-size:.88em;}
 .dt th{background:var(--surface2);color:var(--muted);font-size:.78em;letter-spacing:.08em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
 .dt td{padding:8px 12px;border-bottom:1px solid rgba(30,42,69,.5);color:var(--text);}
@@ -1056,7 +1064,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
         <span class="badge" id="fin-badge">—</span>
         <button class="btn fin-notes-btn" id="fin-notes-btn" onclick="pnlOpenNotesModal()" title="View Financials notes" style="margin-left:auto;font-size:.78em;display:none">&#128221; Notes <span class="fin-notes-count" id="fin-notes-count">0</span></button>
         <button class="btn fin-edit-toggle" id="fin-edit-toggle" onclick="pnlToggleEditMode()" title="Show / hide the note-entry form" style="font-size:.75em">&#128221; Add Note</button>
-        <label class="btn btn-accent" style="cursor:pointer;font-size:.75em" title="Import QuickBooks P&amp;L CSV">&#128229; Import P&amp;L CSV<input type="file" accept=".csv" style="display:none" onchange="importPLcsv(this)"/></label>
+        <label class="btn btn-accent" style="cursor:pointer;font-size:.75em" title="Import a QuickBooks P&amp;L export — .xlsx, .xls or .csv">&#128229; Import P&amp;L<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importPLcsv(this)"/></label>
       </div>
       <div class="kpi-grid" id="fin-kpis"></div>
       <div class="kpi-grid" id="fin-kpis-row2"></div>
@@ -6174,15 +6182,44 @@ function parseCsvLine(line){
   return result;
 }
 
-// ── P&L CSV Importer (QuickBooks format) ──────────────────────────────
+// ── P&L Importer (QuickBooks CSV or XLSX) ─────────────────────────────
+// The file reaches XLSX two different ways on purpose. A .csv is text and
+// parses as a string; a .xlsx is a ZIP archive and has to arrive as bytes.
+// Reading a workbook with readAsText and handing the result to the string
+// parser is what produced "RangeError: Array buffer allocation failed" on a
+// 22 KB file: readAsText UTF-8-decodes the archive (mangling every byte that
+// isn't valid UTF-8), SheetJS still recognises the leading "PK" magic, and
+// then reads a corrupted record length as an allocation size. Same extension
+// branch universalImport() has always used.
 function importPLcsv(input){
   const file=input.files?.[0]; if(!file) return;
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  const asText=(ext==='csv'||ext==='txt');
   const reader=new FileReader();
+  reader.onerror=()=>{ plImportFailed('could not read '+file.name,null); input.value=''; };
   reader.onload=e=>{
+    // Everything below writes into KD. A failure part-way through used to
+    // leave some cards on new numbers and others on the old ones, so the
+    // import runs against a snapshot and rolls back as a single unit.
+    const snapshot=JSON.parse(JSON.stringify(KD));
     try{
-      if(typeof XLSX==='undefined'){toast('Excel library not loaded','terr');return;}
-      const wb=XLSX.read(e.target.result,{type:'string',raw:false});
+      if(typeof XLSX==='undefined') throw new Error('Excel library not loaded');
+      let wb;
+      try{
+        wb=asText
+          // raw:true on the CSV side is load-bearing, not a tidy-up. With
+          // raw:false SheetJS date-parses the header row, so "Sep 2026" arrives
+          // as the Excel serial 46266 and the month scan below has to convert it
+          // back — a round trip that used to land every column one month early.
+          // Keeping the header text literal avoids the conversion entirely.
+          ? XLSX.read(e.target.result,{type:'string',raw:true})
+          : XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+      }catch(readErr){
+        throw new Error(file.name+' could not be opened as a workbook ('+
+          readErr.message+') — re-export the P&L from QuickBooks as CSV or XLSX');
+      }
       const ws=wb.Sheets[wb.SheetNames[0]];
+      if(!ws) throw new Error(file.name+' has no readable sheet');
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,raw:true});
 
       // Find header row (contains month names / dates) — scan first 10 rows
@@ -6194,30 +6231,38 @@ function importPLcsv(input){
         row.forEach((cell,ci)=>{
           if(!cell) return;
           let mo=null;
-          // "Dec 2025", "Feb 2026", "2025-12" etc.
+          // A month header reaches us in four shapes depending on how the P&L
+          // was exported: literal text ("Sep 2026", "2026-09", "09/01/2026"),
+          // a real date cell (xlsx read with cellDates), or an Excel serial.
+          // The date and serial cases MUST be read in UTC — the epoch below is
+          // UTC midnight, so local getters west of Greenwich roll back a day
+          // and file the whole column one month early, silently.
+          const ymUTC=d=>d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');
           const s=String(cell).trim();
           const m1=s.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+(\d{4})$/i);
           const m2=s.match(/^(\d{4})-(\d{2})$/);
-          const m3=s.match(/^(\d{1,2})\/\d{1,2}\/(\d{4})$/); // date serial or MM/DD/YYYY
-          if(m1){
+          const m3=s.match(/^(\d{1,2})\/\d{1,2}\/(\d{4})$/); // MM/DD/YYYY
+          if(cell instanceof Date){
+            mo=ymUTC(cell);
+          } else if(m1){
             const mm={'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06',
                       'jul':'07','aug':'08','sep':'09','oct':'10','nov':'11','dec':'12'};
             mo=m1[2]+'-'+mm[m1[1].toLowerCase().substring(0,3)];
           } else if(m2){
             mo=s;
+          } else if(m3){
+            mo=m3[2]+'-'+String(m3[1]).padStart(2,'0');
           } else if(typeof cell==='number'&&cell>40000){
-            // Excel date serial
-            const d=new Date((cell-25569)*86400000);
-            mo=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+            mo=ymUTC(new Date((cell-25569)*86400000));   // Excel date serial
           }
           if(mo&&MOS.includes(mo)) cols.push({ci,mo});
         });
         if(cols.length>=1){hdrRow=r;monthCols=cols;break;}
       }
 
-      if(hdrRow<0||monthCols.length===0){
-        toast('No recognizable month columns found in CSV','terr'); input.value=''; return;
-      }
+      if(hdrRow<0||monthCols.length===0)
+        throw new Error('no recognizable month columns in '+file.name+
+          ' — the header row needs cells like "Sep 2026"');
 
       // Skip rows that are section headers or totals (no account name in col 0, or name starts with Total/Gross/Net/Operating)
       const SKIP_RE=/^(total|gross profit|net income|operating income|income|cost of goods sold|operating expenses?)\s*$/i;
@@ -6243,10 +6288,8 @@ function importPLcsv(input){
         });
       }
 
-      if(imported===0){
-        toast('No matching P&L line items found — check CSV format','terr');
-        input.value=''; return;
-      }
+      if(imported===0)
+        throw new Error('no P&L line items in '+file.name+' matched a known account name');
 
       // Rebuild Income rollup for imported months
       const INCOME_SUBS=Object.keys(KPI_MD).filter(k=>KPI_MD[k].cat==='PL_Income');
@@ -6265,15 +6308,52 @@ function importPLcsv(input){
       LAST_IMPORT=new Date().toLocaleString();
       saveData();
       updateAll();
+      plImportClearBanner();
       toast('✓ P&L imported: '+imported+' values across '+newMonths.size+' month(s) — all cards updated','tok');
       try{document.getElementById('last-import').textContent=LAST_IMPORT;}catch(x){}
     }catch(err){
-      console.error('P&L import error:',err);
-      toast('Import failed: '+err.message,'terr');
+      KD=snapshot;
+      plImportFailed(err.message,err);
     }
     input.value='';
   };
-  reader.readAsText(file);
+  if(asText) reader.readAsText(file);
+  else reader.readAsArrayBuffer(file);
+}
+
+// A failed import has to leave the page in ONE state, never a blend of the old
+// and new numbers. KD is already back to the pre-import snapshot by the time
+// this runs, so redraw every card from it. If the redraw itself cannot finish,
+// that is the one case where rolling back silently would be worse than saying
+// so: the banner stays on screen until the page is reloaded, because a
+// half-drawn dashboard reads as data rather than as a failure.
+// Nothing is written to localStorage on this path — the last good data is
+// still the last thing saveData() persisted.
+function plImportFailed(msg,err){
+  if(err) console.error('P&L import error:',err);
+  let redrew=true;
+  try{ updateAll(); }
+  catch(e){ redrew=false; console.error('P&L import rollback redraw failed:',e); }
+  plImportBanner(redrew
+    ? 'Import failed, nothing was changed — the figures below are the previously loaded data. '+msg
+    : 'Import failed AND the dashboard could not be redrawn from the previous data. Reload the page before trusting any figure on screen. '+msg,
+    !redrew);
+  toast('Import failed: '+msg,'terr');
+}
+function plImportClearBanner(){ plImportBanner('',false); }
+function plImportBanner(msg,fatal){
+  const host=document.getElementById('pg-kpi-financial'); if(!host) return;
+  let el=document.getElementById('pl-import-error');
+  if(!msg){ if(el) el.remove(); return; }
+  if(!el){
+    el=document.createElement('div');
+    el.id='pl-import-error';
+    host.insertBefore(el,host.firstChild);
+  }
+  el.className='pl-import-error'+(fatal?' fatal':'');
+  el.innerHTML='<span>⚠ '+escHtml(msg)+'</span>'+(fatal
+    ? '<button class="btn" onclick="location.reload()">Reload page</button>'
+    : '<button class="btn" onclick="plImportClearBanner()">Dismiss</button>');
 }
 
 function recalcVendorRevenue(){
