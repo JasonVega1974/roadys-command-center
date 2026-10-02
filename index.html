@@ -2631,12 +2631,18 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // typically lags by a month, so opening in May should show April.
   // Falls back to the latest available option if prior-month is out
   // of range (e.g. Jan 2027 when MOS ends at Dec 2026).
+  // LAST_CLOSED_MO caps that: a month whose P&L is still open reads as a
+  // profit it hasn't earned (Sep 2026 carries unposted accruals and one
+  // payroll period, so it shows +47k Net Income), and the default view is
+  // the one nobody picks deliberately. Raise this as each month closes.
+  const LAST_CLOSED_MO = '2026-08';
   try {
     const sel = document.getElementById('ms');
     if(sel){
       const now = new Date();
       const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const target = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+      const prevMo = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+      const target = prevMo > LAST_CLOSED_MO ? LAST_CLOSED_MO : prevMo;
       const opts = Array.from(sel.options).map(o => o.value);
       const value = opts.includes(target) ? target : opts[opts.length - 1];
       if(sel.value !== value){
