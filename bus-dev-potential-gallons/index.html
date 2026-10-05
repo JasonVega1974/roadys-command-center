@@ -668,9 +668,7 @@ function getCentroid(pathStr, axis){
         // saved prospects are read back. The old "My Profiles" modal that
         // used to sit beside this button was a second, less-hardened view of
         // the same roadysBDPGProfiles array and has been removed.
-        '<div class="bdpg-box" style="margin-top:14px">' +
-          '<button class="btn" onclick="BDPG.onSaveProfile()">Save Profile</button>' +
-        '</div>';
+        BDPG.saveToProspectsHtml();
       BDPG.renderMap();
       BDPG.drawCharts();
       // Baseline for "does the rep have unsaved work?", captured after the
@@ -3995,6 +3993,7 @@ function getCentroid(pathStr, axis){
     // intervening render, so keep the stored value true to the fields.
     BDPG.updatePreEvalSignal();
     BDPG.updateStepCardBadge(0, BDPG.prospectDone());
+    BDPG.markDraftDirty();
   };
 
   // Location Type -> Step 1 baseline coupling. Fuel Stop auto-selects a
@@ -4027,6 +4026,10 @@ function getCentroid(pathStr, axis){
     } else if (rule && rule.suggest) {
       s.suggestProfiles = rule.suggest;
     }
+    // Before the render, not after: markDraftDirty() sets the indicator's
+    // message, and the render below reads it back out of BDPG._draftMsg when
+    // it rebuilds the ⓪ card. The other order would paint the stale message.
+    BDPG.markDraftDirty();
     BDPG.render();
   };
 
@@ -4358,6 +4361,213 @@ function getCentroid(pathStr, axis){
     return result;
   };
 
+  // ── Prospect Profile draft auto-save ──────────────────────────────────
+  //
+  // roadysBDPGDraft holds ONE in-progress Prospect Profile card and is kept
+  // entirely separate from roadysBDPGProfiles, the saved-prospect array the
+  // tracker reads. It exists so closing the tab (or a reload) mid-entry does
+  // not lose the typing. It is not a second prospect store: nothing but the
+  // ⓪ card reads or writes it, and promoting a draft to a real prospect is
+  // Save to Prospects and nothing else.
+  //
+  // Only the ⓪ card's own inputs are drafted -- the five Prospect Profile
+  // fields plus State, which lives at BDPG.state.state rather than on
+  // `prospect` (see prospectHtml below). Step 1, Step 2 and the generated
+  // result are deliberately NOT drafted: restoring a baseline and a set of
+  // adjustments nobody chose in this session would put inputs on screen that
+  // no rep selected, and a restored result would describe them. The one
+  // derived value restoreDraft() does rebuild is Step 1's baseline when the
+  // drafted Location Type auto-sets it -- that is a pure function of the
+  // drafted field, not stored Step 1 data. See restoreDraft().
+  BDPG.DRAFT_KEY = 'roadysBDPGDraft';
+
+  // Long enough that a fast typist writes to localStorage once per pause
+  // instead of once per keystroke, and the indicator cannot strobe. The
+  // pending write is flushed on pagehide (see the listener at the bottom of
+  // this file) and before Save, so this window is never a way to lose the
+  // last thing typed.
+  BDPG.DRAFT_DEBOUNCE_MS = 2000;
+  BDPG._draftTimer = null;
+  BDPG._draftMsg = '';
+
+  BDPG.draftSnapshot = function () {
+    var p = BDPG.state.prospect;
+    return {
+      name: str(p.name), street: str(p.street), city: str(p.city),
+      locationType: str(p.locationType), notes: str(p.notes),
+      stateCode: str(BDPG.state.state),
+      savedAt: new Date().toISOString()
+    };
+  };
+
+  // An all-blank card is not a draft. This is the guard that keeps an empty
+  // draft from being written when a rep clears the fields -- which matters
+  // beyond tidiness, because restoreDraft() marks a restored draft as
+  // unsaved work, and an empty one would then prompt "discard unsaved
+  // changes?" on a page with nothing on it.
+  BDPG.draftHasContent = function (d) {
+    return !!(d && (d.name || d.street || d.city || d.locationType || d.notes || d.stateCode));
+  };
+
+  BDPG.clearDraftStorage = function () {
+    try { localStorage.removeItem(BDPG.DRAFT_KEY); } catch (e) {}
+  };
+
+  // Same discipline as getSavedProfiles() and readSummary(): a corrupted or
+  // hand-edited value must not take down the page or reach the DOM. Every
+  // field is coerced through str(), so an object where a label belongs can
+  // never print as "[object Object]", and an unparseable draft is dropped
+  // rather than carried forward to fail again on the next load.
+  BDPG.readDraft = function () {
+    var raw;
+    try { raw = localStorage.getItem(BDPG.DRAFT_KEY); } catch (e) { return null; }
+    if (!raw) return null;
+    var d = null;
+    try { d = JSON.parse(raw); } catch (e) { BDPG.clearDraftStorage(); return null; }
+    if (!d || typeof d !== 'object' || Array.isArray(d)) { BDPG.clearDraftStorage(); return null; }
+    var lt = str(d.locationType);
+    var out = {
+      name: str(d.name), street: str(d.street), city: str(d.city),
+      // Validated against the live list rather than trusted: an orphaned or
+      // hand-edited type would show no segment selected while still riding
+      // into the saved record and the tracker's Location Type column.
+      locationType: BDPG.PROSPECT_LOCATION_TYPES.indexOf(lt) !== -1 ? lt : '',
+      notes: str(d.notes),
+      // Normalized exactly as onStateInput() would have left it, so a
+      // restored code resolves a region instead of missing the 8-region map.
+      stateCode: str(d.stateCode).toUpperCase().slice(0, 2),
+      savedAt: str(d.savedAt)
+    };
+    // Parsed fine but holds nothing a rep typed -- `{}`, or a record whose
+    // every field was the wrong type. Dropped like the unparseable case
+    // rather than left to be re-read on every load: readDraft() is also what
+    // decides whether the "Clear draft" link appears, so a lingering empty
+    // draft would be a key nobody could see or reach.
+    if (!BDPG.draftHasContent(out)) { BDPG.clearDraftStorage(); return null; }
+    return out;
+  };
+
+  BDPG.draftTimeLabel = function (iso) {
+    var d = new Date(iso);
+    if (!iso || isNaN(d.getTime())) return '';
+    return 'at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  // Scheduled from every ⓪-card change handler. Shows the pending state
+  // immediately so a rep can see the draft is live, then writes once the
+  // typing stops.
+  BDPG.markDraftDirty = function () {
+    if (BDPG._draftTimer) clearTimeout(BDPG._draftTimer);
+    BDPG.setDraftMsg('Saving draft…');
+    BDPG._draftTimer = setTimeout(function () {
+      BDPG._draftTimer = null;
+      BDPG.flushDraft();
+    }, BDPG.DRAFT_DEBOUNCE_MS);
+  };
+
+  // Writes the draft now, cancelling any pending debounce. Returns nothing:
+  // the outcome is reported on the indicator, including the failure case --
+  // a full quota or a private-mode browser must say so rather than show
+  // "Draft saved" over a write that did not happen.
+  BDPG.flushDraft = function () {
+    if (BDPG._draftTimer) { clearTimeout(BDPG._draftTimer); BDPG._draftTimer = null; }
+    var d = BDPG.draftSnapshot();
+    if (!BDPG.draftHasContent(d)) {
+      BDPG.clearDraftStorage();
+      BDPG.setDraftMsg('');
+      return;
+    }
+    var ok = true;
+    try { localStorage.setItem(BDPG.DRAFT_KEY, JSON.stringify(d)); } catch (e) { ok = false; }
+    BDPG.setDraftMsg(ok ? 'Draft saved ' + BDPG.draftTimeLabel(d.savedAt)
+                        : 'Draft could not be saved in this browser');
+  };
+
+  BDPG.draftStatusInnerHtml = function () {
+    // The "Clear draft" link appears whenever there is something to clear --
+    // a filled card, or a stored draft from an earlier session that the card
+    // no longer shows.
+    var showClear = BDPG.draftHasContent(BDPG.draftSnapshot()) || BDPG.readDraft() !== null;
+    var msg = BDPG._draftMsg
+      ? '<span>' + BDPG.escHtml(BDPG._draftMsg) + '</span>'
+      : '<span>Draft saves automatically as you type</span>';
+    var link = showClear
+      ? ' <a href="#" onclick="BDPG.onClearDraft(); return false;" ' +
+        'style="color:var(--accent);text-decoration:underline">Clear draft</a>'
+      : '';
+    return msg + link;
+  };
+
+  // Targeted write, never a BDPG.render(): this fires on every keystroke and
+  // re-rendering the ⓪ card would take the cursor out of the field being
+  // typed in. The element lives inside prospectHtml(), which both
+  // onProspectInput() and onStateInput() deliberately leave standing.
+  BDPG.setDraftMsg = function (msg) {
+    BDPG._draftMsg = msg;
+    var el = document.getElementById('bdpg-draft-status');
+    if (el) el.innerHTML = BDPG.draftStatusInnerHtml();
+  };
+
+  // Runs once, from the DOMContentLoaded hook, BEFORE the first render.
+  BDPG.restoreDraft = function () {
+    var d = BDPG.readDraft();
+    if (!d) return false;
+    var p = BDPG.state.prospect;
+    p.name = d.name; p.street = d.street; p.city = d.city;
+    p.locationType = d.locationType; p.notes = d.notes;
+    BDPG.state.state = d.stateCode;
+    // Picking a Location Type is the ⓪ card's one coupling into the engine
+    // (see onLocationType): Fuel Stop auto-sets Step 1's baseline. Replaying
+    // that rule here means a restored card means the same thing it meant
+    // when it was typed, and autoSetNote puts the reason on screen rather
+    // than leaving a silently pre-selected baseline. Nothing is generated at
+    // this point, so there is no result to invalidate.
+    var rule = BDPG.LOCTYPE_PROFILE[d.locationType];
+    if (rule && rule.auto) {
+      BDPG.state.profile = rule.auto;
+      BDPG.state.roadway = rule.roadway;
+      BDPG.state.autoSetNote = d.locationType + ' type selected — baseline auto-set.';
+    }
+    BDPG.updatePreEvalSignal();
+    // A restored draft is, by definition, work that never reached the
+    // tracker. savedSig = '' is this file's existing idiom for exactly that
+    // (see onDeleteProfile), and it has to be set BEFORE the first render:
+    // render()'s `if (savedSig === null)` baseline capture would otherwise
+    // record the restored draft as already-saved, and Load / Export Pitch
+    // Summary would then replace it with no discard prompt at all.
+    BDPG.savedSig = '';
+    BDPG._draftMsg = 'Draft restored ' + BDPG.draftTimeLabel(d.savedAt);
+    return true;
+  };
+
+  BDPG.onClearDraft = function () {
+    // Deleting only the stored key would be a no-op in practice -- the
+    // fields are still filled, so the very next keystroke writes them
+    // straight back. "Start fresh" therefore has to mean the card too. And
+    // because State feeds the region term, emptying it can strand a
+    // generated result, so this goes through the same invalidateResult()
+    // discipline every other State write does, and it asks first.
+    if (!confirm('Clear the saved draft and empty the Prospect Profile card?\n\n' +
+                 'Name, street, city, state, location type and notes are all cleared, ' +
+                 'and any generated result goes with them.\n\n' +
+                 'Prospects already saved on the Prospects tab are not touched.')) return;
+    if (BDPG._draftTimer) { clearTimeout(BDPG._draftTimer); BDPG._draftTimer = null; }
+    BDPG.clearDraftStorage();
+    var p = BDPG.state.prospect;
+    p.name = ''; p.street = ''; p.city = ''; p.locationType = ''; p.notes = '';
+    if (BDPG.state.state) BDPG.invalidateResult();
+    BDPG.state.state = '';
+    BDPG.state.autoSetNote = '';
+    BDPG.state.suggestProfiles = [];
+    BDPG.updatePreEvalSignal();
+    // The card no longer describes the record it may have been loaded from,
+    // so a later Save must create a new row rather than overwrite that one --
+    // the same binding onSaveProfile() drops when the displayed name changes.
+    BDPG.currentProfileId = null;
+    BDPG._draftMsg = '';
+    BDPG.render();
+  };
+
   BDPG.prospectHtml = function () {
     var p = BDPG.state.prospect;
     var req = ' <span style="color:var(--red)">*</span>';
@@ -4390,7 +4600,14 @@ function getCentroid(pathStr, axis){
       '<div class="fg" style="margin-top:12px"><label>Notes</label>' +
         '<textarea id="bdpg-prospect-notes" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);' +
         'border-radius:5px;color:var(--text);padding:6px 8px;font-size:.85em;font-family:var(--fb)" ' +
-        'oninput="BDPG.onProspectInput(\'notes\', this.value)">' + BDPG.escHtml(p.notes) + '</textarea></div>';
+        'oninput="BDPG.onProspectInput(\'notes\', this.value)">' + BDPG.escHtml(p.notes) + '</textarea></div>' +
+      // The draft indicator. Its own id so setDraftMsg() can patch it on
+      // every keystroke without re-rendering the card around it -- see the
+      // comment on setDraftMsg().
+      '<div id="bdpg-draft-status" style="margin-top:12px;font-size:.72em;color:var(--muted);' +
+        'display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        BDPG.draftStatusInnerHtml() +
+      '</div>';
   };
 
   // BDPG region fills. The selection ring is deliberately NOT one of these
@@ -5244,6 +5461,10 @@ function getCentroid(pathStr, axis){
     var pInput = document.getElementById('bdpg-prospect-state');
     if (pInput && document.activeElement !== pInput) pInput.value = BDPG.state.state;
     BDPG.updateStepCardBadge(0, BDPG.prospectDone());
+    // State is one of the six ⓪-card values the draft carries. Safe to patch
+    // the indicator from here: the swap above replaced #bdpg-step2 only, and
+    // #bdpg-draft-status lives in the Prospect Profile card above it.
+    BDPG.markDraftDirty();
     // The outerHTML swap above destroyed the map's <svg> along with the rest
     // of #bdpg-step2 -- rebuild it so typing a state code updates the map too.
     BDPG.renderMap();
@@ -6398,6 +6619,37 @@ function getCentroid(pathStr, axis){
     };
   };
 
+  // The explicit save. Promoted from a plain `.btn` reading "Save Profile"
+  // to the accent button and a stated destination, because "Save Profile"
+  // named the thing being saved and not where it went -- the Prospects tab
+  // was a separate discovery.
+  //
+  // It stays visible before Generate rather than appearing only after one.
+  // Saving an un-generated prospect is supported on purpose (onSaveProfile
+  // confirms, then stores blank figures), and that is the same save a rep
+  // reaches for when they are capturing a lead to finish later. What changes
+  // with a result present is the hint: it names the figure that is about to
+  // be stored, so "Save to Prospects" is never a guess about what lands.
+  BDPG.saveToProspectsHtml = function () {
+    var e = BDPG.state.result ? BDPG.state.result.estimate : null;
+    var hint;
+    if (e && isNum(e.finalGallons)) {
+      hint = 'Stores ' + BDPG.escHtml(BDPG.displayName()) + ' with ' +
+        BDPG.fmtGal(e.finalGallons) + ' gal/mo and every adjustment behind it, ' +
+        'ready to reopen from the Prospects tab.';
+    } else if (BDPG.state.resultStale) {
+      hint = 'An input changed since the last Generate. Saving now stores this prospect ' +
+        'with blank gallon figures — click Generate Value Profile first to store the number.';
+    } else {
+      hint = 'Generate a value profile first to store the gallons figure with it. ' +
+        'Saving now records the prospect and its inputs without a number.';
+    }
+    return '<div class="bdpg-box" style="margin-top:14px">' +
+      '<button class="btn btn-accent" onclick="BDPG.onSaveProfile()">📋 Save to Prospects</button>' +
+      '<div style="font-size:.72em;color:var(--muted);margin-top:8px">' + hint + '</div>' +
+    '</div>';
+  };
+
   BDPG.onSaveProfile = function () {
     var name = BDPG.resolveProspectName() || prompt('Name this profile:');
     if (!name) return;
@@ -6465,7 +6717,17 @@ function getCentroid(pathStr, axis){
     if (idx >= 0) profiles[idx] = record; else profiles.push(record);
     localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
     BDPG.currentProfileId = record.id;
-    toast(idx >= 0 ? 'Profile updated' : 'Profile saved');
+    // Save is what promotes the draft to a real prospect, so the draft is
+    // done: the work is in roadysBDPGProfiles now and the Prospects tab is
+    // where it is read back. Cancel any pending debounced write first, or it
+    // would fire a second later and re-create the draft this just cleared.
+    if (BDPG._draftTimer) { clearTimeout(BDPG._draftTimer); BDPG._draftTimer = null; }
+    BDPG.clearDraftStorage();
+    BDPG._draftMsg = '';
+    // Names the prospect, so a rep who saves two in a row can see which one
+    // landed -- "Profile saved" alone could not be told apart from the
+    // previous save's toast.
+    toast((idx >= 0 ? 'Updated in Prospects — ' : 'Saved to Prospects — ') + record.name);
     BDPG.render();
     // After the render, so step2Html()'s pricingLevel/amenityLevel defaults
     // are already settled and the baseline matches what is now on screen.
@@ -6549,6 +6811,13 @@ function getCentroid(pathStr, axis){
     }
     BDPG.render();
     BDPG.savedSig = BDPG.stateSig();
+    // The draft must always describe the ⓪ card that is on screen. A load
+    // replaces that card wholesale, so the previous draft now describes
+    // nothing visible -- leaving it would mean reloading the page brought
+    // back the old draft instead of the prospect the rep just opened.
+    // (Save is the one deliberate exception: it clears the draft outright,
+    // because by then the work is in the tracker.)
+    BDPG.flushDraft();
     return true;
   };
 
@@ -6954,6 +7223,167 @@ function getCentroid(pathStr, axis){
       '</div></div>';
   };
 
+  // ── Prospects tab: the saved-prospect cards ───────────────────────────
+  //
+  // A card per saved prospect, above the tracker table. The table is not
+  // replaced: it carries nine more columns, the delegated column sort, the
+  // provenance badges and the roll-up, and every one of those is still the
+  // way to compare the pipeline. The cards are the "what did I save, and let
+  // me reopen it" view -- the five fields a rep looks for by name, plus View.
+  //
+  // Reads through BDPG.readSummary(p) like every other consumer, never
+  // p.state / p.summary directly, so a legacy record (no `prospect`, no
+  // `summary`) degrades here exactly as it does in the table rather than
+  // printing "undefined".
+
+  // Whether a card's stored gallons were computed on a basis that no longer
+  // matches today's. The table states this per figure in two badges and
+  // explains the reasoning at length (see trackerRowHtml); the card needs
+  // only the one fact, because View RECOMPUTES -- so without this line a rep
+  // could read one number on the card and a different one the moment they
+  // clicked through, with nothing on screen accounting for the gap.
+  //
+  // "Unknown" is deliberately not folded into "matches", same as the table:
+  // a record saved before stamping carries no evidence either way.
+  BDPG.storedFigureBasisNote = function (sum) {
+    if (!isNum(sum.officialSubtotal)) return '';
+    var parts = [];
+    if (sum.region && hasOwn(BDPG.REGION_COLORS, sum.region)) {
+      var curRegionStamp = BDPG.regionPctStamp(BDPG.effectiveRegionPct(sum.region));
+      if (!sum.regionPctStamp) parts.push('an unrecorded region %');
+      else if (sum.regionPctStamp !== curRegionStamp) parts.push('a ' + sum.regionPctStamp + '% region adjustment');
+    }
+    if (sum.profile && sum.roadway) {
+      var curMap = BDPG.profileBaselineMap();
+      var curDyn = curMap ? curMap[BDPG_STATS.baselineKeyFor(sum.profile, sum.roadway)] : null;
+      var curRow = curDyn && isNum(curDyn.baseline)
+        ? curDyn : BusDevGallonsCalc.getBaselineRow(sum.profile, sum.roadway);
+      if (curRow) {
+        var curBaselineStamp = BDPG.baselineStamp(curRow.baseline);
+        if (!sum.baselineStamp) parts.push('an unrecorded baseline');
+        else if (sum.baselineStamp !== curBaselineStamp) {
+          parts.push('a ' + BDPG.fmtGal(Number(sum.baselineStamp)) + ' gal/mo baseline');
+        }
+      }
+    }
+    if (!parts.length) return '';
+    return 'Saved under ' + parts.join(' and ') + ', which is not what the calculator uses now — ' +
+      'View recomputes, so it will show a different figure. The stored number above is left as saved.';
+  };
+
+  BDPG.prospectCardHtml = function (p) {
+    var sum = BDPG.readSummary(p);
+
+    var cityState = (!sum.city && !sum.stateCode) ? '—' :
+      BDPG.escHtml(sum.city || '') + (sum.city && sum.stateCode ? ', ' : '') + BDPG.escHtml(sum.stateCode || '');
+
+    var profileTxt = (sum.profile && sum.roadway)
+      ? BDPG.escHtml(sum.profile) + ' · ' + BDPG.escHtml(sum.roadway) : '—';
+
+    // Dash, not zero, when nothing was generated: a prospect saved before
+    // Generate has null gallons, and printing "0 gal/mo" would assert a
+    // figure the calculator never produced.
+    var gallonsTxt = isNum(sum.finalGallons) ? BDPG.fmtGal(sum.finalGallons) : '—';
+    var gallonsSub = isNum(sum.finalGallons) ? 'gal/mo final potential' : 'no value profile generated yet';
+    // The dash is muted, not accent. In the accent orange every other card
+    // uses for its figure it reads as a value rather than the absence of one
+    // -- at that weight and size an em dash is just a short orange bar.
+    var gallonsColor = isNum(sum.finalGallons) ? 'var(--accent)' : 'var(--dim)';
+
+    // Sliced from the ISO string rather than Date-converted, for the same
+    // reason the table's Saved cell is (see trackerRowHtml): no "Invalid
+    // Date" for a junk value, and no UTC-stored/local-rendered day shift.
+    var savedTxt = (typeof sum.savedAt === 'string' && sum.savedAt.length >= 10)
+      ? sum.savedAt.slice(0, 10) : '—';
+
+    var typeBadge = sum.locationType
+      ? ' <span class="badge tag-gray">' + BDPG.escHtml(sum.locationType) + '</span>' : '';
+
+    var signalBadge = '';
+    if (sum.preEvalSignal) {
+      var tone = hasOwn(BDPG.PREEVAL_SIGNAL_TONES, sum.preEvalSignal) ? BDPG.PREEVAL_SIGNAL_TONES[sum.preEvalSignal] : 'gray';
+      signalBadge = ' <span class="badge tag-' + tone + '">' + BDPG.escHtml(sum.preEvalSignal) + '</span>';
+    }
+
+    // Same id-escaping rule as trackerRowHtml's action buttons: JSON.stringify
+    // then escape only the attribute-delimiting `"`. HTML-entity-escaping the
+    // id would NOT be safe here, because the browser decodes entities in the
+    // attribute before compiling it as JS.
+    var pid = p.id || '';
+    var viewLink = pid
+      ? '<a href="#" onclick="BDPG.onProspectView(' + JSON.stringify(pid).replace(/"/g, '&quot;') + '); return false;" ' +
+        'style="color:var(--accent);font-weight:700;text-decoration:underline">View →</a>'
+      : '<span style="color:var(--muted)">No id — can’t reopen</span>';
+
+    var basisNote = BDPG.storedFigureBasisNote(sum);
+    var lbl = 'font-size:.66em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em';
+
+    return '<div class="bdpg-box" style="display:flex;flex-direction:column;gap:10px">' +
+      '<div>' +
+        '<div style="font-weight:700;font-size:1.02em;line-height:1.25">' + BDPG.escHtml(sum.name) + typeBadge + signalBadge + '</div>' +
+        '<div style="font-size:.8em;color:var(--muted);margin-top:3px">' + cityState + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<div style="font-family:var(--ff);font-size:1.75em;font-weight:800;color:' + gallonsColor + ';line-height:1">' + gallonsTxt + '</div>' +
+        '<div style="font-size:.7em;color:var(--muted);margin-top:2px">' + gallonsSub + '</div>' +
+      '</div>' +
+      '<div><div style="' + lbl + '">Location Profile</div>' +
+        '<div style="font-size:.82em">' + profileTxt + '</div></div>' +
+      (basisNote ? '<div style="font-size:.68em;color:var(--yellow);line-height:1.4">&#9888; ' + basisNote + '</div>' : '') +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;' +
+          'border-top:1px solid var(--border);padding-top:9px;margin-top:auto">' +
+        '<span style="font-size:.72em;color:var(--muted)">Saved ' + BDPG.escHtml(savedTxt) + '</span>' +
+        viewLink +
+      '</div>' +
+    '</div>';
+  };
+
+  BDPG.prospectCardsHtml = function (profiles) {
+    return '<div class="cc" style="margin-bottom:16px">' +
+      '<div class="cc-lbl">Saved Prospects (' + profiles.length + ')</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' +
+        profiles.map(BDPG.prospectCardHtml).join('') +
+      '</div></div>';
+  };
+
+  // "View" reopens the FULL result, which a plain Load cannot: onLoadProfile
+  // deliberately clears state.result (see its comment), so a loaded prospect
+  // arrives with its inputs and no results panel, no pitch hero and no
+  // export buttons. This loads and then re-runs Generate.
+  //
+  // The three guards are onTrackerExport's, in the same order and for the
+  // same reasons: the baseline check runs against the SAVED record before
+  // anything touches BDPG.state, so a view that turns out to be impossible
+  // leaves a rep's in-progress work untouched; the discard prompt comes only
+  // once the view is known to be possible; and the try/catch recovers the
+  // page rather than leaving #bdpg-content stuck half-rendered.
+  BDPG.onProspectView = function (id) {
+    if (!id) return;
+    var found = BDPG.getSavedProfiles().filter(function (p) { return p.id === id; })[0];
+    if (!found) return;
+    var st = found.state || {};
+    if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
+      toast('This saved prospect has no Location Profile/Roadway, so there is no result to reopen.', 'err');
+      return;
+    }
+    if (!BDPG.confirmDiscard(
+      'You have unsaved changes on the Potential Gallons tab.\n\n' +
+      'Viewing "' + (found.name || 'this prospect') + '" loads it over them, and they cannot be recovered.\n\nContinue?')) return;
+
+    BDPG.onLoadProfile(id, true);
+    try {
+      BDPG.switchTab('calc');
+      BDPG.onGenerate();
+      BDPG.savedSig = BDPG.stateSig();
+    } catch (err) {
+      BDPG.activeTab = 'prospects';
+      BDPG.render();
+      toast('Could not reopen this prospect\'s result.', 'err');
+      return;
+    }
+    if (!BDPG.state.result) toast('Could not reopen this prospect\'s result.', 'err');
+  };
+
   BDPG.prospectsHtml = function () {
     // Default sort: saved date descending (newest first). ISO 8601 strings
     // sort correctly lexicographically; a missing savedAt (pre-Task-7
@@ -6978,7 +7408,13 @@ function getCentroid(pathStr, axis){
     // above the tracker's own "no prospects yet" empty state.
     var statsHtml = profiles.length ? BDPG.trackerStatsHtml(profiles) : '';
 
-    return '<div class="cc"><div class="cc-lbl">Prospects Tracker</div>' +
+    // Cards first, then the full tracker table. Hidden with zero profiles for
+    // the same reason the roll-up is: an empty card grid above the table's own
+    // "no prospects yet" row says the same thing twice.
+    var cardsHtml = profiles.length ? BDPG.prospectCardsHtml(profiles) : '';
+
+    return cardsHtml +
+      '<div class="cc"><div class="cc-lbl">Prospects Tracker</div>' +
       '<div class="tw"><table class="dt"><thead><tr>' +
         '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
         '<th>Network-Adjusted Baseline</th><th>Final Potential Gallons</th>' +
@@ -7068,7 +7504,22 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape' && BDPG.state && BDPG.state.tutorialOpen) BDPG.closeTutorial();
 });
 
-document.addEventListener('DOMContentLoaded', function () { BDPG.render(); });
+// A pending debounced draft write must not be lost to a closed tab or a
+// reload -- that window is the one gap in "save after every field change".
+// pagehide rather than beforeunload: it fires on mobile/background teardown
+// too, and it does not risk an unload prompt. flushDraft() is a single
+// synchronous localStorage write, which is what this event allows.
+window.addEventListener('pagehide', function () {
+  if (BDPG._draftTimer) BDPG.flushDraft();
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  // Before the first render, never after: restoreDraft() writes the ⓪ card's
+  // fields and sets savedSig, and render() captures its unsaved-work baseline
+  // on that first pass. See the comment inside restoreDraft().
+  BDPG.restoreDraft();
+  BDPG.render();
+});
 </script>
 </body>
 </html>
