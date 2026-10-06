@@ -1187,6 +1187,13 @@ const CRM_STAGE_SHORT = {'Meeting Scheduled':'Meeting','Proposal Sent':'Proposal
 function crmStageShort(stage){ return CRM_STAGE_SHORT[stage]||stage; }
 
 let CRM_LEADS = [];
+// Value profiles for the leads currently loaded, keyed by lead id. Filled by
+// one batched call in crmLoadFromSupabase() — never one request per card; the
+// board can hold hundreds of leads.
+let CRM_PROFILES = {};
+function crmProfileFor(leadId){ return (leadId && CRM_PROFILES[leadId]) || null; }
+// Always an object, never null — see RoadysBD.profiles.summary().
+function crmSummaryFor(leadId){ return RoadysBD.profiles.summary(crmProfileFor(leadId)); }
 let crmEditId = null;
 let crmCalYear = new Date().getFullYear();
 let crmCalMonth = new Date().getMonth();
@@ -3474,6 +3481,12 @@ async function crmLoadFromSupabase(){
         activity:   r.activity||[],
         created:    r.created_at||'',
       }));
+      // One round trip for every visible lead. Failure is non-fatal: the
+      // board still renders, profiles simply show as absent, because a
+      // missing profile is already a state every renderer handles.
+      try{
+        CRM_PROFILES = await RoadysBD.profiles.forLeads(CRM_LEADS.map(l=>l.id));
+      }catch(e){ console.warn('crm profile load',e); CRM_PROFILES={}; }
       try{localStorage.setItem('roadys_crm_v2',JSON.stringify(CRM_LEADS));}catch(e){}
       sbHideSyncing(true);
       return true;
