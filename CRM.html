@@ -2355,7 +2355,7 @@ function crmBuildForm(l, defaultStage){
     const s = crmSummaryFor(l.id);
     const row = (k,v)=>'<div><div style="font-size:.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">'+k+'</div>'+
                        '<div style="font-size:.85em">'+(v||'&mdash;')+'</div></div>';
-    const open = '<button class="btn" onclick="crmOpenValueProp(\''+crmEsc(l.id)+'\')">&#8599; Open in Potential Gallons</button>';
+    const open = (label)=>'<button class="btn" onclick="crmOpenValueProp(\''+crmEsc(l.id)+'\')">&#8599; '+label+'</button>';
     if(!s.has){
       return `
 <div id="cmf-vp-section" style="grid-column:1/-1;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
@@ -2381,7 +2381,7 @@ function crmBuildForm(l, defaultStage){
     ${row('Saved',crmEsc(s.savedAt))}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    ${open}
+    ${open(s.isDraft?'Open draft':'View profile')}
     <button class="btn btn-accent" onclick="crmOpenValueProp('${crmEsc(l.id)}')">&#9998; Update profile</button>
   </div>
 </div>`;
