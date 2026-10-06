@@ -166,7 +166,15 @@ RoadysBD.auth
   .session()                 → current session or null
   .signIn(email, password)   → {ok, error}
   .signOut()
-  .requireSession(onReady)   → renders the login gate, calls onReady once in
+  .init()                    → restores a stored session, resolves it or null
+
+(An earlier draft of this section listed `requireSession(onReady)`. It was not
+built: rendering a login gate needs the DOM, and this module is deliberately
+DOM-free so it stays unit-testable under `node --test`. The gate therefore
+lives in each page as `bdShowLoginGate`, three byte-identical copies. That
+duplication is a real cost and §1's own argument against drift applies to it;
+a DOM-guarded `requireSession` in the module would be the better answer and is
+left to Phase 2.)
 
 RoadysBD.profiles
   .forLead(leadId)           → the lead's final profile, or null
@@ -313,7 +321,8 @@ Blast radius of the second migration, measured rather than assumed:
    - **Attach to an existing lead**, chosen from a search box over company,
      city and state.
    - **Create a new lead**, which starts at **Prospect** and is seeded from the
-     profile's prospect name, city, state and location type. It reuses
+     profile's prospect name, city and state. (NOT location type: `crm_leads`
+     has no column for it and §2.2 adds none. The profile keeps it.) It reuses
      `crmSaveLead()`'s existing duplicate-company confirm
      (`crmNormCompany()`), so building a profile for a company already in the
      pipeline warns instead of silently creating a second card.
@@ -410,7 +419,13 @@ all 242 existing tests must still pass.
 
 ## 7. Test checklist
 
-Run after Phase 1, two browsers, second browser signed in as a different user:
+Run after Phase 1, two browsers, second browser signed in as a different user.
+
+**Steps 2, 7 and 8 are Phase 2 deliverables and WILL FAIL after Phase 1** --
+they need the CRM-side lead card, the deep-link pre-fill and the Lead Table /
+CSV / leaderboard columns, none of which Phase 1 builds. They are listed here
+because they belong to the finished feature, not because Phase 1 should pass
+them. **The real Phase 1 gate is steps 1, 3, 4, 5, 6, 9 and 10.**
 
 1. Sign in on `CRM.html`; confirm sign-out and that a signed-out tab is
    refused rather than shown stale cached leads.
