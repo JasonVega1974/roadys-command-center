@@ -1707,3 +1707,68 @@ test('the committed file carries exactly the twelve fields the page expects', ()
   // unexpected-key warning fire if names ever leak into the public file.
   assert.ok(!seen.includes('name'));
 });
+
+// ── membership recommendation ───────────────────────────────────────────
+// Bands are the network's own quartiles over the 190 reporting locations in
+// network-locations.json (avgGalMo): p25 1,480 · median 6,059 · p75 17,455.
+
+test('recommendation bands sit on the documented boundaries', () => {
+  assert.equal(BDPG_STATS.recommendation(17500), 'Strong fit');
+  assert.equal(BDPG_STATS.recommendation(17499), 'Good fit');
+  assert.equal(BDPG_STATS.recommendation(6000),  'Good fit');
+  assert.equal(BDPG_STATS.recommendation(5999),  'Marginal');
+  assert.equal(BDPG_STATS.recommendation(1500),  'Marginal');
+  assert.equal(BDPG_STATS.recommendation(1499),  'Below threshold');
+  assert.equal(BDPG_STATS.recommendation(0),     'Below threshold');
+});
+
+test('a profile with no generated gallons has no recommendation, not a bad one', () => {
+  // null gallons is a profile saved before Generate ran. Calling that
+  // "Below threshold" would assert a verdict the calculator never produced.
+  assert.equal(BDPG_STATS.recommendation(null), '');
+  assert.equal(BDPG_STATS.recommendation(undefined), '');
+  assert.equal(BDPG_STATS.recommendation(''), '');
+  assert.equal(BDPG_STATS.recommendation(NaN), '');
+  assert.equal(BDPG_STATS.recommendation('nonsense'), '');
+  assert.equal(BDPG_STATS.recommendation({}), '');
+});
+
+test('a numeric string is accepted, as a stored jsonb value can be', () => {
+  assert.equal(BDPG_STATS.recommendation('11153'), 'Good fit');
+});
+
+test('negative gallons cannot occur but must not fall through to a good band', () => {
+  assert.equal(BDPG_STATS.recommendation(-1), 'Below threshold');
+});
+
+test('values Number() would coerce, but that are not gallons, get no verdict', () => {
+  // Number() makes all of these finite: false and [] -> 0, ['17500'] -> 17500,
+  // '   ' -> 0, new Date(0) -> 0. Each would otherwise print a confident
+  // verdict on a lead card for something that is not a gallons figure.
+  assert.equal(BDPG_STATS.recommendation(true), '');
+  assert.equal(BDPG_STATS.recommendation(false), '');
+  assert.equal(BDPG_STATS.recommendation([]), '');
+  assert.equal(BDPG_STATS.recommendation([5000]), '');
+  assert.equal(BDPG_STATS.recommendation(['17500']), '');
+  assert.equal(BDPG_STATS.recommendation('   '), '');
+  assert.equal(BDPG_STATS.recommendation(new Date(0)), '');
+});
+
+test('the exported band table cannot be mutated into changing live verdicts', () => {
+  const before = BDPG_STATS.recommendation(20000);
+  assert.throws(() => { BDPG_STATS.RECOMMENDATION_BANDS.push({ min: 0, label: 'X' }); });
+  assert.throws(() => { BDPG_STATS.RECOMMENDATION_BANDS[0].min = 1; });
+  assert.equal(BDPG_STATS.recommendation(20000), before);
+});
+
+test('the band table survives a JSON round trip', () => {
+  // -Infinity would serialize to null and a re-parsed copy would stop
+  // describing the same bands.
+  const round = JSON.parse(JSON.stringify(BDPG_STATS.RECOMMENDATION_BANDS));
+  assert.deepEqual(round, [
+    { min: 17500, label: 'Strong fit' },
+    { min: 6000,  label: 'Good fit' },
+    { min: 1500,  label: 'Marginal' },
+    { min: null,  label: 'Below threshold' }
+  ]);
+});

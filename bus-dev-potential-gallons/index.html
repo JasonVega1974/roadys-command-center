@@ -15,6 +15,8 @@
      estimate path, and keeping it in its own UMD module is what makes the
      rule that decides which locations feed which baseline unit-testable. -->
 <script src="../bdpgStats.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../roadysBD.js"></script>
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
@@ -317,6 +319,13 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
 .toast.show{opacity:1;}
 .toast.tok{border-color:var(--green);color:var(--green);}
 .toast.terr{border-color:var(--red);color:var(--red);}
+.toast.twarn{border-color:var(--yellow);color:var(--yellow);}
+/* --yellow's day value (#E6A800) is tuned for borders and small glyphs on
+   dark boxes; as toast body text on the near-white day surface (#F7F8FA) it
+   computes to 1.98:1, far under the 4.5:1 AA threshold. #A14A00 is 5.65:1 on
+   the same surface and still reads as a warning amber rather than an error
+   red. Dark mode needs no override -- #FFD60A there is 12.41:1. */
+body.day-mode .toast.twarn{border-color:#A14A00;color:#A14A00;}
 
 .map-tooltip { position:fixed; background:rgba(8,12,24,.95); border:1px solid var(--border2); border-radius:8px; padding:10px 14px; font-size:.78em; pointer-events:none; z-index:9999; display:none; min-width:160px; }
 .map-tooltip-state { font-family:var(--ff); font-size:1.1em; font-weight:800; letter-spacing:.06em; margin-bottom:4px; }
@@ -397,6 +406,20 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
   }
 }
 #bdpg-print-only { display: none; }
+
+/* Sign-in gate. Ported from CRM.html so all three pages present the same
+   gate; this file had no .pin-* rules of its own. */
+.pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.pin-box{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:32px;text-align:center;min-width:280px;box-shadow:0 16px 48px rgba(0,0,0,.5);}
+.pin-box h3{font-family:var(--ff);font-size:1.1em;margin-bottom:6px;color:var(--text);}
+.pin-box p{font-size:.82em;color:var(--muted);margin-bottom:18px;}
+.pin-input{width:140px;background:var(--bg);border:2px solid var(--border2);border-radius:8px;color:var(--accent);padding:10px;font-size:1.4em;text-align:center;letter-spacing:.5em;font-family:var(--ff);}
+.pin-input:focus{outline:none;border-color:var(--accent);}
+.pin-err{color:var(--red);font-size:.8em;margin-top:8px;min-height:1.2em;}
+/* The credential fields reuse .pin-input's chrome but undo what it assumes
+   about a 4-digit PIN: 140px wide, .5em letter-spacing and the condensed
+   display face are right for "1234" and unreadable for an email address. */
+.bd-cred{width:260px;text-align:left;letter-spacing:normal;font-family:var(--fb);font-size:1em;color:var(--text);display:block;margin:0 auto 10px;}
 </style>
 </head>
 <body>
@@ -406,6 +429,7 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
     <div style="flex:1"></div>
     <button class="btn" title="How this calculator works" onclick="BDPG.toggleTutorial()">?</button>
     <button class="btn" onclick="BDPG.toggleTheme()">🌙</button>
+    <button class="btn" onclick="bdSignOut()" title="Sign out">Sign out</button>
     <!-- The single entry to everything behind the admin PIN: grade weights,
          region %, the network-context generator, and the per-location
          Network Locations view. Both of those used to be tabs in the row
@@ -441,11 +465,15 @@ function mkchart(id,cfg){
   try{if(CHS[id])CHS[id].destroy();const c=document.getElementById(id);if(!c||typeof Chart==='undefined')return;CHS[id]=new Chart(c,cfg);}catch(e){console.warn('chart err',id,e);}
 }
 
+let toastTimer = null;
 function toast(msg,type='tok'){
   const t=document.getElementById('toast');
+  // One shared node, so a second toast within the 2.5s window must cancel the
+  // first one's timer -- otherwise the earlier timer blanks the later message.
+  if(toastTimer) clearTimeout(toastTimer);
   t.textContent=(type==='tok'?'✓ ':'⚠ ')+msg;
   t.className='toast show '+type;
-  setTimeout(()=>t.className='toast',2500);
+  toastTimer=setTimeout(()=>{ t.className='toast'; toastTimer=null; },2500);
 }
 
 const FIPS_TO_STATE = {
@@ -677,6 +705,14 @@ function getCentroid(pathStr, axis){
       // updatePreEvalSignal() (preEvalSignal) write to state during the
       // render above, so a signature taken any earlier would never match.
       if (BDPG.savedSig === null) BDPG.savedSig = BDPG.stateSig();
+      // Same capture point and the same reason as savedSig above:
+      // hydrateDraftFromCloud() compares against this to decide whether the
+      // rep has touched anything since the page settled. It CANNOT be taken
+      // in the boot handler -- the first render() call returns early after
+      // kicking off the three data fetches, so a signature taken out there
+      // describes state the user never saw, and every later load would look
+      // like an edit and suppress the colleague's draft.
+      if (BDPG._bootSig === null) BDPG._bootSig = BDPG.stateSig();
     }
   };
 
@@ -4386,9 +4422,30 @@ function getCentroid(pathStr, axis){
   // pending write is flushed on pagehide (see the listener at the bottom of
   // this file) and before Save, so this window is never a way to lose the
   // last thing typed.
-  BDPG.DRAFT_DEBOUNCE_MS = 2000;
+  //
+  // 800ms, down from 2000: the draft now lands in Supabase where the other
+  // owner can see it, so the window where their screen is stale matters more
+  // than the write volume. Still debounced, because this fires per keystroke.
+  BDPG.DRAFT_DEBOUNCE_MS = 800;
   BDPG._draftTimer = null;
   BDPG._draftMsg = '';
+
+  // Set from ?lead=<id> at boot, or by Save to Prospects once a lead is
+  // linked. null means an unlinked draft, which the table keys by author.
+  BDPG.currentLeadId = null;
+
+  // Provenance of the draft currently on screen, from the last cloud read or
+  // write. Null until one happens, so a brand-new unsaved draft shows nothing
+  // rather than claiming an author it does not have.
+  BDPG._draftAuthor = '';
+  BDPG._draftUpdatedAt = '';
+
+  // The state signature as it stood when the page finished its first render.
+  // hydrateDraftFromCloud() compares against it to tell whether the rep has
+  // touched ANYTHING since -- not just the six ⓪-card fields a per-handler
+  // flag would cover. Captured after the render because the render itself
+  // writes defaults into state (see the savedSig capture in render()).
+  BDPG._bootSig = null;
 
   BDPG.draftSnapshot = function () {
     var p = BDPG.state.prospect;
@@ -4477,10 +4534,98 @@ function getCentroid(pathStr, axis){
       BDPG.setDraftMsg('');
       return;
     }
-    var ok = true;
-    try { localStorage.setItem(BDPG.DRAFT_KEY, JSON.stringify(d)); } catch (e) { ok = false; }
-    BDPG.setDraftMsg(ok ? 'Draft saved ' + BDPG.draftTimeLabel(d.savedAt)
-                        : 'Draft could not be saved in this browser');
+    // localStorage first and synchronously: it is the offline mirror, and it
+    // is the only write that can still succeed inside a pagehide handler.
+    var localOk = true;
+    try { localStorage.setItem(BDPG.DRAFT_KEY, JSON.stringify(d)); } catch (e) { localOk = false; }
+
+    RoadysBD.profiles.saveDraft(BDPG.draftProfile(d)).then(function (r) {
+      if (r.ok) {
+        if (r.profile && r.profile.id) BDPG.currentCloudId = r.profile.id;
+        BDPG._draftAuthor = RoadysBD.auth.email() || '';
+        BDPG._draftUpdatedAt = (r.profile && r.profile.updatedAt) || new Date().toISOString();
+        BDPG.setDraftMsg('Draft saved ' + BDPG.draftTimeLabel(d.savedAt));
+      } else {
+        // Never report a cloud save that did not happen. The local mirror may
+        // still have landed, and saying so is the difference between "your
+        // work is safe here but not shared yet" and a false all-clear.
+        BDPG.setDraftMsg(localOk
+          ? 'Saved on this device only — not synced'
+          : 'Draft could not be saved');
+      }
+    });
+  };
+
+  // The ⓪-card draft plus whatever the engine currently holds, in the shape
+  // roadysBD.js stores. Results are included only when a result exists: a
+  // draft with no Generate behind it must carry null gallons and no
+  // recommendation, not zeros that read as a calculated answer.
+  BDPG.draftProfile = function (d) {
+    var s = BDPG.state, e = s.result ? s.result.estimate : null;
+    return {
+      id: BDPG.currentCloudId || '',
+      leadId: BDPG.currentLeadId,
+      status: 'draft',
+      prospectName: d.name, city: d.city, stateCode: d.stateCode,
+      locationType: d.locationType,
+      region: s.state ? (BusDevGallonsCalc.resolveRegion(s.state) || '') : '',
+      profile: s.profile || '', roadway: s.roadway || '',
+      inputs: BDPG.profileInputs(),
+      results: e ? JSON.parse(JSON.stringify(e)) : {},
+      officialSubtotal: e ? e.officialSubtotal : null,
+      finalGallons: e ? e.finalGallons : null,
+      recommendation: e ? BDPG_STATS.recommendation(e.finalGallons) : '',
+      regionPctStamp: e ? BDPG.regionPctStamp(e.regionPct) : '',
+      baselineStamp: e ? BDPG.baselineStamp(e.baseline) : '',
+      author: RoadysBD.auth.email() || ''
+    };
+  };
+
+  // Every input the calculator needs to reopen this profile exactly as saved.
+  // Deliberately NOT the whole of BDPG.state: result and resultStale are
+  // derived, and the panel-open flags are not data (same rule as SIG_SKIP).
+  BDPG.profileInputs = function () {
+    var s = BDPG.state;
+    return {
+      profile: s.profile, roadway: s.roadway, state: s.state,
+      amenityDetails: JSON.parse(JSON.stringify(s.amenityDetails || {})),
+      amenityLevel: s.amenityLevel, restroomLevel: s.restroomLevel,
+      truckerPathRating: s.truckerPathRating,
+      pricingLevel: s.pricingLevel, rewardsLevel: s.rewardsLevel,
+      supportingDetails: JSON.parse(JSON.stringify(s.supportingDetails || {})),
+      prospect: JSON.parse(JSON.stringify(s.prospect || {}))
+    };
+  };
+
+  // Key-order-insensitive serialization. p.inputs arrives from a Postgres
+  // jsonb column, and jsonb does NOT preserve the key order it was written
+  // with -- so a raw JSON.stringify comparison reports a difference on every
+  // boot even when nothing changed.
+  BDPG.stableStringify = function (v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(BDPG.stableStringify).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(function (k) {
+      return JSON.stringify(k) + ':' + BDPG.stableStringify(v[k]);
+    }).join(',') + '}';
+  };
+
+  // "by robert@example.com · today 1:30 PM" — date only when it is not today,
+  // because the common case is a draft touched minutes ago and a full date
+  // there is noise.
+  BDPG.draftProvenanceLabel = function () {
+    if (!BDPG._draftAuthor && !BDPG._draftUpdatedAt) return '';
+    var who = BDPG._draftAuthor ? 'by ' + BDPG._draftAuthor : '';
+    var when = '';
+    if (BDPG._draftUpdatedAt) {
+      var d = new Date(BDPG._draftUpdatedAt);
+      if (!isNaN(d.getTime())) {
+        var today = new Date();
+        var sameDay = d.toDateString() === today.toDateString();
+        when = (sameDay ? 'today ' : d.toLocaleDateString() + ' ') +
+          d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+    }
+    return [who, when].filter(Boolean).join(' · ');
   };
 
   BDPG.draftStatusInnerHtml = function () {
@@ -4495,7 +4640,16 @@ function getCentroid(pathStr, axis){
       ? ' <a href="#" onclick="BDPG.onClearDraft(); return false;" ' +
         'style="color:var(--accent);text-decoration:underline">Clear draft</a>'
       : '';
-    return msg + link;
+    var prov = BDPG.draftProvenanceLabel();
+    // Flagged as someone else's work only when it IS someone else's: the
+    // common case is your own draft, and colouring that as a warning would
+    // train the rep to ignore the one case that matters.
+    var mine = !BDPG._draftAuthor || BDPG._draftAuthor === RoadysBD.auth.email();
+    var provHtml = prov
+      ? ' <span style="color:' + (mine ? 'var(--muted)' : 'var(--yellow)') + '">' +
+        (mine ? '' : '⚠ ') + BDPG.escHtml(prov) + '</span>'
+      : '';
+    return msg + provHtml + link;
   };
 
   // Targeted write, never a BDPG.render(): this fires on every keystroke and
@@ -4540,6 +4694,75 @@ function getCentroid(pathStr, axis){
     return true;
   };
 
+  // The cloud draft wins when it exists: it is the shared one, and the local
+  // mirror may be this browser's older copy. Runs after the first render, so
+  // the page is never blank waiting on the network; re-renders only if the
+  // cloud copy actually differs from what restoreDraft() already painted.
+  BDPG.hydrateDraftFromCloud = function () {
+    return RoadysBD.profiles.draftFor(BDPG.currentLeadId).then(function (p) {
+      if (!p) return false;
+      // The rep has changed something since the page painted -- any field, not
+      // just the ⓪ card. Their work wins: adopt the cloud row's id so the next
+      // flush updates THAT row rather than minting a second one, take the
+      // provenance, and leave the screen alone. That is last-write-wins.
+      var edited = BDPG._bootSig !== null && BDPG.stateSig() !== BDPG._bootSig;
+      if (edited) {
+        BDPG.currentCloudId = p.id;
+        BDPG._draftAuthor = p.author || '';
+        BDPG._draftUpdatedAt = p.updatedAt || '';
+        BDPG.setDraftMsg(BDPG._draftMsg);
+        return false;
+      }
+      // Compare the whole input payload, not four prospect fields. Those four
+      // can match while the baseline, adjustments or supporting details differ
+      // -- and the old check would then skip applyProfile() while still
+      // stamping the caption with that person's name, captioning data that was
+      // never synced from them. profileInputs() is exactly what applyProfile()
+      // writes, so comparing it compares the right thing.
+      var same = BDPG.stableStringify(BDPG.profileInputs()) ===
+                 BDPG.stableStringify(p.inputs || {});
+      // Provenance is set on BOTH paths: a cloud draft that already matches
+      // what is on screen still has an author worth naming.
+      BDPG._draftAuthor = p.author || '';
+      BDPG._draftUpdatedAt = p.updatedAt || '';
+      if (same) { BDPG.currentCloudId = p.id; BDPG.setDraftMsg(BDPG._draftMsg); return false; }
+      BDPG.applyProfile(p);
+      BDPG.currentCloudId = p.id;
+      BDPG.savedSig = '';          // a restored draft is still unsaved work
+      // Just the fact. Who and when are rendered by draftProvenanceLabel()
+      // from the two fields above — saying it here too would print the author
+      // twice on one line.
+      BDPG._draftMsg = 'Draft restored from the cloud';
+      BDPG.render();
+      return true;
+    });
+  };
+
+  // Writes a stored profile back onto BDPG.state. Mirrors onLoadProfile()'s
+  // migration guards: each field is replaced only when it has the type it
+  // must have, so a hand-edited row cannot reach the DOM as [object Object].
+  BDPG.applyProfile = function (p) {
+    var i = p.inputs || {};
+    var s = BDPG.state;
+    if (typeof i.profile === 'string') s.profile = i.profile;
+    if (typeof i.roadway === 'string') s.roadway = i.roadway;
+    if (typeof i.state === 'string') s.state = i.state;
+    if (i.amenityDetails && typeof i.amenityDetails === 'object') s.amenityDetails = i.amenityDetails;
+    if (typeof i.amenityLevel === 'string') s.amenityLevel = i.amenityLevel;
+    if (typeof i.restroomLevel === 'string') s.restroomLevel = i.restroomLevel;
+    if (typeof i.truckerPathRating === 'number' || typeof i.truckerPathRating === 'string') s.truckerPathRating = i.truckerPathRating;
+    if (typeof i.pricingLevel === 'number' || typeof i.pricingLevel === 'string') s.pricingLevel = i.pricingLevel;
+    if (typeof i.rewardsLevel === 'string') s.rewardsLevel = i.rewardsLevel;
+    if (i.supportingDetails && typeof i.supportingDetails === 'object') s.supportingDetails = i.supportingDetails;
+    if (i.prospect && typeof i.prospect === 'object') s.prospect = i.prospect;
+    // A reopened profile has inputs but no result until Generate runs again,
+    // and that is not a stale result — it is simply not computed yet.
+    s.result = null;
+    s.resultStale = false;
+    BDPG.normalizeLevels();
+    BDPG.updatePreEvalSignal();
+  };
+
   BDPG.onClearDraft = function () {
     // Deleting only the stored key would be a no-op in practice -- the
     // fields are still filled, so the very next keystroke writes them
@@ -4550,8 +4773,25 @@ function getCentroid(pathStr, axis){
     if (!confirm('Clear the saved draft and empty the Prospect Profile card?\n\n' +
                  'Name, street, city, state, location type and notes are all cleared, ' +
                  'and any generated result goes with them.\n\n' +
+                 'Drafts are SHARED — if a colleague has been working this draft, ' +
+                 'this clears it for them too.\n\n' +
                  'Prospects already saved on the Prospects tab are not touched.')) return;
     if (BDPG._draftTimer) { clearTimeout(BDPG._draftTimer); BDPG._draftTimer = null; }
+    // Supabase is the source of truth for drafts, so a clear that only
+    // removes the local mirror does not stick: the next hydrate pulls the
+    // row straight back. softDelete sets deleted_at, which the partial
+    // unique indexes exclude, so a fresh draft can take the slot afterwards.
+    if (BDPG.currentCloudId) {
+      var clearedId = BDPG.currentCloudId;
+      RoadysBD.profiles.softDelete(clearedId).then(function (r) {
+        if (!r.ok) {
+          // The local card is already empty, so saying nothing would imply the
+          // shared draft went with it. It did not, and it will come back on
+          // the next reload.
+          BDPG.setDraftMsg('Cleared here, but the shared draft could not be removed');
+        }
+      });
+    }
     BDPG.clearDraftStorage();
     var p = BDPG.state.prospect;
     p.name = ''; p.street = ''; p.city = ''; p.locationType = ''; p.notes = '';
@@ -4564,7 +4804,19 @@ function getCentroid(pathStr, axis){
     // so a later Save must create a new row rather than overwrite that one --
     // the same binding onSaveProfile() drops when the displayed name changes.
     BDPG.currentProfileId = null;
+    // Clearing the card empties both id spaces it could be bound to -- the
+    // local tracker record above, and the cloud draft row this card was
+    // mirroring.
+    BDPG.currentCloudId = null;
+    BDPG.currentLeadId = null;
+    BDPG._leadLabel = '';
+    BDPG._leadSearchResults = [];
     BDPG._draftMsg = '';
+    // The card describes nothing now, so neither does its byline: leaving
+    // these would caption an empty card "by X · today 1:30 PM" for data that
+    // is no longer anywhere.
+    BDPG._draftAuthor = '';
+    BDPG._draftUpdatedAt = '';
     BDPG.render();
   };
 
@@ -5869,6 +6121,29 @@ function getCentroid(pathStr, axis){
   // BDPG.state, so it is never serialized into a snapshot.
   BDPG.currentProfileId = null;
 
+  // The bd_value_profiles row id for the draft/profile currently on screen.
+  //
+  // Deliberately NOT BDPG.currentProfileId, which means something else and
+  // predates this: that one is the id of a record in the local
+  // roadysBDPGProfiles tracker array, and onSaveProfile() SEARCHES that array
+  // for it to decide update-vs-append. Putting a cloud id in that field makes
+  // the lookup miss every time and silently appends a duplicate tracker row.
+  // Two id spaces, two fields.
+  BDPG.currentCloudId = null;
+
+  // Results of the last lead search, and the label of the lead the rep picked.
+  // Both are view state only -- the binding that matters is currentLeadId.
+  BDPG._leadSearchResults = [];
+  BDPG._leadLabel = '';
+  BDPG._leadSearchTimer = null;
+
+  // Re-entry guard for onSaveProfile()'s cloud half. Set the instant that
+  // async chain starts, cleared on every exit (success, saveFinal failure,
+  // and createLeadFromProfile's own failure path) -- a double-click before
+  // createLeadFromProfile() resolves would otherwise retake the create
+  // branch and insert a second crm_leads row for the same prospect.
+  BDPG._saving = false;
+
   // Returns true when a result was computed and written to state, false on
   // every bail -- so a caller other than the button (BDPG.onTrackerExport()
   // is the one that exists today, but this is the one place that protects
@@ -6644,13 +6919,99 @@ function getCentroid(pathStr, axis){
       hint = 'Generate a value profile first to store the gallons figure with it. ' +
         'Saving now records the prospect and its inputs without a number.';
     }
-    return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<button class="btn btn-accent" onclick="BDPG.onSaveProfile()">📋 Save to Prospects</button>' +
+    // Lets the rep attach this save to an existing CRM lead by name/city/
+    // state search, instead of only via the ?lead= deep link or an exact
+    // normalised-name match in createLeadFromProfile()'s own duplicate check.
+    var esc = BDPG.escHtml;
+    var linkBlock;
+    if (BDPG.currentLeadId) {
+      linkBlock =
+        '<div style="font-size:.74em;margin-bottom:10px">' +
+          '<span style="color:var(--muted)">Will attach to CRM lead:</span> ' +
+          '<b>' + esc(BDPG._leadLabel || BDPG.currentLeadId) + '</b> ' +
+          '<a href="#" onclick="BDPG.onUnpickLead(); return false;" ' +
+             'style="color:var(--accent);text-decoration:underline;margin-left:6px">change</a>' +
+        '</div>';
+    } else {
+      var rows = BDPG._leadSearchResults.map(function (l) {
+        var label = l.company + (l.city || l.state ? ' (' + [l.city, l.state].filter(Boolean).join(', ') + ')' : '');
+        var args = JSON.stringify(l.id).replace(/"/g, '&quot;') + ',' +
+                   JSON.stringify(label).replace(/"/g, '&quot;');
+        return '<div onclick="BDPG.onPickLead(' + args + ')" ' +
+               'style="padding:5px 8px;cursor:pointer;border-bottom:1px solid var(--border);font-size:.76em">' +
+               esc(label) + ' <span style="color:var(--muted)">· ' + esc(l.stage || '') + '</span></div>';
+      }).join('');
+      linkBlock =
+        '<div style="margin-bottom:10px">' +
+          '<label style="font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">' +
+            'Attach to an existing CRM lead (optional)</label>' +
+          '<input id="bdpg-lead-search" placeholder="search company, city or state" ' +
+            'oninput="BDPG.onLeadSearchInput(this.value)" ' +
+            'style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;' +
+            'color:var(--text);padding:6px 8px;font-size:.8em;font-family:var(--fb);margin-top:4px">' +
+          (rows ? '<div style="border:1px solid var(--border);border-radius:5px;margin-top:4px;' +
+                  'max-height:150px;overflow-y:auto">' + rows + '</div>' : '') +
+          '<div style="font-size:.68em;color:var(--muted);margin-top:4px">' +
+            'Leave blank to create a new lead at Prospect.</div>' +
+        '</div>';
+    }
+    return '<div class="bdpg-box" id="bdpg-save-box" style="margin-top:14px">' +
+      linkBlock +
+      '<button class="btn btn-accent" onclick="BDPG.onSaveProfile()"' +
+        (BDPG._saving ? ' disabled' : '') + '>📋 Save to Prospects</button>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:8px">' + hint + '</div>' +
     '</div>';
   };
 
+  // Debounced so a search does not fire per keystroke. 300ms rather than the
+  // draft's 800: this is a user waiting on a list, not a background save.
+  BDPG.onLeadSearchInput = function (v) {
+    if (BDPG._leadSearchTimer) clearTimeout(BDPG._leadSearchTimer);
+    var q = (v || '').trim();
+    if (q.length < 2) { BDPG._leadSearchResults = []; BDPG.refreshSaveBox(); return; }
+    BDPG._leadSearchTimer = setTimeout(function () {
+      BDPG._leadSearchTimer = null;
+      BDPG.searchLeads(q).then(function (rows) {
+        BDPG._leadSearchResults = rows || [];
+        BDPG.refreshSaveBox();
+      });
+    }, 300);
+  };
+
+  BDPG.onPickLead = function (id, label) {
+    BDPG.currentLeadId = id;
+    BDPG._leadLabel = label || '';
+    BDPG._leadSearchResults = [];
+    BDPG.refreshSaveBox();
+  };
+
+  BDPG.onUnpickLead = function () {
+    BDPG.currentLeadId = null;
+    BDPG._leadLabel = '';
+    BDPG._leadSearchResults = [];
+    BDPG.refreshSaveBox();
+  };
+
+  // Targeted patch, never a full render: a full render would destroy the
+  // search input mid-typing and take the cursor with it.
+  BDPG.refreshSaveBox = function () {
+    var box = document.getElementById('bdpg-save-box');
+    if (!box) return;
+    var focused = document.activeElement && document.activeElement.id === 'bdpg-lead-search';
+    var caret = focused ? document.activeElement.selectionStart : null;
+    var val = focused ? document.activeElement.value : null;
+    box.outerHTML = BDPG.saveToProspectsHtml();
+    if (focused) {
+      var again = document.getElementById('bdpg-lead-search');
+      if (again) { again.value = val; again.focus(); again.setSelectionRange(caret, caret); }
+    }
+  };
+
   BDPG.onSaveProfile = function () {
+    // Re-entry guard: the cloud half below is async, and a second click
+    // before createLeadFromProfile()/saveFinal() resolves would otherwise
+    // retake the create branch and insert a second crm_leads row.
+    if (BDPG._saving) return;
     var name = BDPG.resolveProspectName() || prompt('Name this profile:');
     if (!name) return;
     // The prompt fallback above is otherwise a dead end: BDPG.displayName()
@@ -6726,12 +7087,266 @@ function getCentroid(pathStr, axis){
     BDPG._draftMsg = '';
     // Names the prospect, so a rep who saves two in a row can see which one
     // landed -- "Profile saved" alone could not be told apart from the
-    // previous save's toast.
-    toast((idx >= 0 ? 'Updated in Prospects — ' : 'Saved to Prospects — ') + record.name);
+    // previous save's toast. Reworded to not claim the CRM half, which
+    // hasn't started yet -- the cloud half below replaces this with the
+    // real outcome once it knows one.
+    toast((idx >= 0 ? 'Updated in Prospects — ' : 'Saved to Prospects — ') + record.name + ' · syncing to CRM…');
     BDPG.render();
     // After the render, so step2Html()'s pricingLevel/amenityLevel defaults
     // are already settled and the baseline matches what is now on screen.
     BDPG.savedSig = BDPG.stateSig();
+
+    // ── CRM lead link + cloud profile (Task 7) ────────────────────────────
+    // Everything above is unconditional and already done -- this page's own
+    // Prospects tab never depends on the network or on Supabase being up.
+    // What follows is a second, independent write: attach (or create) a CRM
+    // lead, store this same profile in bd_value_profiles as a 'final' row
+    // (what Phase 2's CRM views read), and offer the stage move. A failure
+    // in any of the three never touches the local save above, and the rep
+    // is told exactly which part did not land -- never a bare "Saved" that
+    // quietly papers over a half-finished sync.
+    BDPG._saving = true;
+    BDPG.refreshSaveBox();
+    // Cleared on every exit of the async chain below -- success, every
+    // failure branch, and both outer .catch handlers -- so a rejected
+    // promise never leaves the Save button permanently disabled.
+    var doneSaving = function () { BDPG._saving = false; BDPG.refreshSaveBox(); };
+
+    // Three independent steps (lead link/create, cloud profile, stage move)
+    // can each fail on their own. toast() cancels its predecessor, so a
+    // per-step toast would mean only the LAST failure is ever seen -- these
+    // collect into one final message that names every part that didn't land.
+    var problems = [];
+    // Two buckets, because they mean different things to a rep. A problem is
+    // something that did NOT land and may need a retry; a warning is a caveat
+    // about something that DID land. Styling them the same would train the
+    // rep to ignore both.
+    var warnings = [];
+    var leadNote = '';
+    var finishUp = function () {
+      // Warnings are NOT an else-branch of problems. A caveat about something
+      // that DID land (a lead that may duplicate an existing one) is still
+      // true when a later step fails -- and it can never resurface, because
+      // currentLeadId is set by then, so a retry takes the already-linked
+      // path and never re-runs the duplicate scan.
+      var notes = problems.concat(warnings);
+      if (problems.length) {
+        toast('Saved on this device. ' + notes.join(' '), 'terr');
+      } else if (warnings.length) {
+        toast('Saved to Prospects — ' + BDPG.displayName() + leadNote + '. ' + warnings.join(' '), 'twarn');
+      } else {
+        toast('Saved to Prospects — ' + BDPG.displayName() + leadNote, 'tok');
+      }
+      doneSaving();
+    };
+
+    // Runs after the lead is known (already linked, newly created, attached
+    // to an existing one, or left unlinked because that step failed).
+    // leadId may be null -- saveFinal() still writes an unlinked profile.
+    var proceedToSaveFinal = function (leadId) {
+      BDPG.currentLeadId = leadId || null;
+      var prof = BDPG.draftProfile(BDPG.draftSnapshot());
+      prof.leadId = BDPG.currentLeadId;
+      return RoadysBD.profiles.saveFinal(prof).then(function (r) {
+        if (!r.ok) {
+          problems.push(BDPG.currentLeadId
+            ? 'The lead was created but the value profile did not reach the cloud (' + r.error + ').'
+            : 'The value profile did not reach the cloud (' + r.error + ').');
+          finishUp();
+          return;
+        }
+        // Release the cloud binding rather than keeping it. This row is now a
+        // FINAL profile; draftProfile() always writes status:'draft', so if the
+        // rep edits the still-populated card afterwards the next autosave would
+        // upsert this very row back down to a draft -- and forLead(), which
+        // filters status='final', would then report that the lead has no value
+        // profile at all. Clearing it means the next keystroke starts a new
+        // draft row instead. The partial unique indexes allow one draft AND one
+        // final per lead, so both can coexist.
+        BDPG.currentCloudId = null;
+        BDPG._draftAuthor = '';
+        BDPG._draftUpdatedAt = '';
+        if (BDPG.currentLeadId) {
+          return BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName()).then(function (st) {
+            if (st.error) problems.push('The lead was not moved to Contacted (' + st.error + ').');
+            else if (st.moved) leadNote += ' · moved to Contacted';
+            finishUp();
+          });
+        }
+        finishUp();
+      });
+    };
+
+    if (BDPG.currentLeadId) {
+      // Already linked (deep link, a previous save, or the attach search
+      // box) -- nothing to create, so no lead-step problem can arise here.
+      leadNote = ' · attached to lead';
+      // Promise.resolve().then(...) so a SYNCHRONOUS throw inside
+      // proceedToSaveFinal's prelude (draftProfile/draftSnapshot run before
+      // any promise exists) lands in the catch below instead of escaping and
+      // leaving _saving true -- a dead Save button with no message.
+      Promise.resolve().then(function () {
+        return proceedToSaveFinal(BDPG.currentLeadId);
+      }).catch(function (err) {
+        problems.push('Something went wrong syncing to CRM (' + BDPG.errText(err) + ').');
+        finishUp();
+      });
+    } else {
+      Promise.resolve().then(function () {
+        return BDPG.createLeadFromProfile();
+      }).then(function (res) {
+        if (!res.ok) {
+          problems.push('No CRM lead was created (' + res.error + ').');
+        } else {
+          leadNote = res.attached ? ' · attached to lead' : ' · new lead created';
+        }
+        if (res.scanFailed) warnings.push('The duplicate-company check could not run, so this may duplicate an existing lead.');
+        return proceedToSaveFinal(res.ok ? res.id : null);
+      }).catch(function (err) {
+        problems.push('Something went wrong syncing to CRM (' + BDPG.errText(err) + ').');
+        finishUp();
+      });
+    }
+  };
+
+  // Leads the rep can attach this profile to. Searched over company, city and
+  // state — the three things they will actually have in front of them.
+  BDPG.searchLeads = function (q) {
+    var c = RoadysBD.auth.client();
+    if (!c || !q) return Promise.resolve([]);
+    var like = '%' + q.replace(/[%_,().]/g, '') + '%';
+    return c.from('crm_leads').select('id,company,city,state,stage')
+      .is('deleted_at', null)
+      .or('company.ilike.' + like + ',city.ilike.' + like + ',state.ilike.' + like)
+      .limit(10)
+      .then(function (r) { return (r.error || !r.data) ? [] : r.data; })
+      .catch(function () { return []; });
+  };
+
+  // Creates a lead at Prospect, seeded from the profile. Reuses the CRM's own
+  // normalisation so the duplicate check below matches what CRM.html would
+  // have matched -- a company already in the pipeline must warn, not silently
+  // become a second card.
+  BDPG.normCompany = function (s) {
+    return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  };
+
+  // Mirrors roadysBD.js's errText() -- same shape of Supabase error, same
+  // graceful fallback -- so a thrown non-Supabase error still prints
+  // something instead of "[object Object]".
+  BDPG.errText = function (e) {
+    if (!e) return '';
+    return e.message || e.error_description || 'Unknown error';
+  };
+
+  // Resolves { ok, id, error, scanFailed, attached } rather than an
+  // id-or-null. null conflated three different outcomes -- no client, a
+  // failed insert, and a caught error -- and the caller then could not tell
+  // "attached to lead X" from "no lead exists at all", so a silently
+  // unlinked profile was reported as a complete success. `attached` is true
+  // only when an existing lead was matched and the rep chose to attach,
+  // false when a new row was inserted.
+  BDPG.createLeadFromProfile = function () {
+    var c = RoadysBD.auth.client();
+    if (!c) return Promise.resolve({ ok: false, id: null, error: 'Supabase unavailable', scanFailed: false, attached: false });
+    var s = BDPG.state, p = s.prospect;
+    var company = BDPG.displayName();
+    return c.from('crm_leads').select('id,company,city,state,stage')
+      .is('deleted_at', null)
+      // Ordered so the scanned set is deterministic -- without it, which rows
+      // come back under a limit is unspecified, and the same company could be
+      // caught on one save and missed on the next. Rows are five small columns,
+      // so a high limit is cheap.
+      .order('company').limit(5000)
+      .then(function (r) {
+        var scanFailed = !!r.error;
+        // A read failure here must not silently skip the duplicate check --
+        // that would create a second lead for a company already in the
+        // pipeline with no signal to anyone that the check never ran.
+        if (scanFailed) console.warn('[BDPG] duplicate-company scan failed; creating without the duplicate check', r.error);
+        var rows = (r.error || !r.data) ? [] : r.data;
+        // A silent truncation would turn the dup check into a coin flip. Say so.
+        if (rows.length >= 5000) console.warn('[BDPG] duplicate-company scan hit the 5000-row limit; the check may be incomplete');
+        var dup = rows.filter(function (x) {
+          return BDPG.normCompany(x.company) === BDPG.normCompany(company);
+        })[0];
+        if (dup) {
+          var ok = confirm('A lead for "' + dup.company + '" already exists (' +
+            (dup.state || 'no state listed') + ' · ' + dup.stage + ').\n\n' +
+            'OK — attach this profile to that lead.\n' +
+            'Cancel — create a second lead anyway.');
+          if (ok) return { ok: true, id: dup.id, error: '', scanFailed: scanFailed, attached: true };
+        }
+        var id = 'CRM-' + String(Date.now()).slice(-6);
+        var row = {
+          id: id, company: company,
+          contact: '', phone: '', email: '',
+          street: p.street || '', city: p.city || '', state: s.state || '',
+          zip: '', exit: '', lanes: '',
+          stage: 'Prospect', priority: 'Medium',
+          // Unassigned, not the session email. `owner` is a controlled
+          // vocabulary (CRM_OWNERS) that CRM.html's analytics and leaderboard
+          // GROUP BY -- an email here invents a third person on the leaderboard,
+          // matches none of the owner filters, and has no option in the lead
+          // modal's Owner select, so opening and saving the lead silently blanks
+          // it. CRM.html's own CSV import applies exactly this rule. The rep
+          // assigns a real owner in the CRM.
+          // (The activity-log `by` field keeps the email -- that one is free
+          // text, not a vocabulary.)
+          owner: '', source: 'Market Research',
+          locations: 1, est_gallons: 0, deal_value: 0,
+          follow_up: '', notes: p.notes || '',
+          activity: [{ text: 'Lead created from a value profile',
+                       date: new Date().toISOString().slice(0, 10),
+                       by: RoadysBD.auth.email() || '', type: 'note' }],
+          updated_at: new Date().toISOString()
+        };
+        return c.from('crm_leads').insert(row).then(function (ins) {
+          return ins.error
+            ? { ok: false, id: null, error: BDPG.errText(ins.error), scanFailed: scanFailed, attached: false }
+            : { ok: true, id: id, error: '', scanFailed: scanFailed, attached: false };
+        });
+      })
+      .catch(function (err) {
+        return { ok: false, id: null, error: BDPG.errText(err), scanFailed: false, attached: false };
+      });
+  };
+
+  // Spec §0.1: "Contacted" means we reached out, and a value profile is often
+  // pre-contact research -- so this ASKS and never moves a lead silently. Only
+  // Prospect and Qualified are offered; a lead already at Meeting Scheduled or
+  // later is never prompted and never moved.
+  BDPG.MOVEABLE_STAGES = ['Prospect', 'Qualified'];
+
+  // Resolves { moved, error }: moved=true only when the stage actually changed
+  // in the database. A rep who clicks OK and is told nothing will believe the
+  // lead moved; if the update failed, the board will disagree with them later.
+  BDPG.maybePromptStage = function (leadId, company) {
+    var c = RoadysBD.auth.client();
+    if (!c || !leadId) return Promise.resolve({ moved: false, error: '' });
+    return c.from('crm_leads').select('stage').eq('id', leadId).limit(1)
+      .then(function (r) {
+        if (r.error || !r.data || !r.data.length) return { moved: false, error: '' };
+        var stage = r.data[0].stage;
+        if (BDPG.MOVEABLE_STAGES.indexOf(stage) === -1) return { moved: false, error: '' };
+        if (!confirm('Saved value profile for ' + company + '.\n\n' +
+                     'This lead is at ' + stage + '. Move it to Contacted?')) return { moved: false, error: '' };
+        var act = { text: 'Moved from ' + stage + ' to Contacted',
+                    date: new Date().toISOString().slice(0, 10),
+                    by: RoadysBD.auth.email() || '', type: 'stage' };
+        return c.from('crm_leads').select('activity').eq('id', leadId).limit(1)
+          .then(function (a) {
+            var log = (!a.error && a.data && a.data.length && Array.isArray(a.data[0].activity))
+              ? a.data[0].activity : [];
+            log.push(act);
+            return c.from('crm_leads')
+              .update({ stage: 'Contacted', activity: log }).eq('id', leadId)
+              .then(function (u) {
+                return u.error ? { moved: false, error: BDPG.errText(u.error) } : { moved: true, error: '' };
+              });
+          });
+      })
+      .catch(function (err) { return { moved: false, error: BDPG.errText(err) }; });
   };
 
   // Returns true only if the profile was actually loaded, so callers that
@@ -6807,7 +7422,7 @@ function getCentroid(pathStr, axis){
     // same fact in both places.
     var loadedSum = BDPG.readSummary(found);
     if (!loadedSum.region && (loadedSum.city || loadedSum.stateCode)) {
-      toast('region updated — re-select state', 'err');
+      toast('region updated — re-select state', 'terr');
     }
     BDPG.render();
     BDPG.savedSig = BDPG.stateSig();
@@ -6817,6 +7432,19 @@ function getCentroid(pathStr, axis){
     // back the old draft instead of the prospect the rep just opened.
     // (Save is the one deliberate exception: it clears the draft outright,
     // because by then the work is in the tracker.)
+    //
+    // The card now holds a different prospect, so every binding to the PREVIOUS
+    // prospect's cloud row and lead must go. Without this, the flushDraft()
+    // below writes this prospect's data into the last one's bd_value_profiles
+    // row, still carrying its lead_id -- and because drafts are shared, a
+    // colleague sees that too. (currentProfileId is the LOCAL tracker id and is
+    // set above deliberately; it is a different id space.)
+    BDPG.currentCloudId = null;
+    BDPG.currentLeadId = null;
+    BDPG._leadLabel = '';
+    BDPG._leadSearchResults = [];
+    BDPG._draftAuthor = '';
+    BDPG._draftUpdatedAt = '';
     BDPG.flushDraft();
     return true;
   };
@@ -6833,6 +7461,15 @@ function getCentroid(pathStr, axis){
       // hasUnsavedWork() reports true until the next Save or Load.
       BDPG.currentProfileId = null;
       BDPG.savedSig = '';
+      // The card came from the record just deleted, so no cloud draft/final
+      // binding or lead link should survive it either -- same reset set as
+      // onLoadProfile() and onClearDraft().
+      BDPG.currentCloudId = null;
+      BDPG.currentLeadId = null;
+      BDPG._leadLabel = '';
+      BDPG._leadSearchResults = [];
+      BDPG._draftAuthor = '';
+      BDPG._draftUpdatedAt = '';
     }
     BDPG.render();
   };
@@ -7363,7 +8000,7 @@ function getCentroid(pathStr, axis){
     if (!found) return;
     var st = found.state || {};
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
-      toast('This saved prospect has no Location Profile/Roadway, so there is no result to reopen.', 'err');
+      toast('This saved prospect has no Location Profile/Roadway, so there is no result to reopen.', 'terr');
       return;
     }
     if (!BDPG.confirmDiscard(
@@ -7378,10 +8015,10 @@ function getCentroid(pathStr, axis){
     } catch (err) {
       BDPG.activeTab = 'prospects';
       BDPG.render();
-      toast('Could not reopen this prospect\'s result.', 'err');
+      toast('Could not reopen this prospect\'s result.', 'terr');
       return;
     }
-    if (!BDPG.state.result) toast('Could not reopen this prospect\'s result.', 'err');
+    if (!BDPG.state.result) toast('Could not reopen this prospect\'s result.', 'terr');
   };
 
   BDPG.prospectsHtml = function () {
@@ -7454,7 +8091,7 @@ function getCentroid(pathStr, axis){
     // and the tracker can show a clear toast instead of an empty print
     // dialog -- all before BDPG.state is touched.
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
-      toast('This saved prospect is missing a Location Profile/Roadway and can\'t produce an Export Pitch Summary.', 'err');
+      toast('This saved prospect is missing a Location Profile/Roadway and can\'t produce an Export Pitch Summary.', 'terr');
       return;
     }
 
@@ -7479,11 +8116,11 @@ function getCentroid(pathStr, axis){
       // rather than leaving that promise conditional.
       BDPG.activeTab = 'prospects';
       BDPG.render();
-      toast('Could not generate a value profile for this prospect.', 'err');
+      toast('Could not generate a value profile for this prospect.', 'terr');
       return;
     }
     if (!BDPG.state.result) {
-      toast('Could not generate a value profile for this prospect.', 'err');
+      toast('Could not generate a value profile for this prospect.', 'terr');
       return;
     }
     BDPG.onExportPdf();
@@ -7513,12 +8150,67 @@ window.addEventListener('pagehide', function () {
   if (BDPG._draftTimer) BDPG.flushDraft();
 });
 
+// ── Login gate ────────────────────────────────────────────────────────
+// Supabase Auth, email + password. Sign-ups are disabled in the dashboard,
+// so the account list IS the allowlist — there is no email list in this
+// bundle, because any list shipped to the browser is advisory, not enforcing.
+//
+// This is NOT the old SETTINGS.pin soft-lock, which compares a localStorage
+// string in client JS and stops nobody. That stays where it is, as the
+// accident guard it already is, and runs after this.
+function bdShowLoginGate(onReady){
+  RoadysBD.auth.init().then(function(session){
+    if(session){ onReady(); return; }
+    var ov=document.createElement('div');
+    ov.className='pin-overlay';
+    ov.innerHTML=
+      '<div class="pin-box">'+
+      '<h3>🔒 Sign in</h3>'+
+      '<p>Business Development — Roady\'s</p>'+
+      '<input type="email" class="pin-input bd-cred bd-email" placeholder="email" autocomplete="username"/>'+
+      '<input type="password" class="pin-input bd-cred bd-pw" placeholder="password" autocomplete="current-password"/>'+
+      '<div class="pin-err"></div>'+
+      '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center">'+
+      '<button class="btn btn-accent bd-go">Sign in</button></div>'+
+      '</div>';
+    document.body.appendChild(ov);
+    var em=ov.querySelector('.bd-email'), pw=ov.querySelector('.bd-pw'),
+        err=ov.querySelector('.pin-err'), go=ov.querySelector('.bd-go');
+    var submit=function(){
+      err.textContent='';
+      go.disabled=true; go.textContent='Signing in…';
+      RoadysBD.auth.signIn(em.value.trim(), pw.value).then(function(r){
+        go.disabled=false; go.textContent='Sign in';
+        if(!r.ok){ err.textContent=r.error||'Sign-in failed'; pw.value=''; pw.focus(); return; }
+        ov.remove();
+        onReady();
+      });
+    };
+    go.onclick=submit;
+    [em,pw].forEach(function(i){ i.addEventListener('keydown',function(e){ if(e.key==='Enter') submit(); }); });
+    setTimeout(function(){ em.focus(); },50);
+  });
+}
+
+// Sign-out must also drop the offline caches. Leaving them would keep the
+// previous user's data readable on disk after the tables themselves moved
+// behind auth -- the cache would become the hole in the lock. The key list
+// lives in roadysBD.js so the three pages cannot drift apart.
+function bdSignOut(){
+  RoadysBD.auth.signOut().then(function(){ location.reload(); });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-  // Before the first render, never after: restoreDraft() writes the ⓪ card's
-  // fields and sets savedSig, and render() captures its unsaved-work baseline
-  // on that first pass. See the comment inside restoreDraft().
-  BDPG.restoreDraft();
-  BDPG.render();
+  bdShowLoginGate(function () {
+    var p = new URLSearchParams(location.search);
+    BDPG.currentLeadId = p.get('lead') || null;
+    // Before the first render, never after: restoreDraft() writes the ⓪ card's
+    // fields and sets savedSig, and render() captures its unsaved-work baseline
+    // on that first pass.
+    BDPG.restoreDraft();
+    BDPG.render();
+    BDPG.hydrateDraftFromCloud();
+  });
 });
 </script>
 </body>
