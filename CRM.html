@@ -2105,7 +2105,7 @@ function renderCRMKanban(){
       html+='<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-weight:700;font-size:.8em">'+crmEsc(l.company)+'</span>'+(noteCount?'<span style="font-size:.62em;color:var(--accent);white-space:nowrap" title="'+noteCount+' note'+(noteCount===1?'':'s')+'">📝 '+noteCount+'</span>':'')+'</div>';
       html+='<div style="font-size:.68em;color:var(--muted);margin-bottom:2px">'+crmEsc(l.contact)+' &middot; '+crmEsc(l.city)+(l.city&&l.state?', ':'')+crmEsc(l.state)+'</div>';
       if(l.exit) html+='<div style="font-size:.63em;color:var(--dim);margin-bottom:6px">'+crmEsc(l.exit)+'</div>';
-      html+='<div style="display:flex;justify-content:space-between;font-size:.65em;margin-bottom:6px"><span style="color:var(--accent);font-weight:600">'+Math.round((l.estGallons||0)/1000)+'K gal</span><span style="color:'+prBorder+';font-weight:700">'+l.priority+'</span></div>';
+      html+='<div style="display:flex;justify-content:space-between;font-size:.65em;margin-bottom:6px"><span style="color:var(--accent);font-weight:600">'+Math.round((l.estGallons||0)/1000)+'K gal est.</span><span style="color:'+prBorder+';font-weight:700">'+l.priority+'</span></div>';
       const vp = crmSummaryFor(l.id);
       if(vp.has){
         html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:.65em;margin-bottom:6px;padding-top:5px;border-top:1px dashed var(--border)">'+
@@ -2230,7 +2230,7 @@ function crmTableFilteredLeads(){
   const VP_SORT={
     vpGallons: s=>s.gallons,
     vpRec:     s=>s.recommendation,
-    vpStatus:  s=>s.has?(s.isDraft?'draft':'final'):'',
+    vpStatus:  s=>s.statusText,
     vpSaved:   s=>s.savedAt
   };
   list.sort((a,b)=>{
@@ -2275,7 +2275,7 @@ function renderCRMTable(){
       '<td style="text-align:center">'+(l.locations||'&mdash;')+'</td>'+
       '<td style="text-align:right;font-size:.82em;color:'+(vp.has?'var(--accent)':'var(--muted)')+'">'+vp.gallonsText+'</td>'+
       '<td style="font-size:.8em">'+(vp.recommendation?crmEsc(vp.recommendation):'&mdash;')+'</td>'+
-      '<td style="font-size:.78em">'+(vp.has?(vp.isDraft?'<span style="color:var(--yellow)">draft</span>':'<span style="color:var(--green)">final</span>'):'&mdash;')+'</td>'+
+      '<td style="font-size:.78em">'+(vp.statusText==='draft'?'<span style="color:var(--yellow)">draft</span>':(vp.statusText==='final'?'<span style="color:var(--green)">final</span>':'&mdash;'))+'</td>'+
       '<td style="font-size:.78em;color:var(--muted)">'+(vp.savedAt||'&mdash;')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn" style="font-size:.7em;padding:3px 8px" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')">&#9998;</button> '+
@@ -2683,7 +2683,7 @@ function crmExport(){
     ['Notes',        l=>l.notes],
     ['Projected Gallons',   l=>crmSummaryFor(l.id).gallons],
     ['Recommendation',      l=>crmSummaryFor(l.id).recommendation],
-    ['Profile Status',      l=>{const s=crmSummaryFor(l.id); return s.has?(s.isDraft?'draft':'final'):'';}],
+    ['Profile Status',      l=>crmSummaryFor(l.id).statusText],
     ['Profiled Date',       l=>crmSummaryFor(l.id).savedAt],
     ['Region',              l=>crmSummaryFor(l.id).region],
     ['Location Profile',    l=>crmSummaryFor(l.id).profileType]
@@ -3472,7 +3472,7 @@ function renderCRMAnalytics(){
     '<div class="kc up"><div class="kc-lbl">Win Rate</div><div class="kc-val" style="color:var(--green)">'+winRate+'%</div><div class="kc-sub">'+won.length+'W / '+lost.length+'L</div></div>'+
     '<div class="kc"><div class="kc-lbl">Avg Deal Size</div><div class="kc-val" style="color:var(--accent)">$'+Math.round(avgDeal/1000)+'K</div><div class="kc-sub">Per closed account</div></div>'+
     '<div class="kc"><div class="kc-lbl">Pipeline Value</div><div class="kc-val">$'+Math.round(pipeVal/1000)+'K</div><div class="kc-sub">'+active.length+' active leads</div></div>'+
-    '<div class="kc"><div class="kc-lbl">Pipeline Gallons</div><div class="kc-val">'+Math.round(pipeGal/1000)+'K</div><div class="kc-sub">Monthly potential</div></div>';
+    '<div class="kc"><div class="kc-lbl">Pipeline Gallons (Est.)</div><div class="kc-val">'+Math.round(pipeGal/1000)+'K</div><div class="kc-sub">Hand-entered estimate, monthly</div></div>';
   setTimeout(()=>{
     try{
       const stageEl=document.getElementById('crm-chart-stage');
@@ -3534,7 +3534,7 @@ function renderCRMAnalytics(){
   if(srcNote){
     const total=srcs.profile+srcs.estimate+srcs.none;
     srcNote.textContent = total
-      ? srcs.profile+' of '+total+' leads use a calculated value profile; '+
+      ? srcs.profile+' of '+total+' active leads use a calculated value profile; '+
         srcs.estimate+' use the hand-entered estimate'+
         (srcs.none?', '+srcs.none+' have neither':'')+'.'
       : '';

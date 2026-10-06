@@ -404,13 +404,17 @@
       has: false, isDraft: false, gallons: null, gallonsText: '—',
       recommendation: '', pricingPct: null, pricingText: '',
       truckerPath: '', amenityLevel: '', region: '',
-      profileType: '', savedAt: ''
+      profileType: '', savedAt: '', statusText: ''
     };
     if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
     out.has = true;
     // Anything that is not the literal 'final' is treated as a draft: an
     // unknown status must never be rendered as a finished profile.
     out.isDraft = str(p.status) !== 'final';
+    // Collapses has/isDraft into the one word CRM.html needs at its three
+    // call sites (sort extractor, Lead Table status cell, CSV export),
+    // which used to hand-derive this ternary independently at each site.
+    out.statusText = out.isDraft ? 'draft' : 'final';
     out.gallons = num(p.finalGallons);
     if (out.gallons !== null) out.gallonsText = fmtInt(out.gallons);
     out.recommendation = str(p.recommendation);

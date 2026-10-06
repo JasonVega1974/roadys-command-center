@@ -227,6 +227,24 @@ test('a draft is flagged as a draft', () => {
   assert.equal(s.isDraft, true);
 });
 
+// ── profiles.summary: statusText ────────────────────────────────────────
+// Collapses the has/isDraft pair into the one word CRM.html renders, so the
+// three call sites that used to hand-derive 'draft'/'final'/'' inline (the
+// sort extractor, the Lead Table status cell, and the CSV export) read it
+// instead of re-deriving it.
+
+test('statusText is empty when there is no profile', () => {
+  assert.equal(RoadysBD.profiles.summary(null).statusText, '');
+});
+
+test("statusText is 'draft' for a draft profile", () => {
+  assert.equal(RoadysBD.profiles.summary({ status: 'draft' }).statusText, 'draft');
+});
+
+test("statusText is 'final' for a final profile", () => {
+  assert.equal(RoadysBD.profiles.summary({ status: 'final' }).statusText, 'final');
+});
+
 test('a profile with no generated gallons shows a dash, not zero', () => {
   // A profile saved before Generate ran has null gallons. Rendering "0" would
   // assert a figure the calculator never produced.
