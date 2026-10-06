@@ -4515,7 +4515,7 @@ function getCentroid(pathStr, axis){
 
     RoadysBD.profiles.saveDraft(BDPG.draftProfile(d)).then(function (r) {
       if (r.ok) {
-        if (r.profile && r.profile.id) BDPG.currentProfileId = r.profile.id;
+        if (r.profile && r.profile.id) BDPG.currentCloudId = r.profile.id;
         BDPG._draftAuthor = RoadysBD.auth.email() || '';
         BDPG._draftUpdatedAt = (r.profile && r.profile.updatedAt) || new Date().toISOString();
         BDPG.setDraftMsg('Draft saved ' + BDPG.draftTimeLabel(d.savedAt));
@@ -4537,7 +4537,7 @@ function getCentroid(pathStr, axis){
   BDPG.draftProfile = function (d) {
     var s = BDPG.state, e = s.result ? s.result.estimate : null;
     return {
-      id: BDPG.currentProfileId || '',
+      id: BDPG.currentCloudId || '',
       leadId: BDPG.currentLeadId,
       status: 'draft',
       prospectName: d.name, city: d.city, stateCode: d.stateCode,
@@ -4671,9 +4671,9 @@ function getCentroid(pathStr, axis){
       // what is on screen still has an author worth naming.
       BDPG._draftAuthor = p.author || '';
       BDPG._draftUpdatedAt = p.updatedAt || '';
-      if (same) { BDPG.currentProfileId = p.id; BDPG.setDraftMsg(BDPG._draftMsg); return false; }
+      if (same) { BDPG.currentCloudId = p.id; BDPG.setDraftMsg(BDPG._draftMsg); return false; }
       BDPG.applyProfile(p);
-      BDPG.currentProfileId = p.id;
+      BDPG.currentCloudId = p.id;
       BDPG.savedSig = '';          // a restored draft is still unsaved work
       // Just the fact. Who and when are rendered by draftProvenanceLabel()
       // from the two fields above — saying it here too would print the author
@@ -4733,6 +4733,10 @@ function getCentroid(pathStr, axis){
     // so a later Save must create a new row rather than overwrite that one --
     // the same binding onSaveProfile() drops when the displayed name changes.
     BDPG.currentProfileId = null;
+    // Clearing the card empties both id spaces it could be bound to -- the
+    // local tracker record above, and the cloud draft row this card was
+    // mirroring.
+    BDPG.currentCloudId = null;
     BDPG._draftMsg = '';
     BDPG.render();
   };
@@ -6037,6 +6041,16 @@ function getCentroid(pathStr, axis){
   // appending a second row for the same prospect. Lives on BDPG, not on
   // BDPG.state, so it is never serialized into a snapshot.
   BDPG.currentProfileId = null;
+
+  // The bd_value_profiles row id for the draft/profile currently on screen.
+  //
+  // Deliberately NOT BDPG.currentProfileId, which means something else and
+  // predates this: that one is the id of a record in the local
+  // roadysBDPGProfiles tracker array, and onSaveProfile() SEARCHES that array
+  // for it to decide update-vs-append. Putting a cloud id in that field makes
+  // the lookup miss every time and silently appends a duplicate tracker row.
+  // Two id spaces, two fields.
+  BDPG.currentCloudId = null;
 
   // Returns true when a result was computed and written to state, false on
   // every bail -- so a caller other than the button (BDPG.onTrackerExport()
