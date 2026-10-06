@@ -8559,12 +8559,10 @@ function bdShowLoginGate(onReady){
 }
 
 // Sign-out must also drop the offline caches. Leaving them would keep the
-// previous user's pipeline readable on disk after Migration B has moved the
-// table itself behind auth — the cache would become the hole in the lock.
+// previous user's data readable on disk after the tables themselves moved
+// behind auth -- the cache would become the hole in the lock. The key list
+// lives in roadysBD.js so the three pages cannot drift apart.
 function bdSignOut(){
-  ['roadys_crm_v2','roadysBDPGDraft'].forEach(function(k){
-    try{ localStorage.removeItem(k); }catch(e){}
-  });
   RoadysBD.auth.signOut().then(function(){ location.reload(); });
 }
 

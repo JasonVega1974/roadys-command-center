@@ -99,6 +99,41 @@
   var _session = null;
   var _authListenerBound = false;
 
+  // Every localStorage key that mirrors a Supabase table rendered by a page
+  // behind the sign-in gate. Sign-out must clear all of them: the gate exists
+  // so the next person on a shared device cannot read the previous user's
+  // work, and a cache left behind is a hole in exactly that lock.
+  //
+  // One list here rather than one per page. The three pages cache different
+  // tables, so per-page lists would have to differ — and three lists that
+  // must differ are three lists that will drift. removeItem on a key a page
+  // never used is a no-op, so the union is safe everywhere.
+  //
+  // Deliberately NOT included:
+  //   roadys_theme / roadysBDPGTheme   display preference, not data
+  //   roadysBDPGRegionOverride         admin config, not user or lead data
+  //   roadys_crm_rules_v2              scheduler config, not lead data
+  //   roadysBDPGProfiles               the calculator's saved prospects are
+  //                                    still LOCAL-ONLY and authoritative --
+  //                                    clearing them would destroy a rep's
+  //                                    only copy. It joins this list once
+  //                                    Supabase owns profiles.
+  var CACHE_KEYS = [
+    'roadys_crm_v2',        // crm_leads
+    'roadys_crm_calls',     // crm_scheduled_calls
+    'roadys_crm_notes_v1',  // crm_lead_notes
+    'roadys_crm_tmpl_v2',   // crm_email_templates
+    'truckStopPortal_v4',   // impl_sites  (IMPL_STORAGE_KEY)
+    'roadys_sd_tickets',    // sd_tickets
+    'roadysBDPGDraft'       // bd_value_profiles, draft
+  ];
+
+  function clearCaches() {
+    for (var i = 0; i < CACHE_KEYS.length; i++) {
+      try { localStorage.removeItem(CACHE_KEYS[i]); } catch (e) {}
+    }
+  }
+
   function client() {
     if (!_client && typeof window !== 'undefined' && window.supabase) {
       _client = window.supabase.createClient(SB_URL, SB_ANON);
@@ -147,6 +182,7 @@
   function signOut() {
     var c = client();
     _session = null;
+    clearCaches();
     if (!c) return Promise.resolve();
     return c.auth.signOut().catch(function () {});
   }
@@ -281,7 +317,8 @@
   var RoadysBD = {
     map:  { toRow: toRow, fromRow: fromRow },
     auth: { client: client, init: init, session: session, email: email,
-            signIn: signIn, signOut: signOut },
+            signIn: signIn, signOut: signOut,
+            clearCaches: clearCaches, CACHE_KEYS: CACHE_KEYS },
     profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
                 saveDraft: saveDraft, saveFinal: saveFinal,
                 softDelete: softDelete },

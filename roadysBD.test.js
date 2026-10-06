@@ -89,3 +89,22 @@ test('minted profile ids do not collide within the same millisecond', () => {
   for (let i = 0; i < 500; i++) ids.add(RoadysBD.testing.mintId());
   assert.equal(ids.size, 500);
 });
+
+test('the sign-out cache list covers every gated page\'s Supabase mirror', () => {
+  // If a page behind the gate caches a Supabase table under a key missing
+  // here, that data stays readable after sign-out on a shared device.
+  const keys = RoadysBD.auth.CACHE_KEYS;
+  ['roadys_crm_v2','roadys_crm_calls','roadys_crm_notes_v1','roadys_crm_tmpl_v2',
+   'truckStopPortal_v4','roadys_sd_tickets','roadysBDPGDraft']
+    .forEach(k => assert.ok(keys.includes(k), 'missing cache key: ' + k));
+});
+
+test('the sign-out cache list does not clear preferences or authoritative local data', () => {
+  // Clearing a display preference is merely rude; clearing roadysBDPGProfiles
+  // would destroy the rep's only copy of their saved prospects, which are not
+  // yet stored anywhere else.
+  const keys = RoadysBD.auth.CACHE_KEYS;
+  ['roadys_theme','roadysBDPGTheme','roadysBDPGRegionOverride',
+   'roadys_crm_rules_v2','roadysBDPGProfiles']
+    .forEach(k => assert.ok(!keys.includes(k), 'must not clear: ' + k));
+});
