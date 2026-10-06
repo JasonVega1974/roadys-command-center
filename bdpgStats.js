@@ -1011,6 +1011,36 @@
     return out;
   }
 
+  // ── membership recommendation ─────────────────────────────────────────
+  //
+  // Derived from finalGallons, never entered. Every boundary is a quartile of
+  // the network's own reported monthly gallons (network-locations.json,
+  // avgGalMo over the 190 locations that report): p25 1,480, median 6,059,
+  // p75 17,455. Rounded outward to readable figures so a rep can hold them in
+  // their head; the rounding is the only judgement in the table.
+  //
+  // Ordered high-to-low and evaluated in order, so the bands cannot overlap
+  // or leave a gap the way a set of independent range checks can.
+  var RECOMMENDATION_BANDS = [
+    { min: 17500, label: 'Strong fit' },
+    { min: 6000,  label: 'Good fit' },
+    { min: 1500,  label: 'Marginal' },
+    { min: -Infinity, label: 'Below threshold' }
+  ];
+
+  function recommendation(finalGallons) {
+    // '' means "no verdict", and it is NOT the same fact as the lowest band.
+    // A profile saved before Generate ran has null gallons; calling that
+    // "Below threshold" would assert a verdict the calculator never produced.
+    if (finalGallons === null || finalGallons === undefined || finalGallons === '') return '';
+    var n = Number(finalGallons);
+    if (!isFinite(n)) return '';
+    for (var i = 0; i < RECOMMENDATION_BANDS.length; i++) {
+      if (n >= RECOMMENDATION_BANDS[i].min) return RECOMMENDATION_BANDS[i].label;
+    }
+    return '';
+  }
+
   var BDPG_STATS = {
     median: median,
     quantile: quantile,
@@ -1032,6 +1062,8 @@
     pricingTrackFraction: pricingTrackFraction,
     networkCountTone: networkCountTone,
     prospectSignal: prospectSignal,
+    recommendation: recommendation,
+    RECOMMENDATION_BANDS: RECOMMENDATION_BANDS,
     datedStoreState: datedStoreState,
     validateNewLocation: validateNewLocation,
     normalizeAddedLocation: normalizeAddedLocation,

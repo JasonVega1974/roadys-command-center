@@ -1707,3 +1707,36 @@ test('the committed file carries exactly the twelve fields the page expects', ()
   // unexpected-key warning fire if names ever leak into the public file.
   assert.ok(!seen.includes('name'));
 });
+
+// ── membership recommendation ───────────────────────────────────────────
+// Bands are the network's own quartiles over the 190 reporting locations in
+// network-locations.json (avgGalMo): p25 1,480 · median 6,059 · p75 17,455.
+
+test('recommendation bands sit on the documented boundaries', () => {
+  assert.equal(BDPG_STATS.recommendation(17500), 'Strong fit');
+  assert.equal(BDPG_STATS.recommendation(17499), 'Good fit');
+  assert.equal(BDPG_STATS.recommendation(6000),  'Good fit');
+  assert.equal(BDPG_STATS.recommendation(5999),  'Marginal');
+  assert.equal(BDPG_STATS.recommendation(1500),  'Marginal');
+  assert.equal(BDPG_STATS.recommendation(1499),  'Below threshold');
+  assert.equal(BDPG_STATS.recommendation(0),     'Below threshold');
+});
+
+test('a profile with no generated gallons has no recommendation, not a bad one', () => {
+  // null gallons is a profile saved before Generate ran. Calling that
+  // "Below threshold" would assert a verdict the calculator never produced.
+  assert.equal(BDPG_STATS.recommendation(null), '');
+  assert.equal(BDPG_STATS.recommendation(undefined), '');
+  assert.equal(BDPG_STATS.recommendation(''), '');
+  assert.equal(BDPG_STATS.recommendation(NaN), '');
+  assert.equal(BDPG_STATS.recommendation('nonsense'), '');
+  assert.equal(BDPG_STATS.recommendation({}), '');
+});
+
+test('a numeric string is accepted, as a stored jsonb value can be', () => {
+  assert.equal(BDPG_STATS.recommendation('11153'), 'Good fit');
+});
+
+test('negative gallons cannot occur but must not fall through to a good band', () => {
+  assert.equal(BDPG_STATS.recommendation(-1), 'Below threshold');
+});
