@@ -32,7 +32,7 @@
 | `CRM.html` | Profile cache, card summary, lead-detail section, table columns, CSV, analytics | Modify |
 | `bus-dev-potential-gallons/index.html` | Pre-fill the ⓪ card from the deep-linked lead | Modify |
 
-Seven tasks. Task 1 is the tested foundation Tasks 3, 4, 6 and 7 all read through; Task 5 touches a different file and is independent of every other task.
+Six tasks to build. Task 1 is the tested foundation Tasks 3, 4, 6 and 7 all read through. **Task 5 is already delivered** on `feat/crm-value-prop-deeplink` and is retained below only as a record of what superseded it.
 
 ---
 
@@ -469,90 +469,32 @@ git commit -m "feat(crm): Value Profile section in the lead detail"
 
 ---
 
-## Task 5: Calculator pre-fills from the deep-linked lead
+## Task 5: Calculator pre-fills from the deep-linked lead — **SUPERSEDED, DO NOT BUILD**
 
-Phase 1 reads `?lead=` into `BDPG.currentLeadId` but **never fetches the lead**, so "Build value profile" currently opens an empty card. This closes that.
+Delivered ahead of this plan on branch `feat/crm-value-prop-deeplink`, by a
+different mechanism than this task described.
 
-**Files:**
-- Modify: `bus-dev-potential-gallons/index.html` — the `DOMContentLoaded` handler at the file foot
+This task specified a `prefillFromLead(leadId)` that **fetches** the lead from
+`crm_leads`. What shipped instead passes the lead's fields as **query
+parameters** on the deep link, parsed by the tested
+`RoadysBD.leadParamsFrom(search)` and applied by `BDPG.applyLeadParams(p)`.
 
-**Interfaces:**
-- Consumes: `RoadysBD.auth.client()`, `BDPG.currentLeadId`, `BDPG.onLocationType`, `BDPG.onStateInput`.
-- Produces: `BDPG.prefillFromLead(leadId)` → `Promise<boolean>` (true if anything was written).
+Why the shipped version is the one to keep:
 
-- [ ] **Step 1: Add the pre-fill**
+- It pre-fills with no database round trip, so the card is populated the
+  instant the page paints rather than after a fetch resolves.
+- It still works if the fetch would have failed.
+- The parsing — the step that can silently mangle a company name or a state
+  code — is unit-tested, which a fetch-and-assign would not have been.
 
-```js
-  // Seeds the ⓪ card from the CRM lead this page was opened for. Only fills
-  // fields the rep has not already filled -- a restored draft or a cloud
-  // draft is their work in progress and must win over a lead's stored values.
-  //
-  // Deliberately NOT a full state load: a lead carries contact details, not a
-  // baseline or adjustments. Those are the rep's to choose, and inventing
-  // them here would put inputs on screen that nobody selected -- the rule the
-  // draft layer already follows (see restoreDraft()).
-  BDPG.prefillFromLead = function (leadId) {
-    var c = RoadysBD.auth.client();
-    if (!c || !leadId) return Promise.resolve(false);
-    return c.from('crm_leads').select('company,city,state,street,exit')
-      .eq('id', leadId).limit(1)
-      .then(function (r) {
-        if (r.error || !r.data || !r.data.length) return false;
-        var lead = r.data[0];
-        var p = BDPG.state.prospect, wrote = false;
-        if (!p.name && typeof lead.company === 'string' && lead.company) { p.name = lead.company; wrote = true; }
-        if (!p.city && typeof lead.city === 'string' && lead.city) { p.city = lead.city; wrote = true; }
-        if (!p.street && typeof lead.street === 'string' && lead.street) { p.street = lead.street; wrote = true; }
-        if (!BDPG.state.state && typeof lead.state === 'string' && lead.state) {
-          BDPG.state.state = lead.state.toUpperCase().slice(0, 2);
-          wrote = true;
-        }
-        if (wrote) {
-          BDPG.updatePreEvalSignal();
-          // A pre-filled card is unsaved work, exactly like a restored draft:
-          // savedSig = '' so Load / Export still prompt before discarding it.
-          BDPG.savedSig = '';
-          BDPG.render();
-        }
-        return wrote;
-      })
-      .catch(function () { return false; });
-  };
-```
+What it costs, recorded rather than hidden: the company and city travel in the
+URL, so they appear in browser history and in any proxy log between the rep
+and GitHub Pages. The page is behind auth, so this is not public exposure, but
+it is less private than fetching by id. The user was shown this trade-off and
+chose parameters.
 
-Location Type is deliberately **not** pre-filled: `crm_leads` has no column for it (spec §2.2 adds none), and guessing it would auto-set a Step 1 baseline nobody chose. Say so in your report if you were tempted.
-
-- [ ] **Step 2: Call it after hydration, not before**
-
-In the boot handler, chain it after `hydrateDraftFromCloud()` so a shared cloud draft is applied first and the pre-fill only completes genuinely empty fields:
-
-```js
-    BDPG.restoreDraft();
-    BDPG.render();
-    BDPG.hydrateDraftFromCloud().then(function () {
-      return BDPG.prefillFromLead(BDPG.currentLeadId);
-    });
-```
-
-`hydrateDraftFromCloud()` already returns a promise.
-
-- [ ] **Step 3: Verify in the browser**
-
-- open `bus-dev-potential-gallons/?lead=<a real lead id>` with no existing draft → name, city, street and state pre-fill; Location Type stays empty
-- type a different name, reload the same URL → **your** typed name survives, the lead's does not overwrite it
-- open the calculator with **no** `?lead=` → nothing pre-fills, and no error in the console
-- open with a `?lead=` that does not exist → nothing pre-fills, no error
-
-- [ ] **Step 4: Confirm the suite**
-
-Run: `node --test *.test.js` — unchanged. Confirm the inline `<script>` parses.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add bus-dev-potential-gallons/index.html
-git commit -m "feat(bdpg): pre-fill the prospect card from the deep-linked CRM lead"
-```
+Anything in this plan that assumed `prefillFromLead` should read
+`BDPG.applyLeadParams` instead. Nothing else in Phase 2 depends on it.
 
 ---
 
@@ -710,7 +652,7 @@ git commit -m "feat(crm): analytics prefer profile gallons and state the mix"
 
 ## Self-Review
 
-**Spec coverage (§4).** Lead card summary → Task 3 (compact, per the user's ruling that the card shows a summary and the detail shows the breakdown). Value Profile section with Open / Update / Build → Task 4. Deep link pre-filled with the lead's fields → Task 5 (this is calculator-side work the spec attributed to the CRM; Phase 1 only stored `currentLeadId` and never fetched the lead). Lead Table + CSV → Task 6. Analytics with `estGallons` fallback → Task 7. §4.1 `crmWhoAmI()` retirement → **deliberately out of scope**, deferred to Phase 3 by the user; it is 10 call sites, not the 4 §4.1 names, and three of them set the `owner` field on notes.
+**Spec coverage (§4).** Lead card summary → Task 3 (compact, per the user's ruling that the card shows a summary and the detail shows the breakdown). Value Profile section with Open / Update / Build → Task 4. Deep link pre-filled with the lead's fields → **delivered ahead of this plan** on `feat/crm-value-prop-deeplink` via query parameters, not the fetch Task 5 described. Task 5 is marked superseded. Lead Table + CSV → Task 6. Analytics with `estGallons` fallback → Task 7. §4.1 `crmWhoAmI()` retirement → **deliberately out of scope**, deferred to Phase 3 by the user; it is 10 call sites, not the 4 §4.1 names, and three of them set the `owner` field on notes.
 
 **Placeholder scan.** No TBD/TODO. Every code step carries the code. The one judgement left to an implementer is Task 2 Step 3 (confirm nothing else repopulates `CRM_LEADS`), which is a verification with a stated report-back, not an unspecified edit.
 
