@@ -320,6 +320,12 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
 .toast.tok{border-color:var(--green);color:var(--green);}
 .toast.terr{border-color:var(--red);color:var(--red);}
 .toast.twarn{border-color:var(--yellow);color:var(--yellow);}
+/* --yellow's day value (#E6A800) is tuned for borders and small glyphs on
+   dark boxes; as toast body text on the near-white day surface (#F7F8FA) it
+   computes to 1.98:1, far under the 4.5:1 AA threshold. #A14A00 is 5.65:1 on
+   the same surface and still reads as a warning amber rather than an error
+   red. Dark mode needs no override -- #FFD60A there is 12.41:1. */
+body.day-mode .toast.twarn{border-color:#A14A00;color:#A14A00;}
 
 .map-tooltip { position:fixed; background:rgba(8,12,24,.95); border:1px solid var(--border2); border-radius:8px; padding:10px 14px; font-size:.78em; pointer-events:none; z-index:9999; display:none; min-width:160px; }
 .map-tooltip-state { font-family:var(--ff); font-size:1.1em; font-weight:800; letter-spacing:.06em; margin-bottom:4px; }
