@@ -271,6 +271,11 @@
     if (!t) return Promise.resolve({ ok: false, error: 'Supabase unavailable', profile: null });
     var row = toRow(p);
     row.status = st;
+    // Writing a draft IS undeleting it. Without this, an upsert into a row
+    // another tab soft-deleted lands the new content in a row that every
+    // active-draft query filters out (.is('deleted_at', null)) -- the save
+    // reports success and the work is invisible from then on.
+    row.deleted_at = null;
     if (!row.author) row.author = email();
     if (!row.id) row.id = mintId();
     return t.upsert(row, { onConflict: 'id' }).select()
