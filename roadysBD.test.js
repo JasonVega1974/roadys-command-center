@@ -108,3 +108,80 @@ test('the sign-out cache list does not clear preferences or authoritative local 
    'roadys_crm_rules_v2','roadysBDPGProfiles']
     .forEach(k => assert.ok(!keys.includes(k), 'must not clear: ' + k));
 });
+
+// ── leadParamsFrom ──────────────────────────────────────────────────────
+// Parses the query string the CRM's "Value Prop →" button builds. Parsing is
+// the step that can silently mangle a company name or a state code, so it
+// lives in the module where node --test can reach it rather than inline in
+// an 8,000-line HTML file.
+
+const LP = RoadysBD.leadParamsFrom;
+
+test('leadParamsFrom reads every field the CRM button sends', () => {
+  const p = LP("?lead=CRM-001&name=Dysart%27s%20Truck%20Stop&city=Hermon&state=ME&street=530%20Coldbrook%20Rd");
+  assert.deepEqual(p, {
+    leadId: 'CRM-001',
+    name: "Dysart's Truck Stop",
+    city: 'Hermon',
+    state: 'ME',
+    street: '530 Coldbrook Rd'
+  });
+});
+
+test('a leading ? is optional', () => {
+  assert.deepEqual(LP('lead=CRM-9'), LP('?lead=CRM-9'));
+});
+
+test('absent fields are null, not empty string', () => {
+  // null means "the CRM did not send this"; '' would be indistinguishable
+  // from "the lead has an empty city", and the prefill treats them
+  // differently -- it fills from the former and skips the latter.
+  const p = LP('?lead=CRM-2');
+  assert.equal(p.leadId, 'CRM-2');
+  assert.equal(p.name, null);
+  assert.equal(p.city, null);
+  assert.equal(p.state, null);
+  assert.equal(p.street, null);
+});
+
+test('an empty query string yields all nulls rather than throwing', () => {
+  assert.deepEqual(LP(''), { leadId: null, name: null, city: null, state: null, street: null });
+  assert.deepEqual(LP('?'), { leadId: null, name: null, city: null, state: null, street: null });
+});
+
+test('a present-but-blank parameter is null, not an empty string', () => {
+  const p = LP('?lead=CRM-3&name=&city=%20%20');
+  assert.equal(p.name, null);
+  assert.equal(p.city, null, 'whitespace-only is blank');
+});
+
+test('state is upper-cased and clamped to two characters', () => {
+  assert.equal(LP('?state=me').state, 'ME');
+  assert.equal(LP('?state=Maine').state, 'MA', 'sliced to the first two, matching onStateInput');
+  assert.equal(LP('?state=m').state, 'M', 'a single character is left alone for the rep to finish');
+});
+
+test('values are trimmed', () => {
+  assert.equal(LP('?name=%20%20Dysart%27s%20%20').name, "Dysart's");
+});
+
+test('unknown parameters are ignored', () => {
+  const p = LP('?lead=CRM-4&call=1&utm_source=email&name=Acme');
+  assert.deepEqual(Object.keys(p).sort(), ['city','leadId','name','state','street']);
+  assert.equal(p.name, 'Acme');
+});
+
+test('a non-string argument degrades to all nulls instead of throwing', () => {
+  // This is read straight off location.search, but a hand-edited call site
+  // must not take the page down.
+  [null, undefined, 42, {}, []].forEach(v => {
+    assert.deepEqual(LP(v), { leadId: null, name: null, city: null, state: null, street: null });
+  });
+});
+
+test('markup in a parameter survives as literal text for escHtml to handle', () => {
+  // The parser does not escape -- the renderer does. What it must NOT do is
+  // mangle the value so the renderer escapes something different from what
+  // arrived.
+  assert.equal(LP('?name=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E').name, '<img src=x onerror=alert(1)>');
+});
