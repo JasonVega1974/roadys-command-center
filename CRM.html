@@ -1049,6 +1049,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="font-family:var(--ff);font-size:.82em;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:12px">LEADERBOARD — PIPELINE GALLONS BY OWNER</div>
+          <div id="crm-gal-source" style="font-size:.68em;color:var(--muted);margin-bottom:8px"></div>
           <div id="crm-leaderboard"></div>
         </div>
       </div>
@@ -3482,7 +3483,7 @@ function renderCRMAnalytics(){
       if(stageEl) mkchart('crm-chart-stage',{type:'bar',data:{labels:CRM_STAGES.map(crmStageShort),datasets:[{data:CRM_STAGES.map(s=>CRM_LEADS.filter(l=>l.stage===s).length),backgroundColor:CRM_STAGES.map(s=>CRM_STAGE_COLORS[s]+'99'),borderColor:CRM_STAGES.map(s=>CRM_STAGE_COLORS[s]),borderWidth:1,borderRadius:4}]},options:{...CDO,plugins:{legend:{display:false}}}});
       const ownerEl=document.getElementById('crm-chart-owner');
       if(ownerEl){
-        const og={};CRM_LEADS.forEach(l=>{if(!og[l.owner])og[l.owner]=0;og[l.owner]+=(l.estGallons||0);});
+        const og={};CRM_LEADS.forEach(l=>{if(!og[l.owner])og[l.owner]=0;og[l.owner]+=RoadysBD.profiles.gallonsFor(l,crmProfileFor(l.id)).gallons;});
         const sorted=Object.entries(og).sort((a,b)=>b[1]-a[1]);
         mkchart('crm-chart-owner',{type:'bar',data:{labels:sorted.map(x=>x[0].split(' ')[0]),datasets:[{data:sorted.map(x=>Math.round(x[1]/1000)),backgroundColor:['rgba(0,200,255,.7)','rgba(255,107,53,.7)'],borderColor:['var(--accent)','var(--orange)'],borderWidth:1,borderRadius:4,label:'Gallons (K)'}]},options:{...CDO,plugins:{legend:{display:false}}}});
       }
@@ -3515,7 +3516,7 @@ function renderCRMAnalytics(){
     const og={};const ov={};const ol={};
     CRM_LEADS.filter(l=>l.stage!=='Closed Lost'&&l.stage!=='Not Qualified').forEach(l=>{
       if(!og[l.owner]){og[l.owner]=0;ov[l.owner]=0;ol[l.owner]=0;}
-      og[l.owner]+=(l.estGallons||0);ov[l.owner]+=(l.dealValue||0);ol[l.owner]++;
+      og[l.owner]+=RoadysBD.profiles.gallonsFor(l,crmProfileFor(l.id)).gallons;ov[l.owner]+=(l.dealValue||0);ol[l.owner]++;
     });
     const sorted=Object.entries(og).sort((a,b)=>b[1]-a[1]);
     const max=sorted[0]?.[1]||1;
@@ -3527,6 +3528,20 @@ function renderCRMAnalytics(){
       '<div style="text-align:right;min-width:100px"><div style="font-size:.82em;font-weight:700;color:var(--accent)">'+Math.round(gal/1000)+'K gal</div>'+
       '<div style="font-size:.66em;color:var(--muted)">$'+Math.round(ov[owner]/1000)+'K &middot; '+ol[owner]+' lead'+(ol[owner]!==1?'s':'')+'</div></div></div>'
     ).join('');
+  }
+  // Two very different confidence levels land in one number here. Saying
+  // so costs a line and stops the total reading as a single measurement.
+  const srcs={profile:0,estimate:0,none:0};
+  CRM_LEADS.filter(l=>l.stage!=='Closed Lost'&&l.stage!=='Not Qualified')
+    .forEach(l=>{srcs[RoadysBD.profiles.gallonsFor(l,crmProfileFor(l.id)).source]++;});
+  const srcNote=document.getElementById('crm-gal-source');
+  if(srcNote){
+    const total=srcs.profile+srcs.estimate+srcs.none;
+    srcNote.textContent = total
+      ? srcs.profile+' of '+total+' leads use a calculated value profile; '+
+        srcs.estimate+' use the hand-entered estimate'+
+        (srcs.none?', '+srcs.none+' have neither':'')+'.'
+      : '';
   }
 }
 
