@@ -81,3 +81,11 @@ test('the module loads headless and every network call degrades to a null result
   assert.equal((await RoadysBD.profiles.saveDraft({})).ok, false);
   assert.equal((await RoadysBD.auth.signIn('a@b.c', 'x')).ok, false);
 });
+
+test('minted profile ids do not collide within the same millisecond', () => {
+  // Date.now() alone repeats inside one tick, and a repeated id would make
+  // upsert(onConflict:'id') overwrite a different prospect's profile.
+  const ids = new Set();
+  for (let i = 0; i < 500; i++) ids.add(RoadysBD.testing.mintId());
+  assert.equal(ids.size, 500);
+});

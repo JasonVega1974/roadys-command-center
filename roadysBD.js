@@ -97,6 +97,7 @@
 
   var _client = null;
   var _session = null;
+  var _authListenerBound = false;
 
   function client() {
     if (!_client && typeof window !== 'undefined' && window.supabase) {
@@ -115,9 +116,13 @@
     if (!c) return Promise.resolve(null);
     return c.auth.getSession().then(function (res) {
       _session = (res && res.data && res.data.session) || null;
-      // Keep _session fresh across token refreshes and sign-out in another
-      // tab, so email() and the RLS-bearing client never disagree.
-      c.auth.onAuthStateChange(function (_evt, s) { _session = s || null; });
+      if (!_authListenerBound) {
+        _authListenerBound = true;
+        // Keep _session fresh across token refreshes and sign-out in another
+        // tab. Bound once: _client is memoized, so re-entering init() would
+        // otherwise stack a listener per call.
+        c.auth.onAuthStateChange(function (_evt, s) { _session = s || null; });
+      }
       return _session;
     }).catch(function () { return null; });
   }
@@ -197,15 +202,60 @@
       .catch(function () { return null; });
   }
 
+  function mintId() {
+    return 'bdp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  // A new profile whose (lead_id, status) slot is already held by another
+  // owner's row. That slot is unique BY DESIGN -- one draft per lead, one
+  // final per lead, shared between owners, last-write-wins -- so minting a
+  // second id can never land, and retrying only mints another one. Adopt the
+  // existing row's id and write into it, which is what last-write-wins means.
+  //
+  // Keyed on exactly the columns the partial unique indexes are keyed on, so
+  // this can only ever find the row that caused the violation -- never some
+  // other prospect's profile.
+  function adoptExistingId(row, st) {
+    var t = q();
+    if (!t) return Promise.resolve(null);
+    var sel = t.select('id').eq('status', st).is('deleted_at', null);
+    sel = row.lead_id
+      ? sel.eq('lead_id', row.lead_id)
+      : sel.is('lead_id', null).eq('author', row.author);
+    return sel.limit(1)
+      .then(function (res) {
+        if (res.error || !res.data || !res.data.length) return null;
+        return res.data[0].id;
+      })
+      .catch(function () { return null; });
+  }
+
   function save(p, st) {
     var t = q();
     if (!t) return Promise.resolve({ ok: false, error: 'Supabase unavailable', profile: null });
     var row = toRow(p);
     row.status = st;
     if (!row.author) row.author = email();
-    if (!row.id) row.id = 'bdp_' + Date.now();
+    if (!row.id) row.id = mintId();
     return t.upsert(row, { onConflict: 'id' }).select()
       .then(function (res) {
+        // 23505 = unique_violation. The only unique constraints on this table
+        // besides the primary key are the three partial indexes on
+        // (lead_id) / (author), so this means the SLOT is taken -- not the id.
+        if (res.error && res.error.code === '23505') {
+          return adoptExistingId(row, st).then(function (existingId) {
+            if (!existingId) {
+              return { ok: false, error: errText(res.error), profile: null };
+            }
+            row.id = existingId;
+            return t.upsert(row, { onConflict: 'id' }).select()
+              .then(function (res2) {
+                if (res2.error) return { ok: false, error: errText(res2.error), profile: null };
+                var saved2 = (res2.data && res2.data.length) ? fromRow(res2.data[0]) : fromRow(row);
+                return { ok: true, error: '', profile: saved2 };
+              });
+          });
+        }
         if (res.error) return { ok: false, error: errText(res.error), profile: null };
         var saved = (res.data && res.data.length) ? fromRow(res.data[0]) : fromRow(row);
         return { ok: true, error: '', profile: saved };
@@ -234,7 +284,8 @@
             signIn: signIn, signOut: signOut },
     profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
                 saveDraft: saveDraft, saveFinal: saveFinal,
-                softDelete: softDelete }
+                softDelete: softDelete },
+    testing: { mintId: mintId }
   };
   return { RoadysBD: RoadysBD };
 }));
