@@ -4403,9 +4403,23 @@ function getCentroid(pathStr, axis){
   // pending write is flushed on pagehide (see the listener at the bottom of
   // this file) and before Save, so this window is never a way to lose the
   // last thing typed.
-  BDPG.DRAFT_DEBOUNCE_MS = 2000;
+  //
+  // 800ms, down from 2000: the draft now lands in Supabase where the other
+  // owner can see it, so the window where their screen is stale matters more
+  // than the write volume. Still debounced, because this fires per keystroke.
+  BDPG.DRAFT_DEBOUNCE_MS = 800;
   BDPG._draftTimer = null;
   BDPG._draftMsg = '';
+
+  // Set from ?lead=<id> at boot, or by Save to Prospects once a lead is
+  // linked. null means an unlinked draft, which the table keys by author.
+  BDPG.currentLeadId = null;
+
+  // Provenance of the draft currently on screen, from the last cloud read or
+  // write. Null until one happens, so a brand-new unsaved draft shows nothing
+  // rather than claiming an author it does not have.
+  BDPG._draftAuthor = '';
+  BDPG._draftUpdatedAt = '';
 
   BDPG.draftSnapshot = function () {
     var p = BDPG.state.prospect;
@@ -4494,10 +4508,86 @@ function getCentroid(pathStr, axis){
       BDPG.setDraftMsg('');
       return;
     }
-    var ok = true;
-    try { localStorage.setItem(BDPG.DRAFT_KEY, JSON.stringify(d)); } catch (e) { ok = false; }
-    BDPG.setDraftMsg(ok ? 'Draft saved ' + BDPG.draftTimeLabel(d.savedAt)
-                        : 'Draft could not be saved in this browser');
+    // localStorage first and synchronously: it is the offline mirror, and it
+    // is the only write that can still succeed inside a pagehide handler.
+    var localOk = true;
+    try { localStorage.setItem(BDPG.DRAFT_KEY, JSON.stringify(d)); } catch (e) { localOk = false; }
+
+    RoadysBD.profiles.saveDraft(BDPG.draftProfile(d)).then(function (r) {
+      if (r.ok) {
+        if (r.profile && r.profile.id) BDPG.currentProfileId = r.profile.id;
+        BDPG._draftAuthor = RoadysBD.auth.email() || '';
+        BDPG._draftUpdatedAt = (r.profile && r.profile.updatedAt) || new Date().toISOString();
+        BDPG.setDraftMsg('Draft saved ' + BDPG.draftTimeLabel(d.savedAt));
+      } else {
+        // Never report a cloud save that did not happen. The local mirror may
+        // still have landed, and saying so is the difference between "your
+        // work is safe here but not shared yet" and a false all-clear.
+        BDPG.setDraftMsg(localOk
+          ? 'Saved on this device only — not synced'
+          : 'Draft could not be saved');
+      }
+    });
+  };
+
+  // The ⓪-card draft plus whatever the engine currently holds, in the shape
+  // roadysBD.js stores. Results are included only when a result exists: a
+  // draft with no Generate behind it must carry null gallons and no
+  // recommendation, not zeros that read as a calculated answer.
+  BDPG.draftProfile = function (d) {
+    var s = BDPG.state, e = s.result ? s.result.estimate : null;
+    return {
+      id: BDPG.currentProfileId || '',
+      leadId: BDPG.currentLeadId,
+      status: 'draft',
+      prospectName: d.name, city: d.city, stateCode: d.stateCode,
+      locationType: d.locationType,
+      region: s.state ? (BusDevGallonsCalc.resolveRegion(s.state) || '') : '',
+      profile: s.profile || '', roadway: s.roadway || '',
+      inputs: BDPG.profileInputs(),
+      results: e ? JSON.parse(JSON.stringify(e)) : {},
+      officialSubtotal: e ? e.officialSubtotal : null,
+      finalGallons: e ? e.finalGallons : null,
+      recommendation: e ? BDPG_STATS.recommendation(e.finalGallons) : '',
+      regionPctStamp: e ? BDPG.regionPctStamp(e.regionPct) : '',
+      baselineStamp: e ? BDPG.baselineStamp(e.baseline) : '',
+      author: RoadysBD.auth.email() || ''
+    };
+  };
+
+  // Every input the calculator needs to reopen this profile exactly as saved.
+  // Deliberately NOT the whole of BDPG.state: result and resultStale are
+  // derived, and the panel-open flags are not data (same rule as SIG_SKIP).
+  BDPG.profileInputs = function () {
+    var s = BDPG.state;
+    return {
+      profile: s.profile, roadway: s.roadway, state: s.state,
+      amenityDetails: JSON.parse(JSON.stringify(s.amenityDetails || {})),
+      amenityLevel: s.amenityLevel, restroomLevel: s.restroomLevel,
+      truckerPathRating: s.truckerPathRating,
+      pricingLevel: s.pricingLevel, rewardsLevel: s.rewardsLevel,
+      supportingDetails: JSON.parse(JSON.stringify(s.supportingDetails || {})),
+      prospect: JSON.parse(JSON.stringify(s.prospect || {}))
+    };
+  };
+
+  // "by robert@example.com · today 1:30 PM" — date only when it is not today,
+  // because the common case is a draft touched minutes ago and a full date
+  // there is noise.
+  BDPG.draftProvenanceLabel = function () {
+    if (!BDPG._draftAuthor && !BDPG._draftUpdatedAt) return '';
+    var who = BDPG._draftAuthor ? 'by ' + BDPG._draftAuthor : '';
+    var when = '';
+    if (BDPG._draftUpdatedAt) {
+      var d = new Date(BDPG._draftUpdatedAt);
+      if (!isNaN(d.getTime())) {
+        var today = new Date();
+        var sameDay = d.toDateString() === today.toDateString();
+        when = (sameDay ? 'today ' : d.toLocaleDateString() + ' ') +
+          d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+    }
+    return [who, when].filter(Boolean).join(' · ');
   };
 
   BDPG.draftStatusInnerHtml = function () {
@@ -4512,7 +4602,16 @@ function getCentroid(pathStr, axis){
       ? ' <a href="#" onclick="BDPG.onClearDraft(); return false;" ' +
         'style="color:var(--accent);text-decoration:underline">Clear draft</a>'
       : '';
-    return msg + link;
+    var prov = BDPG.draftProvenanceLabel();
+    // Flagged as someone else's work only when it IS someone else's: the
+    // common case is your own draft, and colouring that as a warning would
+    // train the rep to ignore the one case that matters.
+    var mine = !BDPG._draftAuthor || BDPG._draftAuthor === RoadysBD.auth.email();
+    var provHtml = prov
+      ? ' <span style="color:' + (mine ? 'var(--muted)' : 'var(--yellow)') + '">' +
+        (mine ? '' : '⚠ ') + BDPG.escHtml(prov) + '</span>'
+      : '';
+    return msg + provHtml + link;
   };
 
   // Targeted write, never a BDPG.render(): this fires on every keystroke and
@@ -4555,6 +4654,59 @@ function getCentroid(pathStr, axis){
     BDPG.savedSig = '';
     BDPG._draftMsg = 'Draft restored ' + BDPG.draftTimeLabel(d.savedAt);
     return true;
+  };
+
+  // The cloud draft wins when it exists: it is the shared one, and the local
+  // mirror may be this browser's older copy. Runs after the first render, so
+  // the page is never blank waiting on the network; re-renders only if the
+  // cloud copy actually differs from what restoreDraft() already painted.
+  BDPG.hydrateDraftFromCloud = function () {
+    return RoadysBD.profiles.draftFor(BDPG.currentLeadId).then(function (p) {
+      if (!p) return false;
+      var local = BDPG.draftSnapshot();
+      var same = p.prospectName === local.name && p.city === local.city &&
+                 p.stateCode === local.stateCode &&
+                 p.locationType === local.locationType;
+      // Provenance is set on BOTH paths: a cloud draft that already matches
+      // what is on screen still has an author worth naming.
+      BDPG._draftAuthor = p.author || '';
+      BDPG._draftUpdatedAt = p.updatedAt || '';
+      if (same) { BDPG.currentProfileId = p.id; BDPG.setDraftMsg(BDPG._draftMsg); return false; }
+      BDPG.applyProfile(p);
+      BDPG.currentProfileId = p.id;
+      BDPG.savedSig = '';          // a restored draft is still unsaved work
+      // Just the fact. Who and when are rendered by draftProvenanceLabel()
+      // from the two fields above — saying it here too would print the author
+      // twice on one line.
+      BDPG._draftMsg = 'Draft restored from the cloud';
+      BDPG.render();
+      return true;
+    });
+  };
+
+  // Writes a stored profile back onto BDPG.state. Mirrors onLoadProfile()'s
+  // migration guards: each field is replaced only when it has the type it
+  // must have, so a hand-edited row cannot reach the DOM as [object Object].
+  BDPG.applyProfile = function (p) {
+    var i = p.inputs || {};
+    var s = BDPG.state;
+    if (typeof i.profile === 'string') s.profile = i.profile;
+    if (typeof i.roadway === 'string') s.roadway = i.roadway;
+    if (typeof i.state === 'string') s.state = i.state;
+    if (i.amenityDetails && typeof i.amenityDetails === 'object') s.amenityDetails = i.amenityDetails;
+    if (typeof i.amenityLevel === 'string') s.amenityLevel = i.amenityLevel;
+    if (typeof i.restroomLevel === 'string') s.restroomLevel = i.restroomLevel;
+    if (i.truckerPathRating !== undefined) s.truckerPathRating = i.truckerPathRating;
+    if (i.pricingLevel !== undefined) s.pricingLevel = i.pricingLevel;
+    if (typeof i.rewardsLevel === 'string') s.rewardsLevel = i.rewardsLevel;
+    if (i.supportingDetails && typeof i.supportingDetails === 'object') s.supportingDetails = i.supportingDetails;
+    if (i.prospect && typeof i.prospect === 'object') s.prospect = i.prospect;
+    // A reopened profile has inputs but no result until Generate runs again,
+    // and that is not a stale result — it is simply not computed yet.
+    s.result = null;
+    s.resultStale = false;
+    BDPG.normalizeLevels();
+    BDPG.updatePreEvalSignal();
   };
 
   BDPG.onClearDraft = function () {
@@ -7582,11 +7734,14 @@ function bdSignOut(){
 
 document.addEventListener('DOMContentLoaded', function () {
   bdShowLoginGate(function () {
+    var p = new URLSearchParams(location.search);
+    BDPG.currentLeadId = p.get('lead') || null;
     // Before the first render, never after: restoreDraft() writes the ⓪ card's
     // fields and sets savedSig, and render() captures its unsaved-work baseline
     // on that first pass.
     BDPG.restoreDraft();
     BDPG.render();
+    BDPG.hydrateDraftFromCloud();
   });
 });
 </script>
