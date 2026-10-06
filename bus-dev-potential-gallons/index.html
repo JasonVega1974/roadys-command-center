@@ -694,6 +694,14 @@ function getCentroid(pathStr, axis){
       // updatePreEvalSignal() (preEvalSignal) write to state during the
       // render above, so a signature taken any earlier would never match.
       if (BDPG.savedSig === null) BDPG.savedSig = BDPG.stateSig();
+      // Same capture point and the same reason as savedSig above:
+      // hydrateDraftFromCloud() compares against this to decide whether the
+      // rep has touched anything since the page settled. It CANNOT be taken
+      // in the boot handler -- the first render() call returns early after
+      // kicking off the three data fetches, so a signature taken out there
+      // describes state the user never saw, and every later load would look
+      // like an edit and suppress the colleague's draft.
+      if (BDPG._bootSig === null) BDPG._bootSig = BDPG.stateSig();
     }
   };
 
@@ -7812,7 +7820,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // on that first pass.
     BDPG.restoreDraft();
     BDPG.render();
-    BDPG._bootSig = BDPG.stateSig();
     BDPG.hydrateDraftFromCloud();
   });
 });
