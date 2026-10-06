@@ -2119,6 +2119,17 @@ function renderCRMKanban(){
       html+='<div style="font-size:.68em;color:var(--muted);margin-bottom:2px">'+crmEsc(l.contact)+' &middot; '+crmEsc(l.city)+(l.city&&l.state?', ':'')+crmEsc(l.state)+'</div>';
       if(l.exit) html+='<div style="font-size:.63em;color:var(--dim);margin-bottom:6px">'+crmEsc(l.exit)+'</div>';
       html+='<div style="display:flex;justify-content:space-between;font-size:.65em;margin-bottom:6px"><span style="color:var(--accent);font-weight:600">'+Math.round((l.estGallons||0)/1000)+'K gal</span><span style="color:'+prBorder+';font-weight:700">'+l.priority+'</span></div>';
+      const vp = crmSummaryFor(l.id);
+      if(vp.has){
+        html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:.65em;margin-bottom:6px;padding-top:5px;border-top:1px dashed var(--border)">'+
+          '<span style="color:var(--accent);font-weight:700">'+vp.gallonsText+' gal/mo</span>'+
+          (vp.isDraft
+            ? '<span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow);padding:1px 7px">&#9998; draft</span>'
+            : (vp.recommendation
+                ? '<span style="color:var(--muted);font-weight:600">'+crmEsc(vp.recommendation)+'</span>'
+                : ''))+
+        '</div>';
+      }
       html+='<div style="display:flex;justify-content:space-between;font-size:.63em;color:var(--muted);margin-bottom:8px"><span>'+(l.owner||'').split(' ')[0]+'</span>';
       if(l.followUp) html+='<span style="color:'+(overdue?'var(--red)':'var(--muted)')+'">'+l.followUp+'</span>';
       html+='</div><div style="display:flex;gap:4px">';
