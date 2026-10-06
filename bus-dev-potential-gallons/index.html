@@ -15,6 +15,8 @@
      estimate path, and keeping it in its own UMD module is what makes the
      rule that decides which locations feed which baseline unit-testable. -->
 <script src="../bdpgStats.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../roadysBD.js"></script>
 <style>
 :root{
   --bg:#080C18;--surface:#0D1225;--surface2:#121830;--border:#1E2A45;--border2:#2A3A5C;
@@ -397,6 +399,20 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
   }
 }
 #bdpg-print-only { display: none; }
+
+/* Sign-in gate. Ported from CRM.html so all three pages present the same
+   gate; this file had no .pin-* rules of its own. */
+.pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.pin-box{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:32px;text-align:center;min-width:280px;box-shadow:0 16px 48px rgba(0,0,0,.5);}
+.pin-box h3{font-family:var(--ff);font-size:1.1em;margin-bottom:6px;color:var(--text);}
+.pin-box p{font-size:.82em;color:var(--muted);margin-bottom:18px;}
+.pin-input{width:140px;background:var(--bg);border:2px solid var(--border2);border-radius:8px;color:var(--accent);padding:10px;font-size:1.4em;text-align:center;letter-spacing:.5em;font-family:var(--ff);}
+.pin-input:focus{outline:none;border-color:var(--accent);}
+.pin-err{color:var(--red);font-size:.8em;margin-top:8px;min-height:1.2em;}
+/* The credential fields reuse .pin-input's chrome but undo what it assumes
+   about a 4-digit PIN: 140px wide, .5em letter-spacing and the condensed
+   display face are right for "1234" and unreadable for an email address. */
+.bd-cred{width:260px;text-align:left;letter-spacing:normal;font-family:var(--fb);font-size:1em;color:var(--text);display:block;margin:0 auto 10px;}
 </style>
 </head>
 <body>
@@ -406,6 +422,7 @@ body.day-mode .tag-blue{background:rgba(0,120,212,.12);}
     <div style="flex:1"></div>
     <button class="btn" title="How this calculator works" onclick="BDPG.toggleTutorial()">?</button>
     <button class="btn" onclick="BDPG.toggleTheme()">🌙</button>
+    <button class="btn" onclick="bdSignOut()" title="Sign out">Sign out</button>
     <!-- The single entry to everything behind the admin PIN: grade weights,
          region %, the network-context generator, and the per-location
          Network Locations view. Both of those used to be tabs in the row
@@ -7513,12 +7530,66 @@ window.addEventListener('pagehide', function () {
   if (BDPG._draftTimer) BDPG.flushDraft();
 });
 
+// ── Login gate ────────────────────────────────────────────────────────
+// Supabase Auth, email + password. Sign-ups are disabled in the dashboard,
+// so the account list IS the allowlist — there is no email list in this
+// bundle, because any list shipped to the browser is advisory, not enforcing.
+//
+// This is NOT the old SETTINGS.pin soft-lock, which compares a localStorage
+// string in client JS and stops nobody. That stays where it is, as the
+// accident guard it already is, and runs after this.
+function bdShowLoginGate(onReady){
+  RoadysBD.auth.init().then(function(session){
+    if(session){ onReady(); return; }
+    var ov=document.createElement('div');
+    ov.className='pin-overlay';
+    ov.innerHTML=
+      '<div class="pin-box">'+
+      '<h3>🔒 Sign in</h3>'+
+      '<p>Business Development — Roady\'s</p>'+
+      '<input type="email" class="pin-input bd-cred bd-email" placeholder="email" autocomplete="username"/>'+
+      '<input type="password" class="pin-input bd-cred bd-pw" placeholder="password" autocomplete="current-password"/>'+
+      '<div class="pin-err"></div>'+
+      '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center">'+
+      '<button class="btn btn-accent bd-go">Sign in</button></div>'+
+      '</div>';
+    document.body.appendChild(ov);
+    var em=ov.querySelector('.bd-email'), pw=ov.querySelector('.bd-pw'),
+        err=ov.querySelector('.pin-err'), go=ov.querySelector('.bd-go');
+    var submit=function(){
+      err.textContent='';
+      go.disabled=true; go.textContent='Signing in…';
+      RoadysBD.auth.signIn(em.value.trim(), pw.value).then(function(r){
+        go.disabled=false; go.textContent='Sign in';
+        if(!r.ok){ err.textContent=r.error||'Sign-in failed'; pw.value=''; pw.focus(); return; }
+        ov.remove();
+        onReady();
+      });
+    };
+    go.onclick=submit;
+    [em,pw].forEach(function(i){ i.addEventListener('keydown',function(e){ if(e.key==='Enter') submit(); }); });
+    setTimeout(function(){ em.focus(); },50);
+  });
+}
+
+// Sign-out must also drop the offline caches. Leaving them would keep the
+// previous user's pipeline readable on disk after Migration B has moved the
+// table itself behind auth — the cache would become the hole in the lock.
+function bdSignOut(){
+  ['roadys_crm_v2','roadysBDPGDraft'].forEach(function(k){
+    try{ localStorage.removeItem(k); }catch(e){}
+  });
+  RoadysBD.auth.signOut().then(function(){ location.reload(); });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-  // Before the first render, never after: restoreDraft() writes the ⓪ card's
-  // fields and sets savedSig, and render() captures its unsaved-work baseline
-  // on that first pass. See the comment inside restoreDraft().
-  BDPG.restoreDraft();
-  BDPG.render();
+  bdShowLoginGate(function () {
+    // Before the first render, never after: restoreDraft() writes the ⓪ card's
+    // fields and sets savedSig, and render() captures its unsaved-work baseline
+    // on that first pass.
+    BDPG.restoreDraft();
+    BDPG.render();
+  });
 });
 </script>
 </body>
