@@ -362,6 +362,82 @@
     return out;
   }
 
+  // ── Display helpers ──────────────────────────────────────────────────
+  //
+  // Everything the CRM renders ABOUT a profile is decided here rather than
+  // inline in CRM.html, so it can be unit-tested. Phase 1 shipped four
+  // blocking defects in untested rendering glue; this is the seam that
+  // stops that repeating.
+
+  function fmtInt(n) {
+    return Math.round(n).toLocaleString();
+  }
+
+  // Always returns an object, never null. The CRM renders this directly into
+  // a Kanban card, and most leads have no profile — a null here would throw
+  // on the common case.
+  function summary(p) {
+    var out = {
+      has: false, isDraft: false, gallons: null, gallonsText: '—',
+      recommendation: '', pricingPct: null, pricingText: '',
+      truckerPath: '', amenityLevel: '', region: '',
+      profileType: '', savedAt: ''
+    };
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
+    out.has = true;
+    // Anything that is not the literal 'final' is treated as a draft: an
+    // unknown status must never be rendered as a finished profile.
+    out.isDraft = str(p.status) !== 'final';
+    out.gallons = num(p.finalGallons);
+    if (out.gallons !== null) out.gallonsText = fmtInt(out.gallons);
+    out.recommendation = str(p.recommendation);
+    out.region = str(p.region);
+
+    var prof = str(p.profile), road = str(p.roadway);
+    out.profileType = (prof && road) ? (prof + ' · ' + road) : (prof || '');
+
+    var i = obj(p.inputs);
+    // num(), not truthiness: 0 is the default pricing posture and the most
+    // common value on the board.
+    out.pricingPct = num(i.pricingLevel);
+    if (out.pricingPct !== null) {
+      // '>' not '>=': toFixed already carries a minus sign for negatives, and
+      // a '+' on zero would assert an increase that is not there — 0 is the
+      // default pricing posture on most profiles.
+      out.pricingText = (out.pricingPct > 0 ? '+' : '') + (out.pricingPct * 100).toFixed(1) + '%';
+    }
+    // The rating is a number in state but can round-trip through jsonb as a
+    // string; both render the same and neither is arithmetic here.
+    var tp = i.truckerPathRating;
+    out.truckerPath = (typeof tp === 'number' && isFinite(tp)) ? String(tp) : str(tp);
+    out.amenityLevel = str(i.amenityLevel);
+
+    // Sliced from the ISO string rather than Date-converted, matching the
+    // calculator's own tracker: no "Invalid Date" for a junk value, and no
+    // UTC-stored/local-rendered day shift.
+    var u = str(p.updatedAt);
+    out.savedAt = u.length >= 10 ? u.slice(0, 10) : '';
+    return out;
+  }
+
+  // Which gallons figure represents this lead, and where it came from.
+  //
+  // A DRAFT never displaces the hand-entered estimate: a draft is in-progress
+  // work, and letting a half-typed figure move the leaderboard would make the
+  // pipeline total swing while somebody is still typing.
+  //
+  // source:'none' rather than a silent 0, so a caller can exclude the lead
+  // from an average instead of dragging it down with a figure nobody measured.
+  function gallonsFor(lead, p) {
+    var s = summary(p);
+    if (s.has && !s.isDraft && s.gallons !== null) {
+      return { gallons: s.gallons, source: 'profile' };
+    }
+    var est = num(lead && lead.estGallons);
+    if (est !== null && est > 0) return { gallons: est, source: 'estimate' };
+    return { gallons: 0, source: 'none' };
+  }
+
   var RoadysBD = {
     leadParamsFrom: leadParamsFrom,
     map:  { toRow: toRow, fromRow: fromRow },
@@ -370,7 +446,8 @@
             clearCaches: clearCaches, CACHE_KEYS: CACHE_KEYS },
     profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
                 saveDraft: saveDraft, saveFinal: saveFinal,
-                softDelete: softDelete },
+                softDelete: softDelete,
+                summary: summary, gallonsFor: gallonsFor },
     testing: { mintId: mintId }
   };
   return { RoadysBD: RoadysBD };

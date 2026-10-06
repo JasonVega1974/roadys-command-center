@@ -185,3 +185,104 @@ test('markup in a parameter survives as literal text for escHtml to handle', () 
   // arrived.
   assert.equal(LP('?name=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E').name, '<img src=x onerror=alert(1)>');
 });
+
+// ── profiles.summary ────────────────────────────────────────────────────
+
+test('summary of no profile reports has:false and blanks, never null', () => {
+  // The CRM renders this straight into a card; a null here would be a
+  // TypeError on every unprofiled lead, which is most of the board.
+  const s = RoadysBD.profiles.summary(null);
+  assert.equal(s.has, false);
+  assert.equal(s.isDraft, false);
+  assert.equal(s.gallons, null);
+  assert.equal(s.gallonsText, '—');
+  assert.equal(s.recommendation, '');
+  assert.equal(s.region, '');
+});
+
+test('summary of a final profile carries every field the CRM renders', () => {
+  const s = RoadysBD.profiles.summary({
+    status: 'final', finalGallons: 11153, recommendation: 'Good fit',
+    region: 'Northeast', profile: 'Medium truck stop', roadway: 'Interstate',
+    updatedAt: '2026-10-06T19:30:00.000Z',
+    inputs: { pricingLevel: 0.025, truckerPathRating: 4.5, amenityLevel: 'Average' }
+  });
+  assert.equal(s.has, true);
+  assert.equal(s.isDraft, false);
+  assert.equal(s.gallons, 11153);
+  assert.equal(s.gallonsText, '11,153');
+  assert.equal(s.recommendation, 'Good fit');
+  assert.equal(s.pricingPct, 0.025);
+  assert.equal(s.pricingText, '+2.5%');
+  assert.equal(s.truckerPath, '4.5');
+  assert.equal(s.amenityLevel, 'Average');
+  assert.equal(s.region, 'Northeast');
+  assert.equal(s.profileType, 'Medium truck stop · Interstate');
+  assert.equal(s.savedAt, '2026-10-06');
+});
+
+test('a draft is flagged as a draft', () => {
+  const s = RoadysBD.profiles.summary({ status: 'draft', finalGallons: 9000 });
+  assert.equal(s.has, true);
+  assert.equal(s.isDraft, true);
+});
+
+test('a profile with no generated gallons shows a dash, not zero', () => {
+  // A profile saved before Generate ran has null gallons. Rendering "0" would
+  // assert a figure the calculator never produced.
+  const s = RoadysBD.profiles.summary({ status: 'final', finalGallons: null });
+  assert.equal(s.gallons, null);
+  assert.equal(s.gallonsText, '—');
+});
+
+test('pricing of exactly zero renders as 0.0%, not as missing', () => {
+  // 0 is the default posture and the single most common value; a truthiness
+  // check would blank it on most profiles.
+  const s = RoadysBD.profiles.summary({ status: 'final', inputs: { pricingLevel: 0 } });
+  assert.equal(s.pricingPct, 0);
+  assert.equal(s.pricingText, '0.0%');
+});
+
+test('summary survives a hand-edited row without leaking junk into the DOM', () => {
+  const s = RoadysBD.profiles.summary({
+    status: 'nonsense', finalGallons: 'lots', region: { x: 1 },
+    profile: ['a'], inputs: 'not-an-object', updatedAt: 42
+  });
+  assert.equal(s.isDraft, true);          // unknown status degrades to draft
+  assert.equal(s.gallons, null);
+  assert.equal(s.region, '');
+  assert.equal(s.profileType, '');
+  assert.equal(s.pricingPct, null);
+  assert.equal(s.savedAt, '');
+});
+
+// ── profiles.gallonsFor ─────────────────────────────────────────────────
+
+test('gallonsFor prefers the profile figure and says so', () => {
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'final', finalGallons: 11153 });
+  assert.deepEqual(r, { gallons: 11153, source: 'profile' });
+});
+
+test('gallonsFor falls back to the hand-entered estimate', () => {
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, null);
+  assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
+});
+
+test('gallonsFor reports none when neither exists, without inventing a zero', () => {
+  // source:'none' lets the caller exclude the lead from an average rather
+  // than drag it down with a zero it never measured.
+  const r = RoadysBD.profiles.gallonsFor({}, null);
+  assert.deepEqual(r, { gallons: 0, source: 'none' });
+});
+
+test('a draft profile does NOT override the hand-entered estimate', () => {
+  // A draft is in-progress work. Letting it displace estGallons would make
+  // the leaderboard swing on a half-typed figure.
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'draft', finalGallons: 99999 });
+  assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
+});
+
+test('a final profile with null gallons falls back rather than counting zero', () => {
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'final', finalGallons: null });
+  assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
+});
