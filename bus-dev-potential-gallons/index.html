@@ -4808,6 +4808,9 @@ function getCentroid(pathStr, axis){
     // local tracker record above, and the cloud draft row this card was
     // mirroring.
     BDPG.currentCloudId = null;
+    BDPG.currentLeadId = null;
+    BDPG._leadLabel = '';
+    BDPG._leadSearchResults = [];
     BDPG._draftMsg = '';
     // The card describes nothing now, so neither does its byline: leaving
     // these would caption an empty card "by X · today 1:30 PM" for data that
@@ -7152,10 +7155,17 @@ function getCentroid(pathStr, axis){
           finishUp();
           return;
         }
-        // Two id spaces -- see the comment at BDPG.currentCloudId's
-        // declaration. This is the bd_value_profiles row id, never the local
-        // tracker id assigned above as BDPG.currentProfileId.
-        BDPG.currentCloudId = r.profile.id;
+        // Release the cloud binding rather than keeping it. This row is now a
+        // FINAL profile; draftProfile() always writes status:'draft', so if the
+        // rep edits the still-populated card afterwards the next autosave would
+        // upsert this very row back down to a draft -- and forLead(), which
+        // filters status='final', would then report that the lead has no value
+        // profile at all. Clearing it means the next keystroke starts a new
+        // draft row instead. The partial unique indexes allow one draft AND one
+        // final per lead, so both can coexist.
+        BDPG.currentCloudId = null;
+        BDPG._draftAuthor = '';
+        BDPG._draftUpdatedAt = '';
         if (BDPG.currentLeadId) {
           return BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName()).then(function (st) {
             if (st.error) problems.push('The lead was not moved to Contacted (' + st.error + ').');
@@ -7204,7 +7214,7 @@ function getCentroid(pathStr, axis){
   BDPG.searchLeads = function (q) {
     var c = RoadysBD.auth.client();
     if (!c || !q) return Promise.resolve([]);
-    var like = '%' + q.replace(/[%_]/g, '') + '%';
+    var like = '%' + q.replace(/[%_,().]/g, '') + '%';
     return c.from('crm_leads').select('id,company,city,state,stage')
       .is('deleted_at', null)
       .or('company.ilike.' + like + ',city.ilike.' + like + ',state.ilike.' + like)
@@ -7274,7 +7284,16 @@ function getCentroid(pathStr, axis){
           street: p.street || '', city: p.city || '', state: s.state || '',
           zip: '', exit: '', lanes: '',
           stage: 'Prospect', priority: 'Medium',
-          owner: RoadysBD.auth.email() || '', source: 'Market Research',
+          // Unassigned, not the session email. `owner` is a controlled
+          // vocabulary (CRM_OWNERS) that CRM.html's analytics and leaderboard
+          // GROUP BY -- an email here invents a third person on the leaderboard,
+          // matches none of the owner filters, and has no option in the lead
+          // modal's Owner select, so opening and saving the lead silently blanks
+          // it. CRM.html's own CSV import applies exactly this rule. The rep
+          // assigns a real owner in the CRM.
+          // (The activity-log `by` field keeps the email -- that one is free
+          // text, not a vocabulary.)
+          owner: '', source: 'Market Research',
           locations: 1, est_gallons: 0, deal_value: 0,
           follow_up: '', notes: p.notes || '',
           activity: [{ text: 'Lead created from a value profile',
@@ -7413,6 +7432,19 @@ function getCentroid(pathStr, axis){
     // back the old draft instead of the prospect the rep just opened.
     // (Save is the one deliberate exception: it clears the draft outright,
     // because by then the work is in the tracker.)
+    //
+    // The card now holds a different prospect, so every binding to the PREVIOUS
+    // prospect's cloud row and lead must go. Without this, the flushDraft()
+    // below writes this prospect's data into the last one's bd_value_profiles
+    // row, still carrying its lead_id -- and because drafts are shared, a
+    // colleague sees that too. (currentProfileId is the LOCAL tracker id and is
+    // set above deliberately; it is a different id space.)
+    BDPG.currentCloudId = null;
+    BDPG.currentLeadId = null;
+    BDPG._leadLabel = '';
+    BDPG._leadSearchResults = [];
+    BDPG._draftAuthor = '';
+    BDPG._draftUpdatedAt = '';
     BDPG.flushDraft();
     return true;
   };
@@ -7429,6 +7461,15 @@ function getCentroid(pathStr, axis){
       // hasUnsavedWork() reports true until the next Save or Load.
       BDPG.currentProfileId = null;
       BDPG.savedSig = '';
+      // The card came from the record just deleted, so no cloud draft/final
+      // binding or lead link should survive it either -- same reset set as
+      // onLoadProfile() and onClearDraft().
+      BDPG.currentCloudId = null;
+      BDPG.currentLeadId = null;
+      BDPG._leadLabel = '';
+      BDPG._leadSearchResults = [];
+      BDPG._draftAuthor = '';
+      BDPG._draftUpdatedAt = '';
     }
     BDPG.render();
   };

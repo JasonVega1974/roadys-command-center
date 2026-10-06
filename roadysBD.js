@@ -156,7 +156,13 @@
         // Keep _session fresh across token refreshes and sign-out in another
         // tab. Bound once: _client is memoized, so re-entering init() would
         // otherwise stack a listener per call.
-        c.auth.onAuthStateChange(function (_evt, s) { _session = s || null; });
+        c.auth.onAuthStateChange(function (evt, s) {
+          _session = s || null;
+          // A session can end without anyone pressing Sign out -- another tab
+          // signed out, or the token expired. The caches must go then too, for
+          // the same reason signOut() clears them.
+          if (evt === 'SIGNED_OUT') clearCaches();
+        });
       }
       return _session;
     }).catch(function () { return null; });

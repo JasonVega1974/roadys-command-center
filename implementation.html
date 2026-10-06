@@ -991,14 +991,13 @@ const ROADYS_SB_URL  = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
 const ROADYS_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
 let roadysSB = null;
 function getRoadysSB(){
-  if(!roadysSB && window.supabase){
-    roadysSB = window.supabase.createClient(ROADYS_SB_URL, ROADYS_SB_ANON);
-    console.log("[Supabase] Roadys client initialized");
-  }
-  return roadysSB;
+  // One client per page, owned by roadysBD.js. Two createClient() calls against
+  // the same URL and anon key share a storage key and both rotate refresh
+  // tokens -- the multi-instance case Supabase warns about -- and the page's
+  // own client would be built before sign-in and never see the session the gate
+  // creates, so every query would 403 once the table requires auth.
+  return RoadysBD.auth.client();
 }
-// Initialize eagerly on load
-document.addEventListener('DOMContentLoaded', ()=>{ getRoadysSB(); });
 
 // ═══════════════════════════════════════════════
 // MEMBER DATA (368 stops from CSV)
