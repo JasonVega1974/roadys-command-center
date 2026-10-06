@@ -281,7 +281,7 @@ Mapping first, in isolation, because it is the only part of the module that is p
 
 **Interfaces:**
 - Consumes: the column names from Task 1.
-- Produces: `RoadysBD.map.toRow(profile)` → snake_case object; `RoadysBD.map.fromRow(row)` → camelCase object with keys `id, leadId, status, prospectName, city, stateCode, locationType, region, profile, roadway, inputs, results, officialSubtotal, finalGallons, recommendation, regionPctStamp, baselineStamp, author, createdAt, updatedAt`. Tasks 4–7 use these names.
+- Produces: `RoadysBD.map.toRow(profile)` → snake_case object; `RoadysBD.map.fromRow(row)` → camelCase object with keys `id, leadId, status, prospectName, city, stateCode, locationType, region, profile, roadway, inputs, results, officialSubtotal, finalGallons, recommendation, regionPctStamp, baselineStamp, author, updatedAt`. `createdAt` is deliberately absent (no task reads it) and `updatedAt` is read-only, owned by the trigger. Tasks 4–7 use these names.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1253,7 +1253,7 @@ git commit -m "feat(bdpg): draft autosave writes to Supabase at 800ms with a loc
 ## Task 7: Save to Prospects → link or create a CRM lead
 
 **Files:**
-- Modify: `bus-dev-potential-gallons/index.html` — `BDPG.onSaveProfile` and `BDPG.saveToProspectsHtml`
+- Modify: `bus-dev-potential-gallons/index.html` — `BDPG.onSaveProfile` (and the three helpers added below it)
 
 **Interfaces:**
 - Consumes: `RoadysBD.profiles.saveFinal`, `BDPG.draftProfile`, `BDPG.currentLeadId`, `BDPG_STATS.recommendation`.
@@ -1427,7 +1427,11 @@ git commit -m "feat(bdpg): Save to Prospects links or creates a CRM lead, prompt
 ## Task 8: Fix the `implementation.html` hard delete
 
 **Files:**
-- Modify: `implementation.html:7913-7920` (`crmDeleteLeadFromSupabase`)
+- Modify: `implementation.html` (`crmDeleteLeadFromSupabase()` and the `crm_leads` select in the lead loader)
+
+**Locate by content, not line number.** Task 5 inserts ~40 lines into this file
+before this task runs, so every line number here is stale. Both edits below give
+the exact string to replace; find it by searching for that string.
 
 **Interfaces:**
 - Consumes: nothing.
@@ -1435,7 +1439,7 @@ git commit -m "feat(bdpg): Save to Prospects links or creates a CRM lead, prompt
 
 - [ ] **Step 1: Replace the hard DELETE with the soft delete**
 
-At `implementation.html:7913`, replace:
+In `crmDeleteLeadFromSupabase()`, replace:
 
 ```js
     const {error}=await sb.from('crm_leads').delete().eq('id',id);
@@ -1455,13 +1459,13 @@ with:
 
 - [ ] **Step 2: Filter soft-deleted leads out of this page's own list**
 
-This is required, not conditional. `implementation.html:7849` reads `crm_leads`
+This is required, not conditional. The lead-loading `crm_leads` select reads
 with **no `deleted_at` filter**, which is a second pre-existing bug: a lead
 soft-deleted in `CRM.html` today still appears on the Implementation page.
 Without this line, Step 1 would make that worse — every lead deleted here
 would also stay visible here.
 
-At `implementation.html:7849`, replace:
+Replace:
 
 ```js
     const {data,error}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false});
