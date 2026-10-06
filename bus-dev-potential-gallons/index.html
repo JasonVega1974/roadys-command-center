@@ -7012,20 +7012,20 @@ function getCentroid(pathStr, axis){
   // confirms, then stores blank figures), and that is the same save a rep
   // reaches for when they are capturing a lead to finish later. What changes
   // with a result present is the hint: it names the figure that is about to
-  // be stored, so "Save to Prospects" is never a guess about what lands.
+  // be stored, so "Save to CRM" is never a guess about what lands.
   BDPG.saveToProspectsHtml = function () {
     var e = BDPG.state.result ? BDPG.state.result.estimate : null;
     var hint;
     if (e && isNum(e.finalGallons)) {
-      hint = 'Stores ' + BDPG.escHtml(BDPG.displayName()) + ' with ' +
+      hint = 'Creates or links a CRM lead for ' + BDPG.escHtml(BDPG.displayName()) + ' with ' +
         BDPG.fmtGal(e.finalGallons) + ' gal/mo and every adjustment behind it, ' +
-        'ready to reopen from the Prospects tab.';
+        'and stores the same profile in the Prospects tab so it can be reopened later.';
     } else if (BDPG.state.resultStale) {
-      hint = 'An input changed since the last Generate. Saving now stores this prospect ' +
-        'with blank gallon figures — click Generate Value Profile first to store the number.';
+      hint = 'An input changed since the last Generate. Saving now creates or links a CRM lead ' +
+        '(and the Prospects tab entry) with blank gallon figures — click Generate Value Profile first to store the number.';
     } else {
       hint = 'Generate a value profile first to store the gallons figure with it. ' +
-        'Saving now records the prospect and its inputs without a number.';
+        'Saving now creates or links a CRM lead (and the Prospects tab entry) without a number.';
     }
     // Lets the rep attach this save to an existing CRM lead by name/city/
     // state search, instead of only via the ?lead= deep link or an exact
@@ -7066,7 +7066,7 @@ function getCentroid(pathStr, axis){
     return '<div class="bdpg-box" id="bdpg-save-box" style="margin-top:14px">' +
       linkBlock +
       '<button class="btn btn-accent" onclick="BDPG.onSaveProfile()"' +
-        (BDPG._saving ? ' disabled' : '') + '>📋 Save to Prospects</button>' +
+        (BDPG._saving ? ' disabled' : '') + '>💾 Save to CRM</button>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:8px">' + hint + '</div>' +
     '</div>';
   };
@@ -7198,7 +7198,7 @@ function getCentroid(pathStr, axis){
     // previous save's toast. Reworded to not claim the CRM half, which
     // hasn't started yet -- the cloud half below replaces this with the
     // real outcome once it knows one.
-    toast((idx >= 0 ? 'Updated in Prospects — ' : 'Saved to Prospects — ') + record.name + ' · syncing to CRM…');
+    toast((idx >= 0 ? 'Updated — ' : 'Saved — ') + record.name + ' · syncing to CRM…');
     BDPG.render();
     // After the render, so step2Html()'s pricingLevel/amenityLevel defaults
     // are already settled and the baseline matches what is now on screen.
@@ -7241,9 +7241,9 @@ function getCentroid(pathStr, axis){
       if (problems.length) {
         toast('Saved on this device. ' + notes.join(' '), 'terr');
       } else if (warnings.length) {
-        toast('Saved to Prospects — ' + BDPG.displayName() + leadNote + '. ' + warnings.join(' '), 'twarn');
+        toast('Saved to CRM — ' + BDPG.displayName() + leadNote + '. ' + warnings.join(' '), 'twarn');
       } else {
-        toast('Saved to Prospects — ' + BDPG.displayName() + leadNote, 'tok');
+        toast('Saved to CRM — ' + BDPG.displayName() + leadNote, 'tok');
       }
       doneSaving();
     };
