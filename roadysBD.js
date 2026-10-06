@@ -213,18 +213,41 @@
       .catch(function () { return null; });
   }
 
+  // A lead can legitimately hold one draft AND one final row at once -- see
+  // the one_final_per_lead and one_draft_per_lead partial unique indexes in
+  // sql/2026-10-05-bd-value-profiles.sql. When both are present the final
+  // must win: it is the completed work, and showing a draft badge over a
+  // finished profile would understate it. Pure and independent of row
+  // arrival order, so it is testable without a network call and without
+  // depending on query ordering to get the right answer.
+  function pickFinalOverDraft(rows) {
+    var best = {};
+    (rows || []).forEach(function (r) {
+      var lid = r && r.lead_id;
+      if (!lid) return;
+      var prev = best[lid];
+      if (!prev || (prev.status !== 'final' && r.status === 'final')) {
+        best[lid] = r;
+      }
+    });
+    var out = {};
+    Object.keys(best).forEach(function (lid) { out[lid] = fromRow(best[lid]); });
+    return out;
+  }
+
   // One round trip for a whole board rather than one per card — the Kanban
-  // can hold hundreds of leads and a request each would be unusable.
+  // can hold hundreds of leads and a request each would be unusable. Returns
+  // both drafts and finals (precedence resolved by pickFinalOverDraft) so a
+  // lead whose only profile is a draft still shows up as one.
   function forLeads(ids) {
     var t = q();
     var out = {};
     if (!t || !ids || !ids.length) return Promise.resolve(out);
-    return t.select('*').in('lead_id', ids).eq('status', 'final')
+    return t.select('*').in('lead_id', ids).in('status', STATUSES)
       .is('deleted_at', null)
       .then(function (res) {
         if (res.error || !res.data) return out;
-        res.data.forEach(function (r) { out[r.lead_id] = fromRow(r); });
-        return out;
+        return pickFinalOverDraft(res.data);
       })
       .catch(function () { return out; });
   }
@@ -362,6 +385,94 @@
     return out;
   }
 
+  // ── Display helpers ──────────────────────────────────────────────────
+  //
+  // Everything the CRM renders ABOUT a profile is decided here rather than
+  // inline in CRM.html, so it can be unit-tested. Phase 1 shipped four
+  // blocking defects in untested rendering glue; this is the seam that
+  // stops that repeating.
+
+  function fmtInt(n) {
+    // Pinned to 'en-US': unpinned, this figure (and the gallonsText tests
+    // that assert its exact punctuation) would change with the viewer's
+    // browser locale, matching the pin busDevGallonsCalculator.js:87 already
+    // uses.
+    return Math.round(n).toLocaleString('en-US');
+  }
+
+  // Always returns an object, never null. The CRM renders this directly into
+  // a Kanban card, and most leads have no profile — a null here would throw
+  // on the common case.
+  function summary(p) {
+    var out = {
+      has: false, isDraft: false, gallons: null, gallonsText: '—',
+      recommendation: '', pricingPct: null, pricingText: '',
+      truckerPath: '', amenityLevel: '', region: '',
+      profileType: '', savedAt: '', statusText: ''
+    };
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
+    out.has = true;
+    // Anything that is not the literal 'final' is treated as a draft: an
+    // unknown status must never be rendered as a finished profile.
+    out.isDraft = str(p.status) !== 'final';
+    // Collapses has/isDraft into the one word CRM.html needs at its three
+    // call sites (sort extractor, Lead Table status cell, CSV export),
+    // which used to hand-derive this ternary independently at each site.
+    out.statusText = out.isDraft ? 'draft' : 'final';
+    out.gallons = num(p.finalGallons);
+    if (out.gallons !== null) out.gallonsText = fmtInt(out.gallons);
+    out.recommendation = str(p.recommendation);
+    out.region = str(p.region);
+
+    var prof = str(p.profile), road = str(p.roadway);
+    // Join whichever parts exist rather than requiring both: a row with a
+    // roadway but no profile (or vice versa) must still render that one
+    // part instead of going blank.
+    var parts = [prof, road].filter(function (x) { return !!x; });
+    out.profileType = parts.join(' · ');
+
+    var i = obj(p.inputs);
+    // num(), not truthiness: 0 is the default pricing posture and the most
+    // common value on the board.
+    out.pricingPct = num(i.pricingLevel);
+    if (out.pricingPct !== null) {
+      // '>' not '>=': toFixed already carries a minus sign for negatives, and
+      // a '+' on zero would assert an increase that is not there — 0 is the
+      // default pricing posture on most profiles.
+      out.pricingText = (out.pricingPct > 0 ? '+' : '') + (out.pricingPct * 100).toFixed(1) + '%';
+    }
+    // The rating is a number in state but can round-trip through jsonb as a
+    // string; both render the same and neither is arithmetic here.
+    var tp = i.truckerPathRating;
+    out.truckerPath = (typeof tp === 'number' && isFinite(tp)) ? String(tp) : str(tp);
+    out.amenityLevel = str(i.amenityLevel);
+
+    // Sliced from the ISO string rather than Date-converted, matching the
+    // calculator's own tracker: no "Invalid Date" for a junk value, and no
+    // UTC-stored/local-rendered day shift.
+    var u = str(p.updatedAt);
+    out.savedAt = u.length >= 10 ? u.slice(0, 10) : '';
+    return out;
+  }
+
+  // Which gallons figure represents this lead, and where it came from.
+  //
+  // A DRAFT never displaces the hand-entered estimate: a draft is in-progress
+  // work, and letting a half-typed figure move the leaderboard would make the
+  // pipeline total swing while somebody is still typing.
+  //
+  // source:'none' rather than a silent 0, so a caller can exclude the lead
+  // from an average instead of dragging it down with a figure nobody measured.
+  function gallonsFor(lead, p) {
+    var s = summary(p);
+    if (s.has && !s.isDraft && s.gallons !== null) {
+      return { gallons: s.gallons, source: 'profile' };
+    }
+    var est = num(lead && lead.estGallons);
+    if (est !== null && est > 0) return { gallons: est, source: 'estimate' };
+    return { gallons: 0, source: 'none' };
+  }
+
   var RoadysBD = {
     leadParamsFrom: leadParamsFrom,
     map:  { toRow: toRow, fromRow: fromRow },
@@ -370,7 +481,9 @@
             clearCaches: clearCaches, CACHE_KEYS: CACHE_KEYS },
     profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
                 saveDraft: saveDraft, saveFinal: saveFinal,
-                softDelete: softDelete },
+                softDelete: softDelete,
+                summary: summary, gallonsFor: gallonsFor,
+                pickFinalOverDraft: pickFinalOverDraft },
     testing: { mintId: mintId }
   };
   return { RoadysBD: RoadysBD };

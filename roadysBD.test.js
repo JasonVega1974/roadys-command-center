@@ -185,3 +185,213 @@ test('markup in a parameter survives as literal text for escHtml to handle', () 
   // arrived.
   assert.equal(LP('?name=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E').name, '<img src=x onerror=alert(1)>');
 });
+
+// ── profiles.summary ────────────────────────────────────────────────────
+
+test('summary of no profile reports has:false and blanks, never null', () => {
+  // The CRM renders this straight into a card; a null here would be a
+  // TypeError on every unprofiled lead, which is most of the board.
+  const s = RoadysBD.profiles.summary(null);
+  assert.equal(s.has, false);
+  assert.equal(s.isDraft, false);
+  assert.equal(s.gallons, null);
+  assert.equal(s.gallonsText, '—');
+  assert.equal(s.recommendation, '');
+  assert.equal(s.region, '');
+});
+
+test('summary of a final profile carries every field the CRM renders', () => {
+  const s = RoadysBD.profiles.summary({
+    status: 'final', finalGallons: 11153, recommendation: 'Good fit',
+    region: 'Northeast', profile: 'Medium truck stop', roadway: 'Interstate',
+    updatedAt: '2026-10-06T19:30:00.000Z',
+    inputs: { pricingLevel: 0.025, truckerPathRating: 4.5, amenityLevel: 'Average' }
+  });
+  assert.equal(s.has, true);
+  assert.equal(s.isDraft, false);
+  assert.equal(s.gallons, 11153);
+  assert.equal(s.gallonsText, '11,153');
+  assert.equal(s.recommendation, 'Good fit');
+  assert.equal(s.pricingPct, 0.025);
+  assert.equal(s.pricingText, '+2.5%');
+  assert.equal(s.truckerPath, '4.5');
+  assert.equal(s.amenityLevel, 'Average');
+  assert.equal(s.region, 'Northeast');
+  assert.equal(s.profileType, 'Medium truck stop · Interstate');
+  assert.equal(s.savedAt, '2026-10-06');
+});
+
+test('a draft is flagged as a draft', () => {
+  const s = RoadysBD.profiles.summary({ status: 'draft', finalGallons: 9000 });
+  assert.equal(s.has, true);
+  assert.equal(s.isDraft, true);
+});
+
+// ── profiles.summary: statusText ────────────────────────────────────────
+// Collapses the has/isDraft pair into the one word CRM.html renders, so the
+// three call sites that used to hand-derive 'draft'/'final'/'' inline (the
+// sort extractor, the Lead Table status cell, and the CSV export) read it
+// instead of re-deriving it.
+
+test('statusText is empty when there is no profile', () => {
+  assert.equal(RoadysBD.profiles.summary(null).statusText, '');
+});
+
+test("statusText is 'draft' for a draft profile", () => {
+  assert.equal(RoadysBD.profiles.summary({ status: 'draft' }).statusText, 'draft');
+});
+
+test("statusText is 'final' for a final profile", () => {
+  assert.equal(RoadysBD.profiles.summary({ status: 'final' }).statusText, 'final');
+});
+
+test('a profile with no generated gallons shows a dash, not zero', () => {
+  // A profile saved before Generate ran has null gallons. Rendering "0" would
+  // assert a figure the calculator never produced.
+  const s = RoadysBD.profiles.summary({ status: 'final', finalGallons: null });
+  assert.equal(s.gallons, null);
+  assert.equal(s.gallonsText, '—');
+});
+
+test('pricing of exactly zero renders as 0.0%, not as missing', () => {
+  // 0 is the default posture and the single most common value; a truthiness
+  // check would blank it on most profiles.
+  const s = RoadysBD.profiles.summary({ status: 'final', inputs: { pricingLevel: 0 } });
+  assert.equal(s.pricingPct, 0);
+  assert.equal(s.pricingText, '0.0%');
+});
+
+test('a negative pricing level keeps its minus sign instead of a stray plus', () => {
+  // toFixed() already carries the minus sign for a negative number; the '>0'
+  // guard (not '>=0') must not also try to prepend one.
+  const s = RoadysBD.profiles.summary({ status: 'final', inputs: { pricingLevel: -0.025 } });
+  assert.equal(s.pricingPct, -0.025);
+  assert.equal(s.pricingText, '-2.5%');
+});
+
+test('truckerPathRating arriving as a string (round-tripped through jsonb) renders the same as a number', () => {
+  const s = RoadysBD.profiles.summary({ status: 'final', inputs: { truckerPathRating: '4.5' } });
+  assert.equal(s.truckerPath, '4.5');
+});
+
+test('profileType renders the roadway alone when there is no profile name', () => {
+  // (prof && road) required BOTH; a row with only a roadway used to render
+  // '' instead of the roadway it does have.
+  const s = RoadysBD.profiles.summary({ status: 'final', roadway: 'Interstate' });
+  assert.equal(s.profileType, 'Interstate');
+});
+
+test('profileType renders the profile alone when there is no roadway', () => {
+  const s = RoadysBD.profiles.summary({ status: 'final', profile: 'Medium truck stop' });
+  assert.equal(s.profileType, 'Medium truck stop');
+});
+
+test('summary survives a hand-edited row without leaking junk into the DOM', () => {
+  const s = RoadysBD.profiles.summary({
+    status: 'nonsense', finalGallons: 'lots', region: { x: 1 },
+    profile: ['a'], inputs: 'not-an-object', updatedAt: 42
+  });
+  assert.equal(s.isDraft, true);          // unknown status degrades to draft
+  assert.equal(s.gallons, null);
+  assert.equal(s.region, '');
+  assert.equal(s.profileType, '');
+  assert.equal(s.pricingPct, null);
+  assert.equal(s.savedAt, '');
+});
+
+// ── profiles.gallonsFor ─────────────────────────────────────────────────
+
+test('gallonsFor prefers the profile figure and says so', () => {
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'final', finalGallons: 11153 });
+  assert.deepEqual(r, { gallons: 11153, source: 'profile' });
+});
+
+test('gallonsFor falls back to the hand-entered estimate', () => {
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, null);
+  assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
+});
+
+test('gallonsFor reports none when neither exists, without inventing a zero', () => {
+  // source:'none' lets the caller exclude the lead from an average rather
+  // than drag it down with a zero it never measured.
+  const r = RoadysBD.profiles.gallonsFor({}, null);
+  assert.deepEqual(r, { gallons: 0, source: 'none' });
+});
+
+test('a draft profile does NOT override the hand-entered estimate', () => {
+  // A draft is in-progress work. Letting it displace estGallons would make
+  // the leaderboard swing on a half-typed figure.
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'draft', finalGallons: 99999 });
+  assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
+});
+
+test('a final profile with null gallons falls back rather than counting zero', () => {
+  const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'final', finalGallons: null });
+  assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
+});
+
+// ── profiles.pickFinalOverDraft ─────────────────────────────────────────
+// forLeads() widened from .eq('status','final') to .in('status', [...]) so a
+// lead whose only profile is a draft stops being invisible. A lead can hold
+// one draft AND one final at once (the two partial unique indexes in
+// sql/2026-10-05-bd-value-profiles.sql allow exactly that), so something has
+// to decide which one wins when both come back in the same query -- and it
+// must not be "whichever happened to arrive first in res.data".
+
+test('pickFinalOverDraft: only a final row for a lead', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_1', lead_id: 'CRM-1', status: 'final', final_gallons: 11153 }
+  ]);
+  assert.equal(out['CRM-1'].status, 'final');
+  assert.equal(out['CRM-1'].finalGallons, 11153);
+});
+
+test('pickFinalOverDraft: only a draft row for a lead', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_2', lead_id: 'CRM-2', status: 'draft', final_gallons: 4000 }
+  ]);
+  assert.equal(out['CRM-2'].status, 'draft');
+  assert.equal(out['CRM-2'].finalGallons, 4000);
+});
+
+test('pickFinalOverDraft: both present, final wins even when the draft arrives FIRST', () => {
+  // This is the case a naive "last one wins" / "first one wins" reduction
+  // gets wrong -- query/array order must not decide the outcome.
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_draft', lead_id: 'CRM-3', status: 'draft', final_gallons: 500 },
+    { id: 'bdp_final', lead_id: 'CRM-3', status: 'final', final_gallons: 20000 }
+  ]);
+  assert.equal(out['CRM-3'].status, 'final');
+  assert.equal(out['CRM-3'].id, 'bdp_final');
+  assert.equal(out['CRM-3'].finalGallons, 20000);
+});
+
+test('pickFinalOverDraft: both present, final still wins when it arrives first', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_final', lead_id: 'CRM-4', status: 'final', final_gallons: 20000 },
+    { id: 'bdp_draft', lead_id: 'CRM-4', status: 'draft', final_gallons: 500 }
+  ]);
+  assert.equal(out['CRM-4'].status, 'final');
+  assert.equal(out['CRM-4'].id, 'bdp_final');
+});
+
+test('pickFinalOverDraft: neither -- an empty row set yields an empty map', () => {
+  assert.deepEqual(RoadysBD.profiles.pickFinalOverDraft([]), {});
+  assert.deepEqual(RoadysBD.profiles.pickFinalOverDraft(null), {});
+});
+
+test('pickFinalOverDraft: rows with no lead_id are skipped rather than keyed under "undefined"', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_5', lead_id: null, status: 'draft', author: 'rep@example.com' }
+  ]);
+  assert.deepEqual(out, {});
+});
+
+test('pickFinalOverDraft keeps rows for different leads independent', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_a', lead_id: 'CRM-A', status: 'draft' },
+    { id: 'bdp_b', lead_id: 'CRM-B', status: 'final' }
+  ]);
+  assert.equal(out['CRM-A'].status, 'draft');
+  assert.equal(out['CRM-B'].status, 'final');
+});
