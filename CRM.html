@@ -2235,7 +2235,31 @@ function crmTableFilteredLeads(){
   });
   const {col,dir}=crmTblSort, d=dir==='asc'?1:-1;
   const PR_RANK={High:3,Medium:2,Low:1};
+  // The four profile columns are not properties of a lead, so the generic
+  // String(a[col]) read below cannot see them. vpStatus maps to a derived
+  // status STRING, not to the summary's boolean isDraft: isDraft is false
+  // for an unprofiled lead, which would slip past the blank check and sort
+  // in among the finals instead of sinking.
+  const VP_SORT={
+    vpGallons: s=>s.gallons,
+    vpRec:     s=>s.recommendation,
+    vpStatus:  s=>s.has?(s.isDraft?'draft':'final'):'',
+    vpSaved:   s=>s.savedAt
+  };
   list.sort((a,b)=>{
+    const vpGet=VP_SORT[col];
+    if(vpGet){
+      const av=vpGet(crmSummaryFor(a.id)), bv=vpGet(crmSummaryFor(b.id));
+      const blank=v=>v===null||v===undefined||v==='';
+      // Blanks sink in BOTH directions -- a lead with no profile is missing
+      // data, not the smallest value -- so these three returns deliberately
+      // ignore `d`. Both-blank returns 0 so the comparator stays consistent
+      // and unprofiled leads keep a stable relative order.
+      if(blank(av)&&blank(bv)) return 0;
+      if(blank(av)) return 1;
+      if(blank(bv)) return -1;
+      return (av>bv?1:av<bv?-1:0)*d;
+    }
     if(col==='priority') return ((PR_RANK[a.priority]||0)-(PR_RANK[b.priority]||0))*d;
     if(col==='locations') return ((+a.locations||0)-(+b.locations||0))*d;
     return String(a[col]||'').localeCompare(String(b[col]||''),undefined,{numeric:true,sensitivity:'base'})*d;
@@ -2247,12 +2271,13 @@ function renderCRMTable(){
   const tbl=document.getElementById('crm-tbl'); if(!tbl) return;
   const thead=tbl.querySelector('thead'), tbody=tbl.querySelector('tbody');
   const rows=crmTableFilteredLeads();
-  const cols=[{k:'company',l:'Company'},{k:'contact',l:'Contact / Phone'},{k:'street',l:'Address'},{k:'city',l:'City'},{k:'state',l:'State'},{k:'priority',l:'Priority'},{k:'locations',l:'Locs'}];
+  const cols=[{k:'company',l:'Company'},{k:'contact',l:'Contact / Phone'},{k:'street',l:'Address'},{k:'city',l:'City'},{k:'state',l:'State'},{k:'priority',l:'Priority'},{k:'locations',l:'Locs'},{k:'vpGallons',l:'Proj. Gal'},{k:'vpRec',l:'Recommendation'},{k:'vpStatus',l:'Profile'},{k:'vpSaved',l:'Profiled'}];
   const arrow=k=>crmTblSort.col===k?(crmTblSort.dir==='asc'?'↑':'↓'):'↕';
   thead.innerHTML='<tr>'+cols.map(c=>'<th class="'+(crmTblSort.col===c.k?'sorted':'')+'" onclick="crmTblSortBy(\''+c.k+'\')">'+c.l+'<span class="sort-arrow">'+arrow(c.k)+'</span></th>').join('')+'<th></th></tr>';
-  if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No leads match filters</td></tr>'; return; }
+  if(!rows.length){ tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No leads match filters</td></tr>'; return; }
   tbody.innerHTML=rows.map(l=>{
     const pr=l.priority==='High'?'var(--red)':l.priority==='Medium'?'var(--yellow)':'var(--muted)';
+    const vp=crmSummaryFor(l.id);
     return '<tr>'+
       '<td style="font-weight:700">'+crmEsc(l.company)+'</td>'+
       '<td><div>'+crmEsc(l.contact)+'</div><div style="font-size:.7em;color:var(--muted)">'+crmEsc(l.phone)+'</div></td>'+
@@ -2261,6 +2286,10 @@ function renderCRMTable(){
       '<td style="font-size:.82em">'+(l.state?crmEsc(l.state):'&mdash;')+'</td>'+
       '<td style="color:'+pr+';font-weight:700;font-size:.78em">'+crmEsc(l.priority)+'</td>'+
       '<td style="text-align:center">'+(l.locations||'&mdash;')+'</td>'+
+      '<td style="text-align:right;font-size:.82em;color:'+(vp.has?'var(--accent)':'var(--muted)')+'">'+vp.gallonsText+'</td>'+
+      '<td style="font-size:.8em">'+(vp.recommendation?crmEsc(vp.recommendation):'&mdash;')+'</td>'+
+      '<td style="font-size:.78em">'+(vp.has?(vp.isDraft?'<span style="color:var(--yellow)">draft</span>':'<span style="color:var(--green)">final</span>'):'&mdash;')+'</td>'+
+      '<td style="font-size:.78em;color:var(--muted)">'+(vp.savedAt||'&mdash;')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn" style="font-size:.7em;padding:3px 8px" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')">&#9998;</button> '+
         '<button class="btn" style="font-size:.7em;padding:3px 8px;color:var(--red)" onclick="crmDeleteLead(\''+crmEsc(l.id)+'\')">&#128465;</button>'+
@@ -2660,7 +2689,13 @@ function crmExport(){
     ['Owner',        l=>l.owner],
     ['Source',       l=>l.source],
     ['Follow-Up',    l=>l.followUp],
-    ['Notes',        l=>l.notes]
+    ['Notes',        l=>l.notes],
+    ['Projected Gallons',   l=>crmSummaryFor(l.id).gallons],
+    ['Recommendation',      l=>crmSummaryFor(l.id).recommendation],
+    ['Profile Status',      l=>{const s=crmSummaryFor(l.id); return s.has?(s.isDraft?'draft':'final'):'';}],
+    ['Profiled Date',       l=>crmSummaryFor(l.id).savedAt],
+    ['Region',              l=>crmSummaryFor(l.id).region],
+    ['Location Profile',    l=>crmSummaryFor(l.id).profileType]
   ];
   // RFC-4180 quoting: wrap any cell containing quote/comma/newline and double its quotes.
   const cell=v=>{ const s=(v==null?'':String(v)); return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
