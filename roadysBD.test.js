@@ -68,3 +68,16 @@ test('toRow never emits a status the CHECK constraint would reject', () => {
   assert.equal(RoadysBD.map.toRow({ status: 'nonsense' }).status, 'draft');
   assert.equal(RoadysBD.map.toRow({ status: 'final' }).status, 'final');
 });
+
+test('the module loads headless and every network call degrades to a null result', async () => {
+  // No window, so client() is null. Nothing may throw — CRM.html and the
+  // calculator both call these before a session exists.
+  assert.equal(RoadysBD.auth.client(), null);
+  assert.equal(RoadysBD.auth.session(), null);
+  assert.equal(RoadysBD.auth.email(), '');
+  assert.equal(await RoadysBD.profiles.forLead('CRM-1'), null);
+  assert.deepEqual(await RoadysBD.profiles.forLeads(['CRM-1']), {});
+  assert.equal(await RoadysBD.profiles.draftFor(null), null);
+  assert.equal((await RoadysBD.profiles.saveDraft({})).ok, false);
+  assert.equal((await RoadysBD.auth.signIn('a@b.c', 'x')).ok, false);
+});

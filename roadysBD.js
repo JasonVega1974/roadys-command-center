@@ -87,6 +87,154 @@
     };
   }
 
-  var RoadysBD = { map: { toRow: toRow, fromRow: fromRow } };
+  // ── Supabase client ──────────────────────────────────────────────────
+  // Same project and anon key every other page in this repo uses. The key is
+  // public (this repo is published to GitHub Pages) — it identifies the
+  // project, it does not authorize anything. RLS on bd_value_profiles
+  // requires a real session, so the key alone opens nothing.
+  var SB_URL  = 'https://yyhnnalsqzyghjqtfisy.supabase.co';
+  var SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aG5uYWxzcXp5Z2hqcXRmaXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE4NzksImV4cCI6MjA4OTQxNzg3OX0.misOc3tEQD0GBOsjNkv6Im8wUmlfXhiX97DflpgaqAc';
+
+  var _client = null;
+  var _session = null;
+
+  function client() {
+    if (!_client && typeof window !== 'undefined' && window.supabase) {
+      _client = window.supabase.createClient(SB_URL, SB_ANON);
+    }
+    return _client;
+  }
+
+  function errText(e) {
+    if (!e) return '';
+    return e.message || e.error_description || 'Unknown error';
+  }
+
+  function init() {
+    var c = client();
+    if (!c) return Promise.resolve(null);
+    return c.auth.getSession().then(function (res) {
+      _session = (res && res.data && res.data.session) || null;
+      // Keep _session fresh across token refreshes and sign-out in another
+      // tab, so email() and the RLS-bearing client never disagree.
+      c.auth.onAuthStateChange(function (_evt, s) { _session = s || null; });
+      return _session;
+    }).catch(function () { return null; });
+  }
+
+  function session() { return _session; }
+  function email() {
+    return (_session && _session.user && _session.user.email) || '';
+  }
+
+  function signIn(e, pw) {
+    var c = client();
+    if (!c) return Promise.resolve({ ok: false, error: 'Supabase unavailable' });
+    return c.auth.signInWithPassword({ email: e, password: pw })
+      .then(function (res) {
+        if (res.error) return { ok: false, error: errText(res.error) };
+        _session = res.data.session;
+        return { ok: true, error: '' };
+      })
+      .catch(function (err) { return { ok: false, error: errText(err) }; });
+  }
+
+  function signOut() {
+    var c = client();
+    _session = null;
+    if (!c) return Promise.resolve();
+    return c.auth.signOut().catch(function () {});
+  }
+
+  // ── Profiles ─────────────────────────────────────────────────────────
+  var TABLE = 'bd_value_profiles';
+
+  function q() {
+    var c = client();
+    return c ? c.from(TABLE) : null;
+  }
+
+  function forLead(id) {
+    var t = q();
+    if (!t || !id) return Promise.resolve(null);
+    return t.select('*').eq('lead_id', id).eq('status', 'final')
+      .is('deleted_at', null).limit(1)
+      .then(function (res) {
+        if (res.error || !res.data || !res.data.length) return null;
+        return fromRow(res.data[0]);
+      })
+      .catch(function () { return null; });
+  }
+
+  // One round trip for a whole board rather than one per card — the Kanban
+  // can hold hundreds of leads and a request each would be unusable.
+  function forLeads(ids) {
+    var t = q();
+    var out = {};
+    if (!t || !ids || !ids.length) return Promise.resolve(out);
+    return t.select('*').in('lead_id', ids).eq('status', 'final')
+      .is('deleted_at', null)
+      .then(function (res) {
+        if (res.error || !res.data) return out;
+        res.data.forEach(function (r) { out[r.lead_id] = fromRow(r); });
+        return out;
+      })
+      .catch(function () { return out; });
+  }
+
+  // leadId null means "my own unlinked draft", which is keyed by author —
+  // see the partial unique index in sql/2026-10-05-bd-value-profiles.sql.
+  function draftFor(id) {
+    var t = q();
+    if (!t) return Promise.resolve(null);
+    var sel = t.select('*').eq('status', 'draft').is('deleted_at', null);
+    sel = id ? sel.eq('lead_id', id) : sel.is('lead_id', null).eq('author', email());
+    return sel.limit(1)
+      .then(function (res) {
+        if (res.error || !res.data || !res.data.length) return null;
+        return fromRow(res.data[0]);
+      })
+      .catch(function () { return null; });
+  }
+
+  function save(p, st) {
+    var t = q();
+    if (!t) return Promise.resolve({ ok: false, error: 'Supabase unavailable', profile: null });
+    var row = toRow(p);
+    row.status = st;
+    if (!row.author) row.author = email();
+    if (!row.id) row.id = 'bdp_' + Date.now();
+    return t.upsert(row, { onConflict: 'id' }).select()
+      .then(function (res) {
+        if (res.error) return { ok: false, error: errText(res.error), profile: null };
+        var saved = (res.data && res.data.length) ? fromRow(res.data[0]) : fromRow(row);
+        return { ok: true, error: '', profile: saved };
+      })
+      .catch(function (err) {
+        return { ok: false, error: errText(err), profile: null };
+      });
+  }
+
+  function saveDraft(p) { return save(p, 'draft'); }
+  function saveFinal(p) { return save(p, 'final'); }
+
+  function softDelete(id) {
+    var t = q();
+    if (!t || !id) return Promise.resolve({ ok: false, error: 'Supabase unavailable' });
+    return t.update({ deleted_at: new Date().toISOString() }).eq('id', id)
+      .then(function (res) {
+        return res.error ? { ok: false, error: errText(res.error) } : { ok: true, error: '' };
+      })
+      .catch(function (err) { return { ok: false, error: errText(err) }; });
+  }
+
+  var RoadysBD = {
+    map:  { toRow: toRow, fromRow: fromRow },
+    auth: { client: client, init: init, session: session, email: email,
+            signIn: signIn, signOut: signOut },
+    profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
+                saveDraft: saveDraft, saveFinal: saveFinal,
+                softDelete: softDelete }
+  };
   return { RoadysBD: RoadysBD };
 }));
