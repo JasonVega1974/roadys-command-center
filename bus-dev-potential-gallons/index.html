@@ -4421,6 +4421,11 @@ function getCentroid(pathStr, axis){
   BDPG._draftAuthor = '';
   BDPG._draftUpdatedAt = '';
 
+  // Set the moment the rep touches the card. hydrateDraftFromCloud() reads it
+  // to decide whether it may replace what is on screen: the cloud snapshot was
+  // taken before those keystrokes, so applying it would silently discard them.
+  BDPG._userEdited = false;
+
   BDPG.draftSnapshot = function () {
     var p = BDPG.state.prospect;
     return {
@@ -4488,6 +4493,7 @@ function getCentroid(pathStr, axis){
   // immediately so a rep can see the draft is live, then writes once the
   // typing stops.
   BDPG.markDraftDirty = function () {
+    BDPG._userEdited = true;
     if (BDPG._draftTimer) clearTimeout(BDPG._draftTimer);
     BDPG.setDraftMsg('Saving draft…');
     BDPG._draftTimer = setTimeout(function () {
@@ -4663,10 +4669,24 @@ function getCentroid(pathStr, axis){
   BDPG.hydrateDraftFromCloud = function () {
     return RoadysBD.profiles.draftFor(BDPG.currentLeadId).then(function (p) {
       if (!p) return false;
-      var local = BDPG.draftSnapshot();
-      var same = p.prospectName === local.name && p.city === local.city &&
-                 p.stateCode === local.stateCode &&
-                 p.locationType === local.locationType;
+      // The rep has typed since the page painted. Their text wins -- adopt the
+      // cloud row's id so the next flush updates THAT row rather than minting
+      // a second one, take the provenance, and leave the screen alone. This is
+      // last-write-wins, which is the documented posture for shared drafts.
+      if (BDPG._userEdited) {
+        BDPG.currentCloudId = p.id;
+        BDPG._draftAuthor = p.author || '';
+        BDPG._draftUpdatedAt = p.updatedAt || '';
+        BDPG.setDraftMsg(BDPG._draftMsg);
+        return false;
+      }
+      // Compare the whole input payload, not four prospect fields. Those four
+      // can match while the baseline, adjustments or supporting details differ
+      // -- and the old check would then skip applyProfile() while still
+      // stamping the caption with that person's name, captioning data that was
+      // never synced from them. profileInputs() is exactly what applyProfile()
+      // writes, so comparing it compares the right thing.
+      var same = JSON.stringify(BDPG.profileInputs()) === JSON.stringify(p.inputs || {});
       // Provenance is set on BOTH paths: a cloud draft that already matches
       // what is on screen still has an author worth naming.
       BDPG._draftAuthor = p.author || '';
@@ -4696,8 +4716,8 @@ function getCentroid(pathStr, axis){
     if (i.amenityDetails && typeof i.amenityDetails === 'object') s.amenityDetails = i.amenityDetails;
     if (typeof i.amenityLevel === 'string') s.amenityLevel = i.amenityLevel;
     if (typeof i.restroomLevel === 'string') s.restroomLevel = i.restroomLevel;
-    if (i.truckerPathRating !== undefined) s.truckerPathRating = i.truckerPathRating;
-    if (i.pricingLevel !== undefined) s.pricingLevel = i.pricingLevel;
+    if (typeof i.truckerPathRating === 'number' || typeof i.truckerPathRating === 'string') s.truckerPathRating = i.truckerPathRating;
+    if (typeof i.pricingLevel === 'number' || typeof i.pricingLevel === 'string') s.pricingLevel = i.pricingLevel;
     if (typeof i.rewardsLevel === 'string') s.rewardsLevel = i.rewardsLevel;
     if (i.supportingDetails && typeof i.supportingDetails === 'object') s.supportingDetails = i.supportingDetails;
     if (i.prospect && typeof i.prospect === 'object') s.prospect = i.prospect;
@@ -4719,8 +4739,15 @@ function getCentroid(pathStr, axis){
     if (!confirm('Clear the saved draft and empty the Prospect Profile card?\n\n' +
                  'Name, street, city, state, location type and notes are all cleared, ' +
                  'and any generated result goes with them.\n\n' +
+                 'Drafts are SHARED — if a colleague has been working this draft, ' +
+                 'this clears it for them too.\n\n' +
                  'Prospects already saved on the Prospects tab are not touched.')) return;
     if (BDPG._draftTimer) { clearTimeout(BDPG._draftTimer); BDPG._draftTimer = null; }
+    // Supabase is the source of truth for drafts, so a clear that only
+    // removes the local mirror does not stick: the next hydrate pulls the
+    // row straight back. softDelete sets deleted_at, which the partial
+    // unique indexes exclude, so a fresh draft can take the slot afterwards.
+    if (BDPG.currentCloudId) RoadysBD.profiles.softDelete(BDPG.currentCloudId);
     BDPG.clearDraftStorage();
     var p = BDPG.state.prospect;
     p.name = ''; p.street = ''; p.city = ''; p.locationType = ''; p.notes = '';
@@ -4738,6 +4765,11 @@ function getCentroid(pathStr, axis){
     // mirroring.
     BDPG.currentCloudId = null;
     BDPG._draftMsg = '';
+    // The card describes nothing now, so neither does its byline: leaving
+    // these would caption an empty card "by X · today 1:30 PM" for data that
+    // is no longer anywhere.
+    BDPG._draftAuthor = '';
+    BDPG._draftUpdatedAt = '';
     BDPG.render();
   };
 
