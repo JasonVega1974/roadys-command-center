@@ -7852,7 +7852,10 @@ async function crmLoadFromSupabase(){
   const sb=getRoadysSB(); if(!sb) return false;
   try{
     sbShowSyncing('⟳ Loading CRM...');
-    const {data,error}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false});
+    // .is('deleted_at',null) matches CRM.html's own load. Without it this page
+    // lists leads that were soft-deleted elsewhere — and, after the Step 1
+    // fix, ones deleted from this page too.
+    const {data,error}=await sb.from('crm_leads').select('*').is('deleted_at',null).order('created_at',{ascending:false});
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
     if(data&&data.length){
       CRM_LEADS=data.map(r=>({
@@ -7919,7 +7922,13 @@ async function crmSaveLeadToSupabase(lead){
 async function crmDeleteLeadFromSupabase(id){
   const sb=getRoadysSB(); if(!sb) return;
   try{
-    const {error}=await sb.from('crm_leads').delete().eq('id',id);
+    // Soft delete, matching CRM.html and sql/2026-07-15-crm-leads-soft-delete.sql.
+    // This was a hard DELETE: a lead removed from this page was gone for good
+    // and never appeared in CRM.html's Deleted Leads restore modal, which only
+    // lists rows with deleted_at set. Value profiles now hang off these leads
+    // (lead_id is ON DELETE SET NULL), so a hard delete also silently orphaned
+    // the profile.
+    const {error}=await sb.from('crm_leads').update({deleted_at:new Date().toISOString()}).eq('id',id);
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
   }catch(e){
     console.warn('crmDeleteLeadFromSupabase error:',e);
