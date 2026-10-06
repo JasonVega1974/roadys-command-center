@@ -341,6 +341,32 @@ Blast radius of the second migration, measured rather than assumed:
   the linked profile when present, falling back to the hand-entered
   `estGallons` when not. Both currently read `estGallons` alone.
 
+### 4.1 Retire `crmWhoAmI()` in favour of the session email
+
+Phase 1 introduces a real session while `CRM.html`'s `crmWhoAmI()` keeps its
+own answer to the same question — a `localStorage` key (`CRM_WHOAMI_KEY`) set
+from a "👤 Who are you?" dropdown over `CRM_OWNERS`. Two notions of identity
+in one app is one too many: they can disagree, and the one that is merely
+*claimed* is the one that writes to the activity log.
+
+Phase 2 removes it. The session email becomes the single identity:
+
+- `crmWhoAmI()` returns `RoadysBD.auth.email()`; the dropdown and
+  `crmSetWhoAmI()` are deleted along with the `CRM_WHOAMI_KEY` read/write.
+- Call sites to update: the activity entries written by `crmSaveLead()`,
+  `crmMoveToStage()`, `crmLogActivity()` and `crmSendTemplateEmail()`.
+- `CRM_OWNERS` **stays**. It is a different list doing a different job — the
+  assignable owners on a lead and the owner filters on the Kanban, the Lead
+  Table and analytics. A lead can be assigned to Angel by Robert, so "who owns
+  this" and "who am I" must remain separable.
+- Historical activity entries keep whatever `by` value they were written with.
+  They are an audit trail; rewriting them to match today's identity scheme
+  would falsify it.
+
+Deferred to Phase 2 rather than done in Phase 1 because every one of those
+call sites is CRM display code, and Phase 1 deliberately touches `CRM.html`
+only to add the gate.
+
 ## 5. Phase 3 — Calculator redesign
 
 Numbered single-criterion steps, each with its contribution on the right:

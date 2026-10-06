@@ -342,6 +342,16 @@ test('fromRow coerces a missing or wrong-typed column to a safe default', () => 
   assert.equal(back.leadId, null);
   assert.equal(back.finalGallons, null);
   assert.deepEqual(back.inputs, {});
+  assert.equal(back.updatedAt, '');
+});
+
+test('updatedAt reads through from the row but is never written back', () => {
+  // The trigger owns updated_at. It is readable because the calculator and
+  // the CRM both show "last edited by X at Y" on a shared draft — but it must
+  // never ride out in toRow, or a client clock would overwrite the server's.
+  const back = RoadysBD.map.fromRow({ id: 'bdp_4', updated_at: '2026-10-05T19:30:00.000Z' });
+  assert.equal(back.updatedAt, '2026-10-05T19:30:00.000Z');
+  assert.equal(RoadysBD.map.toRow({ updatedAt: '2026-10-05T19:30:00.000Z' }).updated_at, undefined);
 });
 
 test('toRow never emits a status the CHECK constraint would reject', () => {
@@ -440,7 +450,12 @@ Create `roadysBD.js`:
       recommendation:   str(r.recommendation),
       regionPctStamp:   str(r.region_pct_stamp),
       baselineStamp:    str(r.baseline_stamp),
-      author:           str(r.author)
+      author:           str(r.author),
+      // Read-only passthrough, deliberately absent from toRow(): the database
+      // trigger owns updated_at, and a client clock must never overwrite it.
+      // Readable because a shared draft shows "last edited by X at Y" in both
+      // the calculator and the CRM.
+      updatedAt:        str(r.updated_at)
     };
   }
 
@@ -452,14 +467,14 @@ Create `roadysBD.js`:
 - [ ] **Step 4: Run the tests and make sure they pass**
 
 Run: `node --test roadysBD.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
-Note: the inverse test passes `createdAt`/`updatedAt` nowhere — they are server-assigned and deliberately absent from both maps. If a later task needs them for display, read them off the raw row.
+Note on the asymmetry: `updatedAt` reads out of `fromRow` but never into `toRow`, and `createdAt` appears in neither. Both are server-assigned — `updated_at` by the trigger from Task 1 — so a client-supplied value would be a clock the database did not agree with. The inverse test still holds because it iterates the keys of the profile it started from, and that profile has no `updatedAt`.
 
 - [ ] **Step 5: Confirm the existing suite is untouched**
 
 Run: `node --test *.test.js 2>&1 | grep -E "^. (tests|pass|fail)"`
-Expected: `tests 246`, `pass 246`, `fail 0` (242 existing + 4 new).
+Expected: `tests 247`, `pass 247`, `fail 0` (242 existing + 5 new).
 
 - [ ] **Step 6: Commit**
 
@@ -651,7 +666,7 @@ Insert immediately before `var RoadysBD = { map: ... };` and replace that line w
 The auth/CRUD half is network code and is not unit-tested here — it is exercised by the browser checklist in Task 9. What must hold is that requiring the module under Node (where `window` is undefined and `client()` returns null) does not throw.
 
 Run: `node --test roadysBD.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 3: Add a guard test that the module is safe to require headless**
 
@@ -675,12 +690,12 @@ test('the module loads headless and every network call degrades to a null result
 - [ ] **Step 4: Run it**
 
 Run: `node --test roadysBD.test.js`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Confirm the full suite**
 
 Run: `node --test *.test.js 2>&1 | grep -E "^. (tests|pass|fail)"`
-Expected: `tests 247`, `pass 247`, `fail 0`.
+Expected: `tests 248`, `pass 248`, `fail 0`.
 
 - [ ] **Step 6: Commit**
 
@@ -796,7 +811,7 @@ Expected: `pass 160`, `fail 0` (156 existing + 4 new).
 - [ ] **Step 5: Confirm the full suite and that the formula is untouched**
 
 Run: `node --test *.test.js 2>&1 | grep -E "^. (tests|pass|fail)"`
-Expected: `tests 251`, `pass 251`, `fail 0`.
+Expected: `tests 252`, `pass 252`, `fail 0`.
 
 - [ ] **Step 6: Commit**
 
@@ -1080,12 +1095,18 @@ Replace the body of `BDPG.flushDraft`:
       var same = p.prospectName === local.name && p.city === local.city &&
                  p.stateCode === local.stateCode &&
                  p.locationType === local.locationType;
-      if (same) { BDPG.currentProfileId = p.id; return false; }
+      // Provenance is set on BOTH paths: a cloud draft that already matches
+      // what is on screen still has an author worth naming.
+      BDPG._draftAuthor = p.author || '';
+      BDPG._draftUpdatedAt = p.updatedAt || '';
+      if (same) { BDPG.currentProfileId = p.id; BDPG.setDraftMsg(BDPG._draftMsg); return false; }
       BDPG.applyProfile(p);
       BDPG.currentProfileId = p.id;
       BDPG.savedSig = '';          // a restored draft is still unsaved work
-      BDPG._draftMsg = 'Draft restored from the cloud' +
-        (p.author ? ' — last edited by ' + p.author : '');
+      // Just the fact. Who and when are rendered by draftProvenanceLabel()
+      // from the two fields above — saying it here too would print the author
+      // twice on one line.
+      BDPG._draftMsg = 'Draft restored from the cloud';
       BDPG.render();
       return true;
     });
@@ -1117,7 +1138,76 @@ Replace the body of `BDPG.flushDraft`:
   };
 ```
 
-- [ ] **Step 5: Read `?lead=` at boot and hydrate**
+- [ ] **Step 5: Show who last edited the draft, and when, in the calculator**
+
+A shared draft needs its provenance visible where the editing happens, not
+only in the CRM — the person about to overwrite someone's work is sitting in
+the calculator. Two additions to the existing indicator.
+
+Add the state and a formatter beside `BDPG._draftMsg`:
+
+```js
+  // Provenance of the draft currently on screen, from the last cloud read or
+  // write. Null until one happens, so a brand-new unsaved draft shows nothing
+  // rather than claiming an author it does not have.
+  BDPG._draftAuthor = '';
+  BDPG._draftUpdatedAt = '';
+
+  // "by robert@example.com · today 1:30 PM" — date only when it is not today,
+  // because the common case is a draft touched minutes ago and a full date
+  // there is noise.
+  BDPG.draftProvenanceLabel = function () {
+    if (!BDPG._draftAuthor && !BDPG._draftUpdatedAt) return '';
+    var who = BDPG._draftAuthor ? 'by ' + BDPG._draftAuthor : '';
+    var when = '';
+    if (BDPG._draftUpdatedAt) {
+      var d = new Date(BDPG._draftUpdatedAt);
+      if (!isNaN(d.getTime())) {
+        var today = new Date();
+        var sameDay = d.toDateString() === today.toDateString();
+        when = (sameDay ? 'today ' : d.toLocaleDateString() + ' ') +
+          d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+    }
+    return [who, when].filter(Boolean).join(' · ');
+  };
+```
+
+Extend `BDPG.draftStatusInnerHtml()` — insert before the `return`:
+
+```js
+    var prov = BDPG.draftProvenanceLabel();
+    // Flagged as someone else's work only when it IS someone else's: the
+    // common case is your own draft, and colouring that as a warning would
+    // train the rep to ignore the one case that matters.
+    var mine = !BDPG._draftAuthor || BDPG._draftAuthor === RoadysBD.auth.email();
+    var provHtml = prov
+      ? ' <span style="color:' + (mine ? 'var(--muted)' : 'var(--yellow)') + '">' +
+        (mine ? '' : '⚠ ') + BDPG.escHtml(prov) + '</span>'
+      : '';
+```
+
+and change the `return` to include it:
+
+```js
+    return msg + provHtml + link;
+```
+
+`hydrateDraftFromCloud()` already sets both fields — Step 4 writes them above
+the `same` check so they land on both branches, because a cloud draft that
+matches what is on screen still has an author worth naming. Nothing to add
+there.
+
+The remaining place is `flushDraft()`'s success branch, where the write makes
+**you** the author. Add inside `if (r.ok) { … }`, beside the existing
+`setDraftMsg` call:
+
+```js
+        BDPG._draftAuthor = RoadysBD.auth.email() || '';
+        BDPG._draftUpdatedAt = (r.profile && r.profile.updatedAt) || new Date().toISOString();
+```
+
+- [ ] **Step 6: Read `?lead=` at boot and hydrate**
 
 Replace the calculator's `DOMContentLoaded` body from Task 5:
 
@@ -1133,21 +1223,25 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 ```
 
-- [ ] **Step 6: Verify in the browser**
+- [ ] **Step 7: Verify in the browser**
 
 With the server from Task 5 running, open `bus-dev-potential-gallons/`, sign in, and confirm:
 - typing a name shows *Saving draft…* then *Draft saved* within ~1 s
 - a row appears in `bd_value_profiles` with `status='draft'` (check in the Supabase table editor)
 - reload restores the fields
-- opening the same URL in a second browser signed in as the other user shows the same draft, with *last edited by* naming the first user
+- opening the same URL in a second browser signed in as the other user shows
+  the same draft, and the indicator reads **⚠ by <the first user's email> · today H:MM**
+  in yellow — the warning colour appears only because the author is someone
+  else; editing your own draft shows the same line in muted grey with no ⚠
+- after you type in browser 2, the line flips to your own email in grey
 - going offline (devtools → Network → Offline) and typing shows *Saved on this device only — not synced* rather than a false success
 
-- [ ] **Step 7: Confirm the suite still passes**
+- [ ] **Step 8: Confirm the suite still passes**
 
 Run: `node --test *.test.js 2>&1 | grep -E "^. (tests|pass|fail)"`
-Expected: `tests 251`, `pass 251`, `fail 0`.
+Expected: `tests 252`, `pass 252`, `fail 0`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add bus-dev-potential-gallons/index.html
@@ -1319,7 +1413,7 @@ Keep the existing "no result — save blank?" confirm exactly as it is; only the
 - [ ] **Step 5: Confirm the suite**
 
 Run: `node --test *.test.js 2>&1 | grep -E "^. (tests|pass|fail)"`
-Expected: `tests 251`, `pass 251`, `fail 0`.
+Expected: `tests 252`, `pass 252`, `fail 0`.
 
 - [ ] **Step 6: Commit**
 
@@ -1425,7 +1519,7 @@ Print `sql/2026-10-05-crm-leads-require-auth.sql` for the Supabase SQL editor, t
 - [ ] **Step 4: Final suite run**
 
 Run: `node --test *.test.js 2>&1 | grep -E "^. (tests|pass|fail)"`
-Expected: `tests 251`, `pass 251`, `fail 0`.
+Expected: `tests 252`, `pass 252`, `fail 0`.
 
 ---
 
@@ -1437,4 +1531,4 @@ Expected: `tests 251`, `pass 251`, `fail 0`.
 
 **Line references verified** against the working tree at the time of writing: `CRM.html:11` (supabase tag), `:3596` (`crmInit`), `:3660` (`DOMContentLoaded`); `implementation.html:7849` (lead select), `:7913` (`crmDeleteLeadFromSupabase`); `bus-dev-potential-gallons/index.html:7-17` (script tags). An implementer picking this up later should re-confirm them — these three files are edited often.
 
-**Type consistency.** `toRow`/`fromRow` field names match the Task 1 columns one-for-one. `BDPG.draftProfile` emits exactly the camelCase keys `fromRow` produces. `BDPG.currentLeadId` is set in Task 6 Step 1 and read in Tasks 6–7. `BDPG_STATS.recommendation` is defined in Task 4 and called in Task 6 Step 3 and Task 7. `RoadysBD.auth.email()` is defined in Task 3 and used in Tasks 5–7. Test counts run 242 → 246 → 247 → 251 and are stated at each step.
+**Type consistency.** `toRow`/`fromRow` field names match the Task 1 columns one-for-one. `BDPG.draftProfile` emits exactly the camelCase keys `fromRow` produces. `BDPG.currentLeadId` is set in Task 6 Step 1 and read in Tasks 6–7. `BDPG_STATS.recommendation` is defined in Task 4 and called in Task 6 Step 3 and Task 7. `RoadysBD.auth.email()` is defined in Task 3 and used in Tasks 5–7. Test counts run 242 → 247 → 248 → 252 and are stated at each step.
