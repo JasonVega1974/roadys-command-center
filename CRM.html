@@ -1173,6 +1173,12 @@ const CRM_STAGE_COLORS = {'Prospect':'#64748b','Qualified':'#14b8a6','Contacted'
 // pipeline value/gallons, overdue counts and follow-up queues. "Not Qualified"
 // is deliberately NOT counted as a loss in win rate — it never became a real
 // opportunity, so won/(won+lost) only looks at Closed Won / Closed Lost.
+// Stages where building a first value profile is the natural next move, and
+// therefore the only ones carrying the "Value Prop" button. Deliberately NOT
+// derived from crmIsClosedStage(): every non-terminal stage would include
+// Meeting Scheduled, Proposal Sent and Negotiation, by which point a profile
+// should already exist and the button is clutter on a crowded card.
+const CRM_VALUE_PROP_STAGES = ['Prospect','Qualified'];
 const CRM_CLOSED_STAGES = ['Closed Won','Closed Lost','Not Qualified'];
 function crmIsClosedStage(stage){ return CRM_CLOSED_STAGES.indexOf(stage)>=0; }
 // Short label for the analytics stage chart — plain split(' ')[0] would render
@@ -2111,7 +2117,21 @@ function renderCRMKanban(){
       html+='</div><div style="display:flex;gap:4px">';
       if(!isTerminal) html+='<button onclick="event.stopPropagation();crmAdvanceStage(\''+crmEsc(l.id)+'\')" style="flex:1;background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.3);color:var(--green);padding:3px;border-radius:4px;cursor:pointer;font-size:.62em;font-weight:700">&rarr; Advance</button>';
       html+='<button onclick="event.stopPropagation();crmOpenLeadModal(\''+crmEsc(l.id)+'\')" style="flex:1;background:rgba(0,200,255,.08);border:1px solid rgba(0,200,255,.2);color:var(--accent);padding:3px;border-radius:4px;cursor:pointer;font-size:.62em;font-weight:700">&#9998; Edit</button>';
-      html+='</div></div>';
+      html+='</div>';
+      // Value Prop deep link. Prospect and Qualified ONLY — deliberately not
+      // `!isTerminal`, which would also catch Meeting Scheduled, Proposal Sent
+      // and Negotiation, where a first value profile is no longer the next
+      // move. Its own full-width row because the row above already holds two
+      // buttons at flex:1 in a 200px column; a third would squeeze all three
+      // to about 60px.
+      if(CRM_VALUE_PROP_STAGES.indexOf(stage)>=0){
+        html+='<button onclick="event.stopPropagation();crmOpenValueProp(\''+crmEsc(l.id)+'\')" '+
+          'title="Open the Potential Gallons calculator pre-filled with this lead" '+
+          'style="width:100%;margin-top:4px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);'+
+          'color:var(--orange);padding:4px;border-radius:4px;cursor:pointer;font-size:.62em;font-weight:700">'+
+          '&#9981; Value Prop &rarr;</button>';
+      }
+      html+='</div>';
     });
     if(!isTerminal) html+='<button onclick="crmOpenLeadModal(null,\''+stage+'\')" style="width:100%;background:transparent;border:1px dashed var(--border);color:var(--dim);padding:7px;border-radius:6px;cursor:pointer;font-size:.7em;margin-top:4px">+ Add to '+stage+'</button>';
     html+='</div></div>';
@@ -3591,6 +3611,27 @@ function toggleTheme(isDay){
 // Settings soft-lock: reads the same roadys_settings store index.html writes.
 let SETTINGS={hidden:{},locked:{},pin:''};
 try{ const s=localStorage.getItem('roadys_settings'); if(s) SETTINGS=Object.assign({hidden:{},locked:{},pin:''}, JSON.parse(s)); }catch(e){}
+
+// Opens the Potential Gallons calculator pre-filled with this lead, and
+// pre-linked to it so saving attaches the profile without the rep picking the
+// lead again. Parsed on the other side by RoadysBD.leadParamsFrom().
+//
+// New tab, not this one: the rep keeps the board they were working, and the
+// CRM's 90-second background refresh keeps running behind them.
+//
+// Only fields crm_leads actually has are sent. Location Type is NOT among them
+// — there is no column for it, and guessing one would auto-set a Step 1
+// baseline in the calculator that nobody chose.
+function crmOpenValueProp(leadId){
+  const l=CRM_LEADS.find(x=>x.id===leadId); if(!l) return;
+  const qs=new URLSearchParams();
+  qs.set('lead', l.id);
+  if(l.company) qs.set('name',  l.company);
+  if(l.city)    qs.set('city',  l.city);
+  if(l.state)   qs.set('state', l.state);
+  if(l.street)  qs.set('street',l.street);
+  window.open('bus-dev-potential-gallons/?'+qs.toString(),'_blank');
+}
 
 // deep-link: /CRM.html?lead=<id>&call=1
 function crmDeepLink(){

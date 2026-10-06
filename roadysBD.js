@@ -325,7 +325,45 @@
       .catch(function (err) { return { ok: false, error: errText(err) }; });
   }
 
+  // Parses the query string the CRM's "Value Prop" button builds. Always
+  // returns the same five keys. A field the CRM did not send is null, which
+  // the prefill treats differently from a field it sent as blank: null means
+  // "no value supplied", '' would be indistinguishable from "this lead has no
+  // city", and only the former should be filled from elsewhere.
+  //
+  // Lives here rather than inline in the calculator because parsing is the
+  // step that can silently mangle a company name or a state code, and this is
+  // where node --test can reach it.
+  function leadParamsFrom(search) {
+    var out = { leadId: null, name: null, city: null, state: null, street: null };
+    if (typeof search !== 'string') return out;
+    var qs;
+    try {
+      qs = new URLSearchParams(search.charAt(0) === '?' ? search.slice(1) : search);
+    } catch (e) { return out; }
+
+    function take(k) {
+      var v = qs.get(k);
+      if (typeof v !== 'string') return null;
+      v = v.trim();
+      return v ? v : null;
+    }
+
+    out.leadId = take('lead');
+    out.name   = take('name');
+    out.city   = take('city');
+    out.street = take('street');
+
+    var st = take('state');
+    // Upper-cased and clamped to two characters, exactly as onStateInput()
+    // normalises a typed code -- so arriving by link and arriving by keystroke
+    // put the same value in the same field.
+    out.state = st ? st.toUpperCase().slice(0, 2) : null;
+    return out;
+  }
+
   var RoadysBD = {
+    leadParamsFrom: leadParamsFrom,
     map:  { toRow: toRow, fromRow: fromRow },
     auth: { client: client, init: init, session: session, email: email,
             signIn: signIn, signOut: signOut,

@@ -676,6 +676,9 @@ function getCentroid(pathStr, axis){
         return;
       }
       el.innerHTML =
+        // Above everything else: if this page is linked to a CRM lead, the rep
+        // needs to know that before they read a figure or press Save.
+        BDPG.leadBannerHtml() +
         BDPG.dataTrustBannerHtml() +
         // Nothing above Prospect Profile. The help content that used to sit
         // here, collapsed, now lives behind the ? button in the header --
@@ -4447,6 +4450,107 @@ function getCentroid(pathStr, axis){
   // writes defaults into state (see the savedSig capture in render()).
   BDPG._bootSig = null;
 
+  // The CRM lead this page was opened for, as the CRM described it. Kept
+  // separate from BDPG.state.prospect on purpose: the rep may rename the
+  // prospect on the card, and the banner must keep naming the LEAD it is
+  // linked to rather than following the edit. null when opened directly.
+  BDPG.leadContext = null;
+
+  // Applies the CRM's "Value Prop" deep-link parameters to the ⓪ card.
+  //
+  // Runs after restoreDraft() and before the first render, so whatever it
+  // writes is part of the baseline render() captures as _bootSig -- which
+  // means hydrateDraftFromCloud() still treats a shared cloud draft for this
+  // lead as newer and lets it win. A CRM snapshot should lose to someone's
+  // actual in-progress work on the same lead.
+  //
+  // Returns true if anything was written.
+  BDPG.applyLeadParams = function (p) {
+    if (!p || (!p.leadId && !p.name && !p.city && !p.state && !p.street)) return false;
+
+    var snap = BDPG.draftSnapshot();
+    var hasContent = BDPG.draftHasContent(snap);
+    var sameProspect = !!(p.name && snap.name &&
+      snap.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+
+    // The card already holds work for a DIFFERENT prospect. Never discard it
+    // silently -- same rule, and the same gate, onLoadProfile() uses.
+    if (hasContent && !sameProspect) {
+      if (!BDPG.confirmDiscard(
+            'You have unsaved work for ' + (snap.name || 'an unnamed prospect') + '.\n\n' +
+            'Opening ' + (p.name || 'this lead') + ' from the CRM replaces it, ' +
+            'and it cannot be recovered.\n\nContinue?')) {
+        // Declined. Crucially the lead is NOT linked: leaving currentLeadId
+        // set here would attach the prospect still on screen to the lead the
+        // rep just refused to open, which is how a profile ends up filed
+        // against the wrong company.
+        return false;
+      }
+      // Accepted -- clear the card and release every binding to the previous
+      // prospect. The other prospect's CLOUD draft is deliberately left in
+      // place: it is someone's work, possibly a colleague's, and this is a
+      // navigation, not a delete.
+      var pr = BDPG.state.prospect;
+      pr.name = ''; pr.street = ''; pr.city = ''; pr.locationType = ''; pr.notes = '';
+      if (BDPG.state.state) BDPG.invalidateResult();
+      BDPG.state.state = '';
+      BDPG.state.autoSetNote = '';
+      BDPG.state.suggestProfiles = [];
+      BDPG.currentProfileId = null;
+      BDPG.currentCloudId = null;
+      BDPG._draftAuthor = '';
+      BDPG._draftUpdatedAt = '';
+      snap = BDPG.draftSnapshot();
+    }
+
+    // Fill blanks only. A field the rep has already typed is theirs; a field
+    // the CRM did not send arrives as null and is skipped (see
+    // RoadysBD.leadParamsFrom -- null and '' mean different things there).
+    var prospect = BDPG.state.prospect, wrote = false;
+    if (!prospect.name   && p.name)   { prospect.name = p.name;     wrote = true; }
+    if (!prospect.city   && p.city)   { prospect.city = p.city;     wrote = true; }
+    if (!prospect.street && p.street) { prospect.street = p.street; wrote = true; }
+    if (!BDPG.state.state && p.state) { BDPG.state.state = p.state; wrote = true; }
+
+    BDPG.currentLeadId = p.leadId || null;
+    BDPG.leadContext = p.leadId
+      ? { id: p.leadId, name: p.name || '', city: p.city || '', state: p.state || '' }
+      : null;
+
+    if (wrote) {
+      BDPG.updatePreEvalSignal();
+      // Pre-filled from a lead is unsaved work, exactly like a restored draft:
+      // savedSig = '' so Load and Export still prompt before discarding it.
+      BDPG.savedSig = '';
+    }
+    return wrote;
+  };
+
+  // Banner shown whenever this page is linked to a CRM lead, so the rep can
+  // see before saving that the profile will attach to that lead. Deliberately
+  // not dismissible: it describes live state (currentLeadId), and a dismissed
+  // banner over a live link is how a profile gets saved against the wrong
+  // company.
+  BDPG.leadBannerHtml = function () {
+    var c = BDPG.leadContext;
+    if (!c) return '';
+    var where = [c.city, c.state].filter(Boolean).join(', ');
+    return '<div class="bdpg-box" style="margin-bottom:12px;border-color:var(--accent);' +
+      'display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:1.1em">&#128279;</span>' +
+      '<div style="flex:1;min-width:200px">' +
+        '<div style="font-weight:700;font-size:.85em">Opened from CRM lead — ' +
+          BDPG.escHtml(c.name || c.id) + (where ? ' <span style="color:var(--muted);font-weight:400">· ' + BDPG.escHtml(where) + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
+          'Saving will attach this value profile to that lead.</div>' +
+      '</div>' +
+      '<a href="../CRM.html?lead=' + encodeURIComponent(c.id) + '" target="_blank" ' +
+        'style="color:var(--accent);font-size:.75em;font-weight:700;text-decoration:underline;white-space:nowrap">' +
+        'open the lead &#8599;</a>' +
+    '</div>';
+  };
+
   BDPG.draftSnapshot = function () {
     var p = BDPG.state.prospect;
     return {
@@ -8202,12 +8306,18 @@ function bdSignOut(){
 
 document.addEventListener('DOMContentLoaded', function () {
   bdShowLoginGate(function () {
-    var p = new URLSearchParams(location.search);
-    BDPG.currentLeadId = p.get('lead') || null;
+    // Parsed by the shared module so the one step that can mangle a company
+    // name or a state code is unit-tested. See RoadysBD.leadParamsFrom.
+    var leadParams = RoadysBD.leadParamsFrom(location.search);
     // Before the first render, never after: restoreDraft() writes the ⓪ card's
     // fields and sets savedSig, and render() captures its unsaved-work baseline
     // on that first pass.
     BDPG.restoreDraft();
+    // Between restore and render, so the rep's own local draft is on the card
+    // when applyLeadParams decides whether opening this lead would discard it —
+    // and so anything it writes lands inside the _bootSig baseline, leaving a
+    // shared cloud draft for the same lead free to win over a CRM snapshot.
+    BDPG.applyLeadParams(leadParams);
     BDPG.render();
     BDPG.hydrateDraftFromCloud();
   });
