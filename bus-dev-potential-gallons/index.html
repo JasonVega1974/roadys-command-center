@@ -7077,8 +7077,10 @@ function getCentroid(pathStr, axis){
     BDPG._draftMsg = '';
     // Names the prospect, so a rep who saves two in a row can see which one
     // landed -- "Profile saved" alone could not be told apart from the
-    // previous save's toast.
-    toast((idx >= 0 ? 'Updated in Prospects — ' : 'Saved to Prospects — ') + record.name);
+    // previous save's toast. Reworded to not claim the CRM half, which
+    // hasn't started yet -- the cloud half below replaces this with the
+    // real outcome once it knows one.
+    toast((idx >= 0 ? 'Updated in Prospects — ' : 'Saved to Prospects — ') + record.name + ' · syncing to CRM…');
     BDPG.render();
     // After the render, so step2Html()'s pricingLevel/amenityLevel defaults
     // are already settled and the baseline matches what is now on screen.
@@ -7088,38 +7090,85 @@ function getCentroid(pathStr, axis){
     // Everything above is unconditional and already done -- this page's own
     // Prospects tab never depends on the network or on Supabase being up.
     // What follows is a second, independent write: attach (or create) a CRM
-    // lead and store this same profile in bd_value_profiles as a 'final'
-    // row, which is what Phase 2's CRM views read. A failure here does not
-    // touch the local save above; it gets its own toast rather than being
-    // swallowed, and nothing here retries on its own.
+    // lead, store this same profile in bd_value_profiles as a 'final' row
+    // (what Phase 2's CRM views read), and offer the stage move. A failure
+    // in any of the three never touches the local save above, and the rep
+    // is told exactly which part did not land -- never a bare "Saved" that
+    // quietly papers over a half-finished sync.
     BDPG._saving = true;
     BDPG.refreshSaveBox();
-    // Cleared on every exit of the async chain below -- success, the
-    // saveFinal() failure branch, and this catch -- so a rejected promise
-    // (saveFinal()/createLeadFromProfile() already catch their own errors
-    // and resolve rather than reject, but this is belt-and-suspenders)
-    // never leaves the Save button permanently disabled.
+    // Cleared on every exit of the async chain below -- success, every
+    // failure branch, and both outer .catch handlers -- so a rejected
+    // promise never leaves the Save button permanently disabled.
     var doneSaving = function () { BDPG._saving = false; BDPG.refreshSaveBox(); };
-    var cloudFinish = function (leadId) {
+
+    // Three independent steps (lead link/create, cloud profile, stage move)
+    // can each fail on their own. toast() cancels its predecessor, so a
+    // per-step toast would mean only the LAST failure is ever seen -- these
+    // collect into one final message that names every part that didn't land.
+    var problems = [];
+    var leadNote = '';
+    var finishUp = function () {
+      if (problems.length) {
+        toast('Saved on this device. ' + problems.join(' '), 'err');
+      } else {
+        toast('Saved to Prospects — ' + BDPG.displayName() + leadNote);
+      }
+      doneSaving();
+    };
+
+    // Runs after the lead is known (already linked, newly created, attached
+    // to an existing one, or left unlinked because that step failed).
+    // leadId may be null -- saveFinal() still writes an unlinked profile.
+    var proceedToSaveFinal = function (leadId) {
       BDPG.currentLeadId = leadId || null;
       var prof = BDPG.draftProfile(BDPG.draftSnapshot());
       prof.leadId = BDPG.currentLeadId;
       return RoadysBD.profiles.saveFinal(prof).then(function (r) {
         if (!r.ok) {
-          toast('Saved to Prospects, but could not sync to CRM — ' + r.error, 'err');
-          doneSaving();
+          problems.push(BDPG.currentLeadId
+            ? 'The lead was created but the value profile did not reach the cloud (' + r.error + ').'
+            : 'The value profile did not reach the cloud (' + r.error + ').');
+          finishUp();
           return;
         }
         // Two id spaces -- see the comment at BDPG.currentCloudId's
         // declaration. This is the bd_value_profiles row id, never the local
         // tracker id assigned above as BDPG.currentProfileId.
         BDPG.currentCloudId = r.profile.id;
-        if (BDPG.currentLeadId) BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName());
-        doneSaving();
+        if (BDPG.currentLeadId) {
+          return BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName()).then(function (st) {
+            if (st.error) problems.push('The lead was not moved to Contacted (' + st.error + ').');
+            else if (st.moved) leadNote += ' · moved to Contacted';
+            finishUp();
+          });
+        }
+        finishUp();
       });
     };
-    if (BDPG.currentLeadId) cloudFinish(BDPG.currentLeadId).catch(doneSaving);
-    else BDPG.createLeadFromProfile().then(cloudFinish).catch(doneSaving);
+
+    if (BDPG.currentLeadId) {
+      // Already linked (deep link, a previous save, or the attach search
+      // box) -- nothing to create, so no lead-step problem can arise here.
+      leadNote = ' · attached to lead';
+      proceedToSaveFinal(BDPG.currentLeadId).catch(function (err) {
+        problems.push('Something went wrong syncing to CRM (' + BDPG.errText(err) + ').');
+        finishUp();
+      });
+    } else {
+      BDPG.createLeadFromProfile().then(function (res) {
+        if (!res.ok) {
+          problems.push('No CRM lead was created (' + res.error + ').');
+        } else {
+          leadNote = res.attached ? ' · attached to lead' : ' · new lead created';
+        }
+        if (res.scanFailed) problems.push('The duplicate-company check could not run.');
+        return proceedToSaveFinal(res.ok ? res.id : null);
+      }).catch(function (err) {
+        problems.push('Something went wrong syncing to CRM (' + BDPG.errText(err) + ').');
+        finishUp();
+      });
+    }
   };
 
   // Leads the rep can attach this profile to. Searched over company, city and
@@ -7144,9 +7193,24 @@ function getCentroid(pathStr, axis){
     return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   };
 
+  // Mirrors roadysBD.js's errText() -- same shape of Supabase error, same
+  // graceful fallback -- so a thrown non-Supabase error still prints
+  // something instead of "[object Object]".
+  BDPG.errText = function (e) {
+    if (!e) return '';
+    return e.message || e.error_description || 'Unknown error';
+  };
+
+  // Resolves { ok, id, error, scanFailed, attached } rather than an
+  // id-or-null. null conflated three different outcomes -- no client, a
+  // failed insert, and a caught error -- and the caller then could not tell
+  // "attached to lead X" from "no lead exists at all", so a silently
+  // unlinked profile was reported as a complete success. `attached` is true
+  // only when an existing lead was matched and the rep chose to attach,
+  // false when a new row was inserted.
   BDPG.createLeadFromProfile = function () {
     var c = RoadysBD.auth.client();
-    if (!c) return Promise.resolve(null);
+    if (!c) return Promise.resolve({ ok: false, id: null, error: 'Supabase unavailable', scanFailed: false, attached: false });
     var s = BDPG.state, p = s.prospect;
     var company = BDPG.displayName();
     return c.from('crm_leads').select('id,company,city,state,stage')
@@ -7157,6 +7221,11 @@ function getCentroid(pathStr, axis){
       // so a high limit is cheap.
       .order('company').limit(5000)
       .then(function (r) {
+        var scanFailed = !!r.error;
+        // A read failure here must not silently skip the duplicate check --
+        // that would create a second lead for a company already in the
+        // pipeline with no signal to anyone that the check never ran.
+        if (scanFailed) console.warn('[BDPG] duplicate-company scan failed; creating without the duplicate check', r.error);
         var rows = (r.error || !r.data) ? [] : r.data;
         // A silent truncation would turn the dup check into a coin flip. Say so.
         if (rows.length >= 5000) console.warn('[BDPG] duplicate-company scan hit the 5000-row limit; the check may be incomplete');
@@ -7168,7 +7237,7 @@ function getCentroid(pathStr, axis){
             (dup.state || 'no state listed') + ' · ' + dup.stage + ').\n\n' +
             'OK — attach this profile to that lead.\n' +
             'Cancel — create a second lead anyway.');
-          if (ok) return dup.id;
+          if (ok) return { ok: true, id: dup.id, error: '', scanFailed: scanFailed, attached: true };
         }
         var id = 'CRM-' + String(Date.now()).slice(-6);
         var row = {
@@ -7186,10 +7255,14 @@ function getCentroid(pathStr, axis){
           updated_at: new Date().toISOString()
         };
         return c.from('crm_leads').insert(row).then(function (ins) {
-          return ins.error ? null : id;
+          return ins.error
+            ? { ok: false, id: null, error: BDPG.errText(ins.error), scanFailed: scanFailed, attached: false }
+            : { ok: true, id: id, error: '', scanFailed: scanFailed, attached: false };
         });
       })
-      .catch(function () { return null; });
+      .catch(function (err) {
+        return { ok: false, id: null, error: BDPG.errText(err), scanFailed: false, attached: false };
+      });
   };
 
   // Spec §0.1: "Contacted" means we reached out, and a value profile is often
@@ -7198,16 +7271,19 @@ function getCentroid(pathStr, axis){
   // later is never prompted and never moved.
   BDPG.MOVEABLE_STAGES = ['Prospect', 'Qualified'];
 
+  // Resolves { moved, error }: moved=true only when the stage actually changed
+  // in the database. A rep who clicks OK and is told nothing will believe the
+  // lead moved; if the update failed, the board will disagree with them later.
   BDPG.maybePromptStage = function (leadId, company) {
     var c = RoadysBD.auth.client();
-    if (!c || !leadId) return Promise.resolve();
+    if (!c || !leadId) return Promise.resolve({ moved: false, error: '' });
     return c.from('crm_leads').select('stage').eq('id', leadId).limit(1)
       .then(function (r) {
-        if (r.error || !r.data || !r.data.length) return;
+        if (r.error || !r.data || !r.data.length) return { moved: false, error: '' };
         var stage = r.data[0].stage;
-        if (BDPG.MOVEABLE_STAGES.indexOf(stage) === -1) return;
+        if (BDPG.MOVEABLE_STAGES.indexOf(stage) === -1) return { moved: false, error: '' };
         if (!confirm('Saved value profile for ' + company + '.\n\n' +
-                     'This lead is at ' + stage + '. Move it to Contacted?')) return;
+                     'This lead is at ' + stage + '. Move it to Contacted?')) return { moved: false, error: '' };
         var act = { text: 'Moved from ' + stage + ' to Contacted',
                     date: new Date().toISOString().slice(0, 10),
                     by: RoadysBD.auth.email() || '', type: 'stage' };
@@ -7217,10 +7293,13 @@ function getCentroid(pathStr, axis){
               ? a.data[0].activity : [];
             log.push(act);
             return c.from('crm_leads')
-              .update({ stage: 'Contacted', activity: log }).eq('id', leadId);
+              .update({ stage: 'Contacted', activity: log }).eq('id', leadId)
+              .then(function (u) {
+                return u.error ? { moved: false, error: BDPG.errText(u.error) } : { moved: true, error: '' };
+              });
           });
       })
-      .catch(function () {});
+      .catch(function (err) { return { moved: false, error: BDPG.errText(err) }; });
   };
 
   // Returns true only if the profile was actually loaded, so callers that
