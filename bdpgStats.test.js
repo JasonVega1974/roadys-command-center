@@ -1740,3 +1740,35 @@ test('a numeric string is accepted, as a stored jsonb value can be', () => {
 test('negative gallons cannot occur but must not fall through to a good band', () => {
   assert.equal(BDPG_STATS.recommendation(-1), 'Below threshold');
 });
+
+test('values Number() would coerce, but that are not gallons, get no verdict', () => {
+  // Number() makes all of these finite: false and [] -> 0, ['17500'] -> 17500,
+  // '   ' -> 0, new Date(0) -> 0. Each would otherwise print a confident
+  // verdict on a lead card for something that is not a gallons figure.
+  assert.equal(BDPG_STATS.recommendation(true), '');
+  assert.equal(BDPG_STATS.recommendation(false), '');
+  assert.equal(BDPG_STATS.recommendation([]), '');
+  assert.equal(BDPG_STATS.recommendation([5000]), '');
+  assert.equal(BDPG_STATS.recommendation(['17500']), '');
+  assert.equal(BDPG_STATS.recommendation('   '), '');
+  assert.equal(BDPG_STATS.recommendation(new Date(0)), '');
+});
+
+test('the exported band table cannot be mutated into changing live verdicts', () => {
+  const before = BDPG_STATS.recommendation(20000);
+  assert.throws(() => { BDPG_STATS.RECOMMENDATION_BANDS.push({ min: 0, label: 'X' }); });
+  assert.throws(() => { BDPG_STATS.RECOMMENDATION_BANDS[0].min = 1; });
+  assert.equal(BDPG_STATS.recommendation(20000), before);
+});
+
+test('the band table survives a JSON round trip', () => {
+  // -Infinity would serialize to null and a re-parsed copy would stop
+  // describing the same bands.
+  const round = JSON.parse(JSON.stringify(BDPG_STATS.RECOMMENDATION_BANDS));
+  assert.deepEqual(round, [
+    { min: 17500, label: 'Strong fit' },
+    { min: 6000,  label: 'Good fit' },
+    { min: 1500,  label: 'Marginal' },
+    { min: null,  label: 'Below threshold' }
+  ]);
+});

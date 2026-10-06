@@ -1011,7 +1011,7 @@
     return out;
   }
 
-  // ── membership recommendation ─────────────────────────────────────────
+  // ── membership recommendation ───────────────────────────────────────────
   //
   // Derived from finalGallons, never entered. Every boundary is a quartile of
   // the network's own reported monthly gallons (network-locations.json,
@@ -1020,23 +1020,36 @@
   // their head; the rounding is the only judgement in the table.
   //
   // Ordered high-to-low and evaluated in order, so the bands cannot overlap
-  // or leave a gap the way a set of independent range checks can.
-  var RECOMMENDATION_BANDS = [
-    { min: 17500, label: 'Strong fit' },
-    { min: 6000,  label: 'Good fit' },
-    { min: 1500,  label: 'Marginal' },
-    { min: -Infinity, label: 'Below threshold' }
-  ];
+  // or leave a gap the way independent range checks can.
+  //
+  // Frozen: recommendation() reads this exact array on every call, so an
+  // unfrozen table would let any consumer rewrite everyone's verdicts at
+  // runtime. Extending the bands is an edit to this file, not a patch.
+  var RECOMMENDATION_BANDS = Object.freeze([
+    Object.freeze({ min: 17500, label: 'Strong fit' }),
+    Object.freeze({ min: 6000,  label: 'Good fit' }),
+    Object.freeze({ min: 1500,  label: 'Marginal' }),
+    // null, not -Infinity: this table is exported for other code to read, and
+    // JSON.stringify turns -Infinity into null anyway, so a round-tripped copy
+    // would silently stop matching. null IS the sentinel for "no lower bound".
+    Object.freeze({ min: null,  label: 'Below threshold' })
+  ]);
 
   function recommendation(finalGallons) {
     // '' means "no verdict", and it is NOT the same fact as the lowest band.
     // A profile saved before Generate ran has null gallons; calling that
     // "Below threshold" would assert a verdict the calculator never produced.
-    if (finalGallons === null || finalGallons === undefined || finalGallons === '') return '';
-    var n = Number(finalGallons);
-    if (!isFinite(n)) return '';
+    //
+    // Routed through this file's own toFinite() rather than a hand-rolled
+    // Number()/isFinite() pair. toFinite also rejects booleans, objects,
+    // arrays and whitespace-only strings -- every one of which Number()
+    // happily turns into a finite number, so [] would band as 0 and
+    // ['17500'] as "Strong fit".
+    var n = toFinite(finalGallons);
+    if (n === null) return '';
     for (var i = 0; i < RECOMMENDATION_BANDS.length; i++) {
-      if (n >= RECOMMENDATION_BANDS[i].min) return RECOMMENDATION_BANDS[i].label;
+      var b = RECOMMENDATION_BANDS[i];
+      if (b.min === null || n >= b.min) return b.label;
     }
     return '';
   }
