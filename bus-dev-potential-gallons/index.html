@@ -7107,10 +7107,17 @@ function getCentroid(pathStr, axis){
     // per-step toast would mean only the LAST failure is ever seen -- these
     // collect into one final message that names every part that didn't land.
     var problems = [];
+    // Two buckets, because they mean different things to a rep. A problem is
+    // something that did NOT land and may need a retry; a warning is a caveat
+    // about something that DID land. Styling them the same would train the
+    // rep to ignore both.
+    var warnings = [];
     var leadNote = '';
     var finishUp = function () {
       if (problems.length) {
         toast('Saved on this device. ' + problems.join(' '), 'err');
+      } else if (warnings.length) {
+        toast('Saved to Prospects — ' + BDPG.displayName() + leadNote + '. ' + warnings.join(' '));
       } else {
         toast('Saved to Prospects — ' + BDPG.displayName() + leadNote);
       }
@@ -7151,18 +7158,26 @@ function getCentroid(pathStr, axis){
       // Already linked (deep link, a previous save, or the attach search
       // box) -- nothing to create, so no lead-step problem can arise here.
       leadNote = ' · attached to lead';
-      proceedToSaveFinal(BDPG.currentLeadId).catch(function (err) {
+      // Promise.resolve().then(...) so a SYNCHRONOUS throw inside
+      // proceedToSaveFinal's prelude (draftProfile/draftSnapshot run before
+      // any promise exists) lands in the catch below instead of escaping and
+      // leaving _saving true -- a dead Save button with no message.
+      Promise.resolve().then(function () {
+        return proceedToSaveFinal(BDPG.currentLeadId);
+      }).catch(function (err) {
         problems.push('Something went wrong syncing to CRM (' + BDPG.errText(err) + ').');
         finishUp();
       });
     } else {
-      BDPG.createLeadFromProfile().then(function (res) {
+      Promise.resolve().then(function () {
+        return BDPG.createLeadFromProfile();
+      }).then(function (res) {
         if (!res.ok) {
           problems.push('No CRM lead was created (' + res.error + ').');
         } else {
           leadNote = res.attached ? ' · attached to lead' : ' · new lead created';
         }
-        if (res.scanFailed) problems.push('The duplicate-company check could not run.');
+        if (res.scanFailed) warnings.push('The duplicate-company check could not run, so this may duplicate an existing lead.');
         return proceedToSaveFinal(res.ok ? res.id : null);
       }).catch(function (err) {
         problems.push('Something went wrong syncing to CRM (' + BDPG.errText(err) + ').');
