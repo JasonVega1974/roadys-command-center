@@ -458,11 +458,15 @@ function mkchart(id,cfg){
   try{if(CHS[id])CHS[id].destroy();const c=document.getElementById(id);if(!c||typeof Chart==='undefined')return;CHS[id]=new Chart(c,cfg);}catch(e){console.warn('chart err',id,e);}
 }
 
+let toastTimer = null;
 function toast(msg,type='tok'){
   const t=document.getElementById('toast');
+  // One shared node, so a second toast within the 2.5s window must cancel the
+  // first one's timer -- otherwise the earlier timer blanks the later message.
+  if(toastTimer) clearTimeout(toastTimer);
   t.textContent=(type==='tok'?'✓ ':'⚠ ')+msg;
   t.className='toast show '+type;
-  setTimeout(()=>t.className='toast',2500);
+  toastTimer=setTimeout(()=>{ t.className='toast'; toastTimer=null; },2500);
 }
 
 const FIPS_TO_STATE = {
@@ -6117,6 +6121,19 @@ function getCentroid(pathStr, axis){
   // Two id spaces, two fields.
   BDPG.currentCloudId = null;
 
+  // Results of the last lead search, and the label of the lead the rep picked.
+  // Both are view state only -- the binding that matters is currentLeadId.
+  BDPG._leadSearchResults = [];
+  BDPG._leadLabel = '';
+  BDPG._leadSearchTimer = null;
+
+  // Re-entry guard for onSaveProfile()'s cloud half. Set the instant that
+  // async chain starts, cleared on every exit (success, saveFinal failure,
+  // and createLeadFromProfile's own failure path) -- a double-click before
+  // createLeadFromProfile() resolves would otherwise retake the create
+  // branch and insert a second crm_leads row for the same prospect.
+  BDPG._saving = false;
+
   // Returns true when a result was computed and written to state, false on
   // every bail -- so a caller other than the button (BDPG.onTrackerExport()
   // is the one that exists today, but this is the one place that protects
@@ -6892,13 +6909,99 @@ function getCentroid(pathStr, axis){
       hint = 'Generate a value profile first to store the gallons figure with it. ' +
         'Saving now records the prospect and its inputs without a number.';
     }
-    return '<div class="bdpg-box" style="margin-top:14px">' +
-      '<button class="btn btn-accent" onclick="BDPG.onSaveProfile()">📋 Save to Prospects</button>' +
+    // Lets the rep attach this save to an existing CRM lead by name/city/
+    // state search, instead of only via the ?lead= deep link or an exact
+    // normalised-name match in createLeadFromProfile()'s own duplicate check.
+    var esc = BDPG.escHtml;
+    var linkBlock;
+    if (BDPG.currentLeadId) {
+      linkBlock =
+        '<div style="font-size:.74em;margin-bottom:10px">' +
+          '<span style="color:var(--muted)">Will attach to CRM lead:</span> ' +
+          '<b>' + esc(BDPG._leadLabel || BDPG.currentLeadId) + '</b> ' +
+          '<a href="#" onclick="BDPG.onUnpickLead(); return false;" ' +
+             'style="color:var(--accent);text-decoration:underline;margin-left:6px">change</a>' +
+        '</div>';
+    } else {
+      var rows = BDPG._leadSearchResults.map(function (l) {
+        var label = l.company + (l.city || l.state ? ' (' + [l.city, l.state].filter(Boolean).join(', ') + ')' : '');
+        var args = JSON.stringify(l.id).replace(/"/g, '&quot;') + ',' +
+                   JSON.stringify(label).replace(/"/g, '&quot;');
+        return '<div onclick="BDPG.onPickLead(' + args + ')" ' +
+               'style="padding:5px 8px;cursor:pointer;border-bottom:1px solid var(--border);font-size:.76em">' +
+               esc(label) + ' <span style="color:var(--muted)">· ' + esc(l.stage || '') + '</span></div>';
+      }).join('');
+      linkBlock =
+        '<div style="margin-bottom:10px">' +
+          '<label style="font-size:.7em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">' +
+            'Attach to an existing CRM lead (optional)</label>' +
+          '<input id="bdpg-lead-search" placeholder="search company, city or state" ' +
+            'oninput="BDPG.onLeadSearchInput(this.value)" ' +
+            'style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;' +
+            'color:var(--text);padding:6px 8px;font-size:.8em;font-family:var(--fb);margin-top:4px">' +
+          (rows ? '<div style="border:1px solid var(--border);border-radius:5px;margin-top:4px;' +
+                  'max-height:150px;overflow-y:auto">' + rows + '</div>' : '') +
+          '<div style="font-size:.68em;color:var(--muted);margin-top:4px">' +
+            'Leave blank to create a new lead at Prospect.</div>' +
+        '</div>';
+    }
+    return '<div class="bdpg-box" id="bdpg-save-box" style="margin-top:14px">' +
+      linkBlock +
+      '<button class="btn btn-accent" onclick="BDPG.onSaveProfile()"' +
+        (BDPG._saving ? ' disabled' : '') + '>📋 Save to Prospects</button>' +
       '<div style="font-size:.72em;color:var(--muted);margin-top:8px">' + hint + '</div>' +
     '</div>';
   };
 
+  // Debounced so a search does not fire per keystroke. 300ms rather than the
+  // draft's 800: this is a user waiting on a list, not a background save.
+  BDPG.onLeadSearchInput = function (v) {
+    if (BDPG._leadSearchTimer) clearTimeout(BDPG._leadSearchTimer);
+    var q = (v || '').trim();
+    if (q.length < 2) { BDPG._leadSearchResults = []; BDPG.refreshSaveBox(); return; }
+    BDPG._leadSearchTimer = setTimeout(function () {
+      BDPG._leadSearchTimer = null;
+      BDPG.searchLeads(q).then(function (rows) {
+        BDPG._leadSearchResults = rows || [];
+        BDPG.refreshSaveBox();
+      });
+    }, 300);
+  };
+
+  BDPG.onPickLead = function (id, label) {
+    BDPG.currentLeadId = id;
+    BDPG._leadLabel = label || '';
+    BDPG._leadSearchResults = [];
+    BDPG.refreshSaveBox();
+  };
+
+  BDPG.onUnpickLead = function () {
+    BDPG.currentLeadId = null;
+    BDPG._leadLabel = '';
+    BDPG._leadSearchResults = [];
+    BDPG.refreshSaveBox();
+  };
+
+  // Targeted patch, never a full render: a full render would destroy the
+  // search input mid-typing and take the cursor with it.
+  BDPG.refreshSaveBox = function () {
+    var box = document.getElementById('bdpg-save-box');
+    if (!box) return;
+    var focused = document.activeElement && document.activeElement.id === 'bdpg-lead-search';
+    var caret = focused ? document.activeElement.selectionStart : null;
+    var val = focused ? document.activeElement.value : null;
+    box.outerHTML = BDPG.saveToProspectsHtml();
+    if (focused) {
+      var again = document.getElementById('bdpg-lead-search');
+      if (again) { again.value = val; again.focus(); again.setSelectionRange(caret, caret); }
+    }
+  };
+
   BDPG.onSaveProfile = function () {
+    // Re-entry guard: the cloud half below is async, and a second click
+    // before createLeadFromProfile()/saveFinal() resolves would otherwise
+    // retake the create branch and insert a second crm_leads row.
+    if (BDPG._saving) return;
     var name = BDPG.resolveProspectName() || prompt('Name this profile:');
     if (!name) return;
     // The prompt fallback above is otherwise a dead end: BDPG.displayName()
@@ -6989,13 +7092,22 @@ function getCentroid(pathStr, axis){
     // row, which is what Phase 2's CRM views read. A failure here does not
     // touch the local save above; it gets its own toast rather than being
     // swallowed, and nothing here retries on its own.
+    BDPG._saving = true;
+    BDPG.refreshSaveBox();
+    // Cleared on every exit of the async chain below -- success, the
+    // saveFinal() failure branch, and this catch -- so a rejected promise
+    // (saveFinal()/createLeadFromProfile() already catch their own errors
+    // and resolve rather than reject, but this is belt-and-suspenders)
+    // never leaves the Save button permanently disabled.
+    var doneSaving = function () { BDPG._saving = false; BDPG.refreshSaveBox(); };
     var cloudFinish = function (leadId) {
       BDPG.currentLeadId = leadId || null;
       var prof = BDPG.draftProfile(BDPG.draftSnapshot());
       prof.leadId = BDPG.currentLeadId;
-      RoadysBD.profiles.saveFinal(prof).then(function (r) {
+      return RoadysBD.profiles.saveFinal(prof).then(function (r) {
         if (!r.ok) {
           toast('Saved to Prospects, but could not sync to CRM — ' + r.error, 'err');
+          doneSaving();
           return;
         }
         // Two id spaces -- see the comment at BDPG.currentCloudId's
@@ -7003,10 +7115,11 @@ function getCentroid(pathStr, axis){
         // tracker id assigned above as BDPG.currentProfileId.
         BDPG.currentCloudId = r.profile.id;
         if (BDPG.currentLeadId) BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName());
+        doneSaving();
       });
     };
-    if (BDPG.currentLeadId) cloudFinish(BDPG.currentLeadId);
-    else BDPG.createLeadFromProfile().then(cloudFinish);
+    if (BDPG.currentLeadId) cloudFinish(BDPG.currentLeadId).catch(doneSaving);
+    else BDPG.createLeadFromProfile().then(cloudFinish).catch(doneSaving);
   };
 
   // Leads the rep can attach this profile to. Searched over company, city and
@@ -7037,9 +7150,16 @@ function getCentroid(pathStr, axis){
     var s = BDPG.state, p = s.prospect;
     var company = BDPG.displayName();
     return c.from('crm_leads').select('id,company,city,state,stage')
-      .is('deleted_at', null).limit(500)
+      .is('deleted_at', null)
+      // Ordered so the scanned set is deterministic -- without it, which rows
+      // come back under a limit is unspecified, and the same company could be
+      // caught on one save and missed on the next. Rows are five small columns,
+      // so a high limit is cheap.
+      .order('company').limit(5000)
       .then(function (r) {
         var rows = (r.error || !r.data) ? [] : r.data;
+        // A silent truncation would turn the dup check into a coin flip. Say so.
+        if (rows.length >= 5000) console.warn('[BDPG] duplicate-company scan hit the 5000-row limit; the check may be incomplete');
         var dup = rows.filter(function (x) {
           return BDPG.normCompany(x.company) === BDPG.normCompany(company);
         })[0];
