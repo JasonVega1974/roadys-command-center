@@ -286,3 +286,69 @@ test('a final profile with null gallons falls back rather than counting zero', (
   const r = RoadysBD.profiles.gallonsFor({ estGallons: 5000 }, { status: 'final', finalGallons: null });
   assert.deepEqual(r, { gallons: 5000, source: 'estimate' });
 });
+
+// ── profiles.pickFinalOverDraft ─────────────────────────────────────────
+// forLeads() widened from .eq('status','final') to .in('status', [...]) so a
+// lead whose only profile is a draft stops being invisible. A lead can hold
+// one draft AND one final at once (the two partial unique indexes in
+// sql/2026-10-05-bd-value-profiles.sql allow exactly that), so something has
+// to decide which one wins when both come back in the same query -- and it
+// must not be "whichever happened to arrive first in res.data".
+
+test('pickFinalOverDraft: only a final row for a lead', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_1', lead_id: 'CRM-1', status: 'final', final_gallons: 11153 }
+  ]);
+  assert.equal(out['CRM-1'].status, 'final');
+  assert.equal(out['CRM-1'].finalGallons, 11153);
+});
+
+test('pickFinalOverDraft: only a draft row for a lead', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_2', lead_id: 'CRM-2', status: 'draft', final_gallons: 4000 }
+  ]);
+  assert.equal(out['CRM-2'].status, 'draft');
+  assert.equal(out['CRM-2'].finalGallons, 4000);
+});
+
+test('pickFinalOverDraft: both present, final wins even when the draft arrives FIRST', () => {
+  // This is the case a naive "last one wins" / "first one wins" reduction
+  // gets wrong -- query/array order must not decide the outcome.
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_draft', lead_id: 'CRM-3', status: 'draft', final_gallons: 500 },
+    { id: 'bdp_final', lead_id: 'CRM-3', status: 'final', final_gallons: 20000 }
+  ]);
+  assert.equal(out['CRM-3'].status, 'final');
+  assert.equal(out['CRM-3'].id, 'bdp_final');
+  assert.equal(out['CRM-3'].finalGallons, 20000);
+});
+
+test('pickFinalOverDraft: both present, final still wins when it arrives first', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_final', lead_id: 'CRM-4', status: 'final', final_gallons: 20000 },
+    { id: 'bdp_draft', lead_id: 'CRM-4', status: 'draft', final_gallons: 500 }
+  ]);
+  assert.equal(out['CRM-4'].status, 'final');
+  assert.equal(out['CRM-4'].id, 'bdp_final');
+});
+
+test('pickFinalOverDraft: neither -- an empty row set yields an empty map', () => {
+  assert.deepEqual(RoadysBD.profiles.pickFinalOverDraft([]), {});
+  assert.deepEqual(RoadysBD.profiles.pickFinalOverDraft(null), {});
+});
+
+test('pickFinalOverDraft: rows with no lead_id are skipped rather than keyed under "undefined"', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_5', lead_id: null, status: 'draft', author: 'rep@example.com' }
+  ]);
+  assert.deepEqual(out, {});
+});
+
+test('pickFinalOverDraft keeps rows for different leads independent', () => {
+  const out = RoadysBD.profiles.pickFinalOverDraft([
+    { id: 'bdp_a', lead_id: 'CRM-A', status: 'draft' },
+    { id: 'bdp_b', lead_id: 'CRM-B', status: 'final' }
+  ]);
+  assert.equal(out['CRM-A'].status, 'draft');
+  assert.equal(out['CRM-B'].status, 'final');
+});

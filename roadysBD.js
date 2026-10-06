@@ -213,18 +213,41 @@
       .catch(function () { return null; });
   }
 
+  // A lead can legitimately hold one draft AND one final row at once -- see
+  // the one_final_per_lead and one_draft_per_lead partial unique indexes in
+  // sql/2026-10-05-bd-value-profiles.sql. When both are present the final
+  // must win: it is the completed work, and showing a draft badge over a
+  // finished profile would understate it. Pure and independent of row
+  // arrival order, so it is testable without a network call and without
+  // depending on query ordering to get the right answer.
+  function pickFinalOverDraft(rows) {
+    var best = {};
+    (rows || []).forEach(function (r) {
+      var lid = r && r.lead_id;
+      if (!lid) return;
+      var prev = best[lid];
+      if (!prev || (prev.status !== 'final' && r.status === 'final')) {
+        best[lid] = r;
+      }
+    });
+    var out = {};
+    Object.keys(best).forEach(function (lid) { out[lid] = fromRow(best[lid]); });
+    return out;
+  }
+
   // One round trip for a whole board rather than one per card — the Kanban
-  // can hold hundreds of leads and a request each would be unusable.
+  // can hold hundreds of leads and a request each would be unusable. Returns
+  // both drafts and finals (precedence resolved by pickFinalOverDraft) so a
+  // lead whose only profile is a draft still shows up as one.
   function forLeads(ids) {
     var t = q();
     var out = {};
     if (!t || !ids || !ids.length) return Promise.resolve(out);
-    return t.select('*').in('lead_id', ids).eq('status', 'final')
+    return t.select('*').in('lead_id', ids).in('status', STATUSES)
       .is('deleted_at', null)
       .then(function (res) {
         if (res.error || !res.data) return out;
-        res.data.forEach(function (r) { out[r.lead_id] = fromRow(r); });
-        return out;
+        return pickFinalOverDraft(res.data);
       })
       .catch(function () { return out; });
   }
@@ -447,7 +470,8 @@
     profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
                 saveDraft: saveDraft, saveFinal: saveFinal,
                 softDelete: softDelete,
-                summary: summary, gallonsFor: gallonsFor },
+                summary: summary, gallonsFor: gallonsFor,
+                pickFinalOverDraft: pickFinalOverDraft },
     testing: { mintId: mintId }
   };
   return { RoadysBD: RoadysBD };
