@@ -2350,7 +2350,44 @@ function crmBuildForm(l, defaultStage){
   h+='<div>'+lbl('Est. Deal Value ($/yr)')+fi('cmf-deal','number',l&&l.dealValue||0)+'</div>';
   h+='<div>'+lbl('Next Follow-Up')+fi('cmf-followup','date',l&&l.followUp)+'</div>';
   h+='<div style="grid-column:1/-1">'+lbl('Notes')+'<textarea id="cmf-notes" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:.85em;resize:vertical;font-family:inherit">'+crmEsc(l&&l.notes||'')+'</textarea></div>';
+  const _vp = (function(){
+    if(!l) return '';   // a brand-new lead has no id to link a profile to
+    const s = crmSummaryFor(l.id);
+    const row = (k,v)=>'<div><div style="font-size:.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">'+k+'</div>'+
+                       '<div style="font-size:.85em">'+(v||'&mdash;')+'</div></div>';
+    const open = '<button class="btn" onclick="crmOpenValueProp(\''+crmEsc(l.id)+'\')">&#8599; Open in Potential Gallons</button>';
+    if(!s.has){
+      return `
+<div id="cmf-vp-section" style="grid-column:1/-1;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+  <div style="font-weight:800;font-size:.85em;color:var(--accent);margin-bottom:10px">&#9981; Value Profile</div>
+  <div style="font-size:.8em;color:var(--muted);margin-bottom:10px">No value profile yet for this lead.</div>
+  <button class="btn btn-accent" onclick="crmOpenValueProp('${crmEsc(l.id)}')">&#43; Build value profile</button>
+</div>`;
+    }
+    return `
+<div id="cmf-vp-section" style="grid-column:1/-1;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="font-weight:800;font-size:.85em;color:var(--accent)">&#9981; Value Profile</div>
+    ${s.isDraft?'<span class="badge by">&#9998; draft — not saved to Prospects yet</span>':'<span class="badge bg">final</span>'}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:12px">
+    ${row('Projected gallons','<b style="color:var(--accent)">'+s.gallonsText+'</b> gal/mo')}
+    ${row('Recommendation',crmEsc(s.recommendation))}
+    ${row('Discount Pricing Strategy',crmEsc(s.pricingText))}
+    ${row('Trucker Path',crmEsc(s.truckerPath))}
+    ${row('Amenities',crmEsc(s.amenityLevel))}
+    ${row('Region',crmEsc(s.region))}
+    ${row('Location profile',crmEsc(s.profileType))}
+    ${row('Saved',crmEsc(s.savedAt))}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    ${open}
+    <button class="btn btn-accent" onclick="crmOpenValueProp('${crmEsc(l.id)}')">&#9998; Update profile</button>
+  </div>
+</div>`;
+  })();
   h+=_sched;
+  h+=_vp;
   h+='</div>';
   if(l){
     h+='<div style="margin-bottom:14px">';
