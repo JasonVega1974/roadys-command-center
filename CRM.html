@@ -851,9 +851,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
       <div class="sec-hdr"><div class="sec-title">CRM — BUSINESS DEVELOPMENT</div><span class="badge ba" id="crm-badge">Pipeline Command</span>
         <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
           <a class="btn" href="https://jasonvega1974.github.io/roadys-command-center/value-props.html" target="_blank" rel="noopener">Value Props</a>
-          <select id="crm-whoami" onchange="crmSetWhoAmI(this.value)" title="Who's logged in — stamps activity log entries and notes" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:.8em;font-weight:600;cursor:pointer">
-            <option value="">👤 Who are you?</option>
-          </select>
+          <span id="crm-session-identity" title="Signed in as — stamps activity log entries and notes" style="color:var(--muted);font-size:.8em;font-weight:600"></span>
           <button class="btn" onclick="bdSignOut()" title="Sign out">Sign out</button>
           <button class="btn" onclick="toggleTheme(!document.body.classList.contains('day-mode'))" title="Toggle Day/Night Mode">🌓</button>
         </span>
@@ -1144,24 +1142,12 @@ function sbHideSyncing(ok){
 function crmEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function crmToday(){ return new Date().toISOString().slice(0,10); }
 
-// ── Identity picker: which owner is using this browser right now ──
-// Persisted per-browser (not a real login) so activity-log entries and notes
-// can say who actually did something instead of a hardcoded 'You' — useful
-// with two owners sharing the same CRM.
-const CRM_WHOAMI_KEY='roadys_crm_whoami';
+// The session email -- the identity that was actually proven. This used to
+// read a "who are you?" dropdown out of localStorage: a second, merely
+// claimed identity that could disagree with the signed-in user and still be
+// what the audit trail recorded.
 function crmWhoAmI(){
-  try{ return localStorage.getItem(CRM_WHOAMI_KEY) || 'Unassigned'; }catch(e){ return 'Unassigned'; }
-}
-function crmSetWhoAmI(name){
-  try{ localStorage.setItem(CRM_WHOAMI_KEY, name||''); }catch(e){}
-  const sel=document.getElementById('crm-whoami'); if(sel) sel.value=name||'';
-  if(name) toast('Signed in as '+name);
-}
-function crmInitWhoAmI(){
-  const sel=document.getElementById('crm-whoami'); if(!sel) return;
-  sel.innerHTML='<option value="">👤 Who are you?</option>'+CRM_OWNERS.map(o=>'<option value="'+crmEsc(o)+'">'+crmEsc(o)+'</option>').join('');
-  let saved=''; try{ saved=localStorage.getItem(CRM_WHOAMI_KEY)||''; }catch(e){}
-  sel.value=saved;
+  try{ return RoadysBD.auth.email() || 'Unknown'; }catch(e){ return 'Unknown'; }
 }
 
 const CRM_STAGES   = ['Prospect','Qualified','Contacted','Meeting Scheduled','Proposal Sent','Negotiation','Closed Won','Closed Lost','Not Qualified'];
@@ -2555,7 +2541,11 @@ function crmRenderTmplPreview(leadId){
   const t=CRM_TEMPLATES.find(x=>x.id===sel.value);
   const l=CRM_LEADS.find(x=>x.id===leadId);
   if(!t||!l){ prev.innerHTML=''; return; }
-  const vars={contact:l.contact||'',company:l.company||'',owner:l.owner||crmWhoAmI(),state:l.state||'',locations:l.locations||''};
+  // No crmWhoAmI() fallback here: {{owner}} lands in the subject and body of
+  // an email the prospect receives, and an address is not a signature. An
+  // unowned lead renders {{owner}} blank, which is visible in the preview
+  // before sending, so the rep can assign an owner instead.
+  const vars={contact:l.contact||'',company:l.company||'',owner:l.owner||'',state:l.state||'',locations:l.locations||''};
   const mrg=s=>(s||'').replace(/\{\{(\w+)\}\}/g,(_,k)=>vars[k]||'');
   prev.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+crmEsc(mrg(t.subject))+'</div>'+
     '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;color:var(--muted)">'+crmEsc(mrg(t.body))+'</pre>';
@@ -3755,7 +3745,8 @@ function crmDeepLink(){
 // then pull fresh from Supabase and re-render, then honor the deep link.
 function crmInit(){
   const root=document.getElementById('crm-root'); if(root) root.style.display='';
-  crmInitWhoAmI();
+  const idEl=document.getElementById('crm-session-identity');
+  if(idEl) idEl.textContent=crmWhoAmI();
   crmNotesLoadLocal();   // populate CRM_NOTES from cache before the first Kanban render so note-count badges aren't blank
   pgCRM();
   crmCallsLoadLocal(); renderCRMNotifications();
