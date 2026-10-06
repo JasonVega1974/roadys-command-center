@@ -3204,7 +3204,13 @@ function renderCRMNotes(){
   }
   const of=document.getElementById('crm-notes-filter-owner');
   if(of && !of.dataset.filled){
-    of.innerHTML='<option value="all">All Owners</option>'+CRM_OWNERS.map(o=>'<option value="'+crmEsc(o)+'">'+crmEsc(o)+'</option>').join('');
+    // Populated from the owner values actually present in CRM_NOTES, not
+    // CRM_OWNERS: crmWhoAmI() now writes the signed-in session email as
+    // n.owner, which can never equal a CRM_OWNERS display name. Mirrors the
+    // State filter immediately above so legacy display names and new emails
+    // both show up without rewriting any stored note.
+    const owners=[...new Set(CRM_NOTES.map(n=>(n.owner||'').trim()).filter(Boolean))].sort();
+    of.innerHTML='<option value="all">All Owners</option>'+owners.map(o=>'<option value="'+crmEsc(o)+'">'+crmEsc(o)+'</option>').join('');
     of.dataset.filled='1';
   }
   renderCRMNotesArchive();
