@@ -6980,6 +6980,127 @@ function getCentroid(pathStr, axis){
     // After the render, so step2Html()'s pricingLevel/amenityLevel defaults
     // are already settled and the baseline matches what is now on screen.
     BDPG.savedSig = BDPG.stateSig();
+
+    // ── CRM lead link + cloud profile (Task 7) ────────────────────────────
+    // Everything above is unconditional and already done -- this page's own
+    // Prospects tab never depends on the network or on Supabase being up.
+    // What follows is a second, independent write: attach (or create) a CRM
+    // lead and store this same profile in bd_value_profiles as a 'final'
+    // row, which is what Phase 2's CRM views read. A failure here does not
+    // touch the local save above; it gets its own toast rather than being
+    // swallowed, and nothing here retries on its own.
+    var cloudFinish = function (leadId) {
+      BDPG.currentLeadId = leadId || null;
+      var prof = BDPG.draftProfile(BDPG.draftSnapshot());
+      prof.leadId = BDPG.currentLeadId;
+      RoadysBD.profiles.saveFinal(prof).then(function (r) {
+        if (!r.ok) {
+          toast('Saved to Prospects, but could not sync to CRM — ' + r.error, 'err');
+          return;
+        }
+        // Two id spaces -- see the comment at BDPG.currentCloudId's
+        // declaration. This is the bd_value_profiles row id, never the local
+        // tracker id assigned above as BDPG.currentProfileId.
+        BDPG.currentCloudId = r.profile.id;
+        if (BDPG.currentLeadId) BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName());
+      });
+    };
+    if (BDPG.currentLeadId) cloudFinish(BDPG.currentLeadId);
+    else BDPG.createLeadFromProfile().then(cloudFinish);
+  };
+
+  // Leads the rep can attach this profile to. Searched over company, city and
+  // state — the three things they will actually have in front of them.
+  BDPG.searchLeads = function (q) {
+    var c = RoadysBD.auth.client();
+    if (!c || !q) return Promise.resolve([]);
+    var like = '%' + q.replace(/[%_]/g, '') + '%';
+    return c.from('crm_leads').select('id,company,city,state,stage')
+      .is('deleted_at', null)
+      .or('company.ilike.' + like + ',city.ilike.' + like + ',state.ilike.' + like)
+      .limit(10)
+      .then(function (r) { return (r.error || !r.data) ? [] : r.data; })
+      .catch(function () { return []; });
+  };
+
+  // Creates a lead at Prospect, seeded from the profile. Reuses the CRM's own
+  // normalisation so the duplicate check below matches what CRM.html would
+  // have matched -- a company already in the pipeline must warn, not silently
+  // become a second card.
+  BDPG.normCompany = function (s) {
+    return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  };
+
+  BDPG.createLeadFromProfile = function () {
+    var c = RoadysBD.auth.client();
+    if (!c) return Promise.resolve(null);
+    var s = BDPG.state, p = s.prospect;
+    var company = BDPG.displayName();
+    return c.from('crm_leads').select('id,company,city,state,stage')
+      .is('deleted_at', null).limit(500)
+      .then(function (r) {
+        var rows = (r.error || !r.data) ? [] : r.data;
+        var dup = rows.filter(function (x) {
+          return BDPG.normCompany(x.company) === BDPG.normCompany(company);
+        })[0];
+        if (dup) {
+          var ok = confirm('A lead for "' + dup.company + '" already exists (' +
+            (dup.state || 'no state listed') + ' · ' + dup.stage + ').\n\n' +
+            'OK — attach this profile to that lead.\n' +
+            'Cancel — create a second lead anyway.');
+          if (ok) return dup.id;
+        }
+        var id = 'CRM-' + String(Date.now()).slice(-6);
+        var row = {
+          id: id, company: company,
+          contact: '', phone: '', email: '',
+          street: p.street || '', city: p.city || '', state: s.state || '',
+          zip: '', exit: '', lanes: '',
+          stage: 'Prospect', priority: 'Medium',
+          owner: RoadysBD.auth.email() || '', source: 'Market Research',
+          locations: 1, est_gallons: 0, deal_value: 0,
+          follow_up: '', notes: p.notes || '',
+          activity: [{ text: 'Lead created from a value profile',
+                       date: new Date().toISOString().slice(0, 10),
+                       by: RoadysBD.auth.email() || '', type: 'note' }],
+          updated_at: new Date().toISOString()
+        };
+        return c.from('crm_leads').insert(row).then(function (ins) {
+          return ins.error ? null : id;
+        });
+      })
+      .catch(function () { return null; });
+  };
+
+  // Spec §0.1: "Contacted" means we reached out, and a value profile is often
+  // pre-contact research -- so this ASKS and never moves a lead silently. Only
+  // Prospect and Qualified are offered; a lead already at Meeting Scheduled or
+  // later is never prompted and never moved.
+  BDPG.MOVEABLE_STAGES = ['Prospect', 'Qualified'];
+
+  BDPG.maybePromptStage = function (leadId, company) {
+    var c = RoadysBD.auth.client();
+    if (!c || !leadId) return Promise.resolve();
+    return c.from('crm_leads').select('stage').eq('id', leadId).limit(1)
+      .then(function (r) {
+        if (r.error || !r.data || !r.data.length) return;
+        var stage = r.data[0].stage;
+        if (BDPG.MOVEABLE_STAGES.indexOf(stage) === -1) return;
+        if (!confirm('Saved value profile for ' + company + '.\n\n' +
+                     'This lead is at ' + stage + '. Move it to Contacted?')) return;
+        var act = { text: 'Moved from ' + stage + ' to Contacted',
+                    date: new Date().toISOString().slice(0, 10),
+                    by: RoadysBD.auth.email() || '', type: 'stage' };
+        return c.from('crm_leads').select('activity').eq('id', leadId).limit(1)
+          .then(function (a) {
+            var log = (!a.error && a.data && a.data.length && Array.isArray(a.data[0].activity))
+              ? a.data[0].activity : [];
+            log.push(act);
+            return c.from('crm_leads')
+              .update({ stage: 'Contacted', activity: log }).eq('id', leadId);
+          });
+      })
+      .catch(function () {});
   };
 
   // Returns true only if the profile was actually loaded, so callers that
