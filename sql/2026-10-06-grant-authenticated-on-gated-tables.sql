@@ -87,8 +87,11 @@ BEGIN
   FOR s IN
     SELECT DISTINCT seq.relname AS seqname
       FROM pg_class seq
-      JOIN pg_depend d  ON d.objid = seq.oid AND d.classid = 'pg_class'::regclass
-      JOIN pg_class tab ON tab.oid = d.refobjid
+      JOIN pg_depend d  ON d.objid = seq.oid
+                       AND d.classid    = 'pg_class'::regclass
+                       AND d.refclassid = 'pg_class'::regclass
+                       AND d.deptype    = 'a'   -- the sequence a serial column owns
+      JOIN pg_class tab ON tab.oid = d.refobjid AND tab.relkind = 'r'
       JOIN pg_namespace n ON n.oid = tab.relnamespace
      WHERE seq.relkind = 'S'
        AND n.nspname = 'public'
