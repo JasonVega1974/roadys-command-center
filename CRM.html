@@ -2276,7 +2276,7 @@ function renderCRMTable(){
       '<td style="text-align:right;font-size:.82em;color:'+(vp.has?'var(--accent)':'var(--muted)')+'">'+vp.gallonsText+'</td>'+
       '<td style="font-size:.8em">'+(vp.recommendation?crmEsc(vp.recommendation):'&mdash;')+'</td>'+
       '<td style="font-size:.78em">'+(vp.statusText==='draft'?'<span style="color:var(--yellow)">draft</span>':(vp.statusText==='final'?'<span style="color:var(--green)">final</span>':'&mdash;'))+'</td>'+
-      '<td style="font-size:.78em;color:var(--muted)">'+(vp.savedAt||'&mdash;')+'</td>'+
+      '<td style="font-size:.78em;color:var(--muted)">'+(vp.savedAt?crmEsc(vp.savedAt):'&mdash;')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn" style="font-size:.7em;padding:3px 8px" onclick="crmOpenLeadModal(\''+crmEsc(l.id)+'\')">&#9998;</button> '+
         '<button class="btn" style="font-size:.7em;padding:3px 8px;color:var(--red)" onclick="crmDeleteLead(\''+crmEsc(l.id)+'\')">&#128465;</button>'+

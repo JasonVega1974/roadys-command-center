@@ -261,6 +261,31 @@ test('pricing of exactly zero renders as 0.0%, not as missing', () => {
   assert.equal(s.pricingText, '0.0%');
 });
 
+test('a negative pricing level keeps its minus sign instead of a stray plus', () => {
+  // toFixed() already carries the minus sign for a negative number; the '>0'
+  // guard (not '>=0') must not also try to prepend one.
+  const s = RoadysBD.profiles.summary({ status: 'final', inputs: { pricingLevel: -0.025 } });
+  assert.equal(s.pricingPct, -0.025);
+  assert.equal(s.pricingText, '-2.5%');
+});
+
+test('truckerPathRating arriving as a string (round-tripped through jsonb) renders the same as a number', () => {
+  const s = RoadysBD.profiles.summary({ status: 'final', inputs: { truckerPathRating: '4.5' } });
+  assert.equal(s.truckerPath, '4.5');
+});
+
+test('profileType renders the roadway alone when there is no profile name', () => {
+  // (prof && road) required BOTH; a row with only a roadway used to render
+  // '' instead of the roadway it does have.
+  const s = RoadysBD.profiles.summary({ status: 'final', roadway: 'Interstate' });
+  assert.equal(s.profileType, 'Interstate');
+});
+
+test('profileType renders the profile alone when there is no roadway', () => {
+  const s = RoadysBD.profiles.summary({ status: 'final', profile: 'Medium truck stop' });
+  assert.equal(s.profileType, 'Medium truck stop');
+});
+
 test('summary survives a hand-edited row without leaking junk into the DOM', () => {
   const s = RoadysBD.profiles.summary({
     status: 'nonsense', finalGallons: 'lots', region: { x: 1 },

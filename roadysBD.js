@@ -393,7 +393,11 @@
   // stops that repeating.
 
   function fmtInt(n) {
-    return Math.round(n).toLocaleString();
+    // Pinned to 'en-US': unpinned, this figure (and the gallonsText tests
+    // that assert its exact punctuation) would change with the viewer's
+    // browser locale, matching the pin busDevGallonsCalculator.js:87 already
+    // uses.
+    return Math.round(n).toLocaleString('en-US');
   }
 
   // Always returns an object, never null. The CRM renders this directly into
@@ -421,7 +425,11 @@
     out.region = str(p.region);
 
     var prof = str(p.profile), road = str(p.roadway);
-    out.profileType = (prof && road) ? (prof + ' · ' + road) : (prof || '');
+    // Join whichever parts exist rather than requiring both: a row with a
+    // roadway but no profile (or vice versa) must still render that one
+    // part instead of going blank.
+    var parts = [prof, road].filter(function (x) { return !!x; });
+    out.profileType = parts.join(' · ');
 
     var i = obj(p.inputs);
     // num(), not truthiness: 0 is the default pricing posture and the most
