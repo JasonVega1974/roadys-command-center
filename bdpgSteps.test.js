@@ -24,22 +24,26 @@ const k = (res, key) => BDPG_STEPS.byKey(res, key);
 
 // ── zones ───────────────────────────────────────────────────────────────
 
-test('splits into an unnumbered top pair and four numbered steps', () => {
+test('splits into the unnumbered region panel and five numbered steps', () => {
   const r = BDPG_STEPS.rows(input());
-  assert.deepEqual(r.top.map(e => e.key), ['region', 'rating']);
-  assert.deepEqual(r.steps.map(e => e.key), ['amenities', 'restroom', 'rewards', 'pricing']);
+  assert.equal(r.region.key, 'region');
+  assert.deepEqual(r.steps.map(e => e.key),
+    ['rating', 'amenities', 'restroom', 'rewards', 'pricing']);
 });
 
-test('the top pair is unnumbered and the steps run 1-4 in order', () => {
+test('region is unnumbered and the steps run 1-5 in order', () => {
+  // The map IS the region input; a number chip on the panel heading would
+  // read as a step to work through rather than a place to click.
   const r = BDPG_STEPS.rows(input());
-  assert.deepEqual(r.top.map(e => e.n), [null, null]);
-  assert.deepEqual(r.steps.map(e => e.n), [1, 2, 3, 4]);
+  assert.equal(r.region.n, null);
+  assert.deepEqual(r.steps.map(e => e.n), [1, 2, 3, 4, 5]);
 });
 
 test('titles are the six agreed names in the agreed places', () => {
   const r = BDPG_STEPS.rows(input());
-  assert.deepEqual(r.top.map(e => e.title), ['Region', 'Trucker Path Rating']);
+  assert.equal(r.region.title, 'Region');
   assert.deepEqual(r.steps.map(e => e.title), [
+    'Trucker Path Rating',
     'Amenities',
     'Restroom / Shower Condition',
     "Roady's Rewards Participation",
@@ -47,7 +51,7 @@ test('titles are the six agreed names in the agreed places', () => {
   ]);
 });
 
-test('every entry in both zones carries the full field set, never undefined', () => {
+test('every entry in both panels carries the full field set, never undefined', () => {
   // These render straight into markup; an undefined would print the literal
   // string "undefined" into a customer-facing sheet.
   BDPG_STEPS.all(BDPG_STEPS.rows(input())).forEach(e => {
@@ -60,17 +64,17 @@ test('every entry in both zones carries the full field set, never undefined', ()
 
 // ── lookup by key ───────────────────────────────────────────────────────
 
-test('all() returns both zones in display order', () => {
+test('all() returns both panels in display order', () => {
   assert.deepEqual(BDPG_STEPS.all(BDPG_STEPS.rows(input())).map(e => e.key),
     ['region', 'rating', 'amenities', 'restroom', 'rewards', 'pricing']);
 });
 
-test('byKey finds entries in either zone, and null for an unknown key', () => {
-  // The page patches one badge mid-drag by key: 'rating' lives in the top
-  // zone and 'pricing' in the numbered steps, and the caller should not have
-  // to know which.
+test('byKey finds entries in either panel, and null for an unknown key', () => {
+  // The page patches one badge mid-drag by key: 'region' lives in the left
+  // panel and 'pricing' in the right one, and the caller should not have to
+  // know which.
   const r = BDPG_STEPS.rows(input());
-  assert.equal(k(r, 'rating').title, 'Trucker Path Rating');
+  assert.equal(k(r, 'region').title, 'Region');
   assert.equal(k(r, 'pricing').title, 'Discount Pricing Strategy');
   assert.equal(k(r, 'nope'), null);
 });
@@ -129,8 +133,8 @@ test('a junk percentage degrades to a dash instead of printing NaN', () => {
 
 test('rows() survives being called with nothing at all', () => {
   const r = BDPG_STEPS.rows();
-  assert.equal(r.top.length, 2);
-  assert.equal(r.steps.length, 4);
+  assert.equal(r.region.key, 'region');
+  assert.equal(r.steps.length, 5);
   assert.equal(k(r, 'region').valueText, '—');
 });
 
