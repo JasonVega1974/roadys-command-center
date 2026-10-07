@@ -1251,6 +1251,7 @@ async function crmGcalConnect(){
       return;
     }
     crmGcalAccessToken=token; crmGcalAccountEmail=granted;
+    crmGcalLoadedKey='';
     toast('Google Calendar connected','tok');
     crmGcalRenderStatus(); renderCRMCalendar();
   }catch(e){ toast(e.message||'Google sign-in failed','terr'); }
@@ -1258,6 +1259,7 @@ async function crmGcalConnect(){
 
 function crmGcalDisconnect(){
   crmGcalAccessToken=''; crmGcalAccountEmail='';
+  CRM_GCAL_EVENTS=[]; crmGcalLoadedKey='';
   crmGcalRenderStatus(); renderCRMCalendar();
   toast('Google Calendar disconnected','tok');
 }
@@ -1314,6 +1316,11 @@ let crmSelectedTemplate = null;
 let CRM_GCAL_EVENTS = [];
 let crmGcalMonthPending = false;
 let crmGcalLoadSeq = 0;
+// Which month CRM_GCAL_EVENTS currently holds, as 'YYYY-M'. The in-flight
+// flag alone cannot bound the loader: it is cleared before the re-render, so
+// the re-render passes the guard and starts another fetch, forever. Keying on
+// the month means a given view costs at most one fetch.
+let crmGcalLoadedKey = '';
 
 async function crmGcalLoadMonth(){
   if(!crmGcalConnected()){ CRM_GCAL_EVENTS=[]; return; }
@@ -3030,9 +3037,21 @@ function renderCRMCalendar(){
       '<span style="font-size:.65em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;padding:2px 8px;border-radius:10px;white-space:nowrap">'+l.stage+'</span></div>';
   }).join(''):'<div style="color:var(--muted);font-size:.78em;padding:8px">No upcoming follow-ups in the next 30 days.</div>';
   crmGcalRenderStatus();
-  if(crmGcalConnected() && !crmGcalMonthPending){
-    crmGcalMonthPending=true;
-    crmGcalLoadMonth().then(()=>{ crmGcalMonthPending=false; renderCRMCalendar(); });
+  if(crmGcalConnected() && !crmGcalMonthPending && crmGcalLoadedKey !== crmCalYear+'-'+crmCalMonth){
+    const wantKey = crmCalYear+'-'+crmCalMonth;
+    crmGcalMonthPending = true;
+    crmGcalLoadMonth().then(()=>{
+      // Set on BOTH the success and failure paths: one month view costs one
+      // attempt. Marking only on success would retry a failing month forever,
+      // which is the same loop in a different disguise.
+      //
+      // The key captured at dispatch, not the current one — if the user has
+      // navigated away meanwhile, this marks the month that was actually
+      // fetched, leaving the new month to fetch on its own.
+      crmGcalLoadedKey = wantKey;
+      crmGcalMonthPending = false;
+      renderCRMCalendar();
+    });
   }
 }
 
