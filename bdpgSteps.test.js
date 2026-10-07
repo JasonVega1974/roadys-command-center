@@ -6,12 +6,9 @@ const assert = require('node:assert/strict');
 const { BDPG_STEPS } = require('./bdpgSteps.js');
 const { BusDevGallonsCalc } = require('./busDevGallonsCalculator.js');
 
-// A fully-populated input, so each test can vary one field. Every one of the
-// six adjustment steps carries a DISTINCT value (and restroomPct is the
-// opposite sign of amenityLevelPct) so that a swap of any two fields -- e.g.
-// rows 4 and 5 trading places -- changes both the values and their rendered
-// signs, rather than silently passing because two steps happened to share
-// a number.
+// A fully-populated input with SIX DISTINCT values, so no two adjustments
+// share a figure. Equal values would let a test pass even if two entries had
+// their fields swapped, because the assertions would be indistinguishable.
 function input(over) {
   return Object.assign({
     regionPct: -0.042,
@@ -23,31 +20,26 @@ function input(over) {
   }, over || {});
 }
 
-function byN(rows, n) { return rows.filter(r => r.n === n)[0]; }
+const k = (res, key) => BDPG_STEPS.byKey(res, key);
 
-// ── shape ───────────────────────────────────────────────────────────────
+// ── zones ───────────────────────────────────────────────────────────────
 
-test('returns exactly six rows, numbered 1-6 in order', () => {
-  const rows = BDPG_STEPS.rows(input());
-  assert.equal(rows.length, 6);
-  assert.deepEqual(rows.map(r => r.n), [1, 2, 3, 4, 5, 6]);
+test('splits into an unnumbered top pair and four numbered steps', () => {
+  const r = BDPG_STEPS.rows(input());
+  assert.deepEqual(r.top.map(e => e.key), ['region', 'rating']);
+  assert.deepEqual(r.steps.map(e => e.key), ['amenities', 'restroom', 'rewards', 'pricing']);
 });
 
-test('every row carries the full field set, never undefined', () => {
-  // The HTML renders these straight into markup; an undefined would print
-  // the literal string "undefined" into a customer-facing sheet.
-  BDPG_STEPS.rows(input()).forEach(r => {
-    assert.equal(typeof r.title, 'string');
-    assert.equal(typeof r.subtitle, 'string');
-    assert.equal(typeof r.valueText, 'string');
-    assert.ok(['pct', 'none'].indexOf(r.valueKind) !== -1);
-  });
+test('the top pair is unnumbered and the steps run 1-4 in order', () => {
+  const r = BDPG_STEPS.rows(input());
+  assert.deepEqual(r.top.map(e => e.n), [null, null]);
+  assert.deepEqual(r.steps.map(e => e.n), [1, 2, 3, 4]);
 });
 
-test('titles are the six agreed step names in the agreed order', () => {
-  assert.deepEqual(BDPG_STEPS.rows(input()).map(r => r.title), [
-    'Region',
-    'Trucker Path Rating',
+test('titles are the six agreed names in the agreed places', () => {
+  const r = BDPG_STEPS.rows(input());
+  assert.deepEqual(r.top.map(e => e.title), ['Region', 'Trucker Path Rating']);
+  assert.deepEqual(r.steps.map(e => e.title), [
     'Amenities',
     'Restroom / Shower Condition',
     "Roady's Rewards Participation",
@@ -55,84 +47,105 @@ test('titles are the six agreed step names in the agreed order', () => {
   ]);
 });
 
-// ── every step is a signed percentage ───────────────────────────────────────
-
-test('each adjustment step reads its own input', () => {
-  // Every value here is distinct across steps 2-7 -- see the comment on
-  // input() -- so this also catches two fields being swapped with each
-  // other, not just a field being misread as a constant.
-  const rows = BDPG_STEPS.rows(input());
-  assert.equal(byN(rows, 1).value, -0.042);
-  assert.equal(byN(rows, 2).value, 0.01);
-  assert.equal(byN(rows, 3).value, 0.02);
-  assert.equal(byN(rows, 4).value, -0.02);
-  assert.equal(byN(rows, 5).value, 0.015);
-  assert.equal(byN(rows, 6).value, 0.06);
+test('every entry in both zones carries the full field set, never undefined', () => {
+  // These render straight into markup; an undefined would print the literal
+  // string "undefined" into a customer-facing sheet.
+  BDPG_STEPS.all(BDPG_STEPS.rows(input())).forEach(e => {
+    assert.equal(typeof e.key, 'string');
+    assert.equal(typeof e.title, 'string');
+    assert.equal(typeof e.valueText, 'string');
+    assert.ok(['pct', 'none'].indexOf(e.valueKind) !== -1);
+  });
 });
 
+// ── lookup by key ───────────────────────────────────────────────────────
+
+test('all() returns both zones in display order', () => {
+  assert.deepEqual(BDPG_STEPS.all(BDPG_STEPS.rows(input())).map(e => e.key),
+    ['region', 'rating', 'amenities', 'restroom', 'rewards', 'pricing']);
+});
+
+test('byKey finds entries in either zone, and null for an unknown key', () => {
+  // The page patches one badge mid-drag by key: 'rating' lives in the top
+  // zone and 'pricing' in the numbered steps, and the caller should not have
+  // to know which.
+  const r = BDPG_STEPS.rows(input());
+  assert.equal(k(r, 'rating').title, 'Trucker Path Rating');
+  assert.equal(k(r, 'pricing').title, 'Discount Pricing Strategy');
+  assert.equal(k(r, 'nope'), null);
+});
+
+// ── each entry reads its own input ──────────────────────────────────────
+
+test('each adjustment reads its own input and no other', () => {
+  const r = BDPG_STEPS.rows(input());
+  assert.equal(k(r, 'region').value, -0.042);
+  assert.equal(k(r, 'rating').value, 0.01);
+  assert.equal(k(r, 'amenities').value, 0.02);
+  assert.equal(k(r, 'restroom').value, -0.02);
+  assert.equal(k(r, 'rewards').value, 0.015);
+  assert.equal(k(r, 'pricing').value, 0.06);
+});
+
+// ── formatting ──────────────────────────────────────────────────────────
+
 test('positive percentages carry a plus and one decimal', () => {
-  assert.equal(byN(BDPG_STEPS.rows(input()), 2).valueText, '+1.0%');
+  assert.equal(k(BDPG_STEPS.rows(input()), 'rating').valueText, '+1.0%');
 });
 
 test('negative percentages carry a minus sign', () => {
-  assert.equal(byN(BDPG_STEPS.rows(input()), 1).valueText, '−4.2%');
+  assert.equal(k(BDPG_STEPS.rows(input()), 'region').valueText, '−4.2%');
 });
 
 test('zero renders as 0.0% with no sign', () => {
   // A "+" on zero asserts an increase that is not there, and zero is the
-  // resting value of four of these six steps.
-  const r = byN(BDPG_STEPS.rows(input({ rewardsPct: 0 })), 5);
-  assert.equal(r.value, 0);
-  assert.equal(r.valueText, '0.0%');
-  assert.equal(r.valueKind, 'pct');
+  // resting value of four of these six adjustments.
+  const e = k(BDPG_STEPS.rows(input({ rewardsPct: 0 })), 'rewards');
+  assert.equal(e.value, 0);
+  assert.equal(e.valueText, '0.0%');
+  assert.equal(e.valueKind, 'pct');
 });
 
 test('a near-zero percentage that rounds to 0.0 prints unsigned, either direction', () => {
-  // The sign has to come from the ROUNDED magnitude, not the raw value.
-  // -0.0004 (i.e. -0.04%) rounds to "0.0" at one decimal -- a "−0.0%" would
-  // assert a decrease that doesn't show up in the printed figure, same as
-  // the exact-zero case above but from the negative side. regionPct is
-  // admin-editable, so this is reachable, not just a theoretical rounding
-  // edge.
-  const neg = byN(BDPG_STEPS.rows(input({ regionPct: -0.0004 })), 1);
-  assert.equal(neg.valueText, '0.0%');
-
-  const pos = byN(BDPG_STEPS.rows(input({ regionPct: 0.0003 })), 1);
-  assert.equal(pos.valueText, '0.0%');
+  // The sign comes from the ROUNDED magnitude. A signed "0.0%" would assert
+  // a direction the displayed figure does not show.
+  assert.equal(k(BDPG_STEPS.rows(input({ regionPct: -0.0004 })), 'region').valueText, '0.0%');
+  assert.equal(k(BDPG_STEPS.rows(input({ regionPct: 0.0003 })), 'region').valueText, '0.0%');
 });
 
 test('no state entered shows a dash rather than 0.0%', () => {
   // 0.0% would assert that the region was looked up and found neutral.
-  const r = byN(BDPG_STEPS.rows(input({ regionPct: null })), 1);
-  assert.equal(r.value, null);
-  assert.equal(r.valueText, '—');
-  assert.equal(r.valueKind, 'none');
+  const e = k(BDPG_STEPS.rows(input({ regionPct: null })), 'region');
+  assert.equal(e.value, null);
+  assert.equal(e.valueText, '—');
+  assert.equal(e.valueKind, 'none');
 });
 
 test('a junk percentage degrades to a dash instead of printing NaN', () => {
-  const r = byN(BDPG_STEPS.rows(input({ reviewPct: 'lots' })), 2);
-  assert.equal(r.value, null);
-  assert.equal(r.valueText, '—');
+  const e = k(BDPG_STEPS.rows(input({ reviewPct: 'lots' })), 'rating');
+  assert.equal(e.value, null);
+  assert.equal(e.valueText, '—');
 });
 
 test('rows() survives being called with nothing at all', () => {
-  const rows = BDPG_STEPS.rows();
-  assert.equal(rows.length, 6);
-  assert.equal(byN(rows, 1).valueText, '—');
+  const r = BDPG_STEPS.rows();
+  assert.equal(r.top.length, 2);
+  assert.equal(r.steps.length, 4);
+  assert.equal(k(r, 'region').valueText, '—');
 });
 
-// ── the invariant that ties steps 3 and 4 to the formula ────────────────
+// ── the invariant that ties two of the steps to the formula ─────────────
 
-test('steps 3 and 4 sum to the formula\'s single combined amenity term, and map to the right fields', () => {
-  // The formula has ONE amenity term; the step flow shows it as two rows
-  // because they are two separate inputs. This pins the two surfaces to each
-  // other rather than to a hand-computed constant: if either helper ever
-  // changes, this fails rather than the UI quietly disagreeing with the math.
+test('amenities and restroom sum to the formula\'s single combined amenity term, and map to the right fields', () => {
+  // The formula has ONE amenity term; the flow shows it as two rows because
+  // they are two separate inputs. This pins the two surfaces to each other
+  // rather than to a hand-computed constant: if either helper ever changes,
+  // this fails rather than the UI quietly disagreeing with the math.
   //
   // The two levels below resolve to DIFFERENT adjustments (-0.05 vs +0.02),
-  // deliberately: a same-valued fixture would pass this test even if rows 3
-  // and 4 had their fields swapped, because the sum is commutative. Asserting
-  // each row individually, not just the sum, is what catches a swap.
+  // deliberately: a same-valued fixture would pass even if the two entries
+  // had their fields swapped, because the sum is commutative. Asserting each
+  // entry individually, not just the sum, is what catches a swap.
   const amenityLevel = 'Very limited';
   const restroomLevel = 'Clean / updated';
 
@@ -151,15 +164,15 @@ test('steps 3 and 4 sum to the formula\'s single combined amenity term, and map 
   });
   assert.ok(e, 'expected a real estimate for this profile/roadway pair');
 
-  const rows = BDPG_STEPS.rows(input({
+  const r = BDPG_STEPS.rows(input({
     amenityLevelPct: amenityAdj,
     restroomPct: restroomAdj
   }));
 
-  assert.equal(byN(rows, 3).value, amenityAdj);
-  assert.equal(byN(rows, 4).value, restroomAdj);
+  assert.equal(k(r, 'amenities').value, amenityAdj);
+  assert.equal(k(r, 'restroom').value, restroomAdj);
 
-  const sum = byN(rows, 3).value + byN(rows, 4).value;
+  const sum = k(r, 'amenities').value + k(r, 'restroom').value;
   assert.ok(Math.abs(sum - e.amenityPct) < 1e-9,
-    'steps 3+4 (' + sum + ') must equal the formula amenityPct (' + e.amenityPct + ')');
+    'amenities+restroom (' + sum + ') must equal the formula amenityPct (' + e.amenityPct + ')');
 });
