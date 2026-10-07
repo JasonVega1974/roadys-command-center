@@ -1322,12 +1322,18 @@ function crmGcalRenderStatus(){
 
 // Pushes a lead's follow-up date to Google Calendar as an all-day event.
 // Opt-in and gated twice: the toggle (default off) and crmGcalConnected().
-// Call this ONLY from the lead form save path (crmSaveLead()) — never from
-// inside crmSaveLeadToSupabase() itself, since this function calls back into
-// it to persist the event id Google hands back, which would recurse without
-// bound. A stage-advance's auto-set follow-up (crmMoveToStage()) does not
-// call this, by design — the toggle is one layer of safety, this omission
-// is the second.
+// Call this ONLY from the lead form save path (crmSaveLead()) — one call
+// site is simply simpler to reason about than wiring this into every place
+// `followUp` can change.
+//
+// The real divergence worth knowing about: crmMarkDone() is the one other
+// place `followUp` changes (crmMoveToStage() touches only `stage` and
+// `activity`). crmMarkDone() rewrites `followUp` and persists only to
+// localStorage via crmSave() — it never calls crmSaveLeadToSupabase() at
+// all, a pre-existing gap — and never calls this function, so with the
+// toggle on, the CRM and Google will disagree about that lead's follow-up
+// date until it is next saved from the form. Wiring crmMarkDone() up is
+// deliberately out of scope here.
 async function crmGcalSyncFollowUp(l){
   if(!crmGcalConnected() || !crmGcalFollowUpsOn()) return;
   const rec={googleEventId:l.googleFollowupEventId, googleCalendarEmail:l.googleFollowupEmail};
@@ -2977,9 +2983,9 @@ function crmSaveLead(){
   toast((isEdit?'Updated: ':'Added: ')+company);
   // Sync to Supabase in background, then push the follow-up date to Google
   // Calendar if the rep has opted in. crmGcalSyncFollowUp() persists any
-  // event-id change via its own crmSaveLeadToSupabase() call — this is the
-  // ONLY call site, never from inside crmSaveLeadToSupabase() itself, or the
-  // two would recurse without bound.
+  // event-id change itself, via the targeted crmGcalSaveFollowUpRef() update
+  // — this is the only call site; see the comment on crmGcalSyncFollowUp()
+  // for why crmMarkDone() is deliberately not wired up the same way.
   crmSaveLeadToSupabase(obj);
   crmGcalSyncFollowUp(obj);
 }
