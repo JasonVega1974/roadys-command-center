@@ -252,6 +252,11 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
 .bdpg-star-half{position:relative;display:inline-block;}
 .bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
+.bdpg-atop{display:grid;grid-template-columns:1fr 1fr;gap:26px;padding:4px 0 16px;border-bottom:1px solid var(--border);}
+.bdpg-atop-cell{min-width:0;}
+.bdpg-atop-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+.bdpg-atop-body{margin-top:10px;}
+@media(max-width:860px){.bdpg-atop{grid-template-columns:1fr;gap:18px;}}
 .bdpg-astep{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;
   padding:14px 0;border-top:1px solid var(--border);}
 .bdpg-astep:first-child{border-top:none;}
@@ -5489,7 +5494,7 @@ function getCentroid(pathStr, axis){
   // control that step owns. Adding a step means adding it to bdpgSteps.js and
   // passing a body here -- never hand-building another row.
   //
-  // The value cell carries a stable id (bdpg-astep-v-N) so patchStepValue()
+  // The value cell carries a stable id (bdpg-astep-v-KEY) so patchStepValue()
   // can repaint it without a full render -- see onRatingSlider/onPricingSlider.
   BDPG.stepRowHtml = function (row, bodyHtml) {
     var tone = BDPG.stepValueTone(row);
@@ -5500,8 +5505,23 @@ function getCentroid(pathStr, axis){
         (row.subtitle ? '<div class="bdpg-astep-sub">' + BDPG.escHtml(row.subtitle) + '</div>' : '') +
         (bodyHtml ? '<div class="bdpg-astep-body">' + bodyHtml + '</div>' : '') +
       '</div>' +
-      '<div id="bdpg-astep-v-' + row.n + '" class="bdpg-astep-v ' + row.valueKind + '" style="color:' + tone + '">' +
+      '<div id="bdpg-astep-v-' + row.key + '" class="bdpg-astep-v ' + row.valueKind + '" style="color:' + tone + '">' +
         BDPG.escHtml(row.valueText) + '</div>' +
+    '</div>';
+  };
+
+  // One cell of the unnumbered top band. Same title/badge shape as a numbered
+  // step so the two zones read as one family, minus the number chip -- Region
+  // and Trucker Path are site facts the rep looks up, not choices they work
+  // through in order.
+  BDPG.topCellHtml = function (entry, bodyHtml) {
+    return '<div class="bdpg-atop-cell">' +
+      '<div class="bdpg-atop-h">' +
+        '<div class="bdpg-astep-t">' + BDPG.escHtml(entry.title) + '</div>' +
+        '<div id="bdpg-astep-v-' + entry.key + '" class="bdpg-astep-v ' + entry.valueKind + '" ' +
+          'style="color:' + BDPG.stepValueTone(entry) + '">' + BDPG.escHtml(entry.valueText) + '</div>' +
+      '</div>' +
+      (bodyHtml ? '<div class="bdpg-atop-body">' + bodyHtml + '</div>' : '') +
     '</div>';
   };
 
@@ -5542,10 +5562,14 @@ function getCentroid(pathStr, axis){
   // so a dragged slider keeps focus. Reads BDPG.stepRowsNow() -- the same
   // function the full render reads -- so the patched figure and the next
   // full render can never disagree.
-  BDPG.patchStepValue = function (n) {
-    var el = document.getElementById('bdpg-astep-v-' + n);
-    if (!el) return;
-    var row = BDPG.stepRowsNow().rows[n - 1];
+  // Addressed by KEY, not by position. The previous version took an index,
+  // and two reorderings later both callers were silently patching the wrong
+  // badge -- the guard below swallowed the miss, so the figure simply stopped
+  // tracking the drag with nothing to show for it. A key cannot go stale.
+  BDPG.patchStepValue = function (key) {
+    var el = document.getElementById('bdpg-astep-v-' + key);
+    var row = BDPG_STEPS.byKey(BDPG.stepRowsNow().rows, key);
+    if (!el || !row) return;
     el.textContent = row.valueText;
     el.style.color = BDPG.stepValueTone(row);
   };
@@ -5849,20 +5873,31 @@ function getCentroid(pathStr, axis){
     // own title line is dropped.
     var restroomBody = BDPG.restroomSelectHtml();
 
-    function stepRow(n, body) { return BDPG.stepRowHtml(stepRows[n - 1], body); }
+    // Two zones. Region and Trucker Path sit side by side and unnumbered:
+    // they are site facts the rep looks up, and pairing them puts the rating
+    // slider in the space the compact map leaves rather than stranding it on
+    // a row of its own. The four real choices stay a single numbered column.
+    var topCell = function (key, bodyHtml) {
+      return BDPG.topCellHtml(BDPG_STEPS.byKey(stepRows, key), bodyHtml);
+    };
+    var step = function (key, bodyHtml) {
+      return BDPG.stepRowHtml(BDPG_STEPS.byKey(stepRows, key), bodyHtml);
+    };
 
     var body =
-      stepRow(1,
-        regionNotice +
-        BDPG.mapHtml() +
-        '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
-          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
-          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>') +
-      stepRow(2, ratingBody) +
-      stepRow(3, amenityBody) +
-      stepRow(4, restroomBody) +
-      stepRow(5, '<div class="bdpg-seg">' + rsegs + '</div>') +
-      stepRow(6, segs);
+      '<div class="bdpg-atop">' +
+        topCell('region',
+          BDPG.mapHtml() +
+          '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
+            '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
+            'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
+          regionNotice) +
+        topCell('rating', ratingBody) +
+      '</div>' +
+      step('amenities', amenityBody) +
+      step('restroom', restroomBody) +
+      step('rewards', '<div class="bdpg-seg">' + rsegs + '</div>') +
+      step('pricing', segs);
 
     return '<div id="bdpg-step2">' + body + '</div>';
   };
@@ -5948,10 +5983,10 @@ function getCentroid(pathStr, axis){
     if (num) num.textContent = v === '' ? '—' : Number(v).toFixed(1);
     if (st) st.innerHTML = BDPG.starsHtml(v);
     if (band) band.innerHTML = BDPG.ratingBandHtml(v);
-    // Row 3 (Trucker Path Rating) is the badge this slider drives --
+    // The Trucker Path badge in the top band is what this slider drives --
     // patch it the same targeted way, so it tracks the drag instead of
     // waiting for the next full render to catch up.
-    BDPG.patchStepValue(3);
+    BDPG.patchStepValue('rating');
   };
   BDPG.onRatingClear = function () {
     if (BDPG.state.truckerPathRating !== '') BDPG.invalidateResult();
@@ -6121,10 +6156,10 @@ function getCentroid(pathStr, axis){
     // re-rendered: it has to track the handle without the handle moving.
     var gal = document.getElementById('bdpg-pricing-gal');
     if (gal) gal.innerHTML = BDPG.pricingGallonsLineHtml(frac);
-    // Row 7 (Discount Pricing Strategy) is the badge this slider drives --
+    // The Discount Pricing Strategy badge is what this slider drives --
     // patch it the same targeted way, so it tracks the drag instead of
     // waiting for the next full render to catch up.
-    BDPG.patchStepValue(7);
+    BDPG.patchStepValue('pricing');
   };
 
   // Kept for saved-prospect restore and anything that sets pricing without

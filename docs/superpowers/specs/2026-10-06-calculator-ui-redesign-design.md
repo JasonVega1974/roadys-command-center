@@ -13,15 +13,23 @@ row carrying its own contribution percentage on the right.
 **The math does not change.** Not one multiplier, threshold, band or level rule
 moves. This is a presentation change over an unchanged engine.
 
-> **Amended 2026-10-07 (pre-merge).** The `#1 Profile / Roadway / Lanes`
-> read-only recap row was removed and the flow renumbered **1-6**, starting
-> at Region: it repeated a choice already made in the wizard's Step 1 and
-> offered nothing to act on. With it went the module's `baseline`/`profile`/
-> `roadway` inputs and the `'gallons'` `valueKind`, since every remaining
-> step is a signed percentage. The region map was also made compact
-> (420px wide) and the regional `%` legend chips below it removed — the
-> map's colours carry the regions at a glance, and the exact figure appears
-> on the Region step's badge once a state is chosen.
+> **Amended 2026-10-07 (second revision).** Step 2 is now TWO zones, not one
+> numbered column. The `#1 Profile / Roadway / Lanes` recap row is gone — it
+> repeated a choice already made in the wizard's Step 1 and offered nothing to
+> act on. **Region** and **Trucker Path Rating** sit side by side in an
+> unnumbered top band, which also fills the dead space the compact map left to
+> its right; the four real choices — Amenities, Restroom, Rewards, Discount
+> Pricing Strategy — follow as a single numbered column, **1-4**. The region
+> map is compact (420px) and its regional `%` legend chips are gone: the map's
+> colours carry the regions, and the exact figure shows on the Region badge
+> once a state is chosen.
+>
+> `bdpgSteps.rows()` therefore returns `{ top, steps }` rather than a flat
+> array, and every entry carries a stable **`key`**. Badge element ids are
+> built from that key, not from the position: the numbering has been reordered
+> twice, and both times the numeric ids left `patchStepValue`'s callers
+> pointing at the wrong badge, silently ending the live mid-drag updates. A
+> key cannot go stale that way.
 
 ---
 

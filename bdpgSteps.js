@@ -1,17 +1,19 @@
 (function (root) {
   'use strict';
 
-  // The six Adjustment Steps: their order, numbering, titles and the
-  // formatting of the contribution each one shows.
+  // The Step 2 adjustments: which zone each one renders in, their order,
+  // their numbering, their titles, and the formatting of the contribution
+  // each one shows.
   //
-  // Every step is an adjustment the rep can move, so every row is a signed
-  // percentage. The profile/roadway baseline is deliberately NOT a step: it
-  // is chosen in Step 1 of the wizard and repeating it here as a read-only
-  // label added a row nobody could act on.
+  // Two zones, because two of the six adjustments are site facts the rep
+  // looks up rather than choices they work through:
+  //
+  //   top   -- Region and Trucker Path Rating, side by side and unnumbered.
+  //   steps -- Amenities, Restroom, Rewards and Pricing, numbered 1-4.
   //
   // This lives outside index.html because it is a pure decision about what
   // the rep is told, and a pure decision belongs somewhere `node --test` can
-  // reach it. The previous phase shipped two blocking defects that both lived
+  // reach it. An earlier phase shipped two blocking defects that both lived
   // in untested rendering glue; this is the seam that stops that repeating.
   //
   // Deliberately NOT part of busDevGallonsCalculator.js: nothing here is on
@@ -38,12 +40,16 @@
     return sign + magText + '%';
   }
 
-  function pctRow(n, title, value) {
+  // `key` is the stable identity, not `n`. The numbering has been reordered
+  // twice already; an id built from it goes stale every time, while a badge
+  // addressed as 'pricing' keeps working however the rows are arranged.
+  // `n` is null for the top zone, which is deliberately unnumbered.
+  function entry(key, title, value, n) {
     var v = num(value);
     return {
-      n: n,
+      key: key,
+      n: (n === undefined) ? null : n,
       title: title,
-      subtitle: '',
       value: v,
       valueText: v === null ? '—' : fmtPct(v),
       valueKind: v === null ? 'none' : 'pct'
@@ -52,20 +58,42 @@
 
   function rows(input) {
     var i = input || {};
-    return [
-      pctRow(1, 'Region', i.regionPct),
-      pctRow(2, 'Trucker Path Rating', i.reviewPct),
-      // amenityLevelPct, NOT the formula's combined amenityPct -- steps 3 and
-      // 4 are the two halves of that one term. See the invariant test.
-      pctRow(3, 'Amenities', i.amenityLevelPct),
-      pctRow(4, 'Restroom / Shower Condition', i.restroomPct),
-      pctRow(5, "Roady's Rewards Participation", i.rewardsPct),
-      pctRow(6, 'Discount Pricing Strategy', i.pricingPct)
-    ];
+    return {
+      top: [
+        entry('region', 'Region', i.regionPct, null),
+        entry('rating', 'Trucker Path Rating', i.reviewPct, null)
+      ],
+      steps: [
+        // amenityLevelPct, NOT the formula's combined amenityPct -- steps 1
+        // and 2 are the two halves of that one term. See the invariant test.
+        entry('amenities', 'Amenities', i.amenityLevelPct, 1),
+        entry('restroom', 'Restroom / Shower Condition', i.restroomPct, 2),
+        entry('rewards', "Roady's Rewards Participation", i.rewardsPct, 3),
+        entry('pricing', 'Discount Pricing Strategy', i.pricingPct, 4)
+      ]
+    };
+  }
+
+  // Every entry from both zones, in display order. The page patches a single
+  // badge during a slider drag and looks it up by key rather than by position,
+  // so neither caller has to know which zone an adjustment lives in.
+  function all(result) {
+    var r = result || rows();
+    return r.top.concat(r.steps);
+  }
+
+  function byKey(result, key) {
+    var list = all(result);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].key === key) return list[i];
+    }
+    return null;
   }
 
   var BDPG_STEPS = {
-    rows: rows
+    rows: rows,
+    all: all,
+    byKey: byKey
   };
 
   if (typeof module !== 'undefined' && module.exports) {
