@@ -1200,7 +1200,14 @@ let crmGcalAccountEmail = '';
 let crmGcalGisReady = null;
 
 function crmGcalConfigured(){ return !!CRM_GCAL_CLIENT_ID && CRM_GCAL_CLIENT_ID.indexOf('.apps.googleusercontent.com') > 0; }
-function crmGcalConnected(){ return !!crmGcalAccessToken && !!crmGcalAccountEmail; }
+// Re-asserts the Supabase-to-Google binding on every read rather than
+// trusting the one made at connect time. A SIGNED_OUT from another tab nulls
+// the session without reloading this one, which would otherwise leave a live
+// token writing to Google on behalf of a session that no longer exists.
+function crmGcalConnected(){
+  return !!crmGcalAccessToken && !!crmGcalAccountEmail &&
+         RoadysGcal.identityMatches(RoadysBD.auth.email()||'', crmGcalAccountEmail);
+}
 function crmGcalEmail(){ return crmGcalAccountEmail; }
 
 // Loads the Google Identity script only. No popup happens here — that must
