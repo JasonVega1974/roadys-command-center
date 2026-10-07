@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="bdpgStats.js"></script>
 <script src="roadysBD.js?v=2026-10-06"></script>
+<script src="roadysGcal.js?v=2026-10-07"></script>
 <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <style>
@@ -915,6 +916,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
           <button class="btn" onclick="crmCalNav(1)">Next →</button>
           <button class="btn" onclick="crmCalToday()">Today</button>
           <select id="crm-cal-owner-filter" onchange="renderCRMCalendar()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:.8em;"><option value="all">All Owners</option></select>
+          <span id="crm-gcal-status"></span>
         </div>
         <div id="crm-calendar" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
         <div style="margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
@@ -1173,6 +1175,224 @@ function crmIsClosedStage(stage){ return CRM_CLOSED_STAGES.indexOf(stage)>=0; }
 const CRM_STAGE_SHORT = {'Meeting Scheduled':'Meeting','Proposal Sent':'Proposal','Closed Won':'Won','Closed Lost':'Lost','Not Qualified':'Not Qual'};
 function crmStageShort(stage){ return CRM_STAGE_SHORT[stage]||stage; }
 
+// Public by design. A browser OAuth client has no usable secret; this id is
+// meant to be world-readable, and what actually constrains it is the
+// Authorized JavaScript origins list on the client itself — a copy pasted
+// into another site gets origin_mismatch and nothing more.
+const CRM_GCAL_CLIENT_ID = '283676450290-vvb11o6g0mdkecd03k587m0v73sg810c.apps.googleusercontent.com';
+// calendar.events is read+write on EVENTS only. It cannot create, delete or
+// share calendars. The broader .../auth/calendar is deliberately not asked for.
+const CRM_GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events openid https://www.googleapis.com/auth/userinfo.email';
+const CRM_GCAL_API = 'https://www.googleapis.com/calendar/v3';
+
+// Default OFF. A local display preference, not shared state, so it is not in
+// Supabase. Opt-in because syncing every follow-up date to the calendar is
+// noise—one entry per lead adds up. crmMarkDone() updates followUp without
+// syncing, so the CRM and Google may disagree until the lead is next saved.
+const CRM_GCAL_FOLLOWUP_KEY='roadys_crm_gcal_followups';
+function crmGcalFollowUpsOn(){ try{ return localStorage.getItem(CRM_GCAL_FOLLOWUP_KEY)==='1'; }catch(e){ return false; } }
+function crmGcalSetFollowUps(on){ try{ localStorage.setItem(CRM_GCAL_FOLLOWUP_KEY, on?'1':'0'); }catch(e){} crmGcalRenderStatus(); }
+
+// The access token lives here and nowhere else. Never localStorage, never a
+// cookie, never Supabase — it dies with the tab, which is the whole security
+// model of a browser OAuth client.
+let crmGcalAccessToken = '';
+let crmGcalAccountEmail = '';
+let crmGcalGisReady = null;
+
+function crmGcalConfigured(){ return !!CRM_GCAL_CLIENT_ID && CRM_GCAL_CLIENT_ID.indexOf('.apps.googleusercontent.com') > 0; }
+// Re-asserts the Supabase-to-Google binding on every read rather than
+// trusting the one made at connect time. A SIGNED_OUT from another tab nulls
+// the session without reloading this one, which would otherwise leave a live
+// token writing to Google on behalf of a session that no longer exists.
+function crmGcalConnected(){
+  return !!crmGcalAccessToken && !!crmGcalAccountEmail &&
+         RoadysGcal.identityMatches(RoadysBD.auth.email()||'', crmGcalAccountEmail);
+}
+function crmGcalEmail(){ return crmGcalAccountEmail; }
+
+// Loads the Google Identity script only. No popup happens here — that must
+// come from a click, or the popup blocker eats it.
+function crmGcalLoadGis(){
+  if(crmGcalGisReady) return crmGcalGisReady;
+  crmGcalGisReady = new Promise((res,rej)=>{
+    if(window.google && google.accounts && google.accounts.oauth2) return res();
+    const s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
+    s.onload=()=>res();
+    s.onerror=()=>{ crmGcalGisReady=null; rej(new Error('Could not load Google sign-in — are you online?')); };
+    document.head.appendChild(s);
+  });
+  return crmGcalGisReady;
+}
+
+// `prompt:''` attempts a silent grant; Google falls back to the consent
+// screen by itself on first use. login_hint pre-selects the work account.
+function crmGcalRequestToken(interactive){
+  return new Promise((res,rej)=>{
+    const client=google.accounts.oauth2.initTokenClient({
+      client_id: CRM_GCAL_CLIENT_ID,
+      scope: CRM_GCAL_SCOPES,
+      callback: r => r && r.access_token ? res(r.access_token)
+                   : rej(new Error((r && (r.error_description||r.error)) || 'Google sign-in was cancelled')),
+      error_callback: e => rej(new Error((e && (e.message||e.type)) || 'Google sign-in was cancelled'))
+    });
+    client.requestAccessToken({ prompt: interactive ? 'consent' : '', login_hint: RoadysBD.auth.email() || '' });
+  });
+}
+
+async function crmGcalWhoAmI(token){
+  const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+token}});
+  if(!r.ok) throw new Error('Could not read the Google account ('+r.status+')');
+  return (await r.json()).email || '';
+}
+
+// Called from the Connect button. Refusing a mismatch is the point: the
+// feature promises each user sees only their own calendar, and silently
+// syncing company leads into a personal Gmail calendar is the failure that
+// promise exists to prevent.
+async function crmGcalConnect(){
+  if(!crmGcalConfigured()){ alert('Google Calendar is not configured yet.'); return; }
+  const session=RoadysBD.auth.email()||'';
+  if(!session){ toast('Sign in to the CRM first','terr'); return; }
+  try{
+    await crmGcalLoadGis();
+    const token=await crmGcalRequestToken(true);
+    const granted=await crmGcalWhoAmI(token);
+    if(!RoadysGcal.identityMatches(session, granted)){
+      crmGcalAccessToken=''; crmGcalAccountEmail='';
+      alert('That Google account ('+(granted||'unknown')+') is not the account you are signed into the CRM with ('+session+').\n\n'+
+            'Connect the matching Google account, or sign into the CRM as the other user.');
+      return;
+    }
+    crmGcalAccessToken=token; crmGcalAccountEmail=granted;
+    crmGcalLoadedKey=''; crmGcalLoadError='';
+    toast('Google Calendar connected','tok');
+    crmGcalRenderStatus(); renderCRMCalendar();
+  }catch(e){ toast(e.message||'Google sign-in failed','terr'); }
+}
+
+function crmGcalDisconnect(){
+  crmGcalAccessToken=''; crmGcalAccountEmail='';
+  CRM_GCAL_EVENTS=[]; crmGcalLoadedKey=''; crmGcalLoadError='';
+  crmGcalRenderStatus(); renderCRMCalendar();
+  toast('Google Calendar disconnected','tok');
+}
+
+// A valid token, refreshed silently if the current one has aged out.
+async function crmGcalToken(){
+  if(crmGcalAccessToken) return crmGcalAccessToken;
+  await crmGcalLoadGis();
+  const t=await crmGcalRequestToken(false);
+  const granted=await crmGcalWhoAmI(t);
+  if(!RoadysGcal.identityMatches(RoadysBD.auth.email()||'', granted)) throw new Error('Google account no longer matches this session');
+  crmGcalAccessToken=t; crmGcalAccountEmail=granted;
+  return t;
+}
+
+// One retry on 401 — the token expires about hourly and a long session will
+// hit it. A second 401 is a real problem (revoked grant) and surfaces.
+async function crmGcalFetch(path, opts){
+  const go=async()=>{
+    const t=await crmGcalToken();
+    return fetch(CRM_GCAL_API+path, Object.assign({}, opts, {
+      headers: Object.assign({ Authorization:'Bearer '+t, 'Content-Type':'application/json' }, (opts&&opts.headers)||{})
+    }));
+  };
+  let r=await go();
+  if(r.status===401){ crmGcalAccessToken=''; r=await go(); }
+  return r;
+}
+
+function crmGcalRenderStatus(){
+  const host=document.getElementById('crm-gcal-status'); if(!host) return;
+  if(!crmGcalConfigured()){ host.innerHTML='<span style="font-size:.72em;color:var(--muted)">Google Calendar not configured</span>'; return; }
+  host.innerHTML = crmGcalConnected()
+    ? '<span style="font-size:.72em;color:var(--green)">📅 '+crmEsc(crmGcalEmail())+'</span>'+
+      '<button class="btn" style="margin-left:8px;font-size:.72em" onclick="crmGcalDisconnect()">Disconnect</button>'
+      + (crmGcalLoadError
+          ? '<span style="font-size:.72em;color:var(--yellow);margin-left:8px" '
+            + 'title="The calendar below is showing CRM items only">⚠ '
+            + crmEsc(crmGcalLoadError) + '</span>'
+          : '')
+      + '<label style="font-size:.72em;color:var(--muted);margin-left:10px;cursor:pointer">'+
+          '<input type="checkbox" '+(crmGcalFollowUpsOn()?'checked':'')+' onchange="crmGcalSetFollowUps(this.checked)"> sync follow-up dates'+
+        '</label>'
+    : '<button class="btn" style="font-size:.72em" onclick="crmGcalConnect()">📅 Connect Google Calendar</button>';
+}
+
+// Pushes a lead's follow-up date to Google Calendar as an all-day event.
+// Opt-in and gated twice: the toggle (default off) and crmGcalConnected().
+// Call this ONLY from the lead form save path (crmSaveLead()) — one call
+// site is simply simpler to reason about than wiring this into every place
+// `followUp` can change.
+//
+// The real divergence worth knowing about: crmMarkDone() is the one other
+// place `followUp` changes (crmMoveToStage() touches only `stage` and
+// `activity`). crmMarkDone() rewrites `followUp` and persists only to
+// localStorage via crmSave() — it never calls crmSaveLeadToSupabase() at
+// all, a pre-existing gap — and never calls this function, so with the
+// toggle on, the CRM and Google will disagree about that lead's follow-up
+// date until it is next saved from the form. Wiring crmMarkDone() up is
+// deliberately out of scope here.
+async function crmGcalSyncFollowUp(l){
+  if(!crmGcalConnected() || !crmGcalFollowUpsOn()) return;
+  const rec={googleEventId:l.googleFollowupEventId, googleCalendarEmail:l.googleFollowupEmail};
+  const guard=RoadysGcal.mayWriteGoogle(rec, crmGcalEmail());
+  const base=location.origin + location.pathname.replace(/\/[^/]*$/, '');
+  try{
+    // Cleared follow-up: remove the event if this session owns it.
+    if(!l.followUp){
+      if(guard.ok){
+        await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(rec.googleEventId),{method:'DELETE'});
+        l.googleFollowupEventId=''; l.googleFollowupEmail=''; await crmGcalSaveFollowUpRef(l);
+      }
+      return;
+    }
+    const body=RoadysGcal.eventBodyForFollowUp(l, base);
+    if(!body) return;
+    if(guard.ok){
+      const r=await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(rec.googleEventId),
+                                 {method:'PATCH',body:JSON.stringify(body)});
+      const outcome=RoadysGcal.patchOutcome(r.status);
+      if(outcome==='ok') return;
+      // recreate: the user deleted it in Google. Fall through and make a new one.
+      if(outcome==='error') throw new Error('Google returned '+r.status);
+    }else if(guard.reason==='other-owner'){
+      return;   // somebody else's calendar — leave it alone, silently
+    }
+    const c=await crmGcalFetch('/calendars/primary/events',{method:'POST',body:JSON.stringify(body)});
+    if(!c.ok) throw new Error('Google returned '+c.status);
+    const ev=await c.json();
+    l.googleFollowupEventId=ev.id||''; l.googleFollowupEmail=crmGcalEmail();
+    await crmGcalSaveFollowUpRef(l);
+  }catch(e){ console.warn('gcal followup',e); }
+}
+
+// Writes ONLY the two Google columns. Deliberately not crmSaveLeadToSupabase:
+// this runs after an awaited Google round trip, so the lead it closed over may
+// be a stale snapshot by now, and a full-row upsert would silently revert any
+// edit the user saved in the meantime. The sync learned two facts; it persists
+// exactly those two.
+async function crmGcalSaveFollowUpRef(l){
+  try{
+    const sb=getRoadysSB();
+    const {error}=await sb.from('crm_leads').update({
+      google_followup_event_id: l.googleFollowupEventId||null,
+      google_followup_email:    l.googleFollowupEmail||null
+    }).eq('id', l.id);
+    if(error) throw error;
+  }catch(e){ console.warn('gcal followup ref save', e); }
+  // Mirror onto whatever object is currently in CRM_LEADS — if a second save
+  // replaced the array slot while we were awaiting, `l` is now detached and
+  // updating only it would leave memory disagreeing with the database.
+  const live=(CRM_LEADS||[]).find(x=>x.id===l.id);
+  if(live && live!==l){
+    live.googleFollowupEventId=l.googleFollowupEventId;
+    live.googleFollowupEmail=l.googleFollowupEmail;
+  }
+}
+
 let CRM_LEADS = [];
 // Value profiles for the leads currently loaded, keyed by lead id. Filled by
 // one batched call in crmLoadFromSupabase() — never one request per card; the
@@ -1186,6 +1406,55 @@ let crmCalYear = new Date().getFullYear();
 let crmCalMonth = new Date().getMonth();
 let crmSelectedTemplate = null;
 
+// Google events for the visible month only. Held in memory and discarded on
+// navigation — they are never written to Supabase.
+let CRM_GCAL_EVENTS = [];
+let crmGcalMonthPending = false;
+let crmGcalLoadSeq = 0;
+// Which month CRM_GCAL_EVENTS currently holds, as 'YYYY-M'. The in-flight
+// flag alone cannot bound the loader: it is cleared before the re-render, so
+// the re-render passes the guard and starts another fetch, forever. Keying on
+// the month means a given view costs at most one fetch.
+let crmGcalLoadedKey = '';
+// Set when a month load fails, cleared when one succeeds. It has to live
+// outside crmGcalLoadMonth because the re-render that follows every load
+// repaints #crm-gcal-status wholesale — a note written directly into that
+// span is overwritten in the same promise turn, before any paint.
+let crmGcalLoadError = '';
+
+async function crmGcalLoadMonth(){
+  if(!crmGcalConnected()){ CRM_GCAL_EVENTS=[]; return; }
+  const seq = ++crmGcalLoadSeq;
+  const from=new Date(crmCalYear, crmCalMonth, 1);
+  const to  =new Date(crmCalYear, crmCalMonth+1, 1);
+  const qs='?timeMin='+encodeURIComponent(from.toISOString())+
+           '&timeMax='+encodeURIComponent(to.toISOString())+
+           '&singleEvents=true&orderBy=startTime&maxResults=250';
+  try{
+    const r=await crmGcalFetch('/calendars/primary/events'+qs, {method:'GET'});
+    if(!r.ok) throw new Error('Google Calendar returned '+r.status);
+    const json=await r.json();
+    // Events the CRM created are already drawn from CRM_CALLS and from
+    // CRM_LEADS follow-ups; without suppressing both ids, a scheduled call OR
+    // a follow-up (with the toggle on) appears twice — once as the CRM chip,
+    // once as a muted Google chip for the same event.
+    const mine=[].concat(
+      (CRM_CALLS||[]).map(function(c){ return c.googleEventId; }),
+      (CRM_LEADS||[]).map(function(l){ return l.googleFollowupEventId; })
+    ).filter(Boolean);
+    // A stale response from a month the user has already navigated away from
+    // must not overwrite the current one.
+    if(seq!==crmGcalLoadSeq) return;
+    CRM_GCAL_EVENTS=RoadysGcal.overlayEventsFrom(json, mine);
+    crmGcalLoadError='';
+  }catch(e){
+    if(seq!==crmGcalLoadSeq) return;
+    console.warn('gcal month load', e);
+    CRM_GCAL_EVENTS=[];
+    crmGcalLoadError='Google events unavailable';
+  }
+}
+
 // ── In-modal call scheduler: data layer ──
 let CRM_CALLS = [];
 function crmCallsLoadLocal(){ try{ const s=localStorage.getItem('roadys_crm_calls'); if(s) CRM_CALLS=JSON.parse(s);}catch(e){} }
@@ -1193,14 +1462,29 @@ function crmCallsSaveLocal(){ try{ localStorage.setItem('roadys_crm_calls', JSON
 async function crmLoadCallsFromSupabase(){
   try{ const sb=getRoadysSB(); const {data,error}=await sb.from('crm_scheduled_calls').select('*').order('scheduled_at',{ascending:true});
     if(error) throw error;
-    CRM_CALLS=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company,owner:r.owner,callType:r.call_type,scheduledAt:r.scheduled_at,status:r.status,note:r.note,source:r.source}));
+    CRM_CALLS=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company,owner:r.owner,callType:r.call_type,
+      scheduledAt:r.scheduled_at,status:r.status,note:r.note,source:r.source,
+      googleEventId:r.google_event_id||'', googleCalendarEmail:r.google_calendar_email||''}));
     crmCallsSaveLocal();
   }catch(e){ console.warn('calls load',e); }
 }
 async function crmSaveCallToSupabase(c){
-  try{ const sb=getRoadysSB(); const row={id:c.id,lead_id:c.leadId,company:c.company,owner:c.owner,call_type:c.callType,scheduled_at:c.scheduledAt,status:c.status,note:c.note,source:c.source};
+  const row={id:c.id,lead_id:c.leadId,company:c.company,owner:c.owner,call_type:c.callType,
+    scheduled_at:c.scheduledAt,status:c.status,note:c.note,source:c.source,
+    google_event_id:c.googleEventId||null, google_calendar_email:c.googleCalendarEmail||null,
+    google_synced_at:c.googleEventId?new Date().toISOString():null};
+  try{ const sb=getRoadysSB();
     const {error}=await sb.from('crm_scheduled_calls').upsert(row,{onConflict:'id'}); if(error) throw error;
-  }catch(e){ console.warn('call save',e); toast('Call saved locally (cloud sync failed)','terr'); }
+  }catch(e){
+    if(String(e&&e.message||'').indexOf('google_')>=0){
+      try{ const sb=getRoadysSB(); const bare=Object.assign({},row);
+        delete bare.google_event_id; delete bare.google_calendar_email; delete bare.google_synced_at;
+        const {error}=await sb.from('crm_scheduled_calls').upsert(bare,{onConflict:'id'}); if(error) throw error;
+        console.warn('gcal columns missing — run sql/2026-10-07-google-calendar-columns.sql'); return;
+      }catch(e2){ /* fall through to the existing toast */ }
+    }
+    console.warn('call save',e); toast('Call saved locally (cloud sync failed)','terr');
+  }
 }
 
 // ── Call Notifications (Task A5): slim mirror in the CRM header, reads in-memory CRM_CALLS ──
@@ -2456,10 +2740,58 @@ function crmScheduleCall(leadId){
     owner:document.getElementById('cmf-sched-who').value, callType:document.getElementById('cmf-sched-type').value,
     scheduledAt:new Date(`${date}T${time}:00`).toISOString(), status:'scheduled', note:document.getElementById('cmf-sched-note').value||'', source:'manual' };
   CRM_CALLS.push(c); crmCallsSaveLocal(); crmSaveCallToSupabase(c);
+  // Supabase first, Google second: a failed Google call leaves a valid CRM
+  // record with no event id, which the next schedule can retry. The reverse
+  // order would risk an event in somebody's calendar with no record behind it.
+  crmGcalPushCall(c, lead);
   if(lead.activity){ lead.activity.unshift({text:`Scheduled ${c.callType} for ${new Date(c.scheduledAt).toLocaleString()}`,date:new Date().toISOString().slice(0,10),by:c.owner,type:'call'}); crmSave&&crmSave(); }
   toast('Call scheduled','tok'); crmRenderLeadCalls(leadId);
   if(typeof renderCRMCalendar==='function') renderCRMCalendar();
   renderCRMNotifications();
+}
+// Writes ONLY the three Google columns. Deliberately not crmSaveCallToSupabase:
+// this runs after an awaited Google round trip, so the call object it closed
+// over may be stale, and a full-row upsert would race the save that
+// crmScheduleCall already fired — the loser overwrites google_event_id with
+// null and strands a live Google event the Cancel button can no longer reach.
+async function crmGcalSaveCallRef(c){
+  try{
+    const sb=getRoadysSB();
+    const {error}=await sb.from('crm_scheduled_calls').update({
+      google_event_id:       c.googleEventId||null,
+      google_calendar_email: c.googleCalendarEmail||null,
+      google_synced_at:      c.googleEventId? new Date().toISOString() : null
+    }).eq('id', c.id);
+    if(error) throw error;
+  }catch(e){ console.warn('gcal call ref save', e); }
+}
+async function crmGcalPushCall(c, lead){
+  if(!crmGcalConnected()) return;
+  const body=RoadysGcal.eventBodyForCall(lead, c, location.origin + location.pathname.replace(/\/[^/]*$/, ''));
+  if(!body) return;
+  try{
+    const r=await crmGcalFetch('/calendars/primary/events',{method:'POST',body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('Google returned '+r.status);
+    const ev=await r.json();
+    // The user may have cancelled while this POST was in flight. crmCancelCall
+    // would have found no event id to delete and correctly no-opped, and once
+    // a call is cancelled its Cancel button disappears — so storing the id now
+    // would leave a live Google event with nothing in the CRM able to remove
+    // it. Undo our own create instead.
+    if(c.status==='cancelled'){
+      try{
+        await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(ev.id),{method:'DELETE'});
+      }catch(e2){ console.warn('gcal undo-create', e2); }
+      return;
+    }
+    c.googleEventId=ev.id||''; c.googleCalendarEmail=crmGcalEmail();
+    crmCallsSaveLocal(); await crmGcalSaveCallRef(c);
+    // The new event id is now on the call; refetch the month so the overlay
+    // suppresses it instead of drawing it twice until the user navigates away
+    // and back.
+    crmGcalLoadedKey='';
+    renderCRMCalendar();
+  }catch(e){ console.warn('gcal create',e); toast('Meeting saved, but not added to Google Calendar','twarn'); }
 }
 function crmRenderLeadCalls(leadId){
   const host=document.getElementById('cmf-lead-calls'); if(!host) return;
@@ -2472,8 +2804,30 @@ function crmRenderLeadCalls(leadId){
 function crmCancelCall(callId, leadId){
   const c=CRM_CALLS.find(x=>x.id===callId); if(!c) return; c.status='cancelled';
   crmCallsSaveLocal(); crmSaveCallToSupabase(c); crmRenderLeadCalls(leadId);
+  crmGcalDeleteCall(c);
   if(typeof renderCRMCalendar==='function') renderCRMCalendar(); toast('Call cancelled','tok');
   renderCRMNotifications();
+}
+async function crmGcalDeleteCall(c){
+  const guard=RoadysGcal.mayWriteGoogle(c, crmGcalEmail());
+  if(!guard.ok){
+    // Not an error. The commonest case is simply that nothing was ever
+    // synced; the next is that the event lives in a colleague's calendar,
+    // which this browser has no way to reach.
+    if(guard.reason==='other-owner') toast('Cancelled in the CRM. The Google event is in '+guard.owner+"'s calendar and was left alone.",'twarn');
+    return;
+  }
+  try{
+    const r=await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(c.googleEventId),{method:'DELETE'});
+    // gone (404/410) means the user already deleted it in Google. That is success.
+    if(RoadysGcal.deleteOutcome(r.status)==='error') throw new Error('Google returned '+r.status);
+    c.googleEventId=''; c.googleCalendarEmail='';
+    crmCallsSaveLocal(); await crmGcalSaveCallRef(c);
+    // The event id is gone from the call; refetch the month so the overlay
+    // stops suppressing an id that no longer belongs to anything in the CRM.
+    crmGcalLoadedKey='';
+    renderCRMCalendar();
+  }catch(e){ console.warn('gcal delete',e); toast('Cancelled in the CRM, but the Google event may remain','twarn'); }
 }
 
 // ── In-modal "Send availability": queues up to 6 date/time slots (reusing the
@@ -2617,6 +2971,10 @@ function crmSaveLead(){
     notes:(document.getElementById('cmf-notes')?.value||'').trim(),
     created:existing?.created||crmToday(),
     activity:existing?.activity||[{text:'Lead created',date:crmToday(),by:crmWhoAmI(),type:'note'}],
+    // Carried forward, not form fields — losing these on every edit would
+    // orphan the existing Google event and create a duplicate next sync.
+    googleFollowupEventId: existing?.googleFollowupEventId||'',
+    googleFollowupEmail:   existing?.googleFollowupEmail||'',
   };
   if(isEdit){ const i=CRM_LEADS.findIndex(l=>l.id===crmEditId); if(i>=0) CRM_LEADS[i]=obj; }
   else CRM_LEADS.push(obj);
@@ -2624,8 +2982,13 @@ function crmSaveLead(){
   renderCRMKPIs(); renderCRMKanban();
   const lp=document.getElementById('crm-panel-leads'); if(lp&&lp.style.display!=='none') renderCRMTable();
   toast((isEdit?'Updated: ':'Added: ')+company);
-  // Sync to Supabase in background
+  // Sync to Supabase in background, then push the follow-up date to Google
+  // Calendar if the rep has opted in. crmGcalSyncFollowUp() persists any
+  // event-id change itself, via the targeted crmGcalSaveFollowUpRef() update
+  // — this is the only call site; see the comment on crmGcalSyncFollowUp()
+  // for why crmMarkDone() is deliberately not wired up the same way.
   crmSaveLeadToSupabase(obj);
+  crmGcalSyncFollowUp(obj);
 }
 
 // Shared by crmLogActivity() and crmSendTemplateEmail() so both refresh the
@@ -2787,11 +3150,13 @@ function crmCalNav(dir){
   crmCalMonth+=dir;
   if(crmCalMonth>11){crmCalMonth=0;crmCalYear++;}
   if(crmCalMonth<0){crmCalMonth=11;crmCalYear--;}
+  CRM_GCAL_EVENTS=[];
   renderCRMCalendar();
 }
 function crmCalToday(){
   crmCalYear=new Date().getFullYear();
   crmCalMonth=new Date().getMonth();
+  CRM_GCAL_EVENTS=[];
   renderCRMCalendar();
 }
 function renderCRMCalendar(){
@@ -2820,6 +3185,12 @@ function renderCRMCalendar(){
     if(!evMap[ds]) evMap[ds]=[];
     evMap[ds].push(c);
   });
+  CRM_GCAL_EVENTS.forEach(ev=>{
+    const prefix=crmCalYear+'-'+String(crmCalMonth+1).padStart(2,'0');
+    if(ev.dateKey.indexOf(prefix)!==0) return;
+    if(!evMap[ev.dateKey]) evMap[ev.dateKey]=[];
+    evMap[ev.dateKey].push({gcal:true, title:ev.title, timeText:ev.timeText});
+  });
   const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let html='<div style="display:grid;grid-template-columns:repeat(7,1fr)">';
   DAYS.forEach(d=>{ html+='<div style="text-align:center;font-size:.68em;font-weight:700;color:var(--muted);padding:8px 0;text-transform:uppercase;background:var(--bg)">'+d+'</div>'; });
@@ -2831,6 +3202,13 @@ function renderCRMCalendar(){
     html+='<div style="background:'+(isToday?'rgba(0,200,255,.07)':'var(--bg)')+';border:1px solid '+(isToday?'var(--accent)':'var(--border)')+';min-height:76px;padding:5px">';
     html+='<div style="font-size:.75em;font-weight:'+(isToday?'800':'500')+';color:'+(isToday?'var(--accent)':'var(--muted)')+';margin-bottom:3px">'+day+'</div>';
     evs.forEach(item=>{
+      if(item.gcal){
+        html+='<div title="Google Calendar" style="font-size:.6em;background:rgba(148,163,184,.12);color:var(--muted);'+
+          'border:1px solid rgba(148,163,184,.25);border-radius:3px;padding:1px 4px;margin-bottom:2px;'+
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+          (item.timeText? crmEsc(item.timeText)+' ' : '')+crmEsc(item.title)+'</div>';
+        return;
+      }
       if(item.stage){
         const col=CRM_STAGE_COLORS[item.stage]||'var(--muted)';
         html+='<div onclick="crmOpenLeadModal(\''+crmEsc(item.id)+'\')" style="font-size:.6em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;border-radius:3px;padding:2px 5px;margin-bottom:2px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+crmEsc(item.company.split(' ').slice(0,2).join(' '))+'</div>';
@@ -2857,6 +3235,23 @@ function renderCRMCalendar(){
       '<div style="flex:1"><div style="font-size:.8em;font-weight:700">'+crmEsc(l.company)+'</div><div style="font-size:.67em;color:var(--muted)">'+crmEsc(l.contact)+' &middot; '+crmEsc(l.owner)+'</div></div>'+
       '<span style="font-size:.65em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;padding:2px 8px;border-radius:10px;white-space:nowrap">'+l.stage+'</span></div>';
   }).join(''):'<div style="color:var(--muted);font-size:.78em;padding:8px">No upcoming follow-ups in the next 30 days.</div>';
+  crmGcalRenderStatus();
+  if(crmGcalConnected() && !crmGcalMonthPending && crmGcalLoadedKey !== crmCalYear+'-'+crmCalMonth){
+    const wantKey = crmCalYear+'-'+crmCalMonth;
+    crmGcalMonthPending = true;
+    crmGcalLoadMonth().then(()=>{
+      // Set on BOTH the success and failure paths: one month view costs one
+      // attempt. Marking only on success would retry a failing month forever,
+      // which is the same loop in a different disguise.
+      //
+      // The key captured at dispatch, not the current one — if the user has
+      // navigated away meanwhile, this marks the month that was actually
+      // fetched, leaving the new month to fetch on its own.
+      crmGcalLoadedKey = wantKey;
+      crmGcalMonthPending = false;
+      renderCRMCalendar();
+    });
+  }
 }
 
 // ── AUTO-SCHEDULER ──
@@ -3574,6 +3969,8 @@ async function crmLoadFromSupabase(){
         notes:      r.notes||'',
         activity:   r.activity||[],
         created:    r.created_at||'',
+        googleFollowupEventId: r.google_followup_event_id||'',
+        googleFollowupEmail:   r.google_followup_email||'',
       }));
       // One round trip for every visible lead. Failure is non-fatal: the
       // board still renders, profiles simply show as absent, because a
@@ -3620,6 +4017,8 @@ async function crmSaveLeadToSupabase(lead){
       notes:       lead.notes||'',
       activity:    lead.activity||[],
       updated_at:  new Date().toISOString(),
+      google_followup_event_id: lead.googleFollowupEventId||null,
+      google_followup_email:    lead.googleFollowupEmail||null,
     };
     const {error}=await sb.from('crm_leads').upsert(row,{onConflict:'id'});
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
