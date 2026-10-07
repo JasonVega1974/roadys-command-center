@@ -6,16 +6,21 @@ const assert = require('node:assert/strict');
 const { BDPG_STEPS } = require('./bdpgSteps.js');
 const { BusDevGallonsCalc } = require('./busDevGallonsCalculator.js');
 
-// A fully-populated input, so each test can vary one field.
+// A fully-populated input, so each test can vary one field. Every one of the
+// six adjustment steps carries a DISTINCT value (and restroomPct is the
+// opposite sign of amenityLevelPct) so that a swap of any two fields -- e.g.
+// rows 4 and 5 trading places -- changes both the values and their rendered
+// signs, rather than silently passing because two steps happened to share
+// a number.
 function input(over) {
   return Object.assign({
     baseline: 42000,
     profile: 'Large truck stop',
     roadway: 'Interstate',
     regionPct: -0.042,
-    reviewPct: 0.02,
+    reviewPct: 0.01,
     amenityLevelPct: 0.02,
-    restroomPct: 0.02,
+    restroomPct: -0.02,
     rewardsPct: 0.015,
     pricingPct: 0.06
   }, over || {});
@@ -85,17 +90,20 @@ test('no profile chosen shows a dash, never null or NaN', () => {
 // ── steps 2-7: signed percentages ───────────────────────────────────────
 
 test('each adjustment step reads its own input', () => {
+  // Every value here is distinct across steps 2-7 -- see the comment on
+  // input() -- so this also catches two fields being swapped with each
+  // other, not just a field being misread as a constant.
   const rows = BDPG_STEPS.rows(input());
   assert.equal(byN(rows, 2).value, -0.042);
-  assert.equal(byN(rows, 3).value, 0.02);
+  assert.equal(byN(rows, 3).value, 0.01);
   assert.equal(byN(rows, 4).value, 0.02);
-  assert.equal(byN(rows, 5).value, 0.02);
+  assert.equal(byN(rows, 5).value, -0.02);
   assert.equal(byN(rows, 6).value, 0.015);
   assert.equal(byN(rows, 7).value, 0.06);
 });
 
 test('positive percentages carry a plus and one decimal', () => {
-  assert.equal(byN(BDPG_STEPS.rows(input()), 3).valueText, '+2.0%');
+  assert.equal(byN(BDPG_STEPS.rows(input()), 3).valueText, '+1.0%');
 });
 
 test('negative percentages carry a minus sign', () => {
@@ -133,13 +141,21 @@ test('rows() survives being called with nothing at all', () => {
 
 // ── the invariant that ties steps 4 and 5 to the formula ────────────────
 
-test('steps 4 and 5 sum to the formula\'s single combined amenity term', () => {
+test('steps 4 and 5 sum to the formula\'s single combined amenity term, and map to the right fields', () => {
   // The formula has ONE amenity term; the step flow shows it as two rows
   // because they are two separate inputs. This pins the two surfaces to each
   // other rather than to a hand-computed constant: if either helper ever
   // changes, this fails rather than the UI quietly disagreeing with the math.
-  const amenityLevel = 'Good / full service';
+  //
+  // The two levels below resolve to DIFFERENT adjustments (-0.05 vs +0.02),
+  // deliberately: a same-valued fixture would pass this test even if rows 4
+  // and 5 had their fields swapped, because the sum is commutative. Asserting
+  // each row individually, not just the sum, is what catches a swap.
+  const amenityLevel = 'Very limited';
   const restroomLevel = 'Clean / updated';
+
+  const amenityAdj = BusDevGallonsCalc.amenityAdjustment(amenityLevel);
+  const restroomAdj = BusDevGallonsCalc.restroomAdjustment(restroomLevel);
 
   const e = BusDevGallonsCalc.calculateEstimate({
     profile: 'Large truck stop',
@@ -154,9 +170,12 @@ test('steps 4 and 5 sum to the formula\'s single combined amenity term', () => {
   assert.ok(e, 'expected a real estimate for this profile/roadway pair');
 
   const rows = BDPG_STEPS.rows(input({
-    amenityLevelPct: BusDevGallonsCalc.amenityAdjustment(amenityLevel),
-    restroomPct: BusDevGallonsCalc.restroomAdjustment(restroomLevel)
+    amenityLevelPct: amenityAdj,
+    restroomPct: restroomAdj
   }));
+
+  assert.equal(byN(rows, 4).value, amenityAdj);
+  assert.equal(byN(rows, 5).value, restroomAdj);
 
   const sum = byN(rows, 4).value + byN(rows, 5).value;
   assert.ok(Math.abs(sum - e.amenityPct) < 1e-9,
