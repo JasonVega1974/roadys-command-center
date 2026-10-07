@@ -5508,17 +5508,26 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
+  // Shared by the full render (stepRowHtml) and the targeted slider patch
+  // (patchStepValue) so both ever paint a given value the same colour --
+  // one tone decision instead of two that could drift apart.
+  BDPG.stepValueTone = function (row) {
+    if (row.valueKind === 'pct' && row.value !== null) {
+      return row.value > 0 ? 'var(--green)' : (row.value < 0 ? 'var(--red)' : 'var(--muted)');
+    }
+    if (row.valueKind === 'gallons') return 'var(--accent)';
+    return 'var(--muted)';
+  };
+
   // One primitive for all seven Adjustment Steps. The number, title, subtitle
   // and right-hand value come from BDPG_STEPS.rows(); the body is whatever
   // control that step owns. Adding a step means adding it to bdpgSteps.js and
   // passing a body here -- never hand-building another row.
+  //
+  // The value cell carries a stable id (bdpg-astep-v-N) so patchStepValue()
+  // can repaint it without a full render -- see onRatingSlider/onPricingSlider.
   BDPG.stepRowHtml = function (row, bodyHtml) {
-    var tone = 'var(--muted)';
-    if (row.valueKind === 'pct' && row.value !== null) {
-      tone = row.value > 0 ? 'var(--green)' : (row.value < 0 ? 'var(--red)' : 'var(--muted)');
-    } else if (row.valueKind === 'gallons') {
-      tone = 'var(--accent)';
-    }
+    var tone = BDPG.stepValueTone(row);
     return '<div class="bdpg-astep">' +
       '<div>' +
         '<div class="bdpg-astep-t"><span class="bdpg-astep-n">' + row.n + '</span>' +
@@ -5526,9 +5535,52 @@ function getCentroid(pathStr, axis){
         (row.subtitle ? '<div class="bdpg-astep-sub">' + BDPG.escHtml(row.subtitle) + '</div>' : '') +
         (bodyHtml ? '<div class="bdpg-astep-body">' + bodyHtml + '</div>' : '') +
       '</div>' +
-      '<div class="bdpg-astep-v ' + row.valueKind + '" style="color:' + tone + '">' +
+      '<div id="bdpg-astep-v-' + row.n + '" class="bdpg-astep-v ' + row.valueKind + '" style="color:' + tone + '">' +
         BDPG.escHtml(row.valueText) + '</div>' +
     '</div>';
+  };
+
+  // The single source of truth for what each Adjustment Step's right-hand
+  // value says. step2Html() calls this on every full render; patchStepValue()
+  // calls it from a targeted slider patch. One function, two callers, so a
+  // badge painted mid-drag and a badge painted by the next full render can
+  // never disagree about the same input.
+  //
+  // amenityLevelPct reads s.amenityLevel rather than re-deriving a
+  // suggestion from amenityDetails: deriving it is step2Html()'s own render
+  // side effect (it writes s.amenityLevel), and that must happen exactly
+  // once per full render, not once per call here.
+  BDPG.stepRowsNow = function () {
+    var s = BDPG.state;
+    var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
+    var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
+    var baseRow = BDPG.currentBaseline();
+    var levelPct = (s.amenityLevel && hasOwn(BDPG_CONFIG.AMENITY_ADJUST, s.amenityLevel))
+      ? BDPG_CONFIG.AMENITY_ADJUST[s.amenityLevel] : 0;
+    return BDPG_STEPS.rows({
+      baseline:        baseRow && isNum(baseRow.baseline) ? baseRow.baseline : null,
+      profile:         s.profile || '',
+      roadway:         s.roadway || '',
+      regionPct:       region ? regionPct : null,
+      reviewPct:       BusDevGallonsCalc.reviewAdjustment(s.truckerPathRating).pct,
+      amenityLevelPct: levelPct,
+      restroomPct:     BusDevGallonsCalc.restroomAdjustment(s.restroomLevel || BDPG_CONFIG.RESTROOM_DEFAULT),
+      rewardsPct:      BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel),
+      pricingPct:      BDPG.currentPricingPct()
+    });
+  };
+
+  // Targeted patch for one Adjustment Step's badge, for the two handlers
+  // (onRatingSlider, onPricingSlider) that intentionally skip BDPG.render()
+  // so a dragged slider keeps focus. Reads BDPG.stepRowsNow() -- the same
+  // function the full render reads -- so the patched figure and the next
+  // full render can never disagree.
+  BDPG.patchStepValue = function (n) {
+    var el = document.getElementById('bdpg-astep-v-' + n);
+    if (!el) return;
+    var row = BDPG.stepRowsNow()[n - 1];
+    el.textContent = row.valueText;
+    el.style.color = BDPG.stepValueTone(row);
   };
 
   BDPG.step2Html = function () {
@@ -5808,21 +5860,10 @@ function getCentroid(pathStr, axis){
     // own title line is dropped.
     var restroomBody = BDPG.restroomSelectHtml();
 
-    // Live from state, NOT from BDPG.state.result: invalidateResult() nulls
-    // the result on every input change, so it does not exist while the rep is
-    // still working -- which is exactly when these figures must be on screen.
-    var baseRow = BDPG.currentBaseline();
-    var stepRows = BDPG_STEPS.rows({
-      baseline:        baseRow && isNum(baseRow.baseline) ? baseRow.baseline : null,
-      profile:         s.profile || '',
-      roadway:         s.roadway || '',
-      regionPct:       region ? regionPct : null,
-      reviewPct:       BusDevGallonsCalc.reviewAdjustment(s.truckerPathRating).pct,
-      amenityLevelPct: levelPct,
-      restroomPct:     BusDevGallonsCalc.restroomAdjustment(s.restroomLevel || BDPG_CONFIG.RESTROOM_DEFAULT),
-      rewardsPct:      BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel),
-      pricingPct:      pcur
-    });
+    // BDPG.stepRowsNow() is the one place this input object is built --
+    // see its own comment for why amenityLevelPct reads s.amenityLevel
+    // instead of re-deriving a suggestion here.
+    var stepRows = BDPG.stepRowsNow();
     function stepRow(n, body) { return BDPG.stepRowHtml(stepRows[n - 1], body); }
 
     var body =
@@ -5924,6 +5965,10 @@ function getCentroid(pathStr, axis){
     if (num) num.textContent = v === '' ? '—' : Number(v).toFixed(1);
     if (st) st.innerHTML = BDPG.starsHtml(v);
     if (band) band.innerHTML = BDPG.ratingBandHtml(v);
+    // Row 3 (Trucker Path Rating) is the badge this slider drives --
+    // patch it the same targeted way, so it tracks the drag instead of
+    // waiting for the next full render to catch up.
+    BDPG.patchStepValue(3);
   };
   BDPG.onRatingClear = function () {
     if (BDPG.state.truckerPathRating !== '') BDPG.invalidateResult();
@@ -6090,6 +6135,10 @@ function getCentroid(pathStr, axis){
     // re-rendered: it has to track the handle without the handle moving.
     var gal = document.getElementById('bdpg-pricing-gal');
     if (gal) gal.innerHTML = BDPG.pricingGallonsLineHtml(frac);
+    // Row 7 (Discount Pricing Strategy) is the badge this slider drives --
+    // patch it the same targeted way, so it tracks the drag instead of
+    // waiting for the next full render to catch up.
+    BDPG.patchStepValue(7);
   };
 
   // Kept for saved-prospect restore and anything that sets pricing without
