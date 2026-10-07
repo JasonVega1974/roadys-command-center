@@ -1357,14 +1357,29 @@ function crmCallsSaveLocal(){ try{ localStorage.setItem('roadys_crm_calls', JSON
 async function crmLoadCallsFromSupabase(){
   try{ const sb=getRoadysSB(); const {data,error}=await sb.from('crm_scheduled_calls').select('*').order('scheduled_at',{ascending:true});
     if(error) throw error;
-    CRM_CALLS=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company,owner:r.owner,callType:r.call_type,scheduledAt:r.scheduled_at,status:r.status,note:r.note,source:r.source}));
+    CRM_CALLS=(data||[]).map(r=>({id:r.id,leadId:r.lead_id,company:r.company,owner:r.owner,callType:r.call_type,
+      scheduledAt:r.scheduled_at,status:r.status,note:r.note,source:r.source,
+      googleEventId:r.google_event_id||'', googleCalendarEmail:r.google_calendar_email||''}));
     crmCallsSaveLocal();
   }catch(e){ console.warn('calls load',e); }
 }
 async function crmSaveCallToSupabase(c){
-  try{ const sb=getRoadysSB(); const row={id:c.id,lead_id:c.leadId,company:c.company,owner:c.owner,call_type:c.callType,scheduled_at:c.scheduledAt,status:c.status,note:c.note,source:c.source};
+  const row={id:c.id,lead_id:c.leadId,company:c.company,owner:c.owner,call_type:c.callType,
+    scheduled_at:c.scheduledAt,status:c.status,note:c.note,source:c.source,
+    google_event_id:c.googleEventId||null, google_calendar_email:c.googleCalendarEmail||null,
+    google_synced_at:c.googleEventId?new Date().toISOString():null};
+  try{ const sb=getRoadysSB();
     const {error}=await sb.from('crm_scheduled_calls').upsert(row,{onConflict:'id'}); if(error) throw error;
-  }catch(e){ console.warn('call save',e); toast('Call saved locally (cloud sync failed)','terr'); }
+  }catch(e){
+    if(String(e&&e.message||'').indexOf('google_')>=0){
+      try{ const sb=getRoadysSB(); const bare=Object.assign({},row);
+        delete bare.google_event_id; delete bare.google_calendar_email; delete bare.google_synced_at;
+        const {error}=await sb.from('crm_scheduled_calls').upsert(bare,{onConflict:'id'}); if(error) throw error;
+        console.warn('gcal columns missing — run sql/2026-10-07-google-calendar-columns.sql'); return;
+      }catch(e2){ /* fall through to the existing toast */ }
+    }
+    console.warn('call save',e); toast('Call saved locally (cloud sync failed)','terr');
+  }
 }
 
 // ── Call Notifications (Task A5): slim mirror in the CRM header, reads in-memory CRM_CALLS ──
@@ -2620,10 +2635,27 @@ function crmScheduleCall(leadId){
     owner:document.getElementById('cmf-sched-who').value, callType:document.getElementById('cmf-sched-type').value,
     scheduledAt:new Date(`${date}T${time}:00`).toISOString(), status:'scheduled', note:document.getElementById('cmf-sched-note').value||'', source:'manual' };
   CRM_CALLS.push(c); crmCallsSaveLocal(); crmSaveCallToSupabase(c);
+  // Supabase first, Google second: a failed Google call leaves a valid CRM
+  // record with no event id, which the next schedule can retry. The reverse
+  // order would risk an event in somebody's calendar with no record behind it.
+  crmGcalPushCall(c, lead);
   if(lead.activity){ lead.activity.unshift({text:`Scheduled ${c.callType} for ${new Date(c.scheduledAt).toLocaleString()}`,date:new Date().toISOString().slice(0,10),by:c.owner,type:'call'}); crmSave&&crmSave(); }
   toast('Call scheduled','tok'); crmRenderLeadCalls(leadId);
   if(typeof renderCRMCalendar==='function') renderCRMCalendar();
   renderCRMNotifications();
+}
+async function crmGcalPushCall(c, lead){
+  if(!crmGcalConnected()) return;
+  const body=RoadysGcal.eventBodyForCall(lead, c, location.origin + location.pathname.replace(/\/[^/]*$/, ''));
+  if(!body) return;
+  try{
+    const r=await crmGcalFetch('/calendars/primary/events',{method:'POST',body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('Google returned '+r.status);
+    const ev=await r.json();
+    c.googleEventId=ev.id||''; c.googleCalendarEmail=crmGcalEmail();
+    crmCallsSaveLocal(); crmSaveCallToSupabase(c);
+    renderCRMCalendar();
+  }catch(e){ console.warn('gcal create',e); toast('Meeting saved, but not added to Google Calendar','twarn'); }
 }
 function crmRenderLeadCalls(leadId){
   const host=document.getElementById('cmf-lead-calls'); if(!host) return;
@@ -2636,8 +2668,26 @@ function crmRenderLeadCalls(leadId){
 function crmCancelCall(callId, leadId){
   const c=CRM_CALLS.find(x=>x.id===callId); if(!c) return; c.status='cancelled';
   crmCallsSaveLocal(); crmSaveCallToSupabase(c); crmRenderLeadCalls(leadId);
+  crmGcalDeleteCall(c);
   if(typeof renderCRMCalendar==='function') renderCRMCalendar(); toast('Call cancelled','tok');
   renderCRMNotifications();
+}
+async function crmGcalDeleteCall(c){
+  const guard=RoadysGcal.mayWriteGoogle(c, crmGcalEmail());
+  if(!guard.ok){
+    // Not an error. The commonest case is simply that nothing was ever
+    // synced; the next is that the event lives in a colleague's calendar,
+    // which this browser has no way to reach.
+    if(guard.reason==='other-owner') toast('Cancelled in the CRM. The Google event is in '+guard.owner+"'s calendar and was left alone.",'twarn');
+    return;
+  }
+  try{
+    const r=await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(c.googleEventId),{method:'DELETE'});
+    // 410 Gone means the user already deleted it in Google. That is success.
+    if(!r.ok && r.status!==410 && r.status!==404) throw new Error('Google returned '+r.status);
+    c.googleEventId=''; c.googleCalendarEmail='';
+    crmCallsSaveLocal(); crmSaveCallToSupabase(c); renderCRMCalendar();
+  }catch(e){ console.warn('gcal delete',e); toast('Cancelled in the CRM, but the Google event may remain','twarn'); }
 }
 
 // ── In-modal "Send availability": queues up to 6 date/time slots (reusing the
