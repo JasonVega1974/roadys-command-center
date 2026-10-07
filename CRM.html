@@ -1185,6 +1185,13 @@ const CRM_GCAL_CLIENT_ID = '283676450290-vvb11o6g0mdkecd03k587m0v73sg810c.apps.g
 const CRM_GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events openid https://www.googleapis.com/auth/userinfo.email';
 const CRM_GCAL_API = 'https://www.googleapis.com/calendar/v3';
 
+// Default OFF. A local display preference, not shared state, so it is not in
+// Supabase. Every stage advance writes a follow-up date; syncing all of them
+// without asking would fill the rep's calendar with one entry per lead.
+const CRM_GCAL_FOLLOWUP_KEY='roadys_crm_gcal_followups';
+function crmGcalFollowUpsOn(){ try{ return localStorage.getItem(CRM_GCAL_FOLLOWUP_KEY)==='1'; }catch(e){ return false; } }
+function crmGcalSetFollowUps(on){ try{ localStorage.setItem(CRM_GCAL_FOLLOWUP_KEY, on?'1':'0'); }catch(e){} crmGcalRenderStatus(); }
+
 // The access token lives here and nowhere else. Never localStorage, never a
 // cookie, never Supabase — it dies with the tab, which is the whole security
 // model of a browser OAuth client.
@@ -1300,7 +1307,51 @@ function crmGcalRenderStatus(){
             + 'title="The calendar below is showing CRM items only">⚠ '
             + crmEsc(crmGcalLoadError) + '</span>'
           : '')
+      + '<label style="font-size:.72em;color:var(--muted);margin-left:10px;cursor:pointer">'+
+          '<input type="checkbox" '+(crmGcalFollowUpsOn()?'checked':'')+' onchange="crmGcalSetFollowUps(this.checked)"> sync follow-up dates'+
+        '</label>'
     : '<button class="btn" style="font-size:.72em" onclick="crmGcalConnect()">📅 Connect Google Calendar</button>';
+}
+
+// Pushes a lead's follow-up date to Google Calendar as an all-day event.
+// Opt-in and gated twice: the toggle (default off) and crmGcalConnected().
+// Call this ONLY from the lead form save path (crmSaveLead()) — never from
+// inside crmSaveLeadToSupabase() itself, since this function calls back into
+// it to persist the event id Google hands back, which would recurse without
+// bound. A stage-advance's auto-set follow-up (crmMoveToStage()) does not
+// call this, by design — the toggle is one layer of safety, this omission
+// is the second.
+async function crmGcalSyncFollowUp(l){
+  if(!crmGcalConnected() || !crmGcalFollowUpsOn()) return;
+  const rec={googleEventId:l.googleFollowupEventId, googleCalendarEmail:l.googleFollowupEmail};
+  const guard=RoadysGcal.mayWriteGoogle(rec, crmGcalEmail());
+  const base=location.origin + location.pathname.replace(/\/[^/]*$/, '');
+  try{
+    // Cleared follow-up: remove the event if this session owns it.
+    if(!l.followUp){
+      if(guard.ok){
+        await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(rec.googleEventId),{method:'DELETE'});
+        l.googleFollowupEventId=''; l.googleFollowupEmail=''; crmSaveLeadToSupabase(l);
+      }
+      return;
+    }
+    const body=RoadysGcal.eventBodyForFollowUp(l, base);
+    if(!body) return;
+    if(guard.ok){
+      const r=await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(rec.googleEventId),
+                                 {method:'PATCH',body:JSON.stringify(body)});
+      if(r.ok) return;
+      // 404/410: the user deleted it in Google. Fall through and make a new one.
+      if(r.status!==404 && r.status!==410) throw new Error('Google returned '+r.status);
+    }else if(guard.reason==='other-owner'){
+      return;   // somebody else's calendar — leave it alone, silently
+    }
+    const c=await crmGcalFetch('/calendars/primary/events',{method:'POST',body:JSON.stringify(body)});
+    if(!c.ok) throw new Error('Google returned '+c.status);
+    const ev=await c.json();
+    l.googleFollowupEventId=ev.id||''; l.googleFollowupEmail=crmGcalEmail();
+    crmSaveLeadToSupabase(l);
+  }catch(e){ console.warn('gcal followup',e); }
 }
 
 let CRM_LEADS = [];
@@ -2841,6 +2892,10 @@ function crmSaveLead(){
     notes:(document.getElementById('cmf-notes')?.value||'').trim(),
     created:existing?.created||crmToday(),
     activity:existing?.activity||[{text:'Lead created',date:crmToday(),by:crmWhoAmI(),type:'note'}],
+    // Carried forward, not form fields — losing these on every edit would
+    // orphan the existing Google event and create a duplicate next sync.
+    googleFollowupEventId: existing?.googleFollowupEventId||'',
+    googleFollowupEmail:   existing?.googleFollowupEmail||'',
   };
   if(isEdit){ const i=CRM_LEADS.findIndex(l=>l.id===crmEditId); if(i>=0) CRM_LEADS[i]=obj; }
   else CRM_LEADS.push(obj);
@@ -2848,8 +2903,13 @@ function crmSaveLead(){
   renderCRMKPIs(); renderCRMKanban();
   const lp=document.getElementById('crm-panel-leads'); if(lp&&lp.style.display!=='none') renderCRMTable();
   toast((isEdit?'Updated: ':'Added: ')+company);
-  // Sync to Supabase in background
+  // Sync to Supabase in background, then push the follow-up date to Google
+  // Calendar if the rep has opted in. crmGcalSyncFollowUp() persists any
+  // event-id change via its own crmSaveLeadToSupabase() call — this is the
+  // ONLY call site, never from inside crmSaveLeadToSupabase() itself, or the
+  // two would recurse without bound.
   crmSaveLeadToSupabase(obj);
+  crmGcalSyncFollowUp(obj);
 }
 
 // Shared by crmLogActivity() and crmSendTemplateEmail() so both refresh the
@@ -3830,6 +3890,8 @@ async function crmLoadFromSupabase(){
         notes:      r.notes||'',
         activity:   r.activity||[],
         created:    r.created_at||'',
+        googleFollowupEventId: r.google_followup_event_id||'',
+        googleFollowupEmail:   r.google_followup_email||'',
       }));
       // One round trip for every visible lead. Failure is non-fatal: the
       // board still renders, profiles simply show as absent, because a
@@ -3876,6 +3938,8 @@ async function crmSaveLeadToSupabase(lead){
       notes:       lead.notes||'',
       activity:    lead.activity||[],
       updated_at:  new Date().toISOString(),
+      google_followup_event_id: lead.googleFollowupEventId||null,
+      google_followup_email:    lead.googleFollowupEmail||null,
     };
     const {error}=await sb.from('crm_leads').upsert(row,{onConflict:'id'});
     if(error) throw new Error(error.message || error.error_description || JSON.stringify({code:error.code,msg:error.message,hint:error.hint}));
