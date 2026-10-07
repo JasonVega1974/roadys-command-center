@@ -13,23 +13,31 @@ row carrying its own contribution percentage on the right.
 **The math does not change.** Not one multiplier, threshold, band or level rule
 moves. This is a presentation change over an unchanged engine.
 
-> **Amended 2026-10-07 (second revision).** Step 2 is now TWO zones, not one
-> numbered column. The `#1 Profile / Roadway / Lanes` recap row is gone — it
-> repeated a choice already made in the wizard's Step 1 and offered nothing to
-> act on. **Region** and **Trucker Path Rating** sit side by side in an
-> unnumbered top band, which also fills the dead space the compact map left to
-> its right; the four real choices — Amenities, Restroom, Rewards, Discount
-> Pricing Strategy — follow as a single numbered column, **1-4**. The region
-> map is compact (420px) and its regional `%` legend chips are gone: the map's
-> colours carry the regions, and the exact figure shows on the Region badge
-> once a state is chosen.
+> **Amended 2026-10-07 (final layout).** Step 2 is a **two-panel form**, not a
+> single numbered column. The `#1 Profile / Roadway / Lanes` recap row is gone
+> — it repeated a choice already made in the wizard's Step 1 and offered
+> nothing to act on.
 >
-> `bdpgSteps.rows()` therefore returns `{ top, steps }` rather than a flat
-> array, and every entry carries a stable **`key`**. Badge element ids are
-> built from that key, not from the position: the numbering has been reordered
-> twice, and both times the numeric ids left `patchStepValue`'s callers
-> pointing at the wrong badge, silently ending the live mid-drag updates. A
-> key cannot go stale that way.
+> **Left panel (~40%):** Region. The map fills the column, with the state input
+> and the resolved-region pill beneath it, and the region `%` on the panel
+> heading. It is deliberately **unnumbered**: the map *is* the input, and a
+> number chip on it would read as a step to work through rather than a place to
+> click. The regional `%` legend chips are gone — the map's colours carry the
+> regions, and the exact figure is on the badge once a state is chosen.
+>
+> **Right panel (~60%):** the five adjustments the rep actually works through,
+> numbered **1-5** — Trucker Path Rating, Amenities, Restroom / Shower,
+> Roady's Rewards, Discount Pricing Strategy — each with its percentage on a
+> shared right edge so the figures scan as a column. The six amenity dropdowns
+> are a 2x3 grid with each select beside its own label, not six full-width rows:
+> stacked, that one step would stand taller than the map and unbalance the
+> panel.
+>
+> `bdpgSteps.rows()` returns `{ region, steps }`, and every entry carries a
+> stable **`key`**. Badge element ids are built from that key, never from the
+> position: the numbering has been reordered three times, and twice the numeric
+> ids left `patchStepValue`'s callers pointing at the wrong badge, silently
+> ending the live mid-drag updates. A key cannot go stale that way.
 
 ---
 

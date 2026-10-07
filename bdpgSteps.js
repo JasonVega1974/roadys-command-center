@@ -5,11 +5,12 @@
   // their numbering, their titles, and the formatting of the contribution
   // each one shows.
   //
-  // Two zones, because two of the six adjustments are site facts the rep
-  // looks up rather than choices they work through:
+  // Two zones, matching the two panels the page draws:
   //
-  //   top   -- Region and Trucker Path Rating, side by side and unnumbered.
-  //   steps -- Amenities, Restroom, Rewards and Pricing, numbered 1-4.
+  //   region -- the map panel on the left. Unnumbered: the map IS the input,
+  //             and a number chip on a panel heading reads as a step the rep
+  //             has to work through rather than a place to click.
+  //   steps  -- the five adjustments stacked in the right panel, numbered 1-5.
   //
   // This lives outside index.html because it is a pure decision about what
   // the rep is told, and a pure decision belongs somewhere `node --test` can
@@ -59,27 +60,25 @@
   function rows(input) {
     var i = input || {};
     return {
-      top: [
-        entry('region', 'Region', i.regionPct, null),
-        entry('rating', 'Trucker Path Rating', i.reviewPct, null)
-      ],
+      region: entry('region', 'Region', i.regionPct, null),
       steps: [
-        // amenityLevelPct, NOT the formula's combined amenityPct -- steps 1
-        // and 2 are the two halves of that one term. See the invariant test.
-        entry('amenities', 'Amenities', i.amenityLevelPct, 1),
-        entry('restroom', 'Restroom / Shower Condition', i.restroomPct, 2),
-        entry('rewards', "Roady's Rewards Participation", i.rewardsPct, 3),
-        entry('pricing', 'Discount Pricing Strategy', i.pricingPct, 4)
+        entry('rating', 'Trucker Path Rating', i.reviewPct, 1),
+        // amenityLevelPct, NOT the formula's combined amenityPct -- steps 2
+        // and 3 are the two halves of that one term. See the invariant test.
+        entry('amenities', 'Amenities', i.amenityLevelPct, 2),
+        entry('restroom', 'Restroom / Shower Condition', i.restroomPct, 3),
+        entry("rewards", "Roady's Rewards Participation", i.rewardsPct, 4),
+        entry('pricing', 'Discount Pricing Strategy', i.pricingPct, 5)
       ]
     };
   }
 
-  // Every entry from both zones, in display order. The page patches a single
+  // Every entry from both panels, in display order. The page patches a single
   // badge during a slider drag and looks it up by key rather than by position,
-  // so neither caller has to know which zone an adjustment lives in.
+  // so neither caller has to know which panel an adjustment lives in.
   function all(result) {
     var r = result || rows();
-    return r.top.concat(r.steps);
+    return [r.region].concat(r.steps);
   }
 
   function byKey(result, key) {

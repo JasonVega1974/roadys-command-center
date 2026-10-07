@@ -252,13 +252,20 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
 .bdpg-star-half{position:relative;display:inline-block;}
 .bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
-.bdpg-atop{display:grid;grid-template-columns:1fr 1fr;gap:26px;padding:4px 0 16px;border-bottom:1px solid var(--border);}
-.bdpg-atop-cell{min-width:0;}
-.bdpg-atop-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
-.bdpg-atop-body{margin-top:10px;}
-@media(max-width:860px){.bdpg-atop{grid-template-columns:1fr;gap:18px;}}
+.bdpg-a2{display:grid;grid-template-columns:minmax(240px,40%) 1fr;gap:30px;align-items:start;}
+.bdpg-apanel{min-width:0;}
+.bdpg-ahead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+.bdpg-apanel-body{margin-top:12px;}
+/* Amenity pairs: label and its select adjacent, two per line, so six fields
+   stay compact instead of six full-width rows with the control flung right. */
+.bdpg-amgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px 20px;}
+.bdpg-amrow{display:flex;align-items:center;gap:8px;min-width:0;}
+.bdpg-amrow .bdpg-amlbl{font-size:.78em;color:var(--muted);white-space:nowrap;}
+.bdpg-amrow select{margin-left:auto;max-width:138px;font-size:.8em;padding:5px 7px;}
+@media(max-width:980px){.bdpg-a2{grid-template-columns:1fr;gap:22px;}}
+@media(max-width:620px){.bdpg-amgrid{grid-template-columns:1fr;}}
 .bdpg-astep{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;
-  padding:14px 0;border-top:1px solid var(--border);}
+  padding:13px 0;border-top:1px solid var(--border);}
 .bdpg-astep:first-child{border-top:none;}
 .bdpg-astep-n{display:inline-flex;align-items:center;justify-content:center;
   width:22px;height:22px;border-radius:50%;background:var(--surface);
@@ -4995,12 +5002,13 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.mapHtml = function () {
-    // Compact on purpose: the map is a region PICKER, not a data display --
-    // the exact percentage appears on the Region step's badge once a state is
-    // chosen, so the map only has to make the colour bands legible at a
-    // glance. The SVG carries its own viewBox and no width/height, so capping
-    // the wrapper is what sizes it, and the 900x550 aspect does the rest.
-    return '<div style="position:relative;max-width:420px">' +
+    // Sized by its column, not by a fixed cap: the map is the left panel of a
+    // two-panel form and fills it, which works out to roughly 40% of Step 2's
+    // width. It is a region PICKER, not a data display -- the exact percentage
+    // appears on the panel's own badge once a state is chosen. The SVG carries
+    // its own viewBox and no width/height, so the wrapper is what sizes it and
+    // the 900x550 aspect does the rest.
+    return '<div style="position:relative;width:100%">' +
       '<svg id="bdpg-usa-svg" viewBox="0 0 900 550" xmlns="http://www.w3.org/2000/svg"><g id="bdpg-states-group"></g></svg>' +
       '<div class="map-tooltip" id="bdpg-map-tip"></div>' +
     '</div>';
@@ -5510,18 +5518,15 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
-  // One cell of the unnumbered top band. Same title/badge shape as a numbered
-  // step so the two zones read as one family, minus the number chip -- Region
-  // and Trucker Path are site facts the rep looks up, not choices they work
-  // through in order.
-  BDPG.topCellHtml = function (entry, bodyHtml) {
-    return '<div class="bdpg-atop-cell">' +
-      '<div class="bdpg-atop-h">' +
-        '<div class="bdpg-astep-t">' + BDPG.escHtml(entry.title) + '</div>' +
-        '<div id="bdpg-astep-v-' + entry.key + '" class="bdpg-astep-v ' + entry.valueKind + '" ' +
-          'style="color:' + BDPG.stepValueTone(entry) + '">' + BDPG.escHtml(entry.valueText) + '</div>' +
-      '</div>' +
-      (bodyHtml ? '<div class="bdpg-atop-body">' + bodyHtml + '</div>' : '') +
+  // The left panel's heading: same title/badge shape as a numbered step so
+  // the two panels read as one family, minus the number chip -- the map IS
+  // the region input, and numbering a panel heading would read as a step to
+  // work through rather than a place to click.
+  BDPG.panelHeadHtml = function (entry) {
+    return '<div class="bdpg-ahead">' +
+      '<div class="bdpg-astep-t">' + BDPG.escHtml(entry.title) + '</div>' +
+      '<div id="bdpg-astep-v-' + entry.key + '" class="bdpg-astep-v ' + entry.valueKind + '" ' +
+        'style="color:' + BDPG.stepValueTone(entry) + '">' + BDPG.escHtml(entry.valueText) + '</div>' +
     '</div>';
   };
 
@@ -5844,7 +5849,7 @@ function getCentroid(pathStr, axis){
     // One row per amenity: icon + label on the left, its dropdown on the right.
     // Options come from AMENITY_DETAIL_OPTIONS so the widget cannot drift from
     // the rule that reads these exact strings.
-    var arows = Object.keys(AICONS).map(function (f) {
+    var arows = '<div class="bdpg-amgrid">' + Object.keys(AICONS).map(function (f) {
       var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[f] || [];
       var cur = s.amenityDetails[f];
       // "not assessed" is a real option, not a placeholder: it is the
@@ -5856,16 +5861,15 @@ function getCentroid(pathStr, axis){
           return '<option value="' + BDPG.escHtml(o) + '"' + (o === cur ? ' selected' : '') + '>' +
             BDPG.escHtml(o) + '</option>';
         }).join('');
-      return '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">' +
-          '<span style="width:1.4em;text-align:center">' + AICONS[f] + '</span>' +
-          '<span style="font-size:.8em;color:var(--muted);flex:1">' + BDPG.escHtml(ALABELS[f]) + '</span>' +
-          '<select style="max-width:190px" ' +
-            'aria-label="' + BDPG.escHtml(ALABELS[f]) + '" ' +
+      return '<div class="bdpg-amrow">' +
+          '<span style="width:1.3em;text-align:center">' + AICONS[f] + '</span>' +
+          '<span class="bdpg-amlbl">' + BDPG.escHtml(ALABELS[f]) + '</span>' +
+          '<select aria-label="' + BDPG.escHtml(ALABELS[f]) + '" ' +
             'onchange="BDPG.onAmenitySelect(' + JSON.stringify(f).replace(/"/g, '&quot;') + ',this.value)">' +
             optHtml +
           '</select>' +
         '</div>';
-    }).join('');
+    }).join('') + '</div>';
 
     var amenityBody = arows + amenityNotice + suggestLine;
 
@@ -5873,31 +5877,36 @@ function getCentroid(pathStr, axis){
     // own title line is dropped.
     var restroomBody = BDPG.restroomSelectHtml();
 
-    // Two zones. Region and Trucker Path sit side by side and unnumbered:
-    // they are site facts the rep looks up, and pairing them puts the rating
-    // slider in the space the compact map leaves rather than stranding it on
-    // a row of its own. The four real choices stay a single numbered column.
-    var topCell = function (key, bodyHtml) {
-      return BDPG.topCellHtml(BDPG_STEPS.byKey(stepRows, key), bodyHtml);
-    };
+    // Two panels. The map is the left one and fills it; the five adjustments
+    // stack in the right one, each with its own number and its own percentage
+    // on the far right. One layout language throughout, rather than a banded
+    // header over full-width rows.
     var step = function (key, bodyHtml) {
       return BDPG.stepRowHtml(BDPG_STEPS.byKey(stepRows, key), bodyHtml);
     };
 
-    var body =
-      '<div class="bdpg-atop">' +
-        topCell('region',
+    var leftPanel = '<div class="bdpg-apanel">' +
+        BDPG.panelHeadHtml(stepRows.region) +
+        '<div class="bdpg-apanel-body">' +
           BDPG.mapHtml() +
-          '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
+          '<div class="fg" style="margin-top:10px;max-width:170px"><label>Or type state code</label>' +
             '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
             'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
-          regionNotice) +
-        topCell('rating', ratingBody) +
-      '</div>' +
-      step('amenities', amenityBody) +
-      step('restroom', restroomBody) +
-      step('rewards', '<div class="bdpg-seg">' + rsegs + '</div>') +
-      step('pricing', segs);
+          regionNotice +
+        '</div>' +
+      '</div>';
+
+    // The right panel's first step has no rule above it -- the panel heading
+    // opposite it already starts the row.
+    var rightPanel = '<div class="bdpg-apanel">' +
+        step('rating', ratingBody) +
+        step('amenities', amenityBody) +
+        step('restroom', restroomBody) +
+        step('rewards', '<div class="bdpg-seg">' + rsegs + '</div>') +
+        step('pricing', segs) +
+      '</div>';
+
+    var body = '<div class="bdpg-a2">' + leftPanel + rightPanel + '</div>';
 
     return '<div id="bdpg-step2">' + body + '</div>';
   };
