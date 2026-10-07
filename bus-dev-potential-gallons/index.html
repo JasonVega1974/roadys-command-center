@@ -231,12 +231,6 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
    happens. */
 #bdpg-usa-svg path.nomap:hover{opacity:1;stroke-width:.5;stroke:#0A0E1A;filter:none;}
 body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
-.bdpg-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
-.bdpg-chip{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:.72em;}
-.bdpg-chip.on{border-color:var(--accent);box-shadow:0 0 10px rgba(245,158,11,.3);}
-.bdpg-chip-dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto;}
-.bdpg-chip-name{font-weight:700;color:var(--text);}
-.bdpg-chip-meta{color:var(--muted);}
 .bdpg-seg{display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .bdpg-seg button{flex:1;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--muted);padding:9px 4px;font-family:var(--fb);font-size:.68em;font-weight:700;cursor:pointer;transition:all .15s;line-height:1.3;}
 .bdpg-seg button:last-child{border-right:none;}
@@ -272,7 +266,6 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-astep-v{font-family:var(--ff);font-size:1.25em;font-weight:800;
   text-align:right;white-space:nowrap;min-width:5.5em;}
 .bdpg-astep-v.none{color:var(--muted);}
-.bdpg-astep-v.gallons{color:var(--text);}
 .bdpg-go{width:100%;padding:15px;margin:16px 0;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
 .bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(245,158,11,.45);}
 .bdpg-go:disabled{opacity:.45;cursor:not-allowed;background:var(--surface2);color:var(--muted);}
@@ -4997,7 +4990,12 @@ function getCentroid(pathStr, axis){
   };
 
   BDPG.mapHtml = function () {
-    return '<div style="position:relative">' +
+    // Compact on purpose: the map is a region PICKER, not a data display --
+    // the exact percentage appears on the Region step's badge once a state is
+    // chosen, so the map only has to make the colour bands legible at a
+    // glance. The SVG carries its own viewBox and no width/height, so capping
+    // the wrapper is what sizes it, and the 900x550 aspect does the rest.
+    return '<div style="position:relative;max-width:420px">' +
       '<svg id="bdpg-usa-svg" viewBox="0 0 900 550" xmlns="http://www.w3.org/2000/svg"><g id="bdpg-states-group"></g></svg>' +
       '<div class="map-tooltip" id="bdpg-map-tip"></div>' +
     '</div>';
@@ -5066,29 +5064,6 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
-  BDPG.regionChipsHtml = function () {
-    var active = BDPG.state.state ? BusDevGallonsCalc.resolveRegion(BDPG.state.state) : null;
-    var nc = BDPG.networkContext;
-    // Ordered from BDPG.REGION_KEYS (the config's own BDPG_REGION_MAP order),
-    // like the admin sliders and every other region surface. Iterating
-    // REGION_COLORS instead put the original five first and the three new ones
-    // last, so the legend listed regions in an order that matched nothing else
-    // in the tool -- and left region order defined in two places.
-    return '<div class="bdpg-chips">' + BDPG.REGION_KEYS.map(function (r) {
-      var pct = BDPG.effectiveRegionPct(r) * 100;
-      var count = (nc && nc.byRegion && nc.byRegion[r]) ? nc.byRegion[r].total : null;
-      // Colour map and key list are both config-derived and carry the same
-      // eight keys, but a plain lookup would emit "background:undefined" if a
-      // future region were added to one and not the other.
-      var dot = hasOwn(BDPG.REGION_COLORS, r) ? BDPG.REGION_COLORS[r] : 'var(--muted)';
-      return '<div class="bdpg-chip' + (r === active ? ' on' : '') + '">' +
-        '<span class="bdpg-chip-dot" style="background:' + dot + '"></span>' +
-        '<span class="bdpg-chip-name">' + BDPG.escHtml(r) + '</span>' +
-        '<span class="bdpg-chip-meta">' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% · ' +
-          (count === null ? '—' : count + ' loc') + '</span>' +
-      '</div>';
-    }).join('') + '</div>';
-  };
 
   // ── Baseline from the network ───────────────────────────────────────────
   //
@@ -5506,7 +5481,6 @@ function getCentroid(pathStr, axis){
     if (row.valueKind === 'pct' && row.value !== null) {
       return row.value > 0 ? 'var(--green)' : (row.value < 0 ? 'var(--red)' : 'var(--muted)');
     }
-    if (row.valueKind === 'gallons') return 'var(--accent)';
     return 'var(--muted)';
   };
 
@@ -5551,12 +5525,8 @@ function getCentroid(pathStr, axis){
     var s = BDPG.state;
     var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
     var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
-    var baseRow = BDPG.currentBaseline();
     var levelPct = BusDevGallonsCalc.amenityAdjustment(s.amenityLevel);
     var rows = BDPG_STEPS.rows({
-      baseline:        baseRow && isNum(baseRow.baseline) ? baseRow.baseline : null,
-      profile:         s.profile || '',
-      roadway:         s.roadway || '',
       regionPct:       region ? regionPct : null,
       reviewPct:       BusDevGallonsCalc.reviewAdjustment(s.truckerPathRating).pct,
       amenityLevelPct: levelPct,
@@ -5882,19 +5852,17 @@ function getCentroid(pathStr, axis){
     function stepRow(n, body) { return BDPG.stepRowHtml(stepRows[n - 1], body); }
 
     var body =
-      stepRow(1, '') +
-      stepRow(2,
+      stepRow(1,
         regionNotice +
         BDPG.mapHtml() +
         '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
           '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
-          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
-        BDPG.regionChipsHtml()) +
-      stepRow(3, ratingBody) +
-      stepRow(4, amenityBody) +
-      stepRow(5, restroomBody) +
-      stepRow(6, '<div class="bdpg-seg">' + rsegs + '</div>') +
-      stepRow(7, segs);
+          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>') +
+      stepRow(2, ratingBody) +
+      stepRow(3, amenityBody) +
+      stepRow(4, restroomBody) +
+      stepRow(5, '<div class="bdpg-seg">' + rsegs + '</div>') +
+      stepRow(6, segs);
 
     return '<div id="bdpg-step2">' + body + '</div>';
   };

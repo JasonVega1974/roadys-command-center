@@ -1,8 +1,13 @@
 (function (root) {
   'use strict';
 
-  // The seven Adjustment Steps: their order, numbering, titles and the
+  // The six Adjustment Steps: their order, numbering, titles and the
   // formatting of the contribution each one shows.
+  //
+  // Every step is an adjustment the rep can move, so every row is a signed
+  // percentage. The profile/roadway baseline is deliberately NOT a step: it
+  // is chosen in Step 1 of the wizard and repeating it here as a read-only
+  // label added a row nobody could act on.
   //
   // This lives outside index.html because it is a pure decision about what
   // the rep is told, and a pure decision belongs somewhere `node --test` can
@@ -16,10 +21,6 @@
 
   function num(v) {
     return typeof v === 'number' && isFinite(v) ? v : null;
-  }
-
-  function str(v) {
-    return typeof v === 'string' ? v : '';
   }
 
   // One decimal, signed, with the same U+2212 minus the rest of the page uses.
@@ -37,19 +38,6 @@
     return sign + magText + '%';
   }
 
-  function fmtGal(n) {
-    return Math.round(n).toLocaleString('en-US') + ' gal/mo';
-  }
-
-  // Both parts when both exist, whichever one exists otherwise. Joining only
-  // on "both present" would silently drop a roadway that is genuinely set.
-  function joinDot(a, b) {
-    var parts = [];
-    if (a) parts.push(a);
-    if (b) parts.push(b);
-    return parts.join(' · ');
-  }
-
   function pctRow(n, title, value) {
     var v = num(value);
     return {
@@ -64,25 +52,15 @@
 
   function rows(input) {
     var i = input || {};
-    var baseline = num(i.baseline);
-
     return [
-      {
-        n: 1,
-        title: 'Profile / Roadway / Lanes',
-        subtitle: joinDot(str(i.profile), str(i.roadway)),
-        value: baseline,
-        valueText: baseline === null ? '—' : fmtGal(baseline),
-        valueKind: baseline === null ? 'none' : 'gallons'
-      },
-      pctRow(2, 'Region', i.regionPct),
-      pctRow(3, 'Trucker Path Rating', i.reviewPct),
-      // amenityLevelPct, NOT the formula's combined amenityPct -- steps 4 and
-      // 5 are the two halves of that one term. See the invariant test.
-      pctRow(4, 'Amenities', i.amenityLevelPct),
-      pctRow(5, 'Restroom / Shower Condition', i.restroomPct),
-      pctRow(6, "Roady's Rewards Participation", i.rewardsPct),
-      pctRow(7, 'Discount Pricing Strategy', i.pricingPct)
+      pctRow(1, 'Region', i.regionPct),
+      pctRow(2, 'Trucker Path Rating', i.reviewPct),
+      // amenityLevelPct, NOT the formula's combined amenityPct -- steps 3 and
+      // 4 are the two halves of that one term. See the invariant test.
+      pctRow(3, 'Amenities', i.amenityLevelPct),
+      pctRow(4, 'Restroom / Shower Condition', i.restroomPct),
+      pctRow(5, "Roady's Rewards Participation", i.rewardsPct),
+      pctRow(6, 'Discount Pricing Strategy', i.pricingPct)
     ];
   }
 

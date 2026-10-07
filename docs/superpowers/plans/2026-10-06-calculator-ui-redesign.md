@@ -10,6 +10,16 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-06-calculator-ui-redesign-design.md`
 
+> **Amended 2026-10-07 (pre-merge).** The `#1 Profile / Roadway / Lanes`
+> read-only recap row was removed and the flow renumbered **1-6**, starting
+> at Region: it repeated a choice already made in the wizard's Step 1 and
+> offered nothing to act on. With it went the module's `baseline`/`profile`/
+> `roadway` inputs and the `'gallons'` `valueKind`, since every remaining
+> step is a signed percentage. The region map was also made compact
+> (420px wide) and the regional `%` legend chips below it removed — the
+> map's colours carry the regions at a glance, and the exact figure appears
+> on the Region step's badge once a state is chosen.
+
 ## Global Constraints
 
 - **No formula change.** `busDevGallonsCalculator.js` and `busDevGallonsConfig.js` are **untouched**. Any diff to either file is a defect, not a judgement call.
