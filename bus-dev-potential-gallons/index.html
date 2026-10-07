@@ -19,6 +19,7 @@
      estimate path, and keeping it in its own UMD module is what makes the
      rule that decides which locations feed which baseline unit-testable. -->
 <script src="../bdpgStats.js"></script>
+<script src="../bdpgSteps.js?v=2026-10-06"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../roadysBD.js?v=2026-10-06"></script>
 <style>
@@ -236,8 +237,6 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-chip-dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto;}
 .bdpg-chip-name{font-weight:700;color:var(--text);}
 .bdpg-chip-meta{color:var(--muted);}
-.bdpg-2col{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;}
-@media(max-width:1000px){.bdpg-2col{grid-template-columns:1fr;}}
 .bdpg-seg{display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .bdpg-seg button{flex:1;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--muted);padding:9px 4px;font-family:var(--fb);font-size:.68em;font-weight:700;cursor:pointer;transition:all .15s;line-height:1.3;}
 .bdpg-seg button:last-child{border-right:none;}
@@ -259,13 +258,21 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
 .bdpg-star-half{position:relative;display:inline-block;}
 .bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
-.bdpg-acard{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px;cursor:pointer;text-align:center;transition:all .15s;}
-.bdpg-acard:hover{border-color:var(--border2);}
-.bdpg-acard.set{border-color:var(--accent);background:rgba(245,158,11,.07);}
-.bdpg-acard-ico{font-size:1.4em;line-height:1;}
-.bdpg-acard-f{font-size:.64em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px;}
-.bdpg-acard-v{font-size:.76em;font-weight:700;color:var(--text);margin-top:3px;min-height:1.1em;}
-.bdpg-acard:not(.set) .bdpg-acard-v{color:var(--dim);}
+.bdpg-astep{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;
+  padding:14px 0;border-top:1px solid var(--border);}
+.bdpg-astep:first-child{border-top:none;}
+.bdpg-astep-n{display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;background:var(--surface);
+  border:1px solid var(--border);color:var(--accent);font-family:var(--ff);
+  font-size:.72em;font-weight:800;margin-right:8px;flex-shrink:0;}
+.bdpg-astep-t{font-weight:800;font-size:.85em;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--text);display:flex;align-items:center;}
+.bdpg-astep-sub{font-size:.76em;color:var(--muted);margin:2px 0 0 30px;}
+.bdpg-astep-body{margin:10px 0 0 30px;}
+.bdpg-astep-v{font-family:var(--ff);font-size:1.25em;font-weight:800;
+  text-align:right;white-space:nowrap;min-width:5.5em;}
+.bdpg-astep-v.none{color:var(--muted);}
+.bdpg-astep-v.gallons{color:var(--text);}
 .bdpg-go{width:100%;padding:15px;margin:16px 0;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
 .bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(245,158,11,.45);}
 .bdpg-go:disabled{opacity:.45;cursor:not-allowed;background:var(--surface2);color:var(--muted);}
@@ -4251,7 +4258,7 @@ function getCentroid(pathStr, axis){
     return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
       'This calculator estimates how many diesel gallons per month Roady’s could realistically drive to a prospective ' +
       'truck stop. It starts from a published baseline looked up by the location’s physical profile, then layers on ' +
-      'adjustments for region, amenities, Trucker Path review score, pricing posture and Rewards participation to produce ' +
+      'adjustments for region, amenities, Trucker Path review score, discount pricing strategy and Rewards participation to produce ' +
       'a client-ready pitch number plus an internal-only breakdown of how it was built.' +
     '</p>' +
     '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
@@ -5356,6 +5363,8 @@ function getCentroid(pathStr, axis){
 
   // Restroom / shower condition. Its own additive term, summed with the
   // amenity level into the single Amenities figure the breakdown shows.
+  // The row primitive supplies the "Restroom / Shower Condition" title now
+  // -- this returns just the <select>.
   BDPG.restroomSelectHtml = function () {
     var cur = BDPG.state.restroomLevel || BDPG_CONFIG.RESTROOM_DEFAULT;
     var opts = BDPG_CONFIG.RESTROOM_LEVELS.map(function (lv) {
@@ -5363,8 +5372,7 @@ function getCentroid(pathStr, axis){
       return '<option value="' + BDPG.escHtml(lv) + '"' + (lv === cur ? ' selected' : '') + '>' +
         BDPG.escHtml(lv) + ' (' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(0) + '%)</option>';
     }).join('');
-    return '<div class="bdpg-lbl" style="margin-top:14px">Restroom / Shower Condition</div>' +
-      '<select style="max-width:260px" onchange="BDPG.onRestroomChange(this.value)">' + opts + '</select>';
+    return '<select style="max-width:260px" onchange="BDPG.onRestroomChange(this.value)">' + opts + '</select>';
   };
 
   BDPG.onRestroomChange = function (value) {
@@ -5491,10 +5499,89 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
-  BDPG.step2Html = function () {
+  // Shared by the full render (stepRowHtml) and the targeted slider patch
+  // (patchStepValue) so both ever paint a given value the same colour --
+  // one tone decision instead of two that could drift apart.
+  BDPG.stepValueTone = function (row) {
+    if (row.valueKind === 'pct' && row.value !== null) {
+      return row.value > 0 ? 'var(--green)' : (row.value < 0 ? 'var(--red)' : 'var(--muted)');
+    }
+    if (row.valueKind === 'gallons') return 'var(--accent)';
+    return 'var(--muted)';
+  };
+
+  // One primitive for all seven Adjustment Steps. The number, title, subtitle
+  // and right-hand value come from BDPG_STEPS.rows(); the body is whatever
+  // control that step owns. Adding a step means adding it to bdpgSteps.js and
+  // passing a body here -- never hand-building another row.
+  //
+  // The value cell carries a stable id (bdpg-astep-v-N) so patchStepValue()
+  // can repaint it without a full render -- see onRatingSlider/onPricingSlider.
+  BDPG.stepRowHtml = function (row, bodyHtml) {
+    var tone = BDPG.stepValueTone(row);
+    return '<div class="bdpg-astep">' +
+      '<div>' +
+        '<div class="bdpg-astep-t"><span class="bdpg-astep-n">' + row.n + '</span>' +
+          BDPG.escHtml(row.title) + '</div>' +
+        (row.subtitle ? '<div class="bdpg-astep-sub">' + BDPG.escHtml(row.subtitle) + '</div>' : '') +
+        (bodyHtml ? '<div class="bdpg-astep-body">' + bodyHtml + '</div>' : '') +
+      '</div>' +
+      '<div id="bdpg-astep-v-' + row.n + '" class="bdpg-astep-v ' + row.valueKind + '" style="color:' + tone + '">' +
+        BDPG.escHtml(row.valueText) + '</div>' +
+    '</div>';
+  };
+
+  // The single source of truth for what each Adjustment Step's right-hand
+  // value says. step2Html() calls this on every full render; patchStepValue()
+  // calls it from a targeted slider patch. One function, two callers, so a
+  // badge painted mid-drag and a badge painted by the next full render can
+  // never disagree about the same input.
+  //
+  // amenityLevelPct reads s.amenityLevel rather than re-deriving a
+  // suggestion from amenityDetails: deriving it is step2Html()'s own render
+  // side effect (it writes s.amenityLevel), and that must happen exactly
+  // once per full render, not once per call here.
+  //
+  // Returns { rows, region, regionPct } rather than just the rows array --
+  // region/regionPct are resolved here from s.state either way, so callers
+  // that also need them for display (step2Html()'s regionNotice) read them
+  // off this same result instead of calling resolveRegion()/
+  // effectiveRegionPct() a second time on the same input.
+  BDPG.stepRowsNow = function () {
     var s = BDPG.state;
     var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
     var regionPct = region ? BDPG.effectiveRegionPct(region) : 0;
+    var baseRow = BDPG.currentBaseline();
+    var levelPct = BusDevGallonsCalc.amenityAdjustment(s.amenityLevel);
+    var rows = BDPG_STEPS.rows({
+      baseline:        baseRow && isNum(baseRow.baseline) ? baseRow.baseline : null,
+      profile:         s.profile || '',
+      roadway:         s.roadway || '',
+      regionPct:       region ? regionPct : null,
+      reviewPct:       BusDevGallonsCalc.reviewAdjustment(s.truckerPathRating).pct,
+      amenityLevelPct: levelPct,
+      restroomPct:     BusDevGallonsCalc.restroomAdjustment(s.restroomLevel || BDPG_CONFIG.RESTROOM_DEFAULT),
+      rewardsPct:      BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel),
+      pricingPct:      BDPG.currentPricingPct()
+    });
+    return { rows: rows, region: region, regionPct: regionPct };
+  };
+
+  // Targeted patch for one Adjustment Step's badge, for the two handlers
+  // (onRatingSlider, onPricingSlider) that intentionally skip BDPG.render()
+  // so a dragged slider keeps focus. Reads BDPG.stepRowsNow() -- the same
+  // function the full render reads -- so the patched figure and the next
+  // full render can never disagree.
+  BDPG.patchStepValue = function (n) {
+    var el = document.getElementById('bdpg-astep-v-' + n);
+    if (!el) return;
+    var row = BDPG.stepRowsNow().rows[n - 1];
+    el.textContent = row.valueText;
+    el.style.color = BDPG.stepValueTone(row);
+  };
+
+  BDPG.step2Html = function () {
+    var s = BDPG.state;
 
     BDPG.normalizeLevels();
 
@@ -5534,8 +5621,18 @@ function getCentroid(pathStr, axis){
       : null;
     s.amenityLevel = suggestion ? suggestion.level : '';
 
-    var levelPct = (suggestion && hasOwn(BDPG_CONFIG.AMENITY_ADJUST, suggestion.level))
-      ? BDPG_CONFIG.AMENITY_ADJUST[suggestion.level] : 0;
+    // BDPG.stepRowsNow() is the one place the rows input object is built
+    // -- see its own comment for why amenityLevelPct reads s.amenityLevel
+    // instead of re-deriving a suggestion here. It also hands back the
+    // region/regionPct it resolved along the way, so this render doesn't
+    // run resolveRegion()/effectiveRegionPct() a second time just to paint
+    // regionNotice from the same inputs.
+    var stepData = BDPG.stepRowsNow();
+    var stepRows = stepData.rows;
+    var region = stepData.region;
+    var regionPct = stepData.regionPct;
+
+    var levelPct = suggestion ? BusDevGallonsCalc.amenityAdjustment(suggestion.level) : 0;
     var levelPctTxt = (levelPct >= 0 ? '+' : '') + (levelPct * 100).toFixed(1) + '%';
     var amenityNotice = '';
     var suggestLine = !suggestion
@@ -5551,16 +5648,12 @@ function getCentroid(pathStr, axis){
             : '') +
         '</div>';
 
-    var left = '<div class="fg">' +
-        '<label>State</label>' +
-        (region ? ('<div style="margin-bottom:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>') :
-          (s.state ? '<div style="margin-bottom:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '')) +
-        BDPG.mapHtml() +
-        '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
-          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
-          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
-        BDPG.regionChipsHtml() +
-      '</div>';
+    // The region chip (or the "not recognized" warning) sits above the map,
+    // same as before the restructure -- just inside step 2's body now
+    // instead of the removed "left" column.
+    var regionNotice = region
+      ? ('<div style="margin-bottom:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>')
+      : (s.state ? '<div style="margin-bottom:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '');
 
     var rv = s.truckerPathRating;
     // The four details suggestAmenityLevel() actually reads. `service` and
@@ -5603,9 +5696,12 @@ function getCentroid(pathStr, axis){
     // blue. The three letters then render near the emoji's own ink height,
     // which is the comparison a reader is actually making.
     //
-    // Sized in em, not px, so it tracks .bdpg-acard-ico's 1.4em if the type
+    // Sized in em, not px, so it tracks the amenity row's icon span (the
+    // "width:1.4em" span each row wraps its icon in, above) if the type
     // scale ever changes -- a px icon beside em-sized emoji drifts apart the
-    // first time anyone touches the base font size.
+    // first time anyone touches the base font size. That 1.4em is a box
+    // width on the span, not a font-size, so the tracking is em-to-em, not
+    // em-to-font-size.
     //
     // currentColor is deliberately NOT used: these cards grey their text when
     // unset, and a greyed-out DEF badge would stop reading as DEF signage.
@@ -5651,8 +5747,9 @@ function getCentroid(pathStr, axis){
     var ALABELS = { showers:'Showers', food:'Food', scale:'Scale', parking:'Parking',
                     def:'DEF', laundry:'Laundry' };
 
-    var ratingBlock =
-      '<div class="bdpg-lbl">Trucker Path Rating</div>' +
+    // Row primitive supplies the "Trucker Path Rating" title now -- the
+    // control's own bdpg-lbl line is dropped.
+    var ratingBody =
       '<div style="display:flex;align-items:center;gap:12px">' +
         '<input type="range" min="1" max="5" step="0.1" style="flex:1" ' +
           'value="' + (rv === '' ? '3' : BDPG.escHtml(rv)) + '" oninput="BDPG.onRatingSlider(this.value)">' +
@@ -5694,7 +5791,7 @@ function getCentroid(pathStr, axis){
           '<input id="bdpg-pricing-slider" type="range" style="width:100%;position:relative;z-index:2" ' +
             'min="' + (-N) + '" max="' + N + '" step="1" ' +
             'value="' + BDPG_STATS.pricingPositionForPct(pcur, pr) + '" ' +
-            'aria-label="Discount and aggregator posture. Centre is this profile&#39;s average; ' +
+            'aria-label="Discount pricing strategy. Centre is this profile&#39;s average; ' +
               'left reaches ' + BDPG.fmtSignedPct(pr.min) + ', right reaches ' + BDPG.fmtSignedPct(pr.max) + '" ' +
             'aria-valuetext="' + BDPG.escHtml(BDPG.fmtSignedPct(pcur)) + '" ' +
             'oninput="BDPG.onPricingSlider(this.value)">' +
@@ -5713,7 +5810,8 @@ function getCentroid(pathStr, axis){
       // Three labels on a three-column grid, not space-between: the centre
       // label has to sit under the centre MARK, and space-between would place
       // it by its own width instead.
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-size:.72em;' +
+      '<div title="' + BDPG.escHtml(BDPG.pricingAnchorTitle(pr)) + '" ' +
+          'style="display:grid;grid-template-columns:1fr 1fr 1fr;font-size:.72em;' +
           'color:var(--muted);margin-top:2px">' +
         '<span style="text-align:left">No discounts<br>' + BDPG.fmtSignedPct(pr.min) + '</span>' +
         '<span style="text-align:center;color:var(--text)">▲ Profile average<br>0%</span>' +
@@ -5722,10 +5820,7 @@ function getCentroid(pathStr, axis){
       // The live figure, so the rep sees gallons rather than having to
       // translate a percentage against a baseline they cannot see from here.
       '<div id="bdpg-pricing-gal" style="font-size:.8em;margin-top:6px">' +
-        BDPG.pricingGallonsLineHtml(pcur) + '</div>' +
-      '<div id="bdpg-pricing-desc" style="font-size:.74em;color:var(--muted);margin-top:4px">' +
-        BDPG.pricingDescription(pcur) + '</div>' +
-      BDPG.pricingAnchorNoteHtml(pr);
+        BDPG.pricingGallonsLineHtml(pcur) + '</div>';
 
     // Three fixed tones rather than the pricing row's five-stop gradient:
     // this is a yes / unknown / no posture, not a scale. Keyed by level
@@ -5752,33 +5847,56 @@ function getCentroid(pathStr, axis){
         '<span style="opacity:.85">' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%</span></button>';
     }).join('');
 
-    var acards = Object.keys(AICONS).map(function (f) {
-      var v = s.amenityDetails[f];
-      return '<div class="bdpg-acard' + (v ? ' set' : '') + '" onclick="BDPG.onAmenityCycle(\'' + f + '\')">' +
-        '<div class="bdpg-acard-ico">' + AICONS[f] + '</div>' +
-        '<div class="bdpg-acard-f">' + ALABELS[f] + '</div>' +
-        '<div class="bdpg-acard-v">' + BDPG.escHtml(v || 'tap to set') + '</div>' +
-      '</div>';
+    // One row per amenity: icon + label on the left, its dropdown on the right.
+    // Options come from AMENITY_DETAIL_OPTIONS so the widget cannot drift from
+    // the rule that reads these exact strings.
+    var arows = Object.keys(AICONS).map(function (f) {
+      var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[f] || [];
+      var cur = s.amenityDetails[f];
+      // "not assessed" is a real option, not a placeholder: it is the
+      // difference between "we checked, there are none" and "nobody looked",
+      // and amenityAnsweredCount() -- and the N-of-4 warning below -- depend
+      // on that distinction staying expressible.
+      var optHtml = '<option value=""' + (cur ? '' : ' selected') + '>— not assessed —</option>' +
+        opts.map(function (o) {
+          return '<option value="' + BDPG.escHtml(o) + '"' + (o === cur ? ' selected' : '') + '>' +
+            BDPG.escHtml(o) + '</option>';
+        }).join('');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">' +
+          '<span style="width:1.4em;text-align:center">' + AICONS[f] + '</span>' +
+          '<span style="font-size:.8em;color:var(--muted);flex:1">' + BDPG.escHtml(ALABELS[f]) + '</span>' +
+          '<select style="max-width:190px" ' +
+            'aria-label="' + BDPG.escHtml(ALABELS[f]) + '" ' +
+            'onchange="BDPG.onAmenitySelect(' + JSON.stringify(f).replace(/"/g, '&quot;') + ',this.value)">' +
+            optHtml +
+          '</select>' +
+        '</div>';
     }).join('');
 
-    // Every Step 2 section title now carries .bdpg-lbl -- the file's bold
-    // uppercase label style. Two of them were plain <label>s rendering in a
-    // lighter weight than the others beside them.
-    var right = '<div class="fg">' +
-        ratingBlock +
-        '<div class="bdpg-lbl" style="margin-top:14px">Discount / Aggregator Posture</div>' +
-        // Not .bdpg-seg: that class lays out a segmented button row, and
-        // this is a slider now.
-        '<div>' + segs + '</div>' +
-        '<div class="bdpg-lbl" style="margin-top:14px">Roady\'s Rewards Participation</div>' +
-        '<div class="bdpg-seg">' + rsegs + '</div>' +
-        '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + acards + '</div>' +
-        amenityNotice + suggestLine +
-        BDPG.restroomSelectHtml() +
-      '</div>';
+    var amenityBody = arows + amenityNotice + suggestLine;
 
-    return '<div id="bdpg-step2" class="bdpg-2col">' + left + right + '</div>';
+    // Row primitive supplies its own bdpg-lbl title now -- the control's
+    // own title line is dropped.
+    var restroomBody = BDPG.restroomSelectHtml();
+
+    function stepRow(n, body) { return BDPG.stepRowHtml(stepRows[n - 1], body); }
+
+    var body =
+      stepRow(1, '') +
+      stepRow(2,
+        regionNotice +
+        BDPG.mapHtml() +
+        '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
+          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
+          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
+        BDPG.regionChipsHtml()) +
+      stepRow(3, ratingBody) +
+      stepRow(4, amenityBody) +
+      stepRow(5, restroomBody) +
+      stepRow(6, '<div class="bdpg-seg">' + rsegs + '</div>') +
+      stepRow(7, segs);
+
+    return '<div id="bdpg-step2">' + body + '</div>';
   };
 
   // Re-renders only the Step 2 box (via outerHTML), not the whole page, and
@@ -5862,6 +5980,10 @@ function getCentroid(pathStr, axis){
     if (num) num.textContent = v === '' ? '—' : Number(v).toFixed(1);
     if (st) st.innerHTML = BDPG.starsHtml(v);
     if (band) band.innerHTML = BDPG.ratingBandHtml(v);
+    // Row 3 (Trucker Path Rating) is the badge this slider drives --
+    // patch it the same targeted way, so it tracks the drag instead of
+    // waiting for the next full render to catch up.
+    BDPG.patchStepValue(3);
   };
   BDPG.onRatingClear = function () {
     if (BDPG.state.truckerPathRating !== '') BDPG.invalidateResult();
@@ -5869,18 +5991,21 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
-  // Each click advances to the next option for that field, wrapping. Writes the
-  // same amenityDetails values the old <select>s wrote.
-  BDPG.onAmenityCycle = function (field) {
-    var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[field] || [];
-    if (!opts.length) return;
-    var cur = BDPG.state.amenityDetails[field];
-    var i = opts.indexOf(cur);
-    // Always a real change (the cycle always advances), and the amenity level
-    // is now derived straight from these answers, so every tap moves an engine
-    // input and strands any result on screen.
+  // Replaces onAmenityCycle. Two differences from it, both deliberate:
+  //
+  // 1. Guarded on a real change. The cycle always advanced, so it could
+  //    invalidate unconditionally; a dropdown re-selecting the same value is
+  //    a no-op and must not strand a generated result.
+  // 2. Validates the incoming value. A select posts whatever is in the DOM,
+  //    so anything not in the option list -- including '' -- stores undefined
+  //    (unset) rather than a value the rule would then try to match on.
+  BDPG.onAmenitySelect = function (field, value) {
+    var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[field];
+    if (!opts) return;
+    var next = opts.indexOf(value) >= 0 ? value : undefined;
+    if (BDPG.state.amenityDetails[field] === next) return;
     BDPG.invalidateResult();
-    BDPG.state.amenityDetails[field] = opts[(i + 1) % opts.length];
+    BDPG.state.amenityDetails[field] = next;
     BDPG.render();
   };
 
@@ -5964,17 +6089,6 @@ function getCentroid(pathStr, axis){
     return p <= r.min * BDPG.PRICING_TONE_SATURATION ? 'var(--red)' : 'var(--orange)';
   };
 
-  BDPG.pricingDescription = function (frac) {
-    var p = Number(frac) || 0;
-    if (p === 0) return 'At this profile’s network average — no discount posture assumed.';
-    if (p > 0) {
-      return 'Fleet and aggregator discount programs drawing volume in — ' +
-        BDPG.fmtSignedPct(p) + ' above this profile’s average.';
-    }
-    return 'Little or no discount program relative to competitors — ' +
-      BDPG.fmtSignedPct(p) + ' below this profile’s average.';
-  };
-
   // Gallons at the current slider position, live as the rep drags.
   //
   // Amber past 80% of the profile's observed p90: that is not a limit, it is
@@ -5994,7 +6108,7 @@ function getCentroid(pathStr, axis){
     if (gal < 0) gal = 0;
     var caution = pr.source === 'profile' && pr.high &&
       gal >= pr.high * BDPG.PRICING_CAUTION_FRACTION;
-    return '<span style="color:var(--muted)">At this posture, the baseline reads </span>' +
+    return '<span style="color:var(--muted)">With this pricing strategy, the baseline reads </span>' +
       '<b style="font-family:var(--ff);font-size:1.15em;color:' +
         (caution ? 'var(--yellow)' : 'var(--accent)') + '">' + BDPG.fmtGal(gal) + ' gal/mo</b>' +
       (caution
@@ -6003,24 +6117,24 @@ function getCentroid(pathStr, axis){
         : '');
   };
 
-  // Where the ends came from. Without this the percentages look arbitrary;
-  // with it they are attributable to named percentiles of a stated sample.
-  BDPG.pricingAnchorNoteHtml = function (pr) {
+  // The provenance of the slider's two ends, as tooltip text rather than a
+  // visible line. Without it the percentages look arbitrary; with it they are
+  // attributable to named percentiles of a stated sample -- which a rep still
+  // needs when somebody in a meeting asks where +150% came from.
+  BDPG.pricingAnchorTitle = function (pr) {
     var r = pr || BDPG.pricingRange();
     if (r.source !== 'profile') {
-      return '<div style="font-size:.7em;color:var(--muted);margin-top:4px">' +
-        'Range is the default ' + BDPG.fmtSignedPct(r.min) + ' to ' + BDPG.fmtSignedPct(r.max) +
+      return 'Range is the default ' + BDPG.fmtSignedPct(r.min) + ' to ' + BDPG.fmtSignedPct(r.max) +
         ': this profile has ' + r.n + ' reporting location' + (r.n === 1 ? '' : 's') +
         ', short of the ' + BDPG_STATS.DYNAMIC_BASELINE_MIN_N +
-        ' needed to measure its own spread.</div>';
+        ' needed to measure its own spread.';
     }
-    return '<div style="font-size:.7em;color:var(--muted);margin-top:4px">' +
-      'Ends are this profile&#39;s observed spread over ' + r.n + ' reporting locations: ' +
+    return 'Ends are this profile’s observed spread over ' + r.n + ' reporting locations: ' +
       'p10 ' + BDPG.fmtGal(r.low) + ' gal/mo (' + BDPG.fmtSignedPct(r.lowPct) + ') · ' +
       'average ' + BDPG.fmtGal(r.mid) + ' (0%) · ' +
       'p90 ' + BDPG.fmtGal(r.high) + ' (' + BDPG.fmtSignedPct(r.highPct) + ').' +
       ' The track is split at the average, so each half gets half the width ' +
-      'and the two halves step at different rates.</div>';
+      'and the two halves step at different rates.';
   };
 
   // Patched in place, not re-rendered: a full render would rebuild the range
@@ -6035,12 +6149,14 @@ function getCentroid(pathStr, axis){
       num.textContent = BDPG.fmtSignedPct(frac);
       num.style.color = BDPG.pricingTone(frac);
     }
-    var desc = document.getElementById('bdpg-pricing-desc');
-    if (desc) desc.textContent = BDPG.pricingDescription(frac);
     // The live gallons figure, the whole reason this is patched rather than
     // re-rendered: it has to track the handle without the handle moving.
     var gal = document.getElementById('bdpg-pricing-gal');
     if (gal) gal.innerHTML = BDPG.pricingGallonsLineHtml(frac);
+    // Row 7 (Discount Pricing Strategy) is the badge this slider drives --
+    // patch it the same targeted way, so it tracks the drag instead of
+    // waiting for the next full render to catch up.
+    BDPG.patchStepValue(7);
   };
 
   // Kept for saved-prospect restore and anything that sets pricing without
@@ -6509,7 +6625,7 @@ function getCentroid(pathStr, axis){
       // busDevGallonsCalculator.js), so this caveat has to survive here too --
       // otherwise a prospect reads this gain against the Published Calculator
       // Figure, the one number that provably never moves.
-      out.push('Moving your discount posture from ' + BDPG.fmtSignedPct(curPct) + ' to ' +
+      out.push('Moving your discount pricing strategy from ' + BDPG.fmtSignedPct(curPct) + ' to ' +
         BDPG.fmtSignedPct(nextPct) + ' could add about ' +
         BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) +
         ' gal/mo to your Final Potential Gallons estimate — this does not change Roady\'s BD Calculator Figure.');
@@ -6744,7 +6860,7 @@ function getCentroid(pathStr, axis){
       // math lines above were actually computed with, and a summary whose
       // stated posture could differ from its own arithmetic is worse than
       // one that omits it.
-      'Discount / aggregator posture: ' + BDPG.fmtSignedPct(e.pricingPct),
+      'Discount pricing strategy: ' + BDPG.fmtSignedPct(e.pricingPct),
       'Roady\'s Rewards: ' + BDPG.state.rewardsLevel,
       'Final Potential Gallons math: ' + e.finalMathLine,
       'Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons)
@@ -6826,7 +6942,7 @@ function getCentroid(pathStr, axis){
         ' Trucker Path rating already places you in our top service band — drivers rate you well.');
     }
     if (e.pricingPct > 0) {
-      out.push('Your discount and aggregator posture is projected to add ' +
+      out.push('Your discount pricing strategy is projected to add ' +
         BDPG.fmtSignedPct(e.pricingPct) + ' in gallon volume.');
     }
     if (e.rewardsPct > 0) {
@@ -8164,7 +8280,7 @@ function getCentroid(pathStr, axis){
         '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
         '<th>Network-Adjusted Baseline</th><th>Final Potential Gallons</th>' +
         '<th>Pre-Eval</th><th>Amenity Level</th>' +
-        '<th>Pricing Posture</th><th>Rewards</th><th>Saved</th><th style="width:50px">Actions</th>' +
+        '<th>Pricing Strategy</th><th>Rewards</th><th>Saved</th><th style="width:50px">Actions</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' + statsHtml;
   };
 
