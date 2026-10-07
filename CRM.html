@@ -1251,7 +1251,7 @@ async function crmGcalConnect(){
       return;
     }
     crmGcalAccessToken=token; crmGcalAccountEmail=granted;
-    crmGcalLoadedKey='';
+    crmGcalLoadedKey=''; crmGcalLoadError='';
     toast('Google Calendar connected','tok');
     crmGcalRenderStatus(); renderCRMCalendar();
   }catch(e){ toast(e.message||'Google sign-in failed','terr'); }
@@ -1259,7 +1259,7 @@ async function crmGcalConnect(){
 
 function crmGcalDisconnect(){
   crmGcalAccessToken=''; crmGcalAccountEmail='';
-  CRM_GCAL_EVENTS=[]; crmGcalLoadedKey='';
+  CRM_GCAL_EVENTS=[]; crmGcalLoadedKey=''; crmGcalLoadError='';
   crmGcalRenderStatus(); renderCRMCalendar();
   toast('Google Calendar disconnected','tok');
 }
@@ -1295,6 +1295,11 @@ function crmGcalRenderStatus(){
   host.innerHTML = crmGcalConnected()
     ? '<span style="font-size:.72em;color:var(--green)">📅 '+crmEsc(crmGcalEmail())+'</span>'+
       '<button class="btn" style="margin-left:8px;font-size:.72em" onclick="crmGcalDisconnect()">Disconnect</button>'
+      + (crmGcalLoadError
+          ? '<span style="font-size:.72em;color:var(--yellow);margin-left:8px" '
+            + 'title="The calendar below is showing CRM items only">⚠ '
+            + crmEsc(crmGcalLoadError) + '</span>'
+          : '')
     : '<button class="btn" style="font-size:.72em" onclick="crmGcalConnect()">📅 Connect Google Calendar</button>';
 }
 
@@ -1321,6 +1326,11 @@ let crmGcalLoadSeq = 0;
 // the re-render passes the guard and starts another fetch, forever. Keying on
 // the month means a given view costs at most one fetch.
 let crmGcalLoadedKey = '';
+// Set when a month load fails, cleared when one succeeds. It has to live
+// outside crmGcalLoadMonth because the re-render that follows every load
+// repaints #crm-gcal-status wholesale — a note written directly into that
+// span is overwritten in the same promise turn, before any paint.
+let crmGcalLoadError = '';
 
 async function crmGcalLoadMonth(){
   if(!crmGcalConnected()){ CRM_GCAL_EVENTS=[]; return; }
@@ -1341,12 +1351,12 @@ async function crmGcalLoadMonth(){
     // must not overwrite the current one.
     if(seq!==crmGcalLoadSeq) return;
     CRM_GCAL_EVENTS=RoadysGcal.overlayEventsFrom(json, mine);
+    crmGcalLoadError='';
   }catch(e){
     if(seq!==crmGcalLoadSeq) return;
     console.warn('gcal month load', e);
     CRM_GCAL_EVENTS=[];
-    const host=document.getElementById('crm-gcal-status');
-    if(host) host.innerHTML='<span style="font-size:.72em;color:var(--yellow)">Google events unavailable</span>';
+    crmGcalLoadError='Google events unavailable';
   }
 }
 
