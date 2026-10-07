@@ -1309,6 +1309,40 @@ let crmCalYear = new Date().getFullYear();
 let crmCalMonth = new Date().getMonth();
 let crmSelectedTemplate = null;
 
+// Google events for the visible month only. Held in memory and discarded on
+// navigation — they are never written to Supabase.
+let CRM_GCAL_EVENTS = [];
+let crmGcalMonthPending = false;
+let crmGcalLoadSeq = 0;
+
+async function crmGcalLoadMonth(){
+  if(!crmGcalConnected()){ CRM_GCAL_EVENTS=[]; return; }
+  const seq = ++crmGcalLoadSeq;
+  const from=new Date(crmCalYear, crmCalMonth, 1);
+  const to  =new Date(crmCalYear, crmCalMonth+1, 1);
+  const qs='?timeMin='+encodeURIComponent(from.toISOString())+
+           '&timeMax='+encodeURIComponent(to.toISOString())+
+           '&singleEvents=true&orderBy=startTime&maxResults=250';
+  try{
+    const r=await crmGcalFetch('/calendars/primary/events'+qs, {method:'GET'});
+    if(!r.ok) throw new Error('Google Calendar returned '+r.status);
+    const json=await r.json();
+    // Events the CRM created are already drawn from CRM_CALLS; without this
+    // suppression every scheduled meeting would appear twice.
+    const mine=(CRM_CALLS||[]).map(c=>c.googleEventId).filter(Boolean);
+    // A stale response from a month the user has already navigated away from
+    // must not overwrite the current one.
+    if(seq!==crmGcalLoadSeq) return;
+    CRM_GCAL_EVENTS=RoadysGcal.overlayEventsFrom(json, mine);
+  }catch(e){
+    if(seq!==crmGcalLoadSeq) return;
+    console.warn('gcal month load', e);
+    CRM_GCAL_EVENTS=[];
+    const host=document.getElementById('crm-gcal-status');
+    if(host) host.innerHTML='<span style="font-size:.72em;color:var(--yellow)">Google events unavailable</span>';
+  }
+}
+
 // ── In-modal call scheduler: data layer ──
 let CRM_CALLS = [];
 function crmCallsLoadLocal(){ try{ const s=localStorage.getItem('roadys_crm_calls'); if(s) CRM_CALLS=JSON.parse(s);}catch(e){} }
@@ -2910,11 +2944,13 @@ function crmCalNav(dir){
   crmCalMonth+=dir;
   if(crmCalMonth>11){crmCalMonth=0;crmCalYear++;}
   if(crmCalMonth<0){crmCalMonth=11;crmCalYear--;}
+  CRM_GCAL_EVENTS=[];
   renderCRMCalendar();
 }
 function crmCalToday(){
   crmCalYear=new Date().getFullYear();
   crmCalMonth=new Date().getMonth();
+  CRM_GCAL_EVENTS=[];
   renderCRMCalendar();
 }
 function renderCRMCalendar(){
@@ -2943,6 +2979,12 @@ function renderCRMCalendar(){
     if(!evMap[ds]) evMap[ds]=[];
     evMap[ds].push(c);
   });
+  CRM_GCAL_EVENTS.forEach(ev=>{
+    const prefix=crmCalYear+'-'+String(crmCalMonth+1).padStart(2,'0');
+    if(ev.dateKey.indexOf(prefix)!==0) return;
+    if(!evMap[ev.dateKey]) evMap[ev.dateKey]=[];
+    evMap[ev.dateKey].push({gcal:true, title:ev.title, timeText:ev.timeText});
+  });
   const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let html='<div style="display:grid;grid-template-columns:repeat(7,1fr)">';
   DAYS.forEach(d=>{ html+='<div style="text-align:center;font-size:.68em;font-weight:700;color:var(--muted);padding:8px 0;text-transform:uppercase;background:var(--bg)">'+d+'</div>'; });
@@ -2954,6 +2996,13 @@ function renderCRMCalendar(){
     html+='<div style="background:'+(isToday?'rgba(0,200,255,.07)':'var(--bg)')+';border:1px solid '+(isToday?'var(--accent)':'var(--border)')+';min-height:76px;padding:5px">';
     html+='<div style="font-size:.75em;font-weight:'+(isToday?'800':'500')+';color:'+(isToday?'var(--accent)':'var(--muted)')+';margin-bottom:3px">'+day+'</div>';
     evs.forEach(item=>{
+      if(item.gcal){
+        html+='<div title="Google Calendar" style="font-size:.6em;background:rgba(148,163,184,.12);color:var(--muted);'+
+          'border:1px solid rgba(148,163,184,.25);border-radius:3px;padding:1px 4px;margin-bottom:2px;'+
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+          (item.timeText? crmEsc(item.timeText)+' ' : '')+crmEsc(item.title)+'</div>';
+        return;
+      }
       if(item.stage){
         const col=CRM_STAGE_COLORS[item.stage]||'var(--muted)';
         html+='<div onclick="crmOpenLeadModal(\''+crmEsc(item.id)+'\')" style="font-size:.6em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;border-radius:3px;padding:2px 5px;margin-bottom:2px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+crmEsc(item.company.split(' ').slice(0,2).join(' '))+'</div>';
@@ -2981,6 +3030,10 @@ function renderCRMCalendar(){
       '<span style="font-size:.65em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;padding:2px 8px;border-radius:10px;white-space:nowrap">'+l.stage+'</span></div>';
   }).join(''):'<div style="color:var(--muted);font-size:.78em;padding:8px">No upcoming follow-ups in the next 30 days.</div>';
   crmGcalRenderStatus();
+  if(crmGcalConnected() && !crmGcalMonthPending){
+    crmGcalMonthPending=true;
+    crmGcalLoadMonth().then(()=>{ crmGcalMonthPending=false; renderCRMCalendar(); });
+  }
 }
 
 // ── AUTO-SCHEDULER ──
