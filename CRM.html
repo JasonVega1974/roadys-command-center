@@ -1331,7 +1331,7 @@ async function crmGcalSyncFollowUp(l){
     if(!l.followUp){
       if(guard.ok){
         await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(rec.googleEventId),{method:'DELETE'});
-        l.googleFollowupEventId=''; l.googleFollowupEmail=''; crmSaveLeadToSupabase(l);
+        l.googleFollowupEventId=''; l.googleFollowupEmail=''; await crmGcalSaveFollowUpRef(l);
       }
       return;
     }
@@ -1350,8 +1350,32 @@ async function crmGcalSyncFollowUp(l){
     if(!c.ok) throw new Error('Google returned '+c.status);
     const ev=await c.json();
     l.googleFollowupEventId=ev.id||''; l.googleFollowupEmail=crmGcalEmail();
-    crmSaveLeadToSupabase(l);
+    await crmGcalSaveFollowUpRef(l);
   }catch(e){ console.warn('gcal followup',e); }
+}
+
+// Writes ONLY the two Google columns. Deliberately not crmSaveLeadToSupabase:
+// this runs after an awaited Google round trip, so the lead it closed over may
+// be a stale snapshot by now, and a full-row upsert would silently revert any
+// edit the user saved in the meantime. The sync learned two facts; it persists
+// exactly those two.
+async function crmGcalSaveFollowUpRef(l){
+  try{
+    const sb=getRoadysSB();
+    const {error}=await sb.from('crm_leads').update({
+      google_followup_event_id: l.googleFollowupEventId||null,
+      google_followup_email:    l.googleFollowupEmail||null
+    }).eq('id', l.id);
+    if(error) throw error;
+  }catch(e){ console.warn('gcal followup ref save', e); }
+  // Mirror onto whatever object is currently in CRM_LEADS — if a second save
+  // replaced the array slot while we were awaiting, `l` is now detached and
+  // updating only it would leave memory disagreeing with the database.
+  const live=(CRM_LEADS||[]).find(x=>x.id===l.id);
+  if(live && live!==l){
+    live.googleFollowupEventId=l.googleFollowupEventId;
+    live.googleFollowupEmail=l.googleFollowupEmail;
+  }
 }
 
 let CRM_LEADS = [];
