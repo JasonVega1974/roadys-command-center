@@ -260,13 +260,6 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-stars{font-size:1.15em;letter-spacing:2px;color:var(--yellow);}
 .bdpg-star-half{position:relative;display:inline-block;}
 .bdpg-star-half>span{position:absolute;left:0;top:0;width:50%;overflow:hidden;}
-.bdpg-acard{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px;cursor:pointer;text-align:center;transition:all .15s;}
-.bdpg-acard:hover{border-color:var(--border2);}
-.bdpg-acard.set{border-color:var(--accent);background:rgba(245,158,11,.07);}
-.bdpg-acard-ico{font-size:1.4em;line-height:1;}
-.bdpg-acard-f{font-size:.64em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px;}
-.bdpg-acard-v{font-size:.76em;font-weight:700;color:var(--text);margin-top:3px;min-height:1.1em;}
-.bdpg-acard:not(.set) .bdpg-acard-v{color:var(--dim);}
 .bdpg-astep{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;
   padding:14px 0;border-top:1px solid var(--border);}
 .bdpg-astep:first-child{border-top:none;}
@@ -5839,22 +5832,35 @@ function getCentroid(pathStr, axis){
         '<span style="opacity:.85">' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%</span></button>';
     }).join('');
 
-    var acards = Object.keys(AICONS).map(function (f) {
-      var v = s.amenityDetails[f];
-      return '<div class="bdpg-acard' + (v ? ' set' : '') + '" onclick="BDPG.onAmenityCycle(\'' + f + '\')">' +
-        '<div class="bdpg-acard-ico">' + AICONS[f] + '</div>' +
-        '<div class="bdpg-acard-f">' + ALABELS[f] + '</div>' +
-        '<div class="bdpg-acard-v">' + BDPG.escHtml(v || 'tap to set') + '</div>' +
-      '</div>';
+    // One row per amenity: icon + label on the left, its dropdown on the right.
+    // Options come from AMENITY_DETAIL_OPTIONS so the widget cannot drift from
+    // the rule that reads these exact strings.
+    var arows = Object.keys(AICONS).map(function (f) {
+      var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[f] || [];
+      var cur = s.amenityDetails[f];
+      // "not assessed" is a real option, not a placeholder: it is the
+      // difference between "we checked, there are none" and "nobody looked",
+      // and amenityAnsweredCount() -- and the N-of-4 warning below -- depend
+      // on that distinction staying expressible.
+      var optHtml = '<option value=""' + (cur ? '' : ' selected') + '>— not assessed —</option>' +
+        opts.map(function (o) {
+          return '<option value="' + BDPG.escHtml(o) + '"' + (o === cur ? ' selected' : '') + '>' +
+            BDPG.escHtml(o) + '</option>';
+        }).join('');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">' +
+          '<span style="width:1.4em;text-align:center">' + AICONS[f] + '</span>' +
+          '<span style="font-size:.8em;color:var(--muted);flex:1">' + BDPG.escHtml(ALABELS[f]) + '</span>' +
+          '<select style="max-width:190px" ' +
+            'aria-label="' + BDPG.escHtml(ALABELS[f]) + '" ' +
+            'onchange="BDPG.onAmenitySelect(' + JSON.stringify(f).replace(/"/g, '&quot;') + ',this.value)">' +
+            optHtml +
+          '</select>' +
+        '</div>';
     }).join('');
 
-    // Amenities are Task 4's job -- for this task the existing amenity
-    // markup (acards + amenityNotice + suggestLine, plus its own section
-    // label) passes through unchanged as step 4's body.
     var amenityBody =
       '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + acards + '</div>' +
-      amenityNotice + suggestLine;
+      arows + amenityNotice + suggestLine;
 
     // Row primitive supplies its own bdpg-lbl title now -- the control's
     // own title line is dropped.
@@ -5976,18 +5982,21 @@ function getCentroid(pathStr, axis){
     BDPG.render();
   };
 
-  // Each click advances to the next option for that field, wrapping. Writes the
-  // same amenityDetails values the old <select>s wrote.
-  BDPG.onAmenityCycle = function (field) {
-    var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[field] || [];
-    if (!opts.length) return;
-    var cur = BDPG.state.amenityDetails[field];
-    var i = opts.indexOf(cur);
-    // Always a real change (the cycle always advances), and the amenity level
-    // is now derived straight from these answers, so every tap moves an engine
-    // input and strands any result on screen.
+  // Replaces onAmenityCycle. Two differences from it, both deliberate:
+  //
+  // 1. Guarded on a real change. The cycle always advanced, so it could
+  //    invalidate unconditionally; a dropdown re-selecting the same value is
+  //    a no-op and must not strand a generated result.
+  // 2. Validates the incoming value. A select posts whatever is in the DOM,
+  //    so anything not in the option list -- including '' -- stores undefined
+  //    (unset) rather than a value the rule would then try to match on.
+  BDPG.onAmenitySelect = function (field, value) {
+    var opts = BDPG_CONFIG.AMENITY_DETAIL_OPTIONS[field];
+    if (!opts) return;
+    var next = opts.indexOf(value) >= 0 ? value : undefined;
+    if (BDPG.state.amenityDetails[field] === next) return;
     BDPG.invalidateResult();
-    BDPG.state.amenityDetails[field] = opts[(i + 1) % opts.length];
+    BDPG.state.amenityDetails[field] = next;
     BDPG.render();
   };
 
