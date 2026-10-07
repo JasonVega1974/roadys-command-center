@@ -267,6 +267,21 @@ body.day-mode #bdpg-usa-svg path.nomap:hover{stroke:#D8DCE3;}
 .bdpg-acard-f{font-size:.64em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px;}
 .bdpg-acard-v{font-size:.76em;font-weight:700;color:var(--text);margin-top:3px;min-height:1.1em;}
 .bdpg-acard:not(.set) .bdpg-acard-v{color:var(--dim);}
+.bdpg-astep{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;
+  padding:14px 0;border-top:1px solid var(--border);}
+.bdpg-astep:first-child{border-top:none;}
+.bdpg-astep-n{display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;background:var(--surface);
+  border:1px solid var(--border);color:var(--accent);font-family:var(--ff);
+  font-size:.72em;font-weight:800;margin-right:8px;flex-shrink:0;}
+.bdpg-astep-t{font-weight:800;font-size:.85em;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--text);display:flex;align-items:center;}
+.bdpg-astep-sub{font-size:.76em;color:var(--muted);margin:2px 0 0 30px;}
+.bdpg-astep-body{margin:10px 0 0 30px;}
+.bdpg-astep-v{font-family:var(--ff);font-size:1.25em;font-weight:800;
+  text-align:right;white-space:nowrap;min-width:5.5em;}
+.bdpg-astep-v.none{color:var(--muted);}
+.bdpg-astep-v.gallons{color:var(--text);}
 .bdpg-go{width:100%;padding:15px;margin:16px 0;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:var(--ff);font-size:1.3em;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
 .bdpg-go:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 0 22px rgba(245,158,11,.45);}
 .bdpg-go:disabled{opacity:.45;cursor:not-allowed;background:var(--surface2);color:var(--muted);}
@@ -5357,6 +5372,8 @@ function getCentroid(pathStr, axis){
 
   // Restroom / shower condition. Its own additive term, summed with the
   // amenity level into the single Amenities figure the breakdown shows.
+  // The row primitive supplies the "Restroom / Shower Condition" title now
+  // -- this returns just the <select>.
   BDPG.restroomSelectHtml = function () {
     var cur = BDPG.state.restroomLevel || BDPG_CONFIG.RESTROOM_DEFAULT;
     var opts = BDPG_CONFIG.RESTROOM_LEVELS.map(function (lv) {
@@ -5364,8 +5381,7 @@ function getCentroid(pathStr, axis){
       return '<option value="' + BDPG.escHtml(lv) + '"' + (lv === cur ? ' selected' : '') + '>' +
         BDPG.escHtml(lv) + ' (' + (pct >= 0 ? '+' : '') + (pct * 100).toFixed(0) + '%)</option>';
     }).join('');
-    return '<div class="bdpg-lbl" style="margin-top:14px">Restroom / Shower Condition</div>' +
-      '<select style="max-width:260px" onchange="BDPG.onRestroomChange(this.value)">' + opts + '</select>';
+    return '<select style="max-width:260px" onchange="BDPG.onRestroomChange(this.value)">' + opts + '</select>';
   };
 
   BDPG.onRestroomChange = function (value) {
@@ -5492,6 +5508,29 @@ function getCentroid(pathStr, axis){
     '</div>';
   };
 
+  // One primitive for all seven Adjustment Steps. The number, title, subtitle
+  // and right-hand value come from BDPG_STEPS.rows(); the body is whatever
+  // control that step owns. Adding a step means adding it to bdpgSteps.js and
+  // passing a body here -- never hand-building another row.
+  BDPG.stepRowHtml = function (row, bodyHtml) {
+    var tone = 'var(--muted)';
+    if (row.valueKind === 'pct' && row.value !== null) {
+      tone = row.value > 0 ? 'var(--green)' : (row.value < 0 ? 'var(--red)' : 'var(--muted)');
+    } else if (row.valueKind === 'gallons') {
+      tone = 'var(--accent)';
+    }
+    return '<div class="bdpg-astep">' +
+      '<div>' +
+        '<div class="bdpg-astep-t"><span class="bdpg-astep-n">' + row.n + '</span>' +
+          BDPG.escHtml(row.title) + '</div>' +
+        (row.subtitle ? '<div class="bdpg-astep-sub">' + BDPG.escHtml(row.subtitle) + '</div>' : '') +
+        (bodyHtml ? '<div class="bdpg-astep-body">' + bodyHtml + '</div>' : '') +
+      '</div>' +
+      '<div class="bdpg-astep-v ' + row.valueKind + '" style="color:' + tone + '">' +
+        BDPG.escHtml(row.valueText) + '</div>' +
+    '</div>';
+  };
+
   BDPG.step2Html = function () {
     var s = BDPG.state;
     var region = s.state ? BusDevGallonsCalc.resolveRegion(s.state) : null;
@@ -5552,16 +5591,12 @@ function getCentroid(pathStr, axis){
             : '') +
         '</div>';
 
-    var left = '<div class="fg">' +
-        '<label>State</label>' +
-        (region ? ('<div style="margin-bottom:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>') :
-          (s.state ? '<div style="margin-bottom:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '')) +
-        BDPG.mapHtml() +
-        '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
-          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
-          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
-        BDPG.regionChipsHtml() +
-      '</div>';
+    // The region chip (or the "not recognized" warning) sits above the map,
+    // same as before the restructure -- just inside step 2's body now
+    // instead of the removed "left" column.
+    var regionNotice = region
+      ? ('<div style="margin-bottom:6px;display:inline-block;color:var(--accent);border-color:var(--accent)" class="btn">Network Region: ' + region + ' (' + (regionPct * 100).toFixed(1) + '%)</div>')
+      : (s.state ? '<div style="margin-bottom:6px;color:var(--red);font-size:.8em">Not a recognized state code</div>' : '');
 
     var rv = s.truckerPathRating;
     // The four details suggestAmenityLevel() actually reads. `service` and
@@ -5652,8 +5687,9 @@ function getCentroid(pathStr, axis){
     var ALABELS = { showers:'Showers', food:'Food', scale:'Scale', parking:'Parking',
                     def:'DEF', laundry:'Laundry' };
 
-    var ratingBlock =
-      '<div class="bdpg-lbl">Trucker Path Rating</div>' +
+    // Row primitive supplies the "Trucker Path Rating" title now -- the
+    // control's own bdpg-lbl line is dropped.
+    var ratingBody =
       '<div style="display:flex;align-items:center;gap:12px">' +
         '<input type="range" min="1" max="5" step="0.1" style="flex:1" ' +
           'value="' + (rv === '' ? '3' : BDPG.escHtml(rv)) + '" oninput="BDPG.onRatingSlider(this.value)">' +
@@ -5760,24 +5796,51 @@ function getCentroid(pathStr, axis){
       '</div>';
     }).join('');
 
-    // Every Step 2 section title now carries .bdpg-lbl -- the file's bold
-    // uppercase label style. Two of them were plain <label>s rendering in a
-    // lighter weight than the others beside them.
-    var right = '<div class="fg">' +
-        ratingBlock +
-        '<div class="bdpg-lbl" style="margin-top:14px">Discount Pricing Strategy</div>' +
-        // Not .bdpg-seg: that class lays out a segmented button row, and
-        // this is a slider now.
-        '<div>' + segs + '</div>' +
-        '<div class="bdpg-lbl" style="margin-top:14px">Roady\'s Rewards Participation</div>' +
-        '<div class="bdpg-seg">' + rsegs + '</div>' +
-        '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + acards + '</div>' +
-        amenityNotice + suggestLine +
-        BDPG.restroomSelectHtml() +
-      '</div>';
+    // Amenities are Task 4's job -- for this task the existing amenity
+    // markup (acards + amenityNotice + suggestLine, plus its own section
+    // label) passes through unchanged as step 4's body.
+    var amenityBody =
+      '<div class="bdpg-lbl" style="margin-top:14px">Amenity Details</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + acards + '</div>' +
+      amenityNotice + suggestLine;
 
-    return '<div id="bdpg-step2" class="bdpg-2col">' + left + right + '</div>';
+    // Row primitive supplies its own bdpg-lbl title now -- the control's
+    // own title line is dropped.
+    var restroomBody = BDPG.restroomSelectHtml();
+
+    // Live from state, NOT from BDPG.state.result: invalidateResult() nulls
+    // the result on every input change, so it does not exist while the rep is
+    // still working -- which is exactly when these figures must be on screen.
+    var baseRow = BDPG.currentBaseline();
+    var stepRows = BDPG_STEPS.rows({
+      baseline:        baseRow && isNum(baseRow.baseline) ? baseRow.baseline : null,
+      profile:         s.profile || '',
+      roadway:         s.roadway || '',
+      regionPct:       region ? regionPct : null,
+      reviewPct:       BusDevGallonsCalc.reviewAdjustment(s.truckerPathRating).pct,
+      amenityLevelPct: levelPct,
+      restroomPct:     BusDevGallonsCalc.restroomAdjustment(s.restroomLevel || BDPG_CONFIG.RESTROOM_DEFAULT),
+      rewardsPct:      BusDevGallonsCalc.rewardsAdjustment(s.rewardsLevel),
+      pricingPct:      pcur
+    });
+    function stepRow(n, body) { return BDPG.stepRowHtml(stepRows[n - 1], body); }
+
+    var body =
+      stepRow(1, '') +
+      stepRow(2,
+        regionNotice +
+        BDPG.mapHtml() +
+        '<div class="fg" style="margin-top:8px;max-width:180px"><label>Or type state code</label>' +
+          '<input id="bdpg-state" maxlength="2" placeholder="e.g. ID" value="' + BDPG.escHtml(s.state) + '" ' +
+          'oninput="BDPG.onStateInput(this.value)" style="text-transform:uppercase"></div>' +
+        BDPG.regionChipsHtml()) +
+      stepRow(3, ratingBody) +
+      stepRow(4, amenityBody) +
+      stepRow(5, restroomBody) +
+      stepRow(6, '<div class="bdpg-seg">' + rsegs + '</div>') +
+      stepRow(7, segs);
+
+    return '<div id="bdpg-step2">' + body + '</div>';
   };
 
   // Re-renders only the Step 2 box (via outerHTML), not the whole page, and
