@@ -1,5 +1,10 @@
 'use strict';
 
+// Pinned so the local-vs-UTC date tests below are host-independent. Without
+// this, a UTC-offset-zero machine makes a UTC-slicing implementation
+// indistinguishable from a correct one.
+process.env.TZ = 'America/Denver';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -169,17 +174,16 @@ test('an all-day Google date is used verbatim, with no timezone arithmetic', () 
 });
 
 test('a timed event buckets on its LOCAL date, matching the calendar grid', () => {
-  // renderCRMCalendar builds its grid from local date parts, so a UTC slice
-  // would drop a late-evening event onto the wrong day west of UTC.
-  const iso = '2026-10-15T19:30:00.000Z';
-  const d = new Date(iso);
-  const expected = d.getFullYear() + '-' +
-    String(d.getMonth() + 1).padStart(2, '0') + '-' +
-    String(d.getDate()).padStart(2, '0');
+  // 02:30Z is 20:30 the PREVIOUS day in America/Denver, which the file pins
+  // at the top. renderCRMCalendar builds its grid from local date parts, so
+  // a UTC slice would drop this event onto the wrong day. Hard-coding the
+  // expectation is what makes a UTC-slicing implementation fail here on any
+  // host, rather than only on one whose offset happens to be non-zero.
   const out = RoadysGcal.overlayEventsFrom({ items: [
-    { id: 'g3', summary: 'Call', start: { dateTime: iso } }
+    { id: 'g3', summary: 'Call', start: { dateTime: '2026-10-15T02:30:00.000Z' } }
   ]}, []);
-  assert.equal(out[0].dateKey, expected);
+  assert.equal(out[0].dateKey, '2026-10-14');
+  assert.equal(out[0].timeText, '8:30 PM');
 });
 
 test('events the CRM itself created are suppressed so they do not appear twice', () => {
