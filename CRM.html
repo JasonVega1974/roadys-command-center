@@ -1420,9 +1420,14 @@ async function crmGcalLoadMonth(){
     const r=await crmGcalFetch('/calendars/primary/events'+qs, {method:'GET'});
     if(!r.ok) throw new Error('Google Calendar returned '+r.status);
     const json=await r.json();
-    // Events the CRM created are already drawn from CRM_CALLS; without this
-    // suppression every scheduled meeting would appear twice.
-    const mine=(CRM_CALLS||[]).map(c=>c.googleEventId).filter(Boolean);
+    // Events the CRM created are already drawn from CRM_CALLS and from
+    // CRM_LEADS follow-ups; without suppressing both ids, a scheduled call OR
+    // a follow-up (with the toggle on) appears twice — once as the CRM chip,
+    // once as a muted Google chip for the same event.
+    const mine=[].concat(
+      (CRM_CALLS||[]).map(function(c){ return c.googleEventId; }),
+      (CRM_LEADS||[]).map(function(l){ return l.googleFollowupEventId; })
+    ).filter(Boolean);
     // A stale response from a month the user has already navigated away from
     // must not overwrite the current one.
     if(seq!==crmGcalLoadSeq) return;
@@ -2730,6 +2735,22 @@ function crmScheduleCall(leadId){
   if(typeof renderCRMCalendar==='function') renderCRMCalendar();
   renderCRMNotifications();
 }
+// Writes ONLY the three Google columns. Deliberately not crmSaveCallToSupabase:
+// this runs after an awaited Google round trip, so the call object it closed
+// over may be stale, and a full-row upsert would race the save that
+// crmScheduleCall already fired — the loser overwrites google_event_id with
+// null and strands a live Google event the Cancel button can no longer reach.
+async function crmGcalSaveCallRef(c){
+  try{
+    const sb=getRoadysSB();
+    const {error}=await sb.from('crm_scheduled_calls').update({
+      google_event_id:       c.googleEventId||null,
+      google_calendar_email: c.googleCalendarEmail||null,
+      google_synced_at:      c.googleEventId? new Date().toISOString() : null
+    }).eq('id', c.id);
+    if(error) throw error;
+  }catch(e){ console.warn('gcal call ref save', e); }
+}
 async function crmGcalPushCall(c, lead){
   if(!crmGcalConnected()) return;
   const body=RoadysGcal.eventBodyForCall(lead, c, location.origin + location.pathname.replace(/\/[^/]*$/, ''));
@@ -2750,7 +2771,11 @@ async function crmGcalPushCall(c, lead){
       return;
     }
     c.googleEventId=ev.id||''; c.googleCalendarEmail=crmGcalEmail();
-    crmCallsSaveLocal(); crmSaveCallToSupabase(c);
+    crmCallsSaveLocal(); await crmGcalSaveCallRef(c);
+    // The new event id is now on the call; refetch the month so the overlay
+    // suppresses it instead of drawing it twice until the user navigates away
+    // and back.
+    crmGcalLoadedKey='';
     renderCRMCalendar();
   }catch(e){ console.warn('gcal create',e); toast('Meeting saved, but not added to Google Calendar','twarn'); }
 }
@@ -2783,7 +2808,11 @@ async function crmGcalDeleteCall(c){
     // gone (404/410) means the user already deleted it in Google. That is success.
     if(RoadysGcal.deleteOutcome(r.status)==='error') throw new Error('Google returned '+r.status);
     c.googleEventId=''; c.googleCalendarEmail='';
-    crmCallsSaveLocal(); crmSaveCallToSupabase(c); renderCRMCalendar();
+    crmCallsSaveLocal(); await crmGcalSaveCallRef(c);
+    // The event id is gone from the call; refetch the month so the overlay
+    // stops suppressing an id that no longer belongs to anything in the CRM.
+    crmGcalLoadedKey='';
+    renderCRMCalendar();
   }catch(e){ console.warn('gcal delete',e); toast('Cancelled in the CRM, but the Google event may remain','twarn'); }
 }
 
