@@ -48,7 +48,27 @@ body.day-mode{
      measures 5.02:1 on --surface (#FFFFFF), 4.73:1 on --surface2 and 4.48:1
      on this --bg, so every accent-coloured label, link, active tab and focus
      ring clears AA on the two grounds it actually sits on. */
-  --accent:#B45309;--green:#0B8A50;--red:#D32F2F;--yellow:#E6A800;--orange:#D4520A;
+  /* --green and --yellow are darkened past their first day-mode pass, by the
+     same method and against the same worst-case ground (--bg #F0F2F5, the
+     darkest of the three day surfaces, so clearing it clears --surface and
+     --surface2 as well).
+
+       --green  #0B8A50 -> #0A7F49   3.93 -> 4.52 on --bg (4.15 -> 4.77 on --surface2)
+       --yellow #E6A800 -> #8E6800   1.88 -> 4.53 on --bg
+
+     #E6A800 was the worst colour in the light palette: a saturated amber on a
+     near-white ground cannot reach AA without going brown, which is why it
+     measured 1.88:1 and why the "No Trucker Path rating found" notice in the
+     generated results was unreadable in day mode. Both are text/border tokens
+     only -- neither is used as a background anywhere, so darkening them cannot
+     strand light text on a dark chip. Hue and saturation are unchanged; only
+     lightness moved, to the first value that clears 4.5:1.
+
+     Still below 4.5:1 on --bg and deliberately left alone, because none of
+     them renders as text in the results panel: --dim 2.34 (de-emphasis),
+     --orange 3.74, --red 4.44, --accent 4.48. If one of those ever becomes
+     body text on a light ground, it needs the same treatment. */
+  --accent:#B45309;--green:#0A7F49;--red:#D32F2F;--yellow:#8E6800;--orange:#D4520A;
   --purple:#6528C7;--teal:#067A8B;--text:#1A1D24;--muted:#5A6170;--dim:#9AA0AD;
   --blue:#0078D4;
 }
@@ -70,7 +90,19 @@ body.day-mode .map-tooltip{background:rgba(255,255,255,.96);border-color:#D8DCE3
 *{box-sizing:border-box;margin:0;padding:0;}
 html{color-scheme:dark;}
 body.day-mode{color-scheme:light;}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:14px;}
+/* The background lives on body ALONE, never on html. --bg is redefined on
+   body.day-mode, and html is body's PARENT -- a custom property set on the
+   child cannot reach it, so `html{background:var(--bg)}` kept resolving to the
+   dark #080C18 in day mode. Body stayed light, but every card with a
+   transparent or near-transparent background (.bdpg-box is rgba(255,255,255,
+   .03)) showed that dark root through it, under day mode's near-black text:
+   the generated value profile's "How we get there", "Opportunities to grow"
+   and "What this means" cards were black-on-black.
+   With no background on html at all, CSS propagates body's to the canvas,
+   which is the behaviour this always wanted. Do not put background back on
+   html -- a second painted root is what caused this. */
+html,body{height:100%;color:var(--text);font-family:var(--fb);font-size:14px;}
+body{background:var(--bg);}
 select option{background:var(--surface);color:var(--text);}
 body.day-mode select option{background:#FFFFFF;color:#1A1D24;}
 a{color:var(--accent);text-decoration:none;}
@@ -183,7 +215,17 @@ table th[data-sort].sort-desc::after{content:'▼';opacity:.9;color:var(--accent
 .bdpg-bcard-gal{font-family:var(--ff);font-size:1.35em;font-weight:800;color:var(--muted);margin-top:8px;}
 .bdpg-bcard.on .bdpg-bcard-gal{color:var(--accent);}
 #bdpg-usa-svg{width:100%;height:auto;display:block;}
-#bdpg-usa-svg path{cursor:pointer;stroke:#0A0E1A;stroke-width:.5;transition:all .15s;}
+/* vector-effect:non-scaling-stroke makes every stroke-width below a CSS pixel
+   measurement instead of a viewBox user unit. Without it the selection ring
+   scales with the map, and Step 2's rework shrank the map: the SVG renders
+   about 392px wide against a 900-unit viewBox (scale 0.44), so path.sel's
+   2.2 became 0.96 CSS px -- a sub-pixel ring that reads as "clicking a state
+   does nothing". The ring was never changed; the map moved out from under it.
+   Measured, not guessed: 392/900 at a 1078px viewport, the two-panel layout's
+   normal width. Keep this line on any future resize -- it is what decouples
+   the cue from the container, and 2.2 below is back to the ~2.4px the ring
+   drew when the map filled Step 2's full width. */
+#bdpg-usa-svg path{cursor:pointer;stroke:#0A0E1A;stroke-width:.5;transition:all .15s;vector-effect:non-scaling-stroke;}
 #bdpg-usa-svg path:hover{opacity:.85;stroke-width:1.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.3));}
 /* The selection ring is DUAL-TONE in both themes: a white 2.2px stroke inside
    a near-black casing. It is deliberately decoupled from --accent, and just as
@@ -3907,10 +3949,11 @@ function getCentroid(pathStr, axis){
   };
 
   // The asterisk that hangs off every headline gallons figure that leaves
-  // this screen: the on-screen value profile, the exported packet and the
-  // Copy Summary. ONE string, because three hand-written copies of a
-  // disclosure drift, and the one that drifts is the one on the sheet a
-  // prospect keeps.
+  // this screen. The on-screen value profile and the exported packet used to
+  // carry it too; both dropped the footnote, and the headline asterisk that
+  // pointed at it went with them. Copy Summary is the one surface left that
+  // states the qualifying rule -- and the one place the figure leaves the
+  // screen as text somebody keeps. It answers its own asterisk at the foot.
   //
   // The wording is the client's, verbatim. Note it says "more than 1,000"
   // while the implemented rule is >= 1,000 -- the gap is one location at
@@ -6475,57 +6518,6 @@ function getCentroid(pathStr, axis){
     };
   };
 
-  BDPG.networkAverageLineHtml = function () {
-    var r = BDPG.state.result;
-    var key = r && r.region;
-    if (!key) return '';
-    var b = BDPG.effectiveNetworkAverage(key);
-    if (!b) return '';
-
-    // The caption has to describe THIS region's sample, not the network's.
-    // It used to fall back to "from Roady's 227-location network report" --
-    // the size of a gallon report that no longer backs anything else on the
-    // page. Citing a dataset the rest of the tool has stopped using told an
-    // owner the figure was both better evidenced and differently sourced
-    // than it is. Now the number and its count come from the same file, so
-    // the caption names the region's own reporting locations and nothing
-    // else. Do not reintroduce a whole-network count here: a per-region
-    // figure captioned with a network-sized n overstates its own evidence,
-    // which is the exact defect this replaced.
-    var hasN = b.n !== null;
-    var sample;
-    if (b.source === 'network') {
-      sample = '12mo average of ' + BDPG.escHtml(String(b.n)) +
-        ' reporting Roady\'s locations in this region, as of ' + BDPG.escHtml(String(b.asOf));
-    } else if (hasN) {
-      sample = '12mo avg of ' + BDPG.escHtml(String(b.n)) +
-        ' Roady\'s locations in this region, as of ' + BDPG.escHtml(String(b.asOf));
-    } else {
-      // Static fallback with no count of its own: say the region is too
-      // thinly reported to measure rather than borrowing a number from
-      // somewhere that did not measure it.
-      sample = '12mo avg, as of ' + BDPG.escHtml(String(b.asOf)) +
-        ' · too few reporting locations in this region to measure directly';
-    }
-
-    // var(--muted), not var(--yellow): inside #bdpg-print-only the @media print
-    // block re-points --muted to #555 but leaves --yellow alone, so a yellow
-    // caveat would print illegibly on white and break the packet's
-    // everything-is-black-ink property. The glyph carries the signal.
-    var lowSampleLine = b.lowSample
-      ? '<div style="font-size:.72em;color:var(--muted);margin-top:2px">&#9888; Small sample — this regional figure is drawn from ' +
-        (hasN ? (BDPG.escHtml(String(b.n)) + ' locations') : 'a small number of locations') + '.</div>'
-      : '';
-
-    return '<div style="margin-top:6px;font-size:.85em">' +
-      '<span class="bdpg-lbl" style="display:inline">Roady\'s Network Average (your region):</span> ' +
-      '<b>' + BDPG.fmtGal(b.avgGalMo) + ' gal/mo</b>' +
-      '<div style="font-size:.72em;color:var(--muted);margin-top:2px">' +
-        BDPG.escHtml(BDPG.regionDisplayName(key)) + ' · ' + sample + '</div>' +
-      lowSampleLine +
-    '</div>';
-  };
-
   // Prospect-facing hero. Extracted so the Export Pitch Summary renders the
   // identical block rather than a hand-maintained second copy that could
   // drift from what the rep saw on screen.
@@ -6551,7 +6543,7 @@ function getCentroid(pathStr, axis){
       // wording now says so. The number did not change; the claim about it did.
       '<div class="bdpg-hero-num" style="font-size:2.3em;line-height:1.15">' +
         'For a location similar to <span class="bdpg-hero-who">' + who + '</span>, ' +
-        'Roady\'s network averages ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month*</div>' +
+        'Roady\'s network averages ' + BDPG.fmtGal(e.finalGallons) + ' gallons/month</div>' +
       '<div style="font-size:.95em;color:var(--muted);margin-top:8px">' +
         'Estimated from Roady\'s network averages for comparable locations — actual results vary.</div>' +
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
@@ -6563,14 +6555,7 @@ function getCentroid(pathStr, axis){
         '<b style="font-size:1.15em">' + BDPG.fmtGal(e.officialSubtotal) + ' gal/mo</b>' +
         '<div style="font-size:.72em;color:var(--muted);margin-top:3px">' +
           'Baseline with region, amenities and rating applied — before pricing and rewards.</div>' +
-        BDPG.networkAverageLineHtml() +
       '</div>' +
-      // The asterisk on the headline figure. One string, BDPG.QUALIFYING_NOTE,
-      // shared by this card, the exported packet and the Copy Summary -- the
-      // three places the figure leaves the screen, and three places a
-      // separately-worded footnote would eventually drift apart.
-      '<div style="font-size:.7em;color:var(--muted);margin-top:10px;padding-top:8px;' +
-        'border-top:1px solid var(--border)">' + BDPG.escHtml(BDPG.QUALIFYING_NOTE) + '</div>' +
     '</div>';
   };
 
@@ -6928,14 +6913,15 @@ function getCentroid(pathStr, axis){
     // e.regionPct is the ADMIN'S +/-10% manual slider, not a measurement. This
     // bullet used to read "the <region> region runs X% above the network
     // average", which describes it as a comparison against network
-    // performance -- a claim it has never been entitled to make, and one the
-    // packet now visibly contradicts: networkAverageLineHtml() prints the real
-    // 12-month regional figure a few centimetres above this list (Midwest
-    // 21,737 gal/mo, +76.1% vs the 12,347 network average), so a +7.5% slider
-    // described as the same quantity is wrong by an order of magnitude on a
-    // sheet handed to the owner. The network-average line is the only surface
-    // entitled to a "vs network" claim; this one names the adjustment as an
-    // adjustment. Do not reintroduce a network comparison here -- if one is
+    // performance -- a claim it has never been entitled to make. The packet
+    // used to contradict it in print: the network-average line above this list
+    // showed the real 12-month regional figure (Midwest 21,737 gal/mo, +76.1%
+    // vs the 12,347 network average) against a +7.5% slider described as the
+    // same quantity -- wrong by an order of magnitude on a sheet handed to an
+    // owner. That line has since been removed, which takes away the visible
+    // contradiction but NOT the reason: regionPct is still an adjustment, not
+    // a measured comparison, and this bullet still names it as one.
+    // Do not reintroduce a network comparison here -- if one is
     // ever wanted in this list it must come from
     // BDPG_NETWORK_BASELINES[region].pctVsNetwork, never from regionPct.
     if (e.regionPct > 0) {
