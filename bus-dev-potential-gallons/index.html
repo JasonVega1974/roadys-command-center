@@ -4252,7 +4252,7 @@ function getCentroid(pathStr, axis){
     return '<p style="font-size:.85em;color:var(--text);margin:0 0 8px">' +
       'This calculator estimates how many diesel gallons per month Roady’s could realistically drive to a prospective ' +
       'truck stop. It starts from a published baseline looked up by the location’s physical profile, then layers on ' +
-      'adjustments for region, amenities, Trucker Path review score, pricing posture and Rewards participation to produce ' +
+      'adjustments for region, amenities, Trucker Path review score, discount pricing strategy and Rewards participation to produce ' +
       'a client-ready pitch number plus an internal-only breakdown of how it was built.' +
     '</p>' +
     '<div class="bdpg-callout" style="font-size:.8em;color:var(--muted)">' +
@@ -5695,7 +5695,7 @@ function getCentroid(pathStr, axis){
           '<input id="bdpg-pricing-slider" type="range" style="width:100%;position:relative;z-index:2" ' +
             'min="' + (-N) + '" max="' + N + '" step="1" ' +
             'value="' + BDPG_STATS.pricingPositionForPct(pcur, pr) + '" ' +
-            'aria-label="Discount and aggregator posture. Centre is this profile&#39;s average; ' +
+            'aria-label="Discount pricing strategy. Centre is this profile&#39;s average; ' +
               'left reaches ' + BDPG.fmtSignedPct(pr.min) + ', right reaches ' + BDPG.fmtSignedPct(pr.max) + '" ' +
             'aria-valuetext="' + BDPG.escHtml(BDPG.fmtSignedPct(pcur)) + '" ' +
             'oninput="BDPG.onPricingSlider(this.value)">' +
@@ -5714,7 +5714,8 @@ function getCentroid(pathStr, axis){
       // Three labels on a three-column grid, not space-between: the centre
       // label has to sit under the centre MARK, and space-between would place
       // it by its own width instead.
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-size:.72em;' +
+      '<div title="' + BDPG.escHtml(BDPG.pricingAnchorTitle(pr)) + '" ' +
+          'style="display:grid;grid-template-columns:1fr 1fr 1fr;font-size:.72em;' +
           'color:var(--muted);margin-top:2px">' +
         '<span style="text-align:left">No discounts<br>' + BDPG.fmtSignedPct(pr.min) + '</span>' +
         '<span style="text-align:center;color:var(--text)">▲ Profile average<br>0%</span>' +
@@ -5723,10 +5724,7 @@ function getCentroid(pathStr, axis){
       // The live figure, so the rep sees gallons rather than having to
       // translate a percentage against a baseline they cannot see from here.
       '<div id="bdpg-pricing-gal" style="font-size:.8em;margin-top:6px">' +
-        BDPG.pricingGallonsLineHtml(pcur) + '</div>' +
-      '<div id="bdpg-pricing-desc" style="font-size:.74em;color:var(--muted);margin-top:4px">' +
-        BDPG.pricingDescription(pcur) + '</div>' +
-      BDPG.pricingAnchorNoteHtml(pr);
+        BDPG.pricingGallonsLineHtml(pcur) + '</div>';
 
     // Three fixed tones rather than the pricing row's five-stop gradient:
     // this is a yes / unknown / no posture, not a scale. Keyed by level
@@ -5767,7 +5765,7 @@ function getCentroid(pathStr, axis){
     // lighter weight than the others beside them.
     var right = '<div class="fg">' +
         ratingBlock +
-        '<div class="bdpg-lbl" style="margin-top:14px">Discount / Aggregator Posture</div>' +
+        '<div class="bdpg-lbl" style="margin-top:14px">Discount Pricing Strategy</div>' +
         // Not .bdpg-seg: that class lays out a segmented button row, and
         // this is a slider now.
         '<div>' + segs + '</div>' +
@@ -5965,17 +5963,6 @@ function getCentroid(pathStr, axis){
     return p <= r.min * BDPG.PRICING_TONE_SATURATION ? 'var(--red)' : 'var(--orange)';
   };
 
-  BDPG.pricingDescription = function (frac) {
-    var p = Number(frac) || 0;
-    if (p === 0) return 'At this profile’s network average — no discount posture assumed.';
-    if (p > 0) {
-      return 'Fleet and aggregator discount programs drawing volume in — ' +
-        BDPG.fmtSignedPct(p) + ' above this profile’s average.';
-    }
-    return 'Little or no discount program relative to competitors — ' +
-      BDPG.fmtSignedPct(p) + ' below this profile’s average.';
-  };
-
   // Gallons at the current slider position, live as the rep drags.
   //
   // Amber past 80% of the profile's observed p90: that is not a limit, it is
@@ -5995,7 +5982,7 @@ function getCentroid(pathStr, axis){
     if (gal < 0) gal = 0;
     var caution = pr.source === 'profile' && pr.high &&
       gal >= pr.high * BDPG.PRICING_CAUTION_FRACTION;
-    return '<span style="color:var(--muted)">At this posture, the baseline reads </span>' +
+    return '<span style="color:var(--muted)">At this pricing strategy, the baseline reads </span>' +
       '<b style="font-family:var(--ff);font-size:1.15em;color:' +
         (caution ? 'var(--yellow)' : 'var(--accent)') + '">' + BDPG.fmtGal(gal) + ' gal/mo</b>' +
       (caution
@@ -6004,24 +5991,24 @@ function getCentroid(pathStr, axis){
         : '');
   };
 
-  // Where the ends came from. Without this the percentages look arbitrary;
-  // with it they are attributable to named percentiles of a stated sample.
-  BDPG.pricingAnchorNoteHtml = function (pr) {
+  // The provenance of the slider's two ends, as tooltip text rather than a
+  // visible line. Without it the percentages look arbitrary; with it they are
+  // attributable to named percentiles of a stated sample -- which a rep still
+  // needs when somebody in a meeting asks where +150% came from.
+  BDPG.pricingAnchorTitle = function (pr) {
     var r = pr || BDPG.pricingRange();
     if (r.source !== 'profile') {
-      return '<div style="font-size:.7em;color:var(--muted);margin-top:4px">' +
-        'Range is the default ' + BDPG.fmtSignedPct(r.min) + ' to ' + BDPG.fmtSignedPct(r.max) +
+      return 'Range is the default ' + BDPG.fmtSignedPct(r.min) + ' to ' + BDPG.fmtSignedPct(r.max) +
         ': this profile has ' + r.n + ' reporting location' + (r.n === 1 ? '' : 's') +
         ', short of the ' + BDPG_STATS.DYNAMIC_BASELINE_MIN_N +
-        ' needed to measure its own spread.</div>';
+        ' needed to measure its own spread.';
     }
-    return '<div style="font-size:.7em;color:var(--muted);margin-top:4px">' +
-      'Ends are this profile&#39;s observed spread over ' + r.n + ' reporting locations: ' +
+    return 'Ends are this profile’s observed spread over ' + r.n + ' reporting locations: ' +
       'p10 ' + BDPG.fmtGal(r.low) + ' gal/mo (' + BDPG.fmtSignedPct(r.lowPct) + ') · ' +
       'average ' + BDPG.fmtGal(r.mid) + ' (0%) · ' +
       'p90 ' + BDPG.fmtGal(r.high) + ' (' + BDPG.fmtSignedPct(r.highPct) + ').' +
       ' The track is split at the average, so each half gets half the width ' +
-      'and the two halves step at different rates.</div>';
+      'and the two halves step at different rates.';
   };
 
   // Patched in place, not re-rendered: a full render would rebuild the range
@@ -6036,8 +6023,6 @@ function getCentroid(pathStr, axis){
       num.textContent = BDPG.fmtSignedPct(frac);
       num.style.color = BDPG.pricingTone(frac);
     }
-    var desc = document.getElementById('bdpg-pricing-desc');
-    if (desc) desc.textContent = BDPG.pricingDescription(frac);
     // The live gallons figure, the whole reason this is patched rather than
     // re-rendered: it has to track the handle without the handle moving.
     var gal = document.getElementById('bdpg-pricing-gal');
@@ -6510,7 +6495,7 @@ function getCentroid(pathStr, axis){
       // busDevGallonsCalculator.js), so this caveat has to survive here too --
       // otherwise a prospect reads this gain against the Published Calculator
       // Figure, the one number that provably never moves.
-      out.push('Moving your discount posture from ' + BDPG.fmtSignedPct(curPct) + ' to ' +
+      out.push('Moving your discount pricing strategy from ' + BDPG.fmtSignedPct(curPct) + ' to ' +
         BDPG.fmtSignedPct(nextPct) + ' could add about ' +
         BDPG.fmtGal(Math.round(e.baseline * (nextPct - e.pricingPct))) +
         ' gal/mo to your Final Potential Gallons estimate — this does not change Roady\'s BD Calculator Figure.');
@@ -6745,7 +6730,7 @@ function getCentroid(pathStr, axis){
       // math lines above were actually computed with, and a summary whose
       // stated posture could differ from its own arithmetic is worse than
       // one that omits it.
-      'Discount / aggregator posture: ' + BDPG.fmtSignedPct(e.pricingPct),
+      'Discount pricing strategy: ' + BDPG.fmtSignedPct(e.pricingPct),
       'Roady\'s Rewards: ' + BDPG.state.rewardsLevel,
       'Final Potential Gallons math: ' + e.finalMathLine,
       'Final Potential Gallons: ' + BDPG.fmtGal(e.finalGallons)
@@ -6827,7 +6812,7 @@ function getCentroid(pathStr, axis){
         ' Trucker Path rating already places you in our top service band — drivers rate you well.');
     }
     if (e.pricingPct > 0) {
-      out.push('Your discount and aggregator posture is projected to add ' +
+      out.push('Your discount pricing strategy is projected to add ' +
         BDPG.fmtSignedPct(e.pricingPct) + ' in gallon volume.');
     }
     if (e.rewardsPct > 0) {
@@ -8165,7 +8150,7 @@ function getCentroid(pathStr, axis){
         '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
         '<th>Network-Adjusted Baseline</th><th>Final Potential Gallons</th>' +
         '<th>Pre-Eval</th><th>Amenity Level</th>' +
-        '<th>Pricing Posture</th><th>Rewards</th><th>Saved</th><th style="width:50px">Actions</th>' +
+        '<th>Pricing Strategy</th><th>Rewards</th><th>Saved</th><th style="width:50px">Actions</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' + statsHtml;
   };
 
