@@ -152,7 +152,7 @@ literally, not merely in spirit.
 ```js
 BDPG_STEPS.rows({
   baseline:     number|null,   // gal/mo, or null when no profile is chosen
-  profile:      string,        // e.g. 'Large travel center'
+  profile:      string,        // e.g. 'Large truck stop'
   roadway:      string,        // e.g. 'Interstate'
   regionPct:    number|null,   // null when no state is entered
   reviewPct:    number,
@@ -161,7 +161,7 @@ BDPG_STEPS.rows({
   restroomPct:  number,
   rewardsPct:   number,
   pricingPct:   number
-}) -> [ { n, title, subtitle, valueText, valueKind }, ... ]   // always 7 rows
+}) -> [ { n, title, subtitle, value, valueText, valueKind }, ... ]  // always 7 rows
 ```
 
 The caller passes numbers it already has; the module owns the step **order**,
@@ -186,7 +186,7 @@ ADJUSTMENT STEPS
 
 ┌────────────────────────────────────────┬──────────┐
 │ ① Profile / Roadway / Lanes            │ 42,000   │
-│   Large travel center · Interstate     │  gal/mo  │
+│   Large truck stop · Interstate     │  gal/mo  │
 ├────────────────────────────────────────┼──────────┤
 │ ② Region                [ US MAP ]     │  −4.2%   │
 │   State: ID   Region: Northwest        │          │

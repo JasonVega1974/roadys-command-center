@@ -52,7 +52,7 @@ Five tasks. Task 1 is the tested foundation Tasks 3 and 4 render through. Task 2
 
 ```
 baseline        number|null   gal/mo; null when no profile is chosen
-profile         string        e.g. 'Large travel center'
+profile         string        e.g. 'Large truck stop'
 roadway         string        e.g. 'Interstate'
 regionPct       number|null   null when no state has been entered
 reviewPct       number
@@ -81,7 +81,7 @@ const { BusDevGallonsCalc } = require('./busDevGallonsCalculator.js');
 function input(over) {
   return Object.assign({
     baseline: 42000,
-    profile: 'Large travel center',
+    profile: 'Large truck stop',
     roadway: 'Interstate',
     regionPct: -0.042,
     reviewPct: 0.02,
@@ -136,13 +136,13 @@ test('step 1 shows baseline gallons with a thousands separator', () => {
 
 test('step 1 subtitle joins profile and roadway', () => {
   assert.equal(byN(BDPG_STEPS.rows(input()), 1).subtitle,
-    'Large travel center · Interstate');
+    'Large truck stop · Interstate');
 });
 
 test('step 1 subtitle keeps whichever part exists', () => {
   // Joining only when BOTH exist drops a roadway that is genuinely there.
   assert.equal(byN(BDPG_STEPS.rows(input({ profile: '' })), 1).subtitle, 'Interstate');
-  assert.equal(byN(BDPG_STEPS.rows(input({ roadway: '' })), 1).subtitle, 'Large travel center');
+  assert.equal(byN(BDPG_STEPS.rows(input({ roadway: '' })), 1).subtitle, 'Large truck stop');
   assert.equal(byN(BDPG_STEPS.rows(input({ profile: '', roadway: '' })), 1).subtitle, '');
 });
 
@@ -213,7 +213,7 @@ test('steps 4 and 5 sum to the formula\'s single combined amenity term', () => {
   const restroomLevel = 'Clean / updated';
 
   const e = BusDevGallonsCalc.calculateEstimate({
-    profile: 'Large travel center',
+    profile: 'Large truck stop',
     roadway: 'Interstate',
     regionPct: 0,
     amenityLevel: amenityLevel,
@@ -800,7 +800,7 @@ git worktree add ../bdpg-main-ref main
 ```
 
 Serve both. In each, build the **same** prospect through the real controls:
-profile `Large travel center`, roadway `Interstate`, state `ID`, Trucker Path
+profile `Large truck stop`, roadway `Interstate`, state `ID`, Trucker Path
 `4.2`, Showers `4-9`, Food `full restaurant`, Scale `yes`, Parking `100+`,
 DEF `yes`, Laundry `no`, Restroom `Clean / updated`, Rewards `Participating`,
 pricing slider left at centre (0%).
