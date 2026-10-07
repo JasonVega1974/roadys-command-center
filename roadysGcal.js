@@ -122,6 +122,22 @@
     return h12 + ':' + pad2(m) + ' ' + ampm;
   }
 
+  // A delete that finds nothing already achieved what it wanted. 404/410 are
+  // success, not failure -- the user deleted the event in Google themselves.
+  function deleteOutcome(status) {
+    if (status === 404 || status === 410) return 'gone';
+    if (status >= 200 && status < 300) return 'done';
+    return 'error';
+  }
+
+  // A patch against an event the user deleted in Google should recreate it
+  // rather than report a failure.
+  function patchOutcome(status) {
+    if (status === 404 || status === 410) return 'recreate';
+    if (status >= 200 && status < 300) return 'ok';
+    return 'error';
+  }
+
   function overlayEventsFrom(listResponse, suppressIds) {
     var res = listResponse || {};
     if (!res.items || Object.prototype.toString.call(res.items) !== '[object Array]') return [];
@@ -160,7 +176,9 @@
     mayWriteGoogle: mayWriteGoogle,
     eventBodyForCall: eventBodyForCall,
     eventBodyForFollowUp: eventBodyForFollowUp,
-    overlayEventsFrom: overlayEventsFrom
+    overlayEventsFrom: overlayEventsFrom,
+    deleteOutcome: deleteOutcome,
+    patchOutcome: patchOutcome
   };
 
   if (typeof module !== 'undefined' && module.exports) {

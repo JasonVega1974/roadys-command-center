@@ -1340,9 +1340,10 @@ async function crmGcalSyncFollowUp(l){
     if(guard.ok){
       const r=await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(rec.googleEventId),
                                  {method:'PATCH',body:JSON.stringify(body)});
-      if(r.ok) return;
-      // 404/410: the user deleted it in Google. Fall through and make a new one.
-      if(r.status!==404 && r.status!==410) throw new Error('Google returned '+r.status);
+      const outcome=RoadysGcal.patchOutcome(r.status);
+      if(outcome==='ok') return;
+      // recreate: the user deleted it in Google. Fall through and make a new one.
+      if(outcome==='error') throw new Error('Google returned '+r.status);
     }else if(guard.reason==='other-owner'){
       return;   // somebody else's calendar — leave it alone, silently
     }
@@ -2779,8 +2780,8 @@ async function crmGcalDeleteCall(c){
   }
   try{
     const r=await crmGcalFetch('/calendars/primary/events/'+encodeURIComponent(c.googleEventId),{method:'DELETE'});
-    // 410 Gone means the user already deleted it in Google. That is success.
-    if(!r.ok && r.status!==410 && r.status!==404) throw new Error('Google returned '+r.status);
+    // gone (404/410) means the user already deleted it in Google. That is success.
+    if(RoadysGcal.deleteOutcome(r.status)==='error') throw new Error('Google returned '+r.status);
     c.googleEventId=''; c.googleCalendarEmail='';
     crmCallsSaveLocal(); crmSaveCallToSupabase(c); renderCRMCalendar();
   }catch(e){ console.warn('gcal delete',e); toast('Cancelled in the CRM, but the Google event may remain','twarn'); }

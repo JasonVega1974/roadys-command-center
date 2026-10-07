@@ -216,3 +216,48 @@ test('a missing or junk response yields an empty list', () => {
   assert.deepEqual(RoadysGcal.overlayEventsFrom({}, []), []);
   assert.deepEqual(RoadysGcal.overlayEventsFrom({ items: 'nope' }, []), []);
 });
+
+// ── deleteOutcome ───────────────────────────────────────────────────────
+
+test('deleteOutcome: a 2xx is done', () => {
+  assert.equal(RoadysGcal.deleteOutcome(200), 'done');
+  assert.equal(RoadysGcal.deleteOutcome(204), 'done');
+});
+
+test('deleteOutcome: 404 is gone, not an error', () => {
+  // The commonest case: nothing was ever synced, or the event already does
+  // not exist. Either way the delete already achieved what it wanted.
+  assert.equal(RoadysGcal.deleteOutcome(404), 'gone');
+});
+
+test('deleteOutcome: 410 is gone, not an error', () => {
+  // The user deleted the event in Google themselves.
+  assert.equal(RoadysGcal.deleteOutcome(410), 'gone');
+});
+
+test('deleteOutcome: 403 and 500 are genuine errors', () => {
+  assert.equal(RoadysGcal.deleteOutcome(403), 'error');
+  assert.equal(RoadysGcal.deleteOutcome(500), 'error');
+});
+
+// ── patchOutcome ────────────────────────────────────────────────────────
+
+test('patchOutcome: a 2xx is ok', () => {
+  assert.equal(RoadysGcal.patchOutcome(200), 'ok');
+  assert.equal(RoadysGcal.patchOutcome(204), 'ok');
+});
+
+test('patchOutcome: 404 means recreate', () => {
+  // The event the patch targeted is gone; the caller should fall through and
+  // create a new one rather than report a failure.
+  assert.equal(RoadysGcal.patchOutcome(404), 'recreate');
+});
+
+test('patchOutcome: 410 means recreate', () => {
+  assert.equal(RoadysGcal.patchOutcome(410), 'recreate');
+});
+
+test('patchOutcome: 403 and 500 are genuine errors', () => {
+  assert.equal(RoadysGcal.patchOutcome(403), 'error');
+  assert.equal(RoadysGcal.patchOutcome(500), 'error');
+});
