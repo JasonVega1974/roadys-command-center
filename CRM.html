@@ -916,6 +916,7 @@ body.dash-edit-mode .dash-edit-toggle{background:rgba(0,200,255,.18);border-colo
           <button class="btn" onclick="crmCalNav(1)">Next →</button>
           <button class="btn" onclick="crmCalToday()">Today</button>
           <select id="crm-cal-owner-filter" onchange="renderCRMCalendar()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:.8em;"><option value="all">All Owners</option></select>
+          <span id="crm-gcal-status"></span>
         </div>
         <div id="crm-calendar" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
         <div style="margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
@@ -1173,6 +1174,127 @@ function crmIsClosedStage(stage){ return CRM_CLOSED_STAGES.indexOf(stage)>=0; }
 // "Closed Won"/"Closed Lost" both as "Closed" and "Not Qualified" as "Not".
 const CRM_STAGE_SHORT = {'Meeting Scheduled':'Meeting','Proposal Sent':'Proposal','Closed Won':'Won','Closed Lost':'Lost','Not Qualified':'Not Qual'};
 function crmStageShort(stage){ return CRM_STAGE_SHORT[stage]||stage; }
+
+// Public by design. A browser OAuth client has no usable secret; this id is
+// meant to be world-readable, and what actually constrains it is the
+// Authorized JavaScript origins list on the client itself — a copy pasted
+// into another site gets origin_mismatch and nothing more.
+const CRM_GCAL_CLIENT_ID = '283676450290-vvb11o6g0mdkecd03k587m0v73sg810c.apps.googleusercontent.com';
+// calendar.events is read+write on EVENTS only. It cannot create, delete or
+// share calendars. The broader .../auth/calendar is deliberately not asked for.
+const CRM_GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events openid https://www.googleapis.com/auth/userinfo.email';
+const CRM_GCAL_API = 'https://www.googleapis.com/calendar/v3';
+
+// The access token lives here and nowhere else. Never localStorage, never a
+// cookie, never Supabase — it dies with the tab, which is the whole security
+// model of a browser OAuth client.
+let crmGcalAccessToken = '';
+let crmGcalAccountEmail = '';
+let crmGcalGisReady = null;
+
+function crmGcalConfigured(){ return !!CRM_GCAL_CLIENT_ID && CRM_GCAL_CLIENT_ID.indexOf('.apps.googleusercontent.com') > 0; }
+function crmGcalConnected(){ return !!crmGcalAccessToken && !!crmGcalAccountEmail; }
+function crmGcalEmail(){ return crmGcalAccountEmail; }
+
+// Loads the Google Identity script only. No popup happens here — that must
+// come from a click, or the popup blocker eats it.
+function crmGcalLoadGis(){
+  if(crmGcalGisReady) return crmGcalGisReady;
+  crmGcalGisReady = new Promise((res,rej)=>{
+    if(window.google && google.accounts && google.accounts.oauth2) return res();
+    const s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
+    s.onload=()=>res();
+    s.onerror=()=>{ crmGcalGisReady=null; rej(new Error('Could not load Google sign-in — are you online?')); };
+    document.head.appendChild(s);
+  });
+  return crmGcalGisReady;
+}
+
+// `prompt:''` attempts a silent grant; Google falls back to the consent
+// screen by itself on first use. login_hint pre-selects the work account.
+function crmGcalRequestToken(interactive){
+  return new Promise((res,rej)=>{
+    const client=google.accounts.oauth2.initTokenClient({
+      client_id: CRM_GCAL_CLIENT_ID,
+      scope: CRM_GCAL_SCOPES,
+      callback: r => r && r.access_token ? res(r.access_token)
+                   : rej(new Error((r && (r.error_description||r.error)) || 'Google sign-in was cancelled')),
+      error_callback: e => rej(new Error((e && (e.message||e.type)) || 'Google sign-in was cancelled'))
+    });
+    client.requestAccessToken({ prompt: interactive ? 'consent' : '', login_hint: RoadysBD.auth.email() || '' });
+  });
+}
+
+async function crmGcalWhoAmI(token){
+  const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+token}});
+  if(!r.ok) throw new Error('Could not read the Google account ('+r.status+')');
+  return (await r.json()).email || '';
+}
+
+// Called from the Connect button. Refusing a mismatch is the point: the
+// feature promises each user sees only their own calendar, and silently
+// syncing company leads into a personal Gmail calendar is the failure that
+// promise exists to prevent.
+async function crmGcalConnect(){
+  if(!crmGcalConfigured()){ alert('Google Calendar is not configured yet.'); return; }
+  const session=RoadysBD.auth.email()||'';
+  if(!session){ toast('Sign in to the CRM first','terr'); return; }
+  try{
+    await crmGcalLoadGis();
+    const token=await crmGcalRequestToken(true);
+    const granted=await crmGcalWhoAmI(token);
+    if(!RoadysGcal.identityMatches(session, granted)){
+      crmGcalAccessToken=''; crmGcalAccountEmail='';
+      alert('That Google account ('+(granted||'unknown')+') is not the account you are signed into the CRM with ('+session+').\n\n'+
+            'Connect the matching Google account, or sign into the CRM as the other user.');
+      return;
+    }
+    crmGcalAccessToken=token; crmGcalAccountEmail=granted;
+    toast('Google Calendar connected','tok');
+    crmGcalRenderStatus(); renderCRMCalendar();
+  }catch(e){ toast(e.message||'Google sign-in failed','terr'); }
+}
+
+function crmGcalDisconnect(){
+  crmGcalAccessToken=''; crmGcalAccountEmail='';
+  crmGcalRenderStatus(); renderCRMCalendar();
+  toast('Google Calendar disconnected','tok');
+}
+
+// A valid token, refreshed silently if the current one has aged out.
+async function crmGcalToken(){
+  if(crmGcalAccessToken) return crmGcalAccessToken;
+  await crmGcalLoadGis();
+  const t=await crmGcalRequestToken(false);
+  const granted=await crmGcalWhoAmI(t);
+  if(!RoadysGcal.identityMatches(RoadysBD.auth.email()||'', granted)) throw new Error('Google account no longer matches this session');
+  crmGcalAccessToken=t; crmGcalAccountEmail=granted;
+  return t;
+}
+
+// One retry on 401 — the token expires about hourly and a long session will
+// hit it. A second 401 is a real problem (revoked grant) and surfaces.
+async function crmGcalFetch(path, opts){
+  const go=async()=>{
+    const t=await crmGcalToken();
+    return fetch(CRM_GCAL_API+path, Object.assign({}, opts, {
+      headers: Object.assign({ Authorization:'Bearer '+t, 'Content-Type':'application/json' }, (opts&&opts.headers)||{})
+    }));
+  };
+  let r=await go();
+  if(r.status===401){ crmGcalAccessToken=''; r=await go(); }
+  return r;
+}
+
+function crmGcalRenderStatus(){
+  const host=document.getElementById('crm-gcal-status'); if(!host) return;
+  if(!crmGcalConfigured()){ host.innerHTML='<span style="font-size:.72em;color:var(--muted)">Google Calendar not configured</span>'; return; }
+  host.innerHTML = crmGcalConnected()
+    ? '<span style="font-size:.72em;color:var(--green)">📅 '+crmEsc(crmGcalEmail())+'</span>'+
+      '<button class="btn" style="margin-left:8px;font-size:.72em" onclick="crmGcalDisconnect()">Disconnect</button>'
+    : '<button class="btn" style="font-size:.72em" onclick="crmGcalConnect()">📅 Connect Google Calendar</button>';
+}
 
 let CRM_LEADS = [];
 // Value profiles for the leads currently loaded, keyed by lead id. Filled by
@@ -2858,6 +2980,7 @@ function renderCRMCalendar(){
       '<div style="flex:1"><div style="font-size:.8em;font-weight:700">'+crmEsc(l.company)+'</div><div style="font-size:.67em;color:var(--muted)">'+crmEsc(l.contact)+' &middot; '+crmEsc(l.owner)+'</div></div>'+
       '<span style="font-size:.65em;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;padding:2px 8px;border-radius:10px;white-space:nowrap">'+l.stage+'</span></div>';
   }).join(''):'<div style="color:var(--muted);font-size:.78em;padding:8px">No upcoming follow-ups in the next 30 days.</div>';
+  crmGcalRenderStatus();
 }
 
 // ── AUTO-SCHEDULER ──
