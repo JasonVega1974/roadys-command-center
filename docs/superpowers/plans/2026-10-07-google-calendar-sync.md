@@ -965,8 +965,9 @@ Syncing every follow-up date is calendar noise the rep should opt into, not some
 
 ```js
 // Default OFF. A local display preference, not shared state, so it is not in
-// Supabase. Every stage advance writes a follow-up date; syncing all of them
-// without asking would fill the rep's calendar with one entry per lead.
+// Supabase. Opt-in because syncing every follow-up date to the calendar is
+// noise—one entry per lead adds up. crmMarkDone() updates followUp without
+// syncing, so the CRM and Google may disagree until the lead is next saved.
 const CRM_GCAL_FOLLOWUP_KEY='roadys_crm_gcal_followups';
 function crmGcalFollowUpsOn(){ try{ return localStorage.getItem(CRM_GCAL_FOLLOWUP_KEY)==='1'; }catch(e){ return false; } }
 function crmGcalSetFollowUps(on){ try{ localStorage.setItem(CRM_GCAL_FOLLOWUP_KEY, on?'1':'0'); }catch(e){} crmGcalRenderStatus(); }
