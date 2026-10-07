@@ -25,11 +25,16 @@
   // One decimal, signed, with the same U+2212 minus the rest of the page uses.
   //
   // Zero gets NO sign: "+0.0%" asserts an increase that is not there, and zero
-  // is the resting value of four of these six adjustments.
+  // is the resting value of four of these six adjustments. The sign is
+  // decided from the ROUNDED magnitude, not the raw value -- a value like
+  // -0.0004 rounds to "0.0" at one decimal, and a signed "−0.0%" would
+  // assert a decrease that the displayed figure doesn't show, which is the
+  // same false assertion as "+0.0%" in the other direction.
   function fmtPct(n) {
     var p = n * 100;
-    var sign = p > 0 ? '+' : (p < 0 ? '−' : '');
-    return sign + Math.abs(p).toFixed(1) + '%';
+    var magText = Math.abs(p).toFixed(1);
+    var sign = magText === '0.0' ? '' : (p > 0 ? '+' : '−');
+    return sign + magText + '%';
   }
 
   function fmtGal(n) {

@@ -119,6 +119,20 @@ test('zero renders as 0.0% with no sign', () => {
   assert.equal(r.valueKind, 'pct');
 });
 
+test('a near-zero percentage that rounds to 0.0 prints unsigned, either direction', () => {
+  // The sign has to come from the ROUNDED magnitude, not the raw value.
+  // -0.0004 (i.e. -0.04%) rounds to "0.0" at one decimal -- a "−0.0%" would
+  // assert a decrease that doesn't show up in the printed figure, same as
+  // the exact-zero case above but from the negative side. regionPct is
+  // admin-editable, so this is reachable, not just a theoretical rounding
+  // edge.
+  const neg = byN(BDPG_STEPS.rows(input({ regionPct: -0.0004 })), 2);
+  assert.equal(neg.valueText, '0.0%');
+
+  const pos = byN(BDPG_STEPS.rows(input({ regionPct: 0.0003 })), 2);
+  assert.equal(pos.valueText, '0.0%');
+});
+
 test('no state entered shows a dash rather than 0.0%', () => {
   // 0.0% would assert that the region was looked up and found neutral.
   const r = byN(BDPG_STEPS.rows(input({ regionPct: null })), 2);
