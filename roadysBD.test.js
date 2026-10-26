@@ -395,3 +395,211 @@ test('pickFinalOverDraft keeps rows for different leads independent', () => {
   assert.equal(out['CRM-A'].status, 'draft');
   assert.equal(out['CRM-B'].status, 'final');
 });
+
+// ── toTrackerRecord: a cloud row in the shape the Prospects tracker reads ──
+//
+// The Potential Gallons Prospects tracker renders Supabase rows through the
+// same readSummary() path it used for localStorage records, so this adapter is
+// the single point where a column can land in the wrong cell. Phase 1 shipped
+// four blocking defects in untested rendering glue; these are the cases that
+// stop that repeating here.
+
+const FULL_ROW = {
+  id: 'bdp_full', lead_id: 'CRM-123456', status: 'final',
+  prospect_name: "Dysart's", city: 'Hermon', state_code: 'ME',
+  location_type: 'Truck Stop', region: 'Northeast',
+  profile: 'Medium truck stop', roadway: 'Interstate',
+  inputs: {
+    profile: 'Medium truck stop', roadway: 'Interstate', state: 'ME',
+    amenityDetails: { showers: 4 }, amenityLevel: 'Average',
+    restroomLevel: 'Clean', truckerPathRating: 4.2,
+    pricingLevel: 0.025, rewardsLevel: 'Participating',
+    supportingDetails: { actualLanes: '8' },
+    prospect: {
+      name: "Dysart's", street: '530 Coldbrook Rd', city: 'Hermon',
+      locationType: 'Truck Stop', notes: 'owner retiring',
+      preEvalSignal: 'Strong'
+    }
+  },
+  results: { finalGallons: 11153 },
+  official_subtotal: 10492, final_gallons: 11153,
+  recommendation: 'Good fit', region_pct_stamp: '6.3', baseline_stamp: '10492',
+  author: 'robert@example.com',
+  created_at: '2026-10-18T09:00:00.000Z',
+  updated_at: '2026-10-20T14:05:00.000Z'
+};
+
+function recordFrom(row) {
+  return RoadysBD.profiles.toTrackerRecord(RoadysBD.map.fromRow(row));
+}
+
+test('toTrackerRecord fills every cell the tracker table renders', () => {
+  const r = recordFrom(FULL_ROW);
+  assert.equal(r.id, 'bdp_full');
+  assert.equal(r.name, "Dysart's");
+  assert.equal(r.author, 'robert@example.com');
+  assert.equal(r.leadId, 'CRM-123456');
+  assert.equal(r.cloud, true);
+  const s = r.summary;
+  assert.equal(s.name, "Dysart's");
+  assert.equal(s.city, 'Hermon');
+  assert.equal(s.stateCode, 'ME');
+  assert.equal(s.locationType, 'Truck Stop');
+  assert.equal(s.profile, 'Medium truck stop');
+  assert.equal(s.roadway, 'Interstate');
+  assert.equal(s.officialSubtotal, 10492);
+  assert.equal(s.finalGallons, 11153);
+  assert.equal(s.regionPctStamp, '6.3');
+  assert.equal(s.baselineStamp, '10492');
+  assert.equal(s.amenityLevel, 'Average');
+  assert.equal(s.rewardsLevel, 'Participating');
+  // Not a column -- it rides inside inputs.prospect, which is exactly the
+  // sort of field a hand-written mapping drops.
+  assert.equal(s.preEvalSignal, 'Strong');
+});
+
+test('savedAt is updated_at -- when the figures were last written', () => {
+  const r = recordFrom(FULL_ROW);
+  // Raw ISO, not Date-converted: the tracker slices it, so a junk value must
+  // never become the literal "Invalid Date" and a late-in-day timestamp must
+  // not shift a day between UTC storage and local rendering.
+  assert.equal(r.savedAt, '2026-10-20T14:05:00.000Z');
+  assert.equal(r.savedAt.slice(0, 10), '2026-10-20');
+});
+
+test('state is the inputs payload, loadable straight onto BDPG.state', () => {
+  const r = recordFrom(FULL_ROW);
+  // Every key profileInputs() writes has to survive, or a reopened prospect
+  // comes back with adjustments missing and recomputes to a different figure.
+  assert.equal(r.state.profile, 'Medium truck stop');
+  assert.equal(r.state.roadway, 'Interstate');
+  assert.equal(r.state.state, 'ME');
+  assert.equal(r.state.amenityLevel, 'Average');
+  assert.equal(r.state.restroomLevel, 'Clean');
+  assert.equal(r.state.truckerPathRating, 4.2);
+  assert.equal(r.state.pricingLevel, 0.025);
+  assert.equal(r.state.rewardsLevel, 'Participating');
+  assert.deepEqual(r.state.amenityDetails, { showers: 4 });
+  assert.deepEqual(r.state.supportingDetails, { actualLanes: '8' });
+  assert.equal(r.state.prospect.street, '530 Coldbrook Rd');
+  assert.equal(r.state.prospect.notes, 'owner retiring');
+});
+
+test('the record does not share state with the profile it was built from', () => {
+  const p = RoadysBD.map.fromRow(FULL_ROW);
+  const r = RoadysBD.profiles.toTrackerRecord(p);
+  // onLoadProfile assigns this onto BDPG.state and the page then writes to it.
+  // A shared top level would let that reach back into the cached list and
+  // silently rewrite the row the tracker is still displaying.
+  r.state.profile = 'Large truck stop';
+  assert.equal(p.inputs.profile, 'Medium truck stop');
+});
+
+test('pricingLevel 0 survives -- the default posture is not coerced away', () => {
+  const r = recordFrom(Object.assign({}, FULL_ROW, {
+    inputs: { pricingLevel: 0, prospect: { name: 'Neutral Stop' } }
+  }));
+  // str() would turn this into '', and the tracker's Pricing cell prints "—"
+  // for '' -- on the most common value in the table.
+  assert.equal(r.summary.pricingLevel, 0);
+  assert.equal(r.state.pricingLevel, 0);
+});
+
+test('null gallons stay null rather than becoming a figure nobody calculated', () => {
+  const r = recordFrom(Object.assign({}, FULL_ROW, {
+    official_subtotal: null, final_gallons: null
+  }));
+  assert.equal(r.summary.officialSubtotal, null);
+  assert.equal(r.summary.finalGallons, null);
+});
+
+test('a row with no inputs.prospect rebuilds the card from its columns', () => {
+  const r = recordFrom(Object.assign({}, FULL_ROW, { inputs: {} }));
+  assert.equal(r.state.prospect.name, "Dysart's");
+  assert.equal(r.state.prospect.city, 'Hermon');
+  assert.equal(r.state.prospect.locationType, 'Truck Stop');
+  // Street and notes live only in inputs. An absent one stays empty rather
+  // than being invented from a column that does not hold it.
+  assert.equal(r.state.prospect.street, '');
+  assert.equal(r.state.prospect.notes, '');
+  // ...and the name still reaches the tracker and onLoadProfile's seed.
+  assert.equal(r.name, "Dysart's");
+});
+
+test('the state code falls back to its column when inputs carries none', () => {
+  const r = recordFrom(Object.assign({}, FULL_ROW, {
+    inputs: { prospect: { name: 'No Code Diner' } }
+  }));
+  // readSummary() derives the region from this, so an empty one would render
+  // the "region updated -- re-select state" flag on a row that has a state.
+  assert.equal(r.state.state, 'ME');
+});
+
+test('inputs.state wins over the column -- it is what the gallons were computed on', () => {
+  const r = recordFrom(Object.assign({}, FULL_ROW, {
+    inputs: { state: 'NH', prospect: { name: 'Two Codes' } },
+    state_code: 'ME'
+  }));
+  assert.equal(r.state.state, 'NH');
+});
+
+test('toTrackerRecord survives a hand-edited row without leaking junk', () => {
+  const r = RoadysBD.profiles.toTrackerRecord({
+    id: 'bdp_junk',
+    prospectName: {}, city: 42, stateCode: null, locationType: [],
+    profile: {}, roadway: undefined, region: 7,
+    officialSubtotal: '10492', finalGallons: NaN,
+    regionPctStamp: 6.3, baselineStamp: {}, author: {},
+    updatedAt: null, inputs: 'not an object'
+  });
+  // Nothing here may reach escHtml() as "[object Object]" or "undefined";
+  // every one of these renders as the "—" the tracker uses for missing data.
+  assert.equal(r.name, '');
+  assert.equal(r.author, '');
+  assert.equal(r.savedAt, '');
+  assert.equal(r.summary.city, '');
+  assert.equal(r.summary.stateCode, '');
+  assert.equal(r.summary.locationType, '');
+  assert.equal(r.summary.profile, '');
+  assert.equal(r.summary.roadway, '');
+  assert.equal(r.summary.region, '');
+  assert.equal(r.summary.regionPctStamp, '');
+  assert.equal(r.summary.baselineStamp, '');
+  // A numeric STRING is not a number: counted into the tracker's averages it
+  // would concatenate instead of add, and NaN would poison every average in
+  // the table. Both are rejected to null, which the averages skip.
+  assert.equal(r.summary.officialSubtotal, null);
+  assert.equal(r.summary.finalGallons, null);
+  // A non-object inputs must not throw, and must still leave a card shape
+  // behind for the prospect fields.
+  assert.equal(typeof r.state.prospect, 'object');
+  assert.equal(r.state.prospect.name, '');
+});
+
+test('an inputs.prospect that is an array is replaced, not indexed into', () => {
+  const r = recordFrom(Object.assign({}, FULL_ROW, {
+    inputs: { prospect: ['nope'] }
+  }));
+  assert.equal(Array.isArray(r.state.prospect), false);
+  assert.equal(r.state.prospect.name, "Dysart's");
+});
+
+test('toTrackerRecord never throws on no argument at all', () => {
+  const r = RoadysBD.profiles.toTrackerRecord();
+  assert.equal(r.id, '');
+  assert.equal(r.name, '');
+  assert.equal(r.cloud, true);
+  assert.equal(r.summary.finalGallons, null);
+  assert.equal(r.state.prospect.name, '');
+});
+
+test('listAll degrades to a failed result headless, never a bare empty list', () => {
+  // No window and no Supabase SDK, so client() yields null. The tracker must
+  // be able to tell this apart from "nobody has saved a prospect" -- rendering
+  // the empty state here would tell a rep their colleague saved nothing.
+  return RoadysBD.profiles.listAll().then((r) => {
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.profiles, []);
+    assert.ok(r.error);
+  });
+});

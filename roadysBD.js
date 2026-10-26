@@ -252,6 +252,38 @@
       .catch(function () { return out; });
   }
 
+  // Every FINAL profile anyone has saved, newest first -- what the Potential
+  // Gallons Prospects tracker lists. Finals only, on purpose: 'final' is what
+  // Save to CRM writes, and it is what "a saved prospect" has always meant on
+  // that tab. A draft is the shared ⓪-card autosave (one per author, one per
+  // lead); surfacing those would put somebody's half-typed card in a view the
+  // whole team reads, and would mix in-progress figures into the tracker's
+  // averages.
+  //
+  // Ordered by updated_at because that is the column the tracker's Saved cell
+  // shows. No row cap: the table holds one final per lead, so its size is the
+  // pipeline's size, and a silent top-N here would read on screen as "that is
+  // everything" when it was not.
+  //
+  // Resolves { ok, profiles, error } rather than a bare array, because an
+  // empty result and a failed request are not the same answer -- the tracker
+  // renders "no prospects yet" for the first and the error for the second.
+  // Showing the empty state on a dead network tells a rep their colleague has
+  // saved nothing, which is the worst thing this tab could say.
+  function listAll() {
+    var t = q();
+    if (!t) return Promise.resolve({ ok: false, profiles: [], error: 'Supabase unavailable' });
+    return t.select('*').eq('status', 'final').is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .then(function (res) {
+        if (res.error) return { ok: false, profiles: [], error: errText(res.error) };
+        return { ok: true, profiles: (res.data || []).map(fromRow), error: '' };
+      })
+      .catch(function (err) {
+        return { ok: false, profiles: [], error: errText(err) };
+      });
+  }
+
   // leadId null means "my own unlinked draft", which is keyed by author —
   // see the partial unique index in sql/2026-10-05-bd-value-profiles.sql.
   function draftFor(id) {
@@ -455,6 +487,103 @@
     return out;
   }
 
+  // A cloud profile in the record shape the Potential Gallons Prospects
+  // tracker already consumes -- {id, name, savedAt, state, summary} -- so
+  // trackerRowHtml(), prospectCardHtml(), trackerStatsHtml() and
+  // storedFigureBasisNote() render a Supabase row through the exact same
+  // readSummary() path they rendered a localStorage record through. The tab
+  // changed where its data comes from, not how it is drawn.
+  //
+  // `state` is a copy of `inputs`, not a translation: inputs IS the
+  // calculator's profileInputs() -- the same subset applyProfile() writes
+  // back -- so the record can be assigned straight onto BDPG.state by
+  // onLoadProfile() and the prospect reopens as it was saved.
+  //
+  // Lives here rather than inline in index.html because it is the one step
+  // that can silently wire a column into the wrong cell, and this is where
+  // node --test can reach it. Every field goes through the same guard set as
+  // fromRow(), so a hand-edited row degrades to a dash on screen rather than
+  // reaching the DOM as "undefined" or "[object Object]".
+  function toTrackerRecord(p) {
+    p = p || {};
+    var i = obj(p.inputs);
+
+    // Shallow copy, so a later write onto the record cannot reach back into
+    // the cached profile this was built from.
+    var state = {};
+    Object.keys(i).forEach(function (k) { state[k] = i[k]; });
+
+    // The state code has two homes -- inputs.state (what the engine used) and
+    // the promoted state_code column. inputs wins when present, because that
+    // is what the stored gallons were computed from; the column is the
+    // fallback for a row whose columns were filled without a full inputs
+    // payload.
+    if (typeof state.state !== 'string' || !state.state) state.state = str(p.stateCode);
+
+    // A row whose inputs carry no `prospect` still has to load with a named
+    // prospect on the ⓪ card, so it is rebuilt from the promoted columns.
+    // Those four are all the columns hold -- street and notes live only in
+    // inputs, and an absent one stays empty rather than being invented.
+    if (!i.prospect || typeof i.prospect !== 'object' || Array.isArray(i.prospect)) {
+      state.prospect = {
+        name: str(p.prospectName), street: '', city: str(p.city),
+        locationType: str(p.locationType), notes: ''
+      };
+    }
+
+    var pr = obj(state.prospect);
+
+    return {
+      id: str(p.id),
+      // Top level as well as inside `summary`: readSummary() reads p.name as
+      // its second fallback, and onLoadProfile() seeds a blank prospect.name
+      // from it, so a row with an empty inputs.prospect still loads named.
+      name: str(p.prospectName) || str(pr.name),
+      // updated_at, not created_at: the row is upserted on every save, so this
+      // is when the figures beside it were last written -- which is what the
+      // tracker's Saved cell means. Left as the raw ISO string, for the same
+      // reason the tracker slices rather than Date-converts it: no "Invalid
+      // Date" for a junk value, and no UTC-stored/local-rendered day shift.
+      savedAt: str(p.updatedAt),
+      // Who saved it -- the whole point of moving this tab to the cloud.
+      author: str(p.author),
+      // Carried so a re-save updates THIS lead's profile instead of orphaning
+      // it, and so the row can link back to the CRM card.
+      leadId: leadId(p.leadId),
+      // Marks the record as cloud-sourced. The tracker uses it to tell a
+      // shared row from a legacy browser-only one: the two delete differently
+      // (soft delete vs localStorage) and are badged differently.
+      cloud: true,
+      state: state,
+      summary: {
+        name: str(p.prospectName),
+        locationType: str(p.locationType),
+        city: str(p.city),
+        stateCode: str(p.stateCode),
+        // Written through, but readSummary() DERIVES region from the state
+        // code and never reads this -- see its comment on the 5->8 region
+        // split. Kept so the record stays a faithful copy of the row.
+        region: str(p.region),
+        profile: str(p.profile),
+        roadway: str(p.roadway),
+        officialSubtotal: num(p.officialSubtotal),
+        finalGallons: num(p.finalGallons),
+        regionPctStamp: str(p.regionPctStamp),
+        baselineStamp: str(p.baselineStamp),
+        // Not a column -- the signal is computed from the ⓪ card and rides
+        // along inside inputs.prospect.
+        preEvalSignal: str(pr.preEvalSignal),
+        amenityLevel: str(i.amenityLevel),
+        // NOT str(): pricing is a number, and str() would turn every stored
+        // posture into '' -- including 0, the default and by far the most
+        // common value. Passed through for pricingAdjustment() to resolve,
+        // exactly as readSummary() does with a local record.
+        pricingLevel: i.pricingLevel,
+        rewardsLevel: str(i.rewardsLevel)
+      }
+    };
+  }
+
   // Which gallons figure represents this lead, and where it came from.
   //
   // A DRAFT never displaces the hand-entered estimate: a draft is in-progress
@@ -480,9 +609,11 @@
             signIn: signIn, signOut: signOut,
             clearCaches: clearCaches, CACHE_KEYS: CACHE_KEYS },
     profiles: { forLead: forLead, forLeads: forLeads, draftFor: draftFor,
+                listAll: listAll,
                 saveDraft: saveDraft, saveFinal: saveFinal,
                 softDelete: softDelete,
                 summary: summary, gallonsFor: gallonsFor,
+                toTrackerRecord: toTrackerRecord,
                 pickFinalOverDraft: pickFinalOverDraft },
     testing: { mintId: mintId }
   };
