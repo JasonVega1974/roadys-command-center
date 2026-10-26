@@ -718,6 +718,14 @@ function getCentroid(pathStr, axis){
       // calculator would carry whatever was last computed.
       BDPG.updatePreEvalSignal();
       if (BDPG.activeTab === 'prospects') {
+        // The tracker reads bd_value_profiles, which is a network call, so it
+        // follows the same shape as the three data loads above: fetch once,
+        // cache, re-render when it lands. It does NOT return early the way
+        // they do -- the tab paints its "loading" state immediately instead of
+        // leaving #bdpg-content blank while the request is in flight.
+        if (BDPG._cloudProspects === null && !BDPG._cloudProspectsLoading) {
+          BDPG.loadCloudProspects(BDPG.render);
+        }
         el.innerHTML = BDPG.dataTrustBannerHtml() + BDPG.prospectsHtml();
         return;
       }
@@ -4967,6 +4975,7 @@ function getCentroid(pathStr, axis){
     // so a later Save must create a new row rather than overwrite that one --
     // the same binding onSaveProfile() drops when the displayed name changes.
     BDPG.currentProfileId = null;
+    BDPG.currentProfileFromCloud = false;
     // Clearing the card empties both id spaces it could be bound to -- the
     // local tracker record above, and the cloud draft row this card was
     // mirroring.
@@ -6410,6 +6419,14 @@ function getCentroid(pathStr, axis){
   // Two id spaces, two fields.
   BDPG.currentCloudId = null;
 
+  // ...and the third thing that id space costs: currentProfileId can now hold
+  // a CLOUD id, because the Prospects tracker's rows come from
+  // bd_value_profiles and Load binds to the row it opened. This says which
+  // space it is in, so onSaveProfile can fall back to matching the local
+  // mirror by name instead of appending the duplicate the comment above
+  // warns about.
+  BDPG.currentProfileFromCloud = false;
+
   // Results of the last lead search, and the label of the lead the rep picked.
   // Both are view state only -- the binding that matters is currentLeadId.
   BDPG._leadSearchResults = [];
@@ -7254,6 +7271,31 @@ function getCentroid(pathStr, axis){
       if (idx >= 0 && profiles[idx].name !== BDPG.displayName()) idx = -1;
     }
 
+    // A prospect opened from the SHARED tracker carries a cloud id, and that
+    // is a different id space from the local mirror's ('bdp_<ts>_<rand>'
+    // against 'bdpg_<ts>') -- so the lookup above misses and the save appends.
+    // One more local copy of the same prospect on every re-save, which is the
+    // duplicate-row failure the currentCloudId comment calls out by name.
+    // Matched on the normalised name + state code the tracker's own legacy
+    // dedupe uses, so "pull it up, refresh the numbers, save" keeps writing
+    // one record.
+    //
+    // Gated on currentProfileFromCloud rather than applied to every save,
+    // because for a purely local record the rule above is deliberate: an
+    // unbound save errs toward an extra row (harmless, deletable) rather than
+    // overwriting a record the rep never opened.
+    if (idx < 0 && BDPG.currentProfileFromCloud) {
+      var wantName = BDPG.normCompany(BDPG.displayName());
+      var wantState = BDPG.state.state || '';
+      if (wantName) {
+        for (var m = 0; m < profiles.length; m++) {
+          var ms = BDPG.readSummary(profiles[m]);
+          if (BDPG.normCompany(ms.name) === wantName &&
+              (ms.stateCode || '') === wantState) { idx = m; break; }
+        }
+      }
+    }
+
     // Nothing may be stored that describes a different input set than the
     // result it carries. By the time Save runs, that can only be true one
     // way -- an input changed after Generate, so invalidateResult() already
@@ -7286,6 +7328,9 @@ function getCentroid(pathStr, axis){
     if (idx >= 0) profiles[idx] = record; else profiles.push(record);
     localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
     BDPG.currentProfileId = record.id;
+    // currentProfileId holds a real local id now, so the name-matched fallback
+    // above has done its job and must not run again on the next save.
+    BDPG.currentProfileFromCloud = false;
     // Save is what promotes the draft to a real prospect, so the draft is
     // done: the work is in roadysBDPGProfiles now and the Prospects tab is
     // where it is read back. Cancel any pending debounced write first, or it
@@ -7374,6 +7419,11 @@ function getCentroid(pathStr, axis){
         BDPG.currentCloudId = null;
         BDPG._draftAuthor = '';
         BDPG._draftUpdatedAt = '';
+        // The Prospects tab reads a cached list of these rows, and one was
+        // just written -- so the cache is stale. Dropped rather than re-fetched
+        // here: the rep is on the calculator tab at this point, and the next
+        // render of the Prospects tab reloads it.
+        BDPG._cloudProspects = null;
         if (BDPG.currentLeadId) {
           return BDPG.maybePromptStage(BDPG.currentLeadId, BDPG.displayName()).then(function (st) {
             if (st.error) problems.push('The lead was not moved to Contacted (' + st.error + ').');
@@ -7563,8 +7613,10 @@ function getCentroid(pathStr, axis){
   // `skipConfirm` is for callers that have already asked with a message of
   // their own -- never a way to skip the question altogether.
   BDPG.onLoadProfile = function (id, skipConfirm) {
-    var profiles = BDPG.getSavedProfiles();
-    var found = profiles.filter(function (p) { return p.id === id; })[0];
+    // findProspect, not getSavedProfiles: the tracker's rows come from
+    // bd_value_profiles now, and a cloud row's id is in a different id space
+    // from the legacy 'bdpg_' local ones. See BDPG.findProspect.
+    var found = BDPG.findProspect(id);
     if (!found) return false;
     // Loading replaces BDPG.state wholesale and there is no undo and no
     // history in roadysBDPGProfiles -- an in-progress prospect that was
@@ -7579,6 +7631,10 @@ function getCentroid(pathStr, axis){
     // snapshot; it must not resurrect a warning about someone else's edit.)
     BDPG.state.resultStale = false;
     BDPG.currentProfileId = found.id;
+    // Which id space currentProfileId is in -- see the field's own comment.
+    // onSaveProfile reads this to decide whether it has to find the local
+    // mirror by name, because a cloud id can never match one.
+    BDPG.currentProfileFromCloud = !!found.cloud;
     // ── Migration guards for records saved by older builds ───────────────
     // These used to mix `=== undefined` and `!` from line to line; both were
     // correct for their own field, but the adjacency made the next one added
@@ -7589,6 +7645,26 @@ function getCentroid(pathStr, axis){
     // field -- or a hand-edited one of the wrong type, which `=== undefined`
     // would have waved through into the DOM as "[object Object]".
     if (typeof BDPG.state.tutorialOpen !== 'boolean') BDPG.state.tutorialOpen = false;
+    // A cloud-sourced record's `state` is a copy of profileInputs(), which
+    // carries only what the engine needs -- so the structural fields the page
+    // keeps beside them are absent on that path. Every reader already guards
+    // with `|| []`, but defaulting them here means a loaded state has the
+    // same shape the page starts with instead of relying on each call site.
+    if (!Array.isArray(BDPG.state.suggestProfiles)) BDPG.state.suggestProfiles = [];
+    if (typeof BDPG.state.autoSetNote !== 'string') BDPG.state.autoSetNote = '';
+    // These two are the ones that take the page down rather than render a
+    // blank: step2Html() reads sd.actualLanes and the amenity rows index into
+    // amenityDetails directly, so an absent object throws mid-render and
+    // leaves #bdpg-content half-written and the tab inert. applyProfile() is
+    // type-guarded for the same fields, but it writes ONTO a full state --
+    // this path replaces state wholesale, so the guard has to be here too.
+    // (typeof null === 'object', hence both halves, as with `prospect` below.)
+    if (!BDPG.state.amenityDetails || typeof BDPG.state.amenityDetails !== 'object') {
+      BDPG.state.amenityDetails = {};
+    }
+    if (!BDPG.state.supportingDetails || typeof BDPG.state.supportingDetails !== 'object') {
+      BDPG.state.supportingDetails = { actualLanes: '' };
+    }
     // A profile saved before the rewards term existed has no rewardsLevel;
     // one saved with a since-renamed label carries an orphan string. Both
     // resolve to the documented default here (and pricingLevel with it), so
@@ -7648,7 +7724,17 @@ function getCentroid(pathStr, axis){
     // colleague sees that too. (currentProfileId is the LOCAL tracker id and is
     // set above deliberately; it is a different id space.)
     BDPG.currentCloudId = null;
-    BDPG.currentLeadId = null;
+    // The lead link is the one binding a cloud-sourced prospect KEEPS. That
+    // row is one lead's final value profile (one_final_per_lead), so a re-save
+    // has to update that lead's profile -- dropping the link here would send
+    // the next Save down createLeadFromProfile() and either duplicate the
+    // lead or orphan the profile from it. A legacy browser-only record has no
+    // leadId and still clears to null, exactly as before.
+    BDPG.currentLeadId = (found.cloud && found.leadId) ? found.leadId : null;
+    // No label to show: the row carries a lead id, not the lead's company
+    // name. saveToProspectsHtml falls back to printing the id, which is true,
+    // where reusing the prospect's name here would assert the lead is called
+    // something nobody checked.
     BDPG._leadLabel = '';
     BDPG._leadSearchResults = [];
     BDPG._draftAuthor = '';
@@ -7657,10 +7743,57 @@ function getCentroid(pathStr, axis){
     return true;
   };
 
+  // Removal is a SOFT delete on the shared row (deleted_at), never a real
+  // one: bd_value_profiles has no DELETE policy and no DELETE grant, and the
+  // partial unique indexes all exclude deleted rows so the slot frees up for
+  // a later save. A legacy browser-only record still leaves localStorage the
+  // way it always did.
   BDPG.onDeleteProfile = function (id) {
-    if (!confirm('Delete this saved profile?')) return;
+    var found = BDPG.findProspect(id);
+    if (!found) return;
+    if (found.cloud) { BDPG.deleteCloudProspect(found); return; }
+    if (!confirm('Delete this saved profile?\n\n' +
+                 'It is stored only in this browser, so this removes it for good.')) return;
     var profiles = BDPG.getSavedProfiles().filter(function (p) { return p.id !== id; });
     localStorage.setItem('roadysBDPGProfiles', JSON.stringify(profiles));
+    BDPG.clearProspectBindings(id);
+    BDPG.render();
+  };
+
+  // Shared-row delete. Re-entry guarded because the request is async and a
+  // second click would fire a second update against a row already being
+  // removed. The row is dropped from the cached list only after Supabase
+  // confirms: removing it first would show a prospect as gone while it is
+  // still in the table for everyone else.
+  BDPG.deleteCloudProspect = function (found) {
+    if (BDPG._deletingProspect) return;
+    if (!confirm('Delete "' + (found.name || 'this prospect') + '" from the Prospects tracker?\n\n' +
+                 'The tracker is SHARED — this removes it for everyone, not just you. ' +
+                 'Any CRM lead it is attached to is left alone.')) return;
+    BDPG._deletingProspect = true;
+    RoadysBD.profiles.softDelete(found.id).then(function (r) {
+      BDPG._deletingProspect = false;
+      if (!r.ok) {
+        // Named and left on screen. A failed delete that said nothing would
+        // read as a success until the next refresh put the row back.
+        toast('Could not remove ' + (found.name || 'this prospect') + ' (' + r.error + ').', 'terr');
+        return;
+      }
+      BDPG._cloudProspects = (BDPG._cloudProspects || []).filter(function (p) {
+        return p.id !== found.id;
+      });
+      BDPG.clearProspectBindings(found.id);
+      toast('Removed ' + (found.name || 'this prospect') + ' from the tracker.', 'tok');
+      BDPG.render();
+    }).catch(function (err) {
+      BDPG._deletingProspect = false;
+      toast('Could not remove ' + (found.name || 'this prospect') + ' (' + BDPG.errText(err) + ').', 'terr');
+    });
+  };
+
+  // Shared by both delete paths: what has to be forgotten when the record the
+  // calculator tab is showing stops existing.
+  BDPG.clearProspectBindings = function (id) {
     if (BDPG.currentProfileId === id) {
       // What is on the calculator tab came from the record just deleted, so
       // it is no longer stored anywhere: drop the update binding (a later
@@ -7668,6 +7801,7 @@ function getCentroid(pathStr, axis){
       // state as unsaved work. '' can never equal a real signature, so
       // hasUnsavedWork() reports true until the next Save or Load.
       BDPG.currentProfileId = null;
+      BDPG.currentProfileFromCloud = false;
       BDPG.savedSig = '';
       // The card came from the record just deleted, so no cloud draft/final
       // binding or lead link should survive it either -- same reset set as
@@ -7679,7 +7813,6 @@ function getCentroid(pathStr, axis){
       BDPG._draftAuthor = '';
       BDPG._draftUpdatedAt = '';
     }
-    BDPG.render();
   };
 
   BDPG.activeTab = 'calc';
@@ -7776,7 +7909,12 @@ function getCentroid(pathStr, axis){
 
     var typeBadge = sum.locationType
       ? ' <span class="badge tag-gray">' + BDPG.escHtml(sum.locationType) + '</span>' : '';
-    var nameCell = BDPG.escHtml(sum.name) + typeBadge;
+    // Marked on the row itself, not just by which table it sits in: a
+    // browser-only record looks identical to a shared one otherwise, and the
+    // difference decides whether a colleague can see it at all.
+    var localBadge = p.cloud ? ''
+      : ' <span class="badge tag-yellow" title="Saved in this browser only — it is not in the shared tracker and nobody else can open it. Load it and use Save to CRM to share it.">browser only</span>';
+    var nameCell = BDPG.escHtml(sum.name) + typeBadge + localBadge;
 
     var cityState = (!sum.city && !sum.stateCode) ? '—' :
       BDPG.escHtml(sum.city || '') + (sum.city && sum.stateCode ? ', ' : '') + BDPG.escHtml(sum.stateCode || '');
@@ -7972,6 +8110,13 @@ function getCentroid(pathStr, axis){
     var savedCell = (typeof sum.savedAt === 'string' && sum.savedAt.length >= 10)
       ? sum.savedAt.slice(0, 10).replace(/-/g, ' ') : '—';
 
+    // Who saved it. The reason this tab moved to the cloud: Robert and Angel
+    // read one list and need to know whose prospect each row is. A legacy
+    // browser-only record carries no author and gets the same dash every
+    // other missing value in this table gets -- not a guess at the signed-in
+    // user, who may not be the person who saved it.
+    var authorCell = p.author ? BDPG.escHtml(p.author) : '—';
+
     // A record missing its id (unreachable from any real Save Profile,
     // which always writes 'bdpg_' + Date.now(), but hand-edited storage
     // could produce one) must not render action buttons that silently
@@ -8006,8 +8151,26 @@ function getCentroid(pathStr, axis){
       '<td>' + pricingCell + '</td>' +
       '<td>' + rewardsCell + '</td>' +
       '<td>' + savedCell + '</td>' +
+      '<td>' + authorCell + '</td>' +
       '<td>' + actionsCell + '</td>' +
     '</tr>';
+  };
+
+  // One header row for both tables -- the shared tracker and the browser-only
+  // fallback below it render the same columns through the same
+  // trackerRowHtml(), so two copies of this would be two things to keep in
+  // step with the cells. TRACKER_COLS is read by the empty-state colspan for
+  // the same reason: the pre-cloud markup had eleven headers and a colspan of
+  // twelve, and nothing noticed.
+  BDPG.TRACKER_COLS = 12;
+  BDPG.trackerHeadHtml = function () {
+    return '<thead><tr>' +
+      '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
+      '<th>Network-Adjusted Baseline</th><th>Final Potential Gallons</th>' +
+      '<th>Pre-Eval</th><th>Amenity Level</th>' +
+      '<th>Pricing Strategy</th><th>Rewards</th><th>Saved</th><th>Saved By</th>' +
+      '<th style="width:50px">Actions</th>' +
+    '</tr></thead>';
   };
 
   // Roll-up beneath the Prospects table: five grade chips + three signal
@@ -8177,7 +8340,8 @@ function getCentroid(pathStr, axis){
       (basisNote ? '<div style="font-size:.68em;color:var(--yellow);line-height:1.4">&#9888; ' + basisNote + '</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;' +
           'border-top:1px solid var(--border);padding-top:9px;margin-top:auto">' +
-        '<span style="font-size:.72em;color:var(--muted)">Saved ' + BDPG.escHtml(savedTxt) + '</span>' +
+        '<span style="font-size:.72em;color:var(--muted)">Saved ' + BDPG.escHtml(savedTxt) +
+          (p.author ? ' by ' + BDPG.escHtml(p.author) : '') + '</span>' +
         viewLink +
       '</div>' +
     '</div>';
@@ -8204,7 +8368,7 @@ function getCentroid(pathStr, axis){
   // page rather than leaving #bdpg-content stuck half-rendered.
   BDPG.onProspectView = function (id) {
     if (!id) return;
-    var found = BDPG.getSavedProfiles().filter(function (p) { return p.id === id; })[0];
+    var found = BDPG.findProspect(id);
     if (!found) return;
     var st = found.state || {};
     if (!BusDevGallonsCalc.getBaselineRow(st.profile, st.roadway)) {
@@ -8229,20 +8393,176 @@ function getCentroid(pathStr, axis){
     if (!BDPG.state.result) toast('Could not reopen this prospect\'s result.', 'terr');
   };
 
+  // ── Prospects tab: the shared cloud list ──────────────────────
+  //
+  // The tracker reads bd_value_profiles, not localStorage. A value profile
+  // Robert saves has to be a prospect Angel can see: the old tab showed each
+  // browser only its own saves, so the two of them read the same screen and
+  // saw different pipelines.
+  //
+  // null means "never fetched", which is NOT the same as an empty list -- see
+  // prospectsHtml, which must never answer a question about the team's
+  // pipeline before the request behind it has landed.
+  BDPG._cloudProspects = null;
+  BDPG._cloudProspectsErr = '';
+  BDPG._cloudProspectsLoading = false;
+  BDPG._deletingProspect = false;
+
+  BDPG.loadCloudProspects = function (cb) {
+    if (BDPG._cloudProspectsLoading) return;
+    BDPG._cloudProspectsLoading = true;
+    RoadysBD.profiles.listAll().then(function (r) {
+      BDPG._cloudProspectsLoading = false;
+      if (r.ok) {
+        BDPG._cloudProspectsErr = '';
+        BDPG._cloudProspects = r.profiles.map(RoadysBD.profiles.toTrackerRecord);
+      } else {
+        BDPG._cloudProspectsErr = r.error || 'Unknown error';
+        // [] rather than leaving it null, or render() would fire a fresh
+        // request on every single re-render for as long as the failure lasts.
+        // A list that already loaded is KEPT: stale rows plus a stated failure
+        // beat an empty table, and prospectsHtml says which it is showing.
+        if (BDPG._cloudProspects === null) BDPG._cloudProspects = [];
+      }
+      if (cb) cb();
+    }).catch(function (err) {
+      // listAll() already catches, so this is only reachable if the mapping
+      // above throws. Still has to clear the flag, or the tab is stuck on
+      // "Refreshing…" with no way back.
+      BDPG._cloudProspectsLoading = false;
+      BDPG._cloudProspectsErr = BDPG.errText(err);
+      if (BDPG._cloudProspects === null) BDPG._cloudProspects = [];
+      if (cb) cb();
+    });
+  };
+
+  // Another rep's save does not push, so the list needs a manual pull. The
+  // current rows stay on screen while it runs -- the link reads "Refreshing…"
+  // and the table does not blank out and reflow under the rep's cursor.
+  BDPG.onRefreshProspects = function () {
+    if (BDPG._cloudProspectsLoading) return;
+    BDPG.loadCloudProspects(BDPG.render);
+    BDPG.render();
+  };
+
+  // Every reader of a saved prospect resolves its id here: onLoadProfile,
+  // onTrackerExport, onProspectView and both delete paths. The shared list
+  // first, then the legacy browser-only array -- two different id spaces
+  // ('bdp_<ts>_<rand>' from the cloud, 'bdpg_<ts>' from localStorage), so a
+  // single lookup can never confuse one for the other.
+  BDPG.findProspect = function (id) {
+    if (!id) return null;
+    var cloud = BDPG._cloudProspects || [];
+    for (var i = 0; i < cloud.length; i++) {
+      if (cloud[i].id === id) return cloud[i];
+    }
+    var local = BDPG.getSavedProfiles();
+    for (var j = 0; j < local.length; j++) {
+      if (local[j].id === id) return local[j];
+    }
+    return null;
+  };
+
+  // The legacy roadysBDPGProfiles array is never deleted and never relied on
+  // -- it is shown as a fallback so a prospect saved before the cloud switch
+  // is still reachable instead of silently vanishing from the tab.
+  //
+  // Save to CRM writes BOTH stores, so most local records now have a shared
+  // twin and listing them twice would misreport the pipeline. There is no
+  // shared id to match on (the two stores mint ids independently), so the
+  // match is on normalised prospect name + state code -- the same
+  // normalisation createLeadFromProfile()'s duplicate check uses. A record
+  // with no name at all is never matched away: '' would collide with every
+  // other nameless record and hide them all.
+  BDPG.legacyOnlyProspects = function (cloudRecords) {
+    var seen = {};
+    (cloudRecords || []).forEach(function (p) {
+      var sum = BDPG.readSummary(p);
+      var k = BDPG.normCompany(sum.name);
+      if (k) seen[k + '|' + (sum.stateCode || '')] = 1;
+    });
+    return BDPG.getSavedProfiles().filter(function (p) {
+      var sum = BDPG.readSummary(p);
+      var k = BDPG.normCompany(sum.name);
+      if (!k) return true;
+      return !hasOwn(seen, k + '|' + (sum.stateCode || ''));
+    });
+  };
+
+  BDPG._legacyOpen = false;
+  BDPG.onToggleLegacy = function () {
+    BDPG._legacyOpen = !BDPG._legacyOpen;
+    BDPG.render();
+  };
+
+  BDPG.legacyProspectsHtml = function (rows) {
+    if (!rows.length) return '';
+    var open = !!BDPG._legacyOpen;
+    var link = 'color:var(--accent);font-size:.75em;font-weight:700;text-decoration:underline';
+    return '<div class="cc" style="margin-top:16px">' +
+      '<div class="cc-lbl">Browser-only prospects (' + rows.length + ')</div>' +
+      '<div style="font-size:.74em;color:var(--muted);line-height:1.55">' +
+        'Saved on this device before the tracker moved to the cloud, so only this browser can see them — ' +
+        'they are not in the shared list above and no colleague can open them. Nothing here has been ' +
+        'deleted. To share one, Load it and press 💾 Save to CRM. ' +
+        'A local record whose prospect name and state match a row above is that row\'s local mirror ' +
+        'and is not listed again here.' +
+      '</div>' +
+      '<div style="margin-top:9px"><a href="#" onclick="BDPG.onToggleLegacy(); return false;" style="' + link + '">' +
+        (open ? 'hide them' : 'show them') + '</a></div>' +
+      (open
+        ? '<div class="tw" style="margin-top:11px"><table class="dt">' + BDPG.trackerHeadHtml() +
+          '<tbody>' + rows.map(BDPG.trackerRowHtml).join('') + '</tbody></table></div>'
+        : '') +
+    '</div>';
+  };
+
   BDPG.prospectsHtml = function () {
+    var cloud = BDPG._cloudProspects;
+    var link = 'color:var(--accent);font-size:.95em;font-weight:700;text-decoration:underline';
+
+    // NOT an else-branch of the rows. A refresh that fails leaves the
+    // previously loaded rows on screen and they are still worth reading --
+    // with the failure stated above them, and never silently.
+    var errHtml = BDPG._cloudProspectsErr
+      ? '<div class="bdpg-box" style="margin-bottom:12px;border-color:var(--red);font-size:.78em;line-height:1.5">' +
+          '<b style="color:var(--red)">&#9888; Could not load the shared prospect list.</b> ' +
+          BDPG.escHtml(BDPG._cloudProspectsErr) +
+          ((cloud && cloud.length) ? ' The rows below are from the last list that loaded.' : '') +
+          ' <a href="#" onclick="BDPG.onRefreshProspects(); return false;" style="' + link + '">try again</a>' +
+        '</div>'
+      : '';
+
+    // The first fetch has not answered yet. Deliberately not the empty state:
+    // "no prospects evaluated yet" printed before the request lands is a claim
+    // about the whole team's pipeline made without looking.
+    if (cloud === null) {
+      return errHtml +
+        '<div class="cc"><div class="cc-lbl">Prospects Tracker</div>' +
+          '<div style="padding:26px;text-align:center;color:var(--muted);font-size:.85em">' +
+            'Loading saved prospects…</div>' +
+        '</div>';
+    }
+
     // Default sort: saved date descending (newest first). ISO 8601 strings
-    // sort correctly lexicographically; a missing savedAt (pre-Task-7
-    // record) sorts to the bottom since '' < any real timestamp. The
-    // delegated table-header handler (bound once on document, see the
-    // SORTABLE TABLES block near the top of this file) takes over from
-    // here on any header click -- this only sets the order shown on load.
-    var profiles = BDPG.getSavedProfiles().slice().sort(function (a, b) {
+    // sort correctly lexicographically; a record with no savedAt sorts to the
+    // bottom since '' < any real timestamp. listAll() already orders by
+    // updated_at, but the order shown is stated here rather than inherited
+    // from the query. The delegated table-header handler (bound once on
+    // document, see the SORTABLE TABLES block near the top of this file)
+    // takes over from here on any header click.
+    var profiles = cloud.slice().sort(function (a, b) {
       return (b.savedAt || '').localeCompare(a.savedAt || '');
     });
 
+    var legacy = BDPG.legacyOnlyProspects(profiles);
+
     var rows = profiles.length
       ? profiles.map(BDPG.trackerRowHtml).join('')
-      : '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">📋 No prospects evaluated yet — complete a profile above and save it.</td></tr>';
+      : '<tr><td colspan="' + BDPG.TRACKER_COLS + '" style="text-align:center;padding:24px;color:var(--muted)">' +
+        '📋 No prospects in the shared tracker yet — complete a profile above and press 💾 Save to CRM.' +
+        (legacy.length ? ' Prospects saved in this browser before the switch are listed below.' : '') +
+        '</td></tr>';
 
     // The summary card is a separate .cc sibling, not a <tr> in this table
     // -- the delegated sort handler operates on `tbody > tr` (see the
@@ -8251,6 +8571,10 @@ function getCentroid(pathStr, axis){
     // duplicate it, or lose it. Hidden outright with zero profiles: an
     // average of nothing and all-zero chips would just be noise sitting
     // above the tracker's own "no prospects yet" empty state.
+    //
+    // Fed the SAME list the table renders, so the averages always describe the
+    // rows above them -- the shared pipeline, never a mix of that and this
+    // browser's legacy records.
     var statsHtml = profiles.length ? BDPG.trackerStatsHtml(profiles) : '';
 
     // Cards first, then the full tracker table. Hidden with zero profiles for
@@ -8258,14 +8582,21 @@ function getCentroid(pathStr, axis){
     // "no prospects yet" row says the same thing twice.
     var cardsHtml = profiles.length ? BDPG.prospectCardsHtml(profiles) : '';
 
-    return cardsHtml +
-      '<div class="cc"><div class="cc-lbl">Prospects Tracker</div>' +
-      '<div class="tw"><table class="dt"><thead><tr>' +
-        '<th>Prospect</th><th>Location</th><th>Location Profile</th>' +
-        '<th>Network-Adjusted Baseline</th><th>Final Potential Gallons</th>' +
-        '<th>Pre-Eval</th><th>Amenity Level</th>' +
-        '<th>Pricing Strategy</th><th>Rewards</th><th>Saved</th><th style="width:50px">Actions</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' + statsHtml;
+    // ↻ sits in the card label rather than above it as a button: the list is
+    // shared and does not push, so the pull has to be findable -- but it is a
+    // utility, not the point of the tab.
+    var hdr = '<div class="cc-lbl" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">' +
+      '<span>Prospects Tracker — shared</span>' +
+      '<a href="#" onclick="BDPG.onRefreshProspects(); return false;" style="' + link + '">' +
+        (BDPG._cloudProspectsLoading ? '↻ Refreshing…' : '↻ Refresh') + '</a>' +
+    '</div>';
+
+    return errHtml + cardsHtml +
+      '<div class="cc">' + hdr +
+      '<div class="tw"><table class="dt">' + BDPG.trackerHeadHtml() +
+      '<tbody>' + rows + '</tbody></table></div></div>' +
+      statsHtml +
+      BDPG.legacyProspectsHtml(legacy);
   };
 
   BDPG.onTrackerLoad = function (id) {
@@ -8290,7 +8621,7 @@ function getCentroid(pathStr, axis){
   // BDPG.state after onLoadProfile has already overwritten it.
   BDPG.onTrackerExport = function (id) {
     if (!id) return;
-    var found = BDPG.getSavedProfiles().filter(function (p) { return p.id === id; })[0];
+    var found = BDPG.findProspect(id);
     if (!found) return;
     var st = found.state || {};
     // BusDevGallonsCalc.getBaselineRow() is exactly the check
