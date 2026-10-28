@@ -225,3 +225,110 @@ test('a bad numeric field degrades to 0 rather than poisoning the model', () => 
   assert.ok(isFinite(M.startTotal), 'startTotal finite');
   M.years.forEach(y => assert.ok(isFinite(y.end), `${y.year} end finite`));
 });
+
+test('attritionSplit decomposes 2024-25 into steady plus structural', () => {
+  const s = MembershipModel.attritionSplit(MGM_CONFIG.history, 3.6);
+  const by = Object.fromEntries(s.rows.map(r => [r.year, r]));
+
+  near(by[2024].totalRate, 13.666667, '2024 total');
+  near(by[2024].steadyRate, 3.6, '2024 steady');
+  near(by[2024].structuralRate, 10.066667, '2024 structural');
+  near(by[2024].steadyLost, 10.8, '2024 steady lost');     // 3.6% of 300
+  near(by[2024].structuralLost, 30.2, '2024 structural lost');
+
+  near(by[2025].totalRate, 11.254019, '2025 total');
+  near(by[2025].structuralRate, 7.654019, '2025 structural');
+});
+
+test('attritionSplit never reports negative structural loss', () => {
+  // 2022 ran at 3.19%, below a 3.6% steady assumption.
+  const by = Object.fromEntries(
+    MembershipModel.attritionSplit(MGM_CONFIG.history, 3.6).rows.map(r => [r.year, r]));
+  assert.ok(by[2022].structuralRate >= 0, 'rate clamped at zero');
+  assert.ok(by[2022].structuralLost >= 0, 'count clamped at zero');
+});
+
+test('split components always reconcile to the realized total', () => {
+  MembershipModel.attritionSplit(MGM_CONFIG.history, 3.6).rows.forEach(r => {
+    near(r.steadyLost + r.structuralLost, r.totalLost, `${r.year} reconciles`);
+    near(r.steadyRate + r.structuralRate, r.totalRate, `${r.year} rates`);
+  });
+});
+
+test('structural override adds to steady loss, never replaces it', () => {
+  const mk = struct => {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.attrition.steady = 4.0;
+    st.attrition.structural = struct;
+    return MembershipModel.runModel(st);
+  };
+  const a27 = mk({ 2027: 0 }).years.find(y => y.year === 2027);
+  const b27 = mk({ 2027: 12 }).years.find(y => y.year === 2027);
+
+  near(b27.structuralLost, 12, '2027 structural');
+  near(a27.structuralLost, 0, 'baseline structural');
+  assert.ok(b27.lost > a27.lost, 'total loss rises');
+  assert.ok(b27.steadyLost > 0, 'steady component survives');
+});
+
+test('scenario presets set the three documented steady rates', () => {
+  const rate = name =>
+    MembershipModel.applyScenario(MembershipModel.defaultState(MGM_CONFIG), name).attrition.steady;
+  assert.equal(rate('Conservative'), 9.7);
+  assert.equal(rate('Base'), 4.0);
+  assert.equal(rate('Aggressive'), 3.6);
+});
+
+test('an unknown scenario name leaves state untouched', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const before = JSON.stringify(st);
+  MembershipModel.applyScenario(st, 'Nope');
+  assert.equal(JSON.stringify(st), before);
+});
+
+test('setPath refuses prototype-hook segments and cannot pollute Object.prototype', () => {
+  // Verified exploitable BEFORE the guard existed: setPath({}, '__proto__.polluted', v)
+  // left ({}).polluted set for every object in the process, and the nested form
+  // 'a.__proto__.polluted' did the same. From Task 8 these paths come from DOM
+  // data-k attributes, so they are user-influenceable.
+  const payloads = ['__proto__.polluted', 'constructor.prototype.polluted',
+    'a.__proto__.polluted', 'a.b.constructor.prototype.polluted'];
+  for (const path of payloads) {
+    MembershipModel.setPath({}, path, 'PWNED');
+    assert.equal(({}).polluted, undefined, `${path} must not reach Object.prototype`);
+    assert.equal([].polluted, undefined, `${path} must not reach Array instances`);
+  }
+});
+
+test('setPath refuses the WHOLE write on an unsafe segment, not just the bad hop', () => {
+  const o = { keep: 1 };
+  MembershipModel.setPath(o, 'a.__proto__.b', 'X');
+  assert.deepEqual(o, { keep: 1 }, 'no half-built containers left behind in state');
+});
+
+test('getPath returns undefined for prototype-hook segments', () => {
+  assert.equal(MembershipModel.getPath({}, '__proto__'), undefined);
+  assert.equal(MembershipModel.getPath({}, 'constructor.name'), undefined);
+});
+
+test('the guard does not block the legitimate paths the binding layer uses', () => {
+  const o = {};
+  MembershipModel.setPath(o, 'groups.0.label', 'Truck Stop');
+  assert.equal(MembershipModel.getPath(o, 'groups.0.label'), 'Truck Stop');
+  MembershipModel.setPath(o, 'attrition.structural.2027', 12);
+  assert.equal(MembershipModel.getPath(o, 'attrition.structural.2027'), 12);
+  MembershipModel.setPath(o, 'labels.streams.vendor', 'Vendor programs');
+  assert.equal(MembershipModel.getPath(o, 'labels.streams.vendor'), 'Vendor programs');
+});
+
+test('setPath and getPath round-trip a dotted path', () => {
+  const o = { a: { b: { c: 1 } }, list: [{ x: 1 }] };
+  MembershipModel.setPath(o, 'a.b.c', 42);
+  assert.equal(MembershipModel.getPath(o, 'a.b.c'), 42);
+  MembershipModel.setPath(o, 'list.0.x', 7);
+  assert.equal(MembershipModel.getPath(o, 'list.0.x'), 7);
+  assert.equal(MembershipModel.getPath(o, 'nope.missing'), undefined);
+  MembershipModel.setPath(o, 'fresh.0.deep', 'v');
+  assert.ok(Array.isArray(o.fresh), 'numeric segment creates an array');
+  assert.equal(o.fresh[0].deep, 'v');
+});

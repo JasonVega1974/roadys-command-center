@@ -168,13 +168,91 @@
     valuation: { revMultiple: 2.5, ebitdaMargin: 25, ebitdaMultiple: 5, ebitdaNormalization: 0 }
   };
 
+  // These paths arrive from DOM `data-k` attributes once Task 8 wires the
+  // binding layer, so they are user-influenceable. An unguarded walk lets
+  // '__proto__.x' reach Object.prototype and poison every object in the page;
+  // a NESTED path like 'a.__proto__.x' does it too, because `cur['__proto__']`
+  // already resolves to a real object, so the container-creation guard never
+  // fires. Every segment must be checked, not just the first.
+  var UNSAFE_SEGMENT = /^(?:__proto__|constructor|prototype)$/;
+
+  function hasUnsafeSegment(parts) {
+    for (var i = 0; i < parts.length; i++) {
+      if (UNSAFE_SEGMENT.test(parts[i])) return true;
+    }
+    return false;
+  }
+
+  function getPath(obj, path) {
+    var parts = String(path).split('.'), cur = obj;
+    if (hasUnsafeSegment(parts)) return undefined;
+    for (var i = 0; i < parts.length; i++) {
+      if (cur == null) return undefined;
+      cur = cur[parts[i]];
+    }
+    return cur;
+  }
+
+  function setPath(obj, path, value) {
+    var parts = String(path).split('.'), cur = obj;
+    // Refuse the WHOLE write, not just the offending hop: a partial walk
+    // would leave freshly-created containers behind in state.
+    if (hasUnsafeSegment(parts)) return obj;
+    for (var i = 0; i < parts.length - 1; i++) {
+      var k = parts[i];
+      if (cur[k] == null || typeof cur[k] !== 'object') {
+        // A numeric next key means the missing container is an array.
+        cur[k] = /^\d+$/.test(parts[i + 1]) ? [] : {};
+      }
+      cur = cur[k];
+    }
+    cur[parts[parts.length - 1]] = value;
+    return obj;
+  }
+
+  // Decompose each historical year's realized attrition into the assumed
+  // recurring rate plus whatever is left over. The residual is the
+  // ownership-consolidation story from the workbook's col O note; it is
+  // clamped at zero because a year quieter than the steady assumption has no
+  // structural loss, not negative structural loss. steadyRate is recomputed
+  // from the clamp so the two components always sum back to the realized total.
+  function attritionSplit(history, steadyRate) {
+    var steady = n(steadyRate);
+    var rows = derivedAttrition(history).rows.map(function (r) {
+      var structuralRate = Math.max(0, r.rate - steady);
+      var effSteadyRate = r.rate - structuralRate;
+      return {
+        year: r.year, base: r.base,
+        totalRate: r.rate, steadyRate: effSteadyRate, structuralRate: structuralRate,
+        totalLost: r.lost,
+        steadyLost: r.base * effSteadyRate / 100,
+        structuralLost: r.base * structuralRate / 100
+      };
+    });
+    return { rows: rows, steadyRate: steady };
+  }
+
+  function applyScenario(state, name) {
+    var preset = (state.scenarios || {})[name];
+    if (!preset) return state;
+    Object.keys(preset).forEach(function (path) {
+      setPath(state, path, preset[path]);
+    });
+    state.activeScenario = name;
+    return state;
+  }
+
   return {
     MembershipModel: {
       defaultState: defaultState,
       derivedAttrition: derivedAttrition,
       runModel: runModel,
       LEGACY_STATE: LEGACY_STATE,
-      _n: n
+      _n: n,
+      getPath: getPath,
+      setPath: setPath,
+      attritionSplit: attritionSplit,
+      applyScenario: applyScenario
     }
   };
 }));
