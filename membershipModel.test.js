@@ -891,3 +891,40 @@ test('the valuation panel consumes the computed EBITDA, not the margin assumptio
   assert.notEqual(viaComputed.mid, viaMargin.mid,
     'so the headline midpoint moves depending on which lens is live');
 });
+
+// ── Task 8: assumptions the binding layer rests on ─────────────────────────
+test('list mutation keeps indices contiguous for data-k paths', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const before = st.groups.length;
+  st.groups.splice(2, 1);
+  assert.equal(st.groups.length, before - 1);
+  st.groups.forEach((g, i) => {
+    assert.equal(MembershipModel.getPath(st, `groups.${i}.label`), g.label);
+  });
+});
+
+test('a reset restores a section from config without touching siblings', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.revenue.duesPerLoc = 999;
+  st.valuation.revMultiple = 11;
+  st.revenue = MembershipModel.defaultState(MGM_CONFIG).revenue;   // resetSection
+  assert.equal(st.revenue.duesPerLoc, 362, 'section restored');
+  assert.equal(st.valuation.revMultiple, 11, 'sibling untouched');
+});
+
+test('prose round-trips through JSON with markup-ish characters intact', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const nasty = 'Growth <b>held back</b> by A&B — "ownership sales" >50%';
+  MembershipModel.setPath(st, 'report.intro', nasty);
+  const back = JSON.parse(JSON.stringify(st));
+  assert.equal(MembershipModel.getPath(back, 'report.intro'), nasty);
+});
+
+test('adding a group flows through every dependent layer', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.groups.push({ key: 'newgrp', label: 'New Group', count: 25 });
+  const M = MembershipModel.runModel(st);
+  assert.equal(M.startTotal, 400, 'roll-forward sees it');
+  const R = MembershipModel.revenueModel(st, M);
+  assert.ok(R[0].streams.dues > 0, 'revenue sees it');
+});

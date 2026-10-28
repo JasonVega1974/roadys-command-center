@@ -127,6 +127,28 @@ input.cell{width:84px;text-align:right;padding:4px 6px}
   .brandbar img{height:40px}
   #reportSheet{padding:24px 18px}
 }
+/* ── Universal editability (Task 8) ── */
+/* Read mode shows values; edit mode reveals controls and row tools. */
+.mgm-editonly{display:none}
+body.mgm-edit .mgm-editonly{display:inline-flex;gap:6px}
+.cell{border:1px solid transparent;background:transparent;color:inherit;
+      font:inherit;width:100%;text-align:right;padding:3px 5px;border-radius:4px}
+body.mgm-edit .cell{border-color:var(--line);background:var(--surface)}
+.cell:focus{border-color:var(--red);outline:none}
+.lbl-in{border:1px solid transparent;background:transparent;color:inherit;
+        font:inherit;width:100%;padding:3px 5px;border-radius:4px}
+body.mgm-edit .lbl-in{border-color:var(--line);background:var(--surface)}
+.prose{width:100%;min-height:68px;font:inherit;color:inherit;
+       background:var(--surface);border:1px solid var(--line);
+       border-radius:6px;padding:8px 10px;resize:vertical}
+.edited{color:var(--amber);font-size:11px;margin-left:5px}
+.write-refused{border-color:var(--loss) !important;background:rgba(179,38,30,.06)}
+.refused-note{color:var(--loss);font-size:11.5px;margin-top:4px;font-weight:600}
+.ovr{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;
+     border-radius:10px;background:var(--amber);color:#fff;margin-left:6px}
+.assume{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;
+        border-radius:10px;background:var(--chip);color:var(--ink-soft);margin-left:6px}
+@media print{.mgm-editonly,.noprint{display:none !important}}
 </style>
 </head>
 <body>
@@ -141,6 +163,8 @@ input.cell{width:84px;text-align:right;padding:4px 6px}
     <div class="actions noprint">
       <span id="authBar" class="authbar"></span>
       <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
+      <button class="btn ghost" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
+      <button class="btn ghost" onclick="MGM.resetAll()">Reset all</button>
       <button class="btn ghost" onclick="openEmail()">✉ Email</button>
       <button class="btn ghost" onclick="doPrint()">⎙ Print</button>
       <button class="btn primary" onclick="MGM.switchTab('report')">Generate Report</button>
@@ -297,6 +321,223 @@ TAB_ORDER.forEach(k => {
        <p class="note">Not implemented yet.</p></div>`;
   });
 });
+
+/* ═══════════════ BINDING (Task 8) ═══════════════ */
+// data-k       scalar — number | text | date | select, dotted state path
+// data-k-list  repeating rows — add / remove / reorder
+// data-k-text  prose — multi-line, stored as plain text
+// Every control writes to MGM.state and nothing else, so localStorage,
+// scenarios, Supabase sync and JSON export all follow for free.
+MGM.bindAll = function (root) {
+  root = root || document;
+
+  root.querySelectorAll('[data-k]').forEach(el => {
+    if (el.dataset.mgmBound) return;
+    el.dataset.mgmBound = '1';
+    if (!('value' in el)) return;            // read-only display cell
+    const path = el.dataset.k;
+    const ev = (el.tagName === 'SELECT' || el.type === 'date') ? 'change' : 'input';
+    el.addEventListener(ev, () => {
+      const raw = el.value;
+      MGM.bindWrite(el, path,
+        el.type === 'number' ? (raw === '' ? null : Number(raw)) : raw);
+      MGM.save();
+      MGM.refreshSoft();
+    });
+  });
+
+  root.querySelectorAll('[data-k-text]').forEach(el => {
+    if (el.dataset.mgmBound) return;
+    el.dataset.mgmBound = '1';
+    const path = el.dataset.kText;
+    el.value = MM.getPath(MGM.state, path) || '';
+    el.addEventListener('input', () => {
+      MGM.bindWrite(el, path, el.value);
+      MGM.save();
+    });
+  });
+
+  // Must run AFTER binding, on every call: bindAll is invoked at the end of
+  // every MGM.refresh(), which is the redraw that would otherwise have wiped
+  // the refusal marker created by the write that triggered the redraw.
+  MGM.applyWriteFailures(root);
+};
+
+// A refused write must not look like a successful one. `setPath` returns the
+// object unchanged when a path contains a reserved segment (__proto__,
+// constructor, prototype) — see Task 3. Throwing here would break the page
+// mid-keystroke inside an input handler, and silence would let someone edit a
+// field, watch it "take", and build a report on a value that never landed.
+// So: write, read back, and surface a visible inline warning on mismatch.
+MGM.writeFailed = {};          // path -> true, cleared on a successful write
+
+// The note is keyed to the FIELD, not to a shared parent. A parent-scoped
+// lookup meant that when two bound inputs were direct siblings, a successful
+// write on one DELETED the other's visible note.
+MGM.refusedNoteId = path => 'refused-' + String(path).replace(/[^A-Za-z0-9_.-]/g, '_');
+
+MGM.showRefusal = function (el, path, failed) {
+  el.classList.toggle('write-refused', failed);
+  const id = MGM.refusedNoteId(path);
+  let note = document.getElementById(id);
+  if (failed && !note) {
+    note = document.createElement('div');
+    note.className = 'refused-note';
+    note.id = id;
+    note.textContent = 'This value was not saved — the field name is reserved. Rename it and try again.';
+    el.insertAdjacentElement('afterend', note);
+  } else if (!failed && note) {
+    note.remove();
+  }
+};
+
+MGM.bindWrite = function (el, path, value) {
+  MM.setPath(MGM.state, path, value);
+  const landed = MM.getPath(MGM.state, path);
+  const ok = JSON.stringify(landed) === JSON.stringify(value);
+  if (ok) { delete MGM.writeFailed[path]; }
+  else { MGM.writeFailed[path] = true; }
+  MGM.showRefusal(el, path, !ok);
+  return ok;
+};
+
+// Re-apply refusal markers after a redraw. WITHOUT THIS THE WHOLE MECHANISM IS
+// INERT: the scalar listener runs bindWrite -> save -> refreshSoft, and
+// refreshSoft re-renders the panel, destroying the class and the note bindWrite
+// just created — so a refused write would again look identical to a successful
+// one. MGM.writeFailed is the persistent record; this is what makes it visible
+// again. Called at the end of bindAll, which runs after every refresh.
+MGM.applyWriteFailures = function (root) {
+  (root || document).querySelectorAll('[data-k],[data-k-text]').forEach(el => {
+    const path = el.dataset.k || el.dataset.kText;
+    if (path) MGM.showRefusal(el, path, !!MGM.writeFailed[path]);
+  });
+};
+
+MGM.addRow = function (listPath, template) {
+  const list = MM.getPath(MGM.state, listPath) || [];
+  list.push(JSON.parse(JSON.stringify(template)));
+  MM.setPath(MGM.state, listPath, list);
+  MGM.save(); MGM.refresh();
+};
+
+MGM.removeRow = function (listPath, i) {
+  (MM.getPath(MGM.state, listPath) || []).splice(i, 1);
+  MGM.save(); MGM.refresh();
+};
+
+MGM.moveRow = function (listPath, i, delta) {
+  const list = MM.getPath(MGM.state, listPath) || [];
+  const j = i + delta;
+  if (j < 0 || j >= list.length) return;
+  const [row] = list.splice(i, 1);
+  list.splice(j, 0, row);
+  MGM.save(); MGM.refresh();
+};
+
+MGM.rowTools = function (listPath, i, len) {
+  return `<span class="mgm-editonly">
+    <button class="btn" title="Move up" onclick="MGM.moveRow('${listPath}',${i},-1)" ${i === 0 ? 'disabled' : ''}>▲</button>
+    <button class="btn" title="Move down" onclick="MGM.moveRow('${listPath}',${i},1)" ${i === len - 1 ? 'disabled' : ''}>▼</button>
+    <button class="btn" title="Remove" onclick="MGM.removeRow('${listPath}',${i})">✕</button>
+  </span>`;
+};
+
+// ── Edited markers and reset ──────────────────────────────────────────────
+// For a path inside a REORDERABLE array (groups.2.count), the index is not an
+// identity: moveRow/removeRow renumber rows, so comparing state[i] against
+// config[i] would badge a row against an unrelated config row. These arrays
+// each carry a stable identifying field, so resolve the matching config row by
+// that instead. A row the user added has no config counterpart and is edited
+// by definition.
+MGM.ROW_KEYS = { 'groups': 'key', 'sources': 'key', 'staffing.reps': 'name', 'history': 'year' };
+
+MGM.isEdited = function (path) {
+  const m = String(path).match(/^(.+?)\.(\d+)(?:\.(.+))?$/);
+  const idField = m && MGM.ROW_KEYS[m[1]];
+  if (idField) {
+    const row = (MM.getPath(MGM.state, m[1]) || [])[+m[2]];
+    if (!row) return false;
+    const cfgRow = (MM.getPath(MGM_CONFIG, m[1]) || [])
+      .find(r => r && r[idField] === row[idField]);
+    if (!cfgRow) return true;                        // user-added row
+    const field = m[3];
+    // The identity field cannot be checked against the row we just FOUND by
+    // matching that same field — `row[idField] === cfgRow[idField]` holds by
+    // construction, so a real rename would never badge. (Renaming a rep
+    // "Robert Watson" -> "Angel Long" locates Angel Long's shipped row and
+    // reports no edit.) Fall back to a positional comparison for that one
+    // field: after a reorder it can badge a row that was not edited, but a
+    // false POSITIVE is the safe direction here — a false negative tells the
+    // reader a hand-typed value is sourced data.
+    if (field === idField) {
+      const cfgAtIdx = (MM.getPath(MGM_CONFIG, m[1]) || [])[+m[2]];
+      return !cfgAtIdx
+        || JSON.stringify(row[field]) !== JSON.stringify(cfgAtIdx[field]);
+    }
+    return JSON.stringify(field ? row[field] : row)
+        !== JSON.stringify(field ? cfgRow[field] : cfgRow);
+  }
+  return JSON.stringify(MM.getPath(MGM.state, path))
+      !== JSON.stringify(MM.getPath(MGM_CONFIG, path));
+};
+
+MGM.editedMark = function (path) {
+  return MGM.isEdited(path)
+    ? '<span class="edited" title="Differs from the shipped default">edited</span>' : '';
+};
+
+MGM.resetSection = function (path) {
+  const dflt = MM.getPath(MGM_CONFIG, path);
+  if (dflt === undefined) return;
+  MM.setPath(MGM.state, path, JSON.parse(JSON.stringify(dflt)));
+  MGM.save(); MGM.refresh();
+};
+
+MGM.resetAll = function () {
+  if (!confirm('Reset every value and label to the shipped defaults?')) return;
+  MGM.state = MM.defaultState(MGM_CONFIG);
+  MGM.save(); MGM.refresh();
+};
+
+// ── Edit mode ─────────────────────────────────────────────────────────────
+// View-only state: never persisted into a scenario, never affects the model,
+// and always off for print so the report shows values, not form controls.
+MGM.editMode = false;
+MGM.toggleEdit = function () {
+  MGM.editMode = !MGM.editMode;
+  document.body.classList.toggle('mgm-edit', MGM.editMode);
+  document.getElementById('editBtn').textContent =
+    MGM.editMode ? '✓ Done editing' : '✎ Edit';
+  MGM.refresh();
+};
+window.addEventListener('beforeprint', () => document.body.classList.remove('mgm-edit'));
+window.addEventListener('afterprint', () =>
+  document.body.classList.toggle('mgm-edit', MGM.editMode));
+
+// ── Chart titles, tab notes and tab renaming ────────────────────────────────
+// Every chart heading rendered by Tasks 9–13 is an input bound to its label,
+// not static text, so "chart titles and axis labels" is editable uniformly.
+MGM.chartTitle = function (key) {
+  return `<h3><input class="lbl-in" type="text" data-k="labels.charts.${key}"
+    value="${esc(MGM.state.labels.charts[key])}"></h3>`;
+};
+
+MGM.tabNotes = function (key) {
+  return `<div class="card noprint-edit">
+    <h3>Notes &amp; assumptions</h3>
+    <textarea class="prose" data-k-text="labels.notes.${key}"
+      placeholder="Assumptions and caveats for this tab — printed with the report."></textarea>
+  </div>`;
+};
+
+MGM.tabRenameCard = function () {
+  return `<div class="card mgm-editonly"><h3>Tab names</h3><table>` +
+    TAB_ORDER.map(k => `<tr><td>${esc(MGM_CONFIG.labels.tabs[k])}</td>
+      <td><input class="lbl-in" type="text" data-k="labels.tabs.${k}"
+        value="${esc(MGM.state.labels.tabs[k])}"></td></tr>`).join('') +
+    `</table><button class="btn" onclick="MGM.resetSection('labels.tabs')">Reset tab names</button></div>`;
+};
 
 /* theme toggle: pre-existing brand-bar control, independent of the v1
    growth model being ported out from under it here, so it is kept working
