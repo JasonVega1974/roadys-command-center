@@ -242,6 +242,80 @@
     return state;
   }
 
+  function avgMembers(r) { return (r.start + r.end) / 2; }
+
+  var LEGACY_PART = { fuel: 'fuelPart', vendor: 'vendorPart', rewards: 'rewardsPart' };
+
+  // Participation lives on its own tab now, but LEGACY_STATE (and any
+  // scenario saved before the move) carries revenue.*Part. Reading through
+  // this one helper is what keeps the golden revenue test meaningful.
+  function partPct(state, program) {
+    var p = (state.participation || {})[program];
+    if (p && isFinite(Number(p.pct))) return Number(p.pct);
+    return n((state.revenue || {})[LEGACY_PART[program]]);
+  }
+
+  // Annualized run-rate per year: every stream is charged for 12 months on
+  // the average member count, which is what the v1 reported and what a
+  // valuation multiple expects. `producing` is carried separately so the
+  // activation lag is visible without changing the revenue basis.
+  function revenueModel(state, M) {
+    var rv = state.revenue || {}, months = 12;
+    return M.years.map(function (r) {
+      var m = avgMembers(r);
+      var streams = {
+        dues:            m * n(rv.duesPerLoc) * months,
+        duesAncillary:   m * n(rv.duesAncillaryPerMember),
+        settlement:      m * n(rv.settlementNetPerMember),
+        fuelProgram:     m * (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
+        vendor:          m * (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
+        rewards:         m * (partPct(state, 'rewards') / 100) * n(rv.rewardsPM) * months,
+        rewardsBreakage: m * n(rv.rewardsBreakagePerMember)
+      };
+      var total = Object.keys(streams).reduce(function (a, k) { return a + streams[k]; }, 0);
+      return {
+        year: r.year,
+        label: r.year === n(state.CURRENT_YEAR, 2026)
+          ? r.year + ' (proj. from ' + (state.DATA_ASOF || '') + ')' : String(r.year),
+        members: m, producing: r.producing, streams: streams, total: total
+      };
+    });
+  }
+
+  // Three columns for the reconciliation tile: what the drivers imply, what
+  // the P&L actually did, and the workbook's $20k benchmark. `actuals` is
+  // null when nobody is signed in — the tile degrades, it does not break.
+  function revPerMember(state, M, actuals) {
+    var rv = state.revenue || {}, months = 12;
+    var derived = {
+      dues:            n(rv.duesPerLoc) * months,
+      duesAncillary:   n(rv.duesAncillaryPerMember),
+      settlement:      n(rv.settlementNetPerMember),
+      fuelProgram:     (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
+      vendor:          (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
+      rewards:         (partPct(state, 'rewards') / 100) * n(rv.rewardsPM) * months,
+      rewardsBreakage: n(rv.rewardsBreakagePerMember)
+    };
+    derived.total = Object.keys(derived).reduce(function (a, k) {
+      return k === 'total' ? a : a + derived[k];
+    }, 0);
+
+    var bench = n((state.benchmark || {}).lostMemberValue);
+    var actual = actuals && isFinite(Number(actuals.totalPerMemberYr))
+      ? Number(actuals.totalPerMemberYr) : null;
+    var billable = n((state.billing || {}).duesPerLocBillable);
+
+    return {
+      derived: derived,
+      actual: actual,
+      actualStreams: actuals ? (actuals.streams || null) : null,
+      benchmark: bench,
+      varianceVsActual: actual === null ? null : derived.total - actual,
+      varianceVsBenchmark: derived.total - bench,
+      duesRealization: billable ? 100 * n(rv.duesPerLoc) / billable : null
+    };
+  }
+
   return {
     MembershipModel: {
       defaultState: defaultState,
@@ -252,7 +326,11 @@
       getPath: getPath,
       setPath: setPath,
       attritionSplit: attritionSplit,
-      applyScenario: applyScenario
+      applyScenario: applyScenario,
+      partPct: partPct,
+      avgMembers: avgMembers,
+      revenueModel: revenueModel,
+      revPerMember: revPerMember
     }
   };
 }));

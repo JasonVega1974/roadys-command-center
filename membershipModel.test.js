@@ -332,3 +332,97 @@ test('setPath and getPath round-trip a dotted path', () => {
   assert.ok(Array.isArray(o.fresh), 'numeric segment creates an array');
   assert.equal(o.fresh[0].deep, 'v');
 });
+
+test('GOLDEN: revenueModel under legacy settings reproduces the v1 exactly', () => {
+  const M = MembershipModel.runModel(MembershipModel.LEGACY_STATE);
+  const R = MembershipModel.revenueModel(MembershipModel.LEGACY_STATE, M);
+  const want = [
+    { year: 2026, members: 380.844324, dues: 1677238.401474, fuel: 603257.408705, vendor: 479863.847833, rewards: 102827.967393, total: 2863187.625404 },
+    { year: 2027, members: 387.395088, dues: 1706087.969736, fuel: 613633.820178, vendor: 488117.811505, rewards: 104596.673894, total: 2912436.275312 },
+    { year: 2028, members: 399.242775, dues: 1758265.182957, fuel: 632400.556268, vendor: 503045.897031, rewards: 107795.549364, total: 3001507.18562 },
+    { year: 2029, members: 411.96794,  dues: 1814306.806145, fuel: 652557.216379, vendor: 519079.603938, rewards: 111231.343701, total: 3097174.970164 }
+  ];
+  want.forEach((w, i) => {
+    const r = R[i];
+    assert.equal(r.year, w.year);
+    near(r.members, w.members, `${w.year} members`);
+    near(r.streams.dues, w.dues, `${w.year} dues`);
+    near(r.streams.fuelProgram, w.fuel, `${w.year} fuel`);
+    near(r.streams.vendor, w.vendor, `${w.year} vendor`);
+    near(r.streams.rewards, w.rewards, `${w.year} rewards`);
+    near(r.total, w.total, `${w.year} total`);
+  });
+});
+
+test('partPct reads participation, falling back to the legacy revenue fields', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  assert.equal(MembershipModel.partPct(st, 'fuel'), 55);
+  st.participation.fuel.pct = 80;
+  assert.equal(MembershipModel.partPct(st, 'fuel'), 80);
+  // LEGACY_STATE has no participation block at all.
+  assert.equal(MembershipModel.partPct(MembershipModel.LEGACY_STATE, 'vendor'), 70);
+});
+
+test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CONFIG', () => {
+  // Every other golden in this suite runs on LEGACY_STATE, so the PRODUCTION
+  // config path had no golden at all. These figures were derived by hand from
+  // MGM_CONFIG's committed drivers — m = (start+end)/2 for 2026, then each
+  // stream's formula applied directly — NOT by calling revenueModel. Asserting
+  // the streams against each other instead would be true by construction and
+  // would pass even if a formula were wrong.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const r = MembershipModel.revenueModel(st, MembershipModel.runModel(st))[0];
+  near(r.members, 375.884577, 'members');
+  near(r.streams.dues, 1632842.602458, 'dues');
+  near(r.streams.duesAncillary, 44730.264662, 'duesAncillary');
+  near(r.streams.settlement, -55630.917395, 'settlement');
+  near(r.streams.fuelProgram, 0, 'fuelProgram — zero by design');
+  near(r.streams.vendor, 347317.349142, 'vendor');
+  near(r.streams.rewards, 65403.916397, 'rewards');
+  near(r.streams.rewardsBreakage, 198467.056652, 'rewardsBreakage');
+  near(r.total, 2233130.271916, 'total');
+  // Ties back to the per-member figure the reconciliation tile reports.
+  near(r.total / r.members, 5941, '$/member/yr');
+});
+
+test('fuelProgramMargin defaults to zero, so no prospective fuel revenue', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  assert.equal(st.revenue.fuelProgramMargin, 0);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  assert.equal(R[0].streams.fuelProgram, 0);
+  assert.ok(R[0].streams.settlement < 0, 'settlement nets negative');
+});
+
+test('revPerMember derives $5,941 from the committed drivers', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
+  // 362*12 + 119 - 148 + 0 + 110*12*0.70 + 29*12*0.50 + 528 = 5941.
+  // NOT 5946 — that is the measured P&L gross-profit-per-member figure, and
+  // the committed drivers fall $5 short of it by design:
+  //   dues        +1  (362 rounded up from 361.95)
+  //   vendor      -4  (110 rounded down from 110.48)
+  //   rewards fee +1  (29 rounded up from 28.83)
+  //   Rewards Points line  -3  (a real P&L line the model deliberately
+  //                             does not carry as a driver)
+  // Keeping the rounded drivers is an explicit decision; the gap is surfaced
+  // on the reconciliation tile rather than hidden by un-rounding.
+  near(rpm.derived.total, 5941, 'derived $/member/yr');
+  assert.equal(rpm.actual, null, 'unsigned: no actual');
+  assert.equal(rpm.benchmark, 20000);
+  near(rpm.varianceVsBenchmark, 5941 - 20000, 'benchmark variance');
+});
+
+test('revPerMember reports the real -$5 variance against the P&L actual', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st),
+    { totalPerMemberYr: 5946 });
+  // The whole point of this function is to expose the gap, so assert the
+  // real one rather than contriving an equal value that only tests subtraction.
+  near(rpm.varianceVsActual, -5, 'drivers are $5/member/yr below the P&L actual');
+});
+
+test('dues realization is reported from the billable vs realized rates', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
+  near(rpm.duesRealization, 100 * 362 / 366.82, 'realization %');
+});
