@@ -160,3 +160,68 @@ test('no P&L actual, margin %, or back-solvable multiple appears in the raw sour
 test('labels cover all twelve tabs', () => {
   assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 12);
 });
+
+const { MembershipModel } = require('./membershipModel.js');
+
+// Tolerance: these are the v1's floating-point results, reproduced exactly.
+const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-6, `${msg}: got ${a}, want ${b}`);
+
+test('GOLDEN: runModel under legacy settings reproduces the v1 exactly', () => {
+  const M = MembershipModel.runModel(MembershipModel.LEGACY_STATE);
+  assert.equal(M.startTotal, 380);
+  assert.equal(M.ptp, 89);
+  assert.equal(M.years.length, 4);
+
+  const want = [
+    { year: 2026, start: 380,        newAdds: 38.4,    lost: 4.711353,  end: 381.688647, endRoadys: 292.688647 },
+    { year: 2027, start: 381.688647, newAdds: 40.32,   lost: 28.907118, end: 393.10153,  endRoadys: 304.10153  },
+    { year: 2028, start: 393.10153,  newAdds: 42.336,  lost: 30.053508, end: 405.384021, endRoadys: 316.384021 },
+    { year: 2029, start: 405.384021, newAdds: 44.4528, lost: 31.284963, end: 418.551858, endRoadys: 329.551858 }
+  ];
+  want.forEach((w, i) => {
+    const r = M.years[i];
+    assert.equal(r.year, w.year);
+    near(r.start, w.start, `${w.year} start`);
+    near(r.newAdds, w.newAdds, `${w.year} newAdds`);
+    near(r.lost, w.lost, `${w.year} lost`);
+    near(r.end, w.end, `${w.year} end`);
+    near(r.endRoadys, w.endRoadys, `${w.year} endRoadys`);
+  });
+});
+
+test('GOLDEN: 2026 models only the 2 months after the Oct as-of date', () => {
+  const M = MembershipModel.runModel(MembershipModel.LEGACY_STATE);
+  near(M.years[0].newModeled, 6.4, '2026 newModeled');   // 3.2 × 2
+  assert.equal(M.years[0].ytd, 32);                      // display only
+  // 380 + 6.4 − 4.711353 = 381.688647: YTD adds are already inside the base.
+  near(M.years[0].end, 380 + 6.4 - 4.711353, '2026 end identity');
+});
+
+test('derivedAttrition reproduces the 9.65% three-year average', () => {
+  const d = MembershipModel.derivedAttrition(MGM_CONFIG.history);
+  assert.deepEqual(d.rows.map(r => r.year), [2022, 2023, 2024, 2025]);
+  near(d.rows[0].rate, 3.194888, '2022 rate');
+  near(d.rows[1].rate, 4.037267, '2023 rate');
+  near(d.rows[2].rate, 13.666667, '2024 rate');
+  near(d.rows[3].rate, 11.254019, '2025 rate');
+  near(d.avg, 9.652651, '3-yr avg');   // rounds to the 9.7 shown on screen
+});
+
+test('monthly rows sum to the annual rows for every year', () => {
+  const M = MembershipModel.runModel(MembershipModel.LEGACY_STATE);
+  for (const y of M.years) {
+    const mm = M.months.filter(m => m.year === y.year);
+    near(mm.reduce((a, m) => a + m.adds, 0), y.newModeled, `${y.year} adds`);
+    near(mm.reduce((a, m) => a + m.lost, 0), y.lost, `${y.year} lost`);
+    if (mm.length) near(mm[mm.length - 1].end, y.endRoadys, `${y.year} end`);
+  }
+});
+
+test('a bad numeric field degrades to 0 rather than poisoning the model', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.groups[0].count = '';          // user cleared the input
+  st.adds.perMonth = 'abc';         // nonsense typed in
+  const M = MembershipModel.runModel(st);
+  assert.ok(isFinite(M.startTotal), 'startTotal finite');
+  M.years.forEach(y => assert.ok(isFinite(y.end), `${y.year} end finite`));
+});
