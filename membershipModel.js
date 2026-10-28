@@ -316,6 +316,28 @@
     };
   }
 
+  // Both lenses apply to the model's own revenue total, built from net
+  // per-member streams — never to the P&L's `Total Income`, which is ~95%
+  // gross settlement pass-through and would overstate by roughly 6x.
+  // ebitdaOverride lets Profit & Cash Flow supply a real computed EBITDA.
+  function valuation(state, lastYear, ebitdaOverride) {
+    var val = state.valuation || {};
+    var basis = n(lastYear && lastYear.total);
+    var rev = basis * n(val.revMultiple);
+    var hasOverride = ebitdaOverride !== undefined && ebitdaOverride !== null;
+    var ebitdaBase = hasOverride
+      ? n(ebitdaOverride)
+      : basis * (n(val.ebitdaMargin) / 100) + n(val.ebitdaNormalization);
+    var ebitda = ebitdaBase * n(val.ebitdaMultiple);
+    return {
+      basis: basis, rev: rev,
+      ebitdaBase: ebitdaBase, ebitda: ebitda,
+      normalization: n(val.ebitdaNormalization),
+      mid: (rev + ebitda) / 2,
+      low: Math.min(rev, ebitda), high: Math.max(rev, ebitda)
+    };
+  }
+
   return {
     MembershipModel: {
       defaultState: defaultState,
@@ -330,7 +352,8 @@
       partPct: partPct,
       avgMembers: avgMembers,
       revenueModel: revenueModel,
-      revPerMember: revPerMember
+      revPerMember: revPerMember,
+      valuation: valuation
     }
   };
 }));

@@ -426,3 +426,115 @@ test('dues realization is reported from the billable vs realized rates', () => {
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
   near(rpm.duesRealization, 100 * 362 / 366.82, 'realization %');
 });
+
+test('GOLDEN: valuation under legacy settings reproduces the v1 exactly', () => {
+  const M = MembershipModel.runModel(MembershipModel.LEGACY_STATE);
+  const R = MembershipModel.revenueModel(MembershipModel.LEGACY_STATE, M);
+  const v = MembershipModel.valuation(MembershipModel.LEGACY_STATE, R[R.length - 1]);
+  near(v.rev, 7742937.42541, 'revenue lens');
+  near(v.ebitda, 3871468.712705, 'ebitda lens');
+  near(v.mid, 5807203.069057, 'midpoint');
+});
+
+test('ebitdaMargin ships unset, and the margin lens honours whatever is set', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  // 0 = explicitly unset. The real P&L margin is auth-gated and loads from
+  // mgm_pnl_actuals; it is never committed to this public repo. The v1's
+  // hardcoded 25% was unsupported in either direction.
+  assert.equal(st.valuation.ebitdaMargin, 0);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+  assert.equal(MembershipModel.valuation(st, last).ebitdaBase, 0,
+    'unset margin yields a zero EBITDA lens, not a guess');
+
+  // Set it the way a signed-in session or a hand entry would.
+  st.valuation.ebitdaMargin = 0.9;
+  const v = MembershipModel.valuation(st, last);
+  near(v.ebitdaBase, last.total * 0.009, 'ebitda base');
+  near(v.ebitda, last.total * 0.009 * 5, 'ebitda lens');
+});
+
+test('normalization add-backs raise EBITDA explicitly and nothing else', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+  const before = MembershipModel.valuation(st, last);
+  st.valuation.ebitdaNormalization = 250000;
+  const after = MembershipModel.valuation(st, last);
+
+  near(after.ebitdaBase - before.ebitdaBase, 250000, 'add-back lands in EBITDA');
+  near(after.rev, before.rev, 'revenue lens untouched');
+  near(after.ebitda - before.ebitda, 250000 * 5, 'multiplied through');
+});
+
+test('an explicit EBITDA override wins over the margin assumption', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const v = MembershipModel.valuation(st, R[R.length - 1], 400000);
+  near(v.ebitdaBase, 400000, 'override used verbatim');
+  near(v.ebitda, 400000 * 5, 'multiplied through');
+});
+
+test('an EBITDA override must NOT re-apply the normalization add-back', () => {
+  // The add-back is applied in exactly ONE place, depending on which path is
+  // live. Under the margin path `valuation` adds it. Under the override path,
+  // Task 6's cashflowModel has ALREADY folded it into the figure being passed
+  // in (ebitda = total - costToServe - acquisition + norm), so adding it again
+  // here would double-count it and inflate the headline valuation by
+  // norm x ebitdaMultiple. The behaviour is correct today; this test exists so
+  // that a future "fix" to the override branch cannot silently inflate the
+  // number people build decisions on.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+  st.valuation.ebitdaMargin = 10;
+  st.valuation.ebitdaNormalization = 250000;
+
+  // Margin path: the add-back IS included.
+  const viaMargin = MembershipModel.valuation(st, last);
+  near(viaMargin.ebitdaBase, last.total * 0.10 + 250000,
+    'margin path includes the add-back');
+
+  // Override path: the supplied figure is used verbatim.
+  const viaOverride = MembershipModel.valuation(st, last, 400000);
+  // This assertion comes FIRST deliberately. It is the one that fires on the
+  // double-count regression, and its message explains why the number is wrong
+  // rather than only that it differs. 650000 is spelled out rather than
+  // computed so the figure a double-count produces is visible in the source.
+  assert.notEqual(viaOverride.ebitdaBase, 650000,
+    'the add-back must not be applied twice — that would inflate the valuation by norm x multiple');
+  near(viaOverride.ebitdaBase, 400000, 'override used verbatim');
+  near(viaOverride.ebitda, 400000 * st.valuation.ebitdaMultiple,
+    'multiplied through exactly once');
+});
+
+test('low and high track which lens is actually lower, in both orderings', () => {
+  // The first draft of this test asserted `mid === (rev + ebitda) / 2` using
+  // the output's own fields — the same expression the implementation uses —
+  // and `low <= mid <= high`, which is a mathematical identity for the
+  // min/mean/max of two numbers. Neither assertion could fail. This version
+  // pins independently-computed values AND flips which lens is larger, so a
+  // min/max swap in the implementation is caught.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+  near(last.total, 2424563.806607, 'final-year revenue basis');
+
+  // Margin unset (the shipped default): the EBITDA lens is zero, so the
+  // revenue lens is the high end.
+  st.valuation.ebitdaMargin = 0;
+  const a = MembershipModel.valuation(st, last);
+  near(a.rev, 6061409.516516, 'revenue lens at 2.5x');
+  near(a.ebitda, 0, 'EBITDA lens is zero at an unset margin');
+  near(a.low, 0, 'low is the EBITDA lens here');
+  near(a.high, 6061409.516516, 'high is the revenue lens here');
+  near(a.mid, 3030704.758258, 'midpoint');
+
+  // An 80% margin inverts the ordering: the EBITDA lens is now on top.
+  st.valuation.ebitdaMargin = 80;
+  const b = MembershipModel.valuation(st, last);
+  near(b.ebitda, 9698255.226426, 'EBITDA lens at 80% x 5');
+  near(b.low, 6061409.516516, 'low is now the revenue lens');
+  near(b.high, 9698255.226426, 'high is now the EBITDA lens');
+  near(b.mid, 7879832.371471, 'midpoint follows the inversion');
+});
