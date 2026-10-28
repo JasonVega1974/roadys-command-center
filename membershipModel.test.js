@@ -538,3 +538,356 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   near(b.high, 9698255.226426, 'high is now the EBITDA lens');
   near(b.mid, 7879832.371471, 'midpoint follows the inversion');
 });
+
+// ── fixtures ─────────────────────────────────────────────────────────────
+const LEADS = [
+  { id: 'l1', stage: 'Prospect',         locations: 2, est_gallons: 5000,  deal_value: 600,  owner: 'Robert Watson', source: 'Referral' },
+  { id: 'l2', stage: 'Qualified',        locations: 1, est_gallons: 8000,  deal_value: 750,  owner: 'Angel Long',    source: 'Cold Call' },
+  { id: 'l3', stage: 'Negotiation',      locations: 18, est_gallons: 40000, deal_value: 6300, owner: 'Robert Watson', source: 'GS Lead' },
+  { id: 'l4', stage: 'Closed Won',       locations: 1, est_gallons: 7000,  deal_value: 500,  owner: 'Angel Long',    source: 'Referral' },
+  { id: 'l5', stage: 'Closed Lost',      locations: 3, est_gallons: 9000,  deal_value: 900,  owner: 'Robert Watson', source: 'Website' },
+  { id: 'l6', stage: 'Not Qualified',    locations: 1, est_gallons: 2000,  deal_value: 300,  owner: 'Angel Long',    source: 'Other' }
+];
+// A modeled profile for l3 must take precedence over its est_gallons.
+const PROFILES = [{ id: 'p1', lead_id: 'l3', final_gallons: 52000, status: 'final' }];
+
+// Stand-in for BusDevGallonsCalc.getBaselineRow, with the real values.
+const BASELINES = {
+  'Fuel stop|Any': 5630, 'Small truck stop|Backroad': 6174,
+  'Small truck stop|Highway': 2338, 'Small truck stop|Interstate': 8400,
+  'Medium truck stop|Highway': 5250, 'Medium truck stop|Interstate': 10492,
+  'Large truck stop|Highway': 15307, 'Large truck stop|Interstate': 23565
+};
+const baselineFor = (p, r) => {
+  const v = BASELINES[p + '|' + r];
+  return v === undefined ? null : { profile: p, roadway: r, baseline: v };
+};
+
+// ── pipeline ─────────────────────────────────────────────────────────────
+test('pipeline counts open locations and excludes closed stages', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  assert.equal(p.openLeads, 3);                 // l1, l2, l3
+  assert.equal(p.openLocations, 2 + 1 + 18);
+  assert.equal(p.byStage['Closed Won'].locations, 1);
+  assert.equal(p.isEmpty, false);
+});
+
+test('weighted locations use the stage ladder over open stages only', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  // 2×5% + 1×15% + 18×70% = 0.1 + 0.15 + 12.6 = 12.85
+  near(p.weightedLocations, 12.85, 'weighted');
+  // spread over the 12-month horizon
+  near(p.expectedPerMonth, 12.85 / 12, 'per month');
+});
+
+test('win rate is Won/(Won+Lost) with Not Qualified excluded', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  assert.equal(p.wonCount, 1);
+  assert.equal(p.lostCount, 1);
+  near(p.winRate, 50, 'win rate');     // 1/(1+1), Not Qualified ignored
+});
+
+test('modeled profile gallons take precedence over est_gallons per lead', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  // open leads: l1 5000 + l2 8000 + l3 -> 52000 (profile, not 40000)
+  assert.equal(p.gallons, 5000 + 8000 + 52000);
+});
+
+test('pipeline load is grouped by owner and source', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  assert.equal(p.byOwner['Robert Watson'].openLeads, 2);   // l1, l3
+  assert.equal(p.byOwner['Angel Long'].openLeads, 1);      // l2
+  assert.equal(p.bySource['Referral'].leads, 2);           // l1, l4
+});
+
+test('an empty lead set yields zeros, not NaN', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, [], []);
+  assert.equal(p.isEmpty, true);
+  assert.equal(p.openLocations, 0);
+  assert.equal(p.weightedLocations, 0);
+  assert.equal(p.winRate, null, 'no closed deals means no win rate, not 0/0');
+  assert.ok(isFinite(p.expectedPerMonth));
+});
+
+test('pipeline basis is opt-in: flat basis is byte-identical to no pipeline', () => {
+  const flat = MembershipModel.defaultState(MGM_CONFIG);
+  const a = MembershipModel.runModel(flat);
+
+  const piped = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(piped, LEADS, PROFILES);
+  const b = MembershipModel.runModel(piped, MembershipModel.addsOpts(piped, p));
+  assert.equal(JSON.stringify(a.years), JSON.stringify(b.years), 'flat unchanged');
+
+  piped.salesPipeline.basis = 'pipeline';
+  const c = MembershipModel.runModel(piped, MembershipModel.addsOpts(piped, p));
+  assert.notEqual(JSON.stringify(a.years), JSON.stringify(c.years), 'pipeline differs');
+
+  // The override reaches the loop raw: the current year runs at exactly the
+  // pipeline rate, for its post-as-of months only (2 at an October as-of).
+  near(c.years[0].newModeled / 2, 12.85 / 12,
+    'current year runs at the raw pipeline rate');
+
+  // `adds.growthPct` then compounds ON TOP of the pipeline rate, once per year
+  // transition, exactly as it does for the flat rate. Pinned deliberately:
+  // whether a MEASURED point-in-time pipeline figure should be growth-
+  // compounded at all is an open modelling question. This records the answer
+  // the engine currently gives, so changing it cannot pass unnoticed.
+  near(c.years[1].newModeled / 12, (12.85 / 12) * 1.05,
+    'growth compounds on the pipeline rate');
+  near(c.years[2].newModeled / 12, (12.85 / 12) * 1.05 * 1.05,
+    'and compounds again the following year');
+});
+
+// ── gallons ──────────────────────────────────────────────────────────────
+test('gallon production multiplies group counts by mapped baselines', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  const g = MembershipModel.gallonProduction(st, baselineFor, p);
+  const expected =
+    154 * 10492 + 6 * 5250 + 22 * 2338 + 88 * 5630 +
+    7 * 6174 + 9 * 5630 + 89 * 2338;
+  near(g.existing, expected, 'existing network gal/mo');
+  assert.equal(g.inbound, p.gallons);
+  near(g.total, expected + p.gallons, 'total');
+  near(g.perMember, expected / 375, 'per existing member');
+});
+
+test('a per-group baseline override changes only that group', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const before = MembershipModel.gallonProduction(st, baselineFor, null);
+  st.gallons.groupBaselineOverride = { cstore: 4000 };
+  const after = MembershipModel.gallonProduction(st, baselineFor, null);
+  near(after.existing - before.existing, 22 * (4000 - 2338), 'delta is C-Stores only');
+  assert.equal(after.byGroup.find(r => r.key === 'cstore').overridden, true);
+  assert.equal(after.byGroup.find(r => r.key === 'ts').overridden, false);
+});
+
+test('an unmapped group reports zero and is flagged, not silently dropped', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.groups.push({ key: 'brand new', label: 'Brand New', count: 10 });
+  const g = MembershipModel.gallonProduction(st, baselineFor, null);
+  const row = g.byGroup.find(r => r.key === 'brand new');
+  assert.equal(row.baseline, 0);
+  assert.equal(row.unmapped, true);
+  assert.ok(g.mapped < g.byGroup.length, 'mapped count reflects the gap');
+});
+
+// ── participation ────────────────────────────────────────────────────────
+test('participation reports participating members per program per year', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(st);
+  const P = MembershipModel.participationModel(st, M);
+  assert.equal(P.length, M.years.length);
+  P.forEach((r, i) => {
+    const y = M.years[i];
+    // Derive the member basis independently from runModel's own year row rather
+    // than reading P[i].members back from the output. The first draft compared
+    // participants against the function's own member count, so a wrong basis --
+    // r.end instead of the year average, or the wrong year's row -- cancelled
+    // on both sides and passed.
+    const expected = (y.start + y.end) / 2;
+    near(r.members, expected, `${y.year} member basis is the year average`);
+    near(r.fuel, expected * 0.55, `${y.year} fuel participants`);
+    near(r.vendor, expected * 0.70, `${y.year} vendor participants`);
+    near(r.rewards, expected * 0.50, `${y.year} rewards participants`);
+  });
+});
+
+test('editing participation moves revenue identically to the legacy field', () => {
+  const a = MembershipModel.defaultState(MGM_CONFIG);
+  a.participation.vendor.pct = 90;
+  const ra = MembershipModel.revenueModel(a, MembershipModel.runModel(a));
+
+  const b = MembershipModel.defaultState(MGM_CONFIG);
+  delete b.participation;
+  b.revenue.vendorPart = 90;
+  const rb = MembershipModel.revenueModel(b, MembershipModel.runModel(b));
+
+  near(ra[0].streams.vendor, rb[0].streams.vendor, 'one source, two views');
+});
+
+// ── cost ─────────────────────────────────────────────────────────────────
+test('cost model reports unset when acquisition and serve costs are zero', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(st);
+  const c = MembershipModel.costModel(st, M, MembershipModel.revenueModel(st, M));
+  assert.equal(c.unset, true);
+  assert.equal(c.payback, null, 'no payback from a zero CAC, not Infinity');
+  assert.equal(c.ltvCac, null);
+});
+
+test('cost model derives CAC from sales spend and new members', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.costs.salesSpendPerMonth = 20000;
+  st.costs.costToServePerMember = 400;
+  const M = MembershipModel.runModel(st);
+  const c = MembershipModel.costModel(st, M, MembershipModel.revenueModel(st, M));
+  assert.equal(c.unset, false);
+  // A full year of spend over that year's modeled adds.
+  const y27 = M.years.find(y => y.year === 2027);
+  near(c.byYear.find(r => r.year === 2027).cac, 240000 / y27.newModeled, '2027 CAC');
+  assert.ok(c.ltv > 0 && isFinite(c.ltv), 'LTV finite');
+  assert.ok(c.payback > 0, 'payback positive');
+});
+
+test('LTV uses the model own steady attrition, not a separate assumption', () => {
+  const mk = steady => {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.attrition.steady = steady;
+    st.costs.salesSpendPerMonth = 20000;
+    st.costs.costToServePerMember = 400;
+    const M = MembershipModel.runModel(st);
+    return MembershipModel.costModel(st, M, MembershipModel.revenueModel(st, M)).ltv;
+  };
+  assert.ok(mk(4) > mk(9.7), 'lower churn means a longer life and higher LTV');
+});
+
+// ── capacity ─────────────────────────────────────────────────────────────
+test('capacity reports unset rather than a false surplus when capacity is 0', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(st);
+  const cap = MembershipModel.capacityModel(st, M, null);
+  assert.equal(cap.unset, true);
+  assert.equal(cap.gap, null);
+});
+
+test('capacity gap is modeled adds less rep capacity', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.staffing.reps = [
+    { name: 'Robert Watson', capacityLeads: 2, costPerYear: 120000 },
+    { name: 'Angel Long',    capacityLeads: 1, costPerYear: 110000 }
+  ];
+  const M = MembershipModel.runModel(st);
+  const cap = MembershipModel.capacityModel(st, M, null);
+  assert.equal(cap.unset, false);
+  assert.equal(cap.totalCapacity, 3);
+  near(cap.gap, st.adds.perMonth - 3, 'gap = 3.2 − 3');
+});
+
+test('capacity merges the pipeline actual load per owner', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.staffing.reps = [{ name: 'Robert Watson', capacityLeads: 2, costPerYear: 0 }];
+  const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
+  const cap = MembershipModel.capacityModel(st, MembershipModel.runModel(st), p);
+  assert.equal(cap.byOwner['Robert Watson'].openLeads, 2);
+  assert.equal(cap.byOwner['Robert Watson'].capacityLeads, 2);
+});
+
+// ── cash flow ────────────────────────────────────────────────────────────
+test('cash flow is revenue less serve and acquisition cost, plus add-backs', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.costs.salesSpendPerMonth = 20000;
+  st.costs.costToServePerMember = 400;
+  st.valuation.ebitdaNormalization = 50000;
+  const M = MembershipModel.runModel(st);
+  const R = MembershipModel.revenueModel(st, M);
+  const F = MembershipModel.cashflowModel(st, M, R);
+
+  assert.equal(F.length, R.length);
+
+  // Derive both cost terms INDEPENDENTLY of the function's own output, so that
+  // a wrong member basis or a wrong year's row inside costModel cannot cancel
+  // out on both sides of the comparison. The first draft of this test read
+  // f.costToServe / f.acquisition back from the output and compared them to
+  // themselves, which could not catch a self-consistent error:
+  //   acquisition = salesSpendPerMonth * months_in_year
+  //     (cac = spend / adds, so cac * adds = spend, whatever adds turns out to be)
+  //   costToServe = costToServePerMember * (start + end) / 2
+  F.forEach((f, i) => {
+    const y = M.years[i];
+    const months = M.months.filter(m => m.year === y.year).length;
+    near(f.acquisition, 20000 * months, `${y.year} acquisition is spend x months`);
+    near(f.costToServe, 400 * ((y.start + y.end) / 2), `${y.year} cost to serve is rate x avg members`);
+    near(f.revenue, R[i].total, `${y.year} revenue carried through`);
+    near(f.ebitda, R[i].total - f.costToServe - f.acquisition + 50000, `${y.year} EBITDA identity`);
+    near(f.cash, f.ebitda - f.capex, `${y.year} cash identity`);
+  });
+
+  // The current year covers only its post-as-of months, so its acquisition
+  // spend is proportionally smaller. A wrong month count shows up here and
+  // nowhere else.
+  near(F[0].acquisition, 40000, 'current year spends only its 2 remaining months');
+  near(F[1].acquisition, 240000, 'a full year spends twelve months');
+});
+
+test('cashflowModel folds the normalization add-back in BEFORE valuation sees it', () => {
+  // REQUIRED by Task 5's design. valuation applies the add-back on the margin
+  // path but NOT on the override path, on the explicit assumption that
+  // cashflowModel has already folded it in. If this fold is ever removed the
+  // add-back is applied in NEITHER place and silently vanishes from every
+  // valuation computed on the override path. Task 5's double-count guard
+  // catches the opposite direction only and cannot see this one.
+  //
+  // Written as a DIFFERENTIAL test on two independent runs rather than by
+  // restating cashflowModel's own formula, so it is not true by construction
+  // (SR-5): the only input that differs is the add-back, so the EBITDA delta
+  // must equal it exactly.
+  const mk = norm => {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.costs.salesSpendPerMonth = 20000;
+    st.costs.costToServePerMember = 400;
+    st.valuation.ebitdaNormalization = norm;
+    const M = MembershipModel.runModel(st);
+    const R = MembershipModel.revenueModel(st, M);
+    const F = MembershipModel.cashflowModel(st, M, R);
+    return { st, R, F, last: F[F.length - 1] };
+  };
+  const a = mk(0);
+  const b = mk(250000);
+
+  near(b.last.ebitda - a.last.ebitda, 250000,
+    'cashflowModel must fold the add-back into EBITDA');
+  near(b.last.revenue, a.last.revenue, 'revenue is unaffected by the add-back');
+  near(b.last.costToServe, a.last.costToServe, 'cost to serve is unaffected');
+  near(b.last.acquisition, a.last.acquisition, 'acquisition cost is unaffected');
+
+  // And it must survive the handoff into valuation on the override path.
+  const v0 = MembershipModel.valuation(a.st, a.R[a.R.length - 1], a.last.ebitda);
+  const v1 = MembershipModel.valuation(b.st, b.R[b.R.length - 1], b.last.ebitda);
+  near(v1.ebitdaBase - v0.ebitdaBase, 250000,
+    'the add-back reaches valuation exactly once, via the override');
+  near(v1.ebitda - v0.ebitda, 250000 * b.st.valuation.ebitdaMultiple,
+    'and is multiplied through exactly once');
+});
+
+test('the valuation panel consumes the computed EBITDA, not the margin assumption', () => {
+  // The first draft asserted only `v.ebitdaBase === lastF.ebitda`, which
+  // restates valuation's override branch verbatim and cannot fail. This version
+  // makes the claim in the test's NAME falsifiable: the two lenses must
+  // genuinely disagree, and the margin lens is pinned independently.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.costs.salesSpendPerMonth = 20000;
+  st.costs.costToServePerMember = 400;
+  st.valuation.ebitdaMargin = 25;   // deliberately far from the computed truth
+  const M = MembershipModel.runModel(st);
+  const R = MembershipModel.revenueModel(st, M);
+  const F = MembershipModel.cashflowModel(st, M, R);
+  const last = R[R.length - 1], lastF = F[F.length - 1];
+
+  const viaMargin = MembershipModel.valuation(st, last);               // no override
+  const viaComputed = MembershipModel.valuation(st, last, lastF.ebitda);
+
+  // Both lenses pinned to independently computed figures, so neither side is
+  // read back from the code under test:
+  //   margin   = 2,424,563.806607 x 25%
+  //   computed = 2,424,563.806607 - 163,242.808053 - 240,000
+  near(viaMargin.ebitdaBase, 606140.951652, 'margin lens: 25% of final-year revenue');
+  near(viaComputed.ebitdaBase, 2021320.998554, 'computed lens: revenue less real costs');
+
+  // DIRECTION IS DELIBERATELY NOT ASSERTED. With these modest cost inputs
+  // ($20k/mo spend, $400/member/yr) the computed EBITDA lands ~3.3x ABOVE a 25%
+  // margin, implying an 83% margin on ~$2.42M of revenue. Only with the P&L's
+  // real opex (~$2.21M annualised, giving 0.9%) would it fall below. Which side
+  // it lands on is a property of the INPUTS, not of the code -- an earlier
+  // draft of this test asserted "below" and was simply wrong.
+  assert.notEqual(viaComputed.ebitdaBase, viaMargin.ebitdaBase,
+    'the two lenses must genuinely disagree, or the test name is unfalsifiable');
+  assert.notEqual(viaComputed.mid, viaMargin.mid,
+    'so the headline midpoint moves depending on which lens is live');
+});

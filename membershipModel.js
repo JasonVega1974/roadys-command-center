@@ -338,6 +338,262 @@
     };
   }
 
+  // Order and membership copied from CRM.html:1155 so the funnel here and
+  // the funnel in the CRM cannot drift apart.
+  var CRM_STAGES = ['Prospect', 'Qualified', 'Contacted', 'Meeting Scheduled',
+    'Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost', 'Not Qualified'];
+  var CRM_CLOSED_STAGES = ['Closed Won', 'Closed Lost', 'Not Qualified'];
+  function isClosedStage(s) { return CRM_CLOSED_STAGES.indexOf(s) !== -1; }
+
+  // ── Sales Pipeline ──────────────────────────────────────────────────────
+  // leads: crm_leads rows. profiles: bd_value_profiles rows, joined on
+  // lead_id — a modeled final_gallons beats the hand-typed est_gallons.
+  function pipelineModel(state, leads, profiles) {
+    leads = leads || []; profiles = profiles || [];
+    var sp = state.salesPipeline || {};
+    var weights = sp.stageWeights || {};
+
+    var gallonsByLead = {};
+    profiles.forEach(function (p) {
+      if (!p || !p.lead_id) return;
+      var g = Number(p.final_gallons);
+      if (isFinite(g) && g > 0) gallonsByLead[p.lead_id] = g;
+    });
+
+    var byStage = {};
+    CRM_STAGES.forEach(function (s) {
+      byStage[s] = { count: 0, locations: 0, gallons: 0, dealValue: 0 };
+    });
+
+    var openLeads = 0, openLocations = 0, weighted = 0, gallons = 0, dealValue = 0;
+    var wonCount = 0, lostCount = 0;
+    var byOwner = {}, bySource = {};
+
+    leads.forEach(function (l) {
+      if (!l) return;
+      var stage = l.stage || 'Prospect';
+      var locs = n(l.locations, 0);
+      var gal = gallonsByLead[l.id] !== undefined
+        ? gallonsByLead[l.id] : n(l.est_gallons, 0);
+      var val = n(l.deal_value, 0);
+
+      if (!byStage[stage]) {
+        byStage[stage] = { count: 0, locations: 0, gallons: 0, dealValue: 0 };
+      }
+      byStage[stage].count++; byStage[stage].locations += locs;
+      byStage[stage].gallons += gal; byStage[stage].dealValue += val;
+
+      if (stage === 'Closed Won') wonCount++;
+      if (stage === 'Closed Lost') lostCount++;
+
+      var owner = l.owner || '(unassigned)';
+      var src = l.source || '(none)';
+      byOwner[owner] = byOwner[owner] ||
+        { openLeads: 0, openLocations: 0, leads: 0 };
+      bySource[src] = bySource[src] || { leads: 0, locations: 0 };
+      byOwner[owner].leads++;
+      bySource[src].leads++; bySource[src].locations += locs;
+
+      if (!isClosedStage(stage)) {
+        openLeads++; openLocations += locs;
+        weighted += locs * (n(weights[stage]) / 100);
+        gallons += gal; dealValue += val;
+        byOwner[owner].openLeads++; byOwner[owner].openLocations += locs;
+      }
+    });
+
+    var horizon = n(sp.horizonMonths, 12) || 12;
+    // Won/(Won+Lost), Not Qualified excluded: it never became a real
+    // opportunity. null rather than 0 when nothing has closed, so the tab
+    // can say "no closed deals yet" instead of showing a 0% win rate.
+    var closed = wonCount + lostCount;
+
+    return {
+      byStage: byStage,
+      openLeads: openLeads, openLocations: openLocations,
+      weightedLocations: weighted,
+      expectedPerMonth: weighted / horizon,
+      winRate: closed > 0 ? 100 * wonCount / closed : null,
+      wonCount: wonCount, lostCount: lostCount,
+      byOwner: byOwner, bySource: bySource,
+      gallons: gallons, dealValue: dealValue,
+      isEmpty: leads.length === 0
+    };
+  }
+
+  // The opt-in seam. Returns {} unless the user switched the basis, so the
+  // default and unsigned paths are provably unchanged.
+  function addsOpts(state, pipeline) {
+    var sp = state.salesPipeline || {};
+    if (sp.basis !== 'pipeline' || !pipeline) return {};
+    return { addsPerMonthOverride: pipeline.expectedPerMonth };
+  }
+
+  // ── Fuel Gallon Production ──────────────────────────────────────────────
+  // baselineFor(profile, roadway) is injected: the page wraps
+  // BusDevGallonsCalc.getBaselineRow, node tests pass a stub. Keeping it an
+  // argument is what lets this stay a pure function.
+  function gallonProduction(state, baselineFor, pipeline) {
+    var gcfg = state.gallons || {};
+    var map = gcfg.groupProfile || {};
+    var overrides = gcfg.groupBaselineOverride || {};
+    var mapped = 0;
+
+    var byGroup = (state.groups || []).map(function (g) {
+      var pair = map[g.key];
+      var row = null;
+      if (pair && typeof baselineFor === 'function') {
+        row = baselineFor(pair[0], pair[1]);
+      }
+      var engineBaseline = row ? n(row.baseline) : 0;
+      var hasOverride = overrides[g.key] !== undefined
+        && overrides[g.key] !== null && overrides[g.key] !== '';
+      var baseline = hasOverride ? n(overrides[g.key]) : engineBaseline;
+      var unmapped = !pair || !row;
+      if (!unmapped) mapped++;
+      return {
+        key: g.key, label: g.label, count: n(g.count),
+        profile: pair ? pair[0] : '', roadway: pair ? pair[1] : '',
+        engineBaseline: engineBaseline, baseline: baseline,
+        overridden: !!hasOverride, unmapped: unmapped,
+        gallons: n(g.count) * baseline
+      };
+    });
+
+    var existing = byGroup.reduce(function (a, r) { return a + r.gallons; }, 0);
+    var inbound = pipeline ? n(pipeline.gallons) : 0;
+    var total = groupTotal(state);
+
+    return {
+      byGroup: byGroup, mapped: mapped,
+      existing: existing, inbound: inbound, total: existing + inbound,
+      perMember: total ? existing / total : 0
+    };
+  }
+
+  // ── Program Participation ───────────────────────────────────────────────
+  function participationModel(state, M) {
+    return M.years.map(function (r) {
+      var m = avgMembers(r);
+      return {
+        year: r.year, members: m,
+        fuel:    m * partPct(state, 'fuel') / 100,
+        vendor:  m * partPct(state, 'vendor') / 100,
+        rewards: m * partPct(state, 'rewards') / 100
+      };
+    });
+  }
+
+  // ── Cost to Acquire & Serve ─────────────────────────────────────────────
+  function costModel(state, M, R) {
+    var c = state.costs || {};
+    var spendPerMonth = n(c.salesSpendPerMonth);
+    var servePerMember = n(c.costToServePerMember);
+    var flatCac = n(c.acquisitionPerMember);
+    var unset = !spendPerMonth && !servePerMember && !flatCac;
+
+    var byYear = M.years.map(function (r, i) {
+      var months = M.months.filter(function (m) { return m.year === r.year; }).length;
+      var spend = spendPerMonth * months;
+      var adds = r.newModeled;
+      // A flat per-member figure wins when supplied; otherwise derive from spend.
+      var cac = flatCac || (adds > 0 ? spend / adds : 0);
+      var members = avgMembers(r);
+      return {
+        year: r.year, months: months, spend: spend, adds: adds, cac: cac,
+        acquisition: cac * adds,
+        costToServe: servePerMember * members,
+        revenue: R[i] ? R[i].total : 0
+      };
+    });
+
+    // LTV from the model's own steady attrition, not a separate assumption:
+    // average member life is 1/churn years.
+    var steady = n((state.attrition || {}).steady) / 100;
+    var lastR = R[R.length - 1];
+    var revPerMemberYr = lastR && lastR.members ? lastR.total / lastR.members : 0;
+    var grossPerYear = revPerMemberYr - servePerMember;
+    var lifeYears = steady > 0 ? 1 / steady : null;
+    var ltv = lifeYears !== null ? grossPerYear * lifeYears : null;
+
+    var lastCac = byYear.length ? byYear[byYear.length - 1].cac : 0;
+
+    return {
+      byYear: byYear,
+      cac: lastCac,
+      costToServePerMember: servePerMember,
+      lifeYears: lifeYears,
+      ltv: unset ? null : ltv,
+      // null, never Infinity: a zero CAC means "unset", not "instant payback".
+      payback: (lastCac > 0 && grossPerYear > 0) ? lastCac / (grossPerYear / 12) : null,
+      ltvCac: (lastCac > 0 && ltv !== null) ? ltv / lastCac : null,
+      unset: unset
+    };
+  }
+
+  // ── Staffing & Capacity ─────────────────────────────────────────────────
+  function capacityModel(state, M, pipeline) {
+    var reps = ((state.staffing || {}).reps || []).map(function (r) {
+      return {
+        name: r.name || '', capacityLeads: n(r.capacityLeads),
+        costPerYear: n(r.costPerYear)
+      };
+    });
+    var totalCapacity = reps.reduce(function (a, r) { return a + r.capacityLeads; }, 0);
+    var totalCost = reps.reduce(function (a, r) { return a + r.costPerYear; }, 0);
+    var unset = totalCapacity === 0;
+
+    var byOwner = {};
+    reps.forEach(function (r) {
+      byOwner[r.name] = {
+        capacityLeads: r.capacityLeads, costPerYear: r.costPerYear,
+        openLeads: 0, openLocations: 0
+      };
+    });
+    if (pipeline && pipeline.byOwner) {
+      Object.keys(pipeline.byOwner).forEach(function (name) {
+        byOwner[name] = byOwner[name] ||
+          { capacityLeads: 0, costPerYear: 0, openLeads: 0, openLocations: 0 };
+        byOwner[name].openLeads = pipeline.byOwner[name].openLeads;
+        byOwner[name].openLocations = pipeline.byOwner[name].openLocations;
+      });
+    }
+
+    var modeled = n((state.adds || {}).perMonth);
+    if ((state.salesPipeline || {}).basis === 'pipeline' && pipeline) {
+      modeled = pipeline.expectedPerMonth;
+    }
+
+    return {
+      reps: reps, totalCapacity: totalCapacity, totalCost: totalCost,
+      modeledAddsPerMonth: modeled,
+      // null, not a negative number, when capacity was never entered:
+      // a surplus computed against zero capacity would be a lie.
+      gap: unset ? null : modeled - totalCapacity,
+      byOwner: byOwner, unset: unset
+    };
+  }
+
+  // ── Profit & Cash Flow ──────────────────────────────────────────────────
+  function cashflowModel(state, M, R) {
+    var cost = costModel(state, M, R);
+    var cf = state.cashflow || {};
+    var norm = n((state.valuation || {}).ebitdaNormalization);
+    var capex = n(cf.capexPerYear);
+
+    return R.map(function (r, i) {
+      var cy = cost.byYear[i] || { acquisition: 0, costToServe: 0 };
+      var ebitda = r.total - cy.costToServe - cy.acquisition + norm;
+      return {
+        year: r.year, revenue: r.total,
+        costToServe: cy.costToServe, acquisition: cy.acquisition,
+        normalization: norm, ebitda: ebitda,
+        capex: capex, cash: ebitda - capex,
+        margin: r.total ? 100 * ebitda / r.total : 0
+      };
+    });
+  }
+
   return {
     MembershipModel: {
       defaultState: defaultState,
@@ -353,7 +609,17 @@
       avgMembers: avgMembers,
       revenueModel: revenueModel,
       revPerMember: revPerMember,
-      valuation: valuation
+      valuation: valuation,
+      CRM_STAGES: CRM_STAGES,
+      CRM_CLOSED_STAGES: CRM_CLOSED_STAGES,
+      isClosedStage: isClosedStage,
+      pipelineModel: pipelineModel,
+      addsOpts: addsOpts,
+      gallonProduction: gallonProduction,
+      participationModel: participationModel,
+      costModel: costModel,
+      capacityModel: capacityModel,
+      cashflowModel: cashflowModel
     }
   };
 }));
