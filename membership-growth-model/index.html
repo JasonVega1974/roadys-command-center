@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Membership Growth Model — Roady's Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="../busDevGallonsConfig.js"></script>
+<script src="../busDevGallonsCalculator.js"></script>
+<script src="../membershipModelConfig.js?v=2026-10-28"></script>
+<script src="../membershipModel.js?v=2026-10-28"></script>
+<style>
+:root{
+  --red:#C4111B; --red-bright:#E8232E; --road:#14161B; --ink:#1A1C22; --ink-soft:#4A4E58;
+  --bg:#F4F4F2; --surface:#FFFFFF; --line:#D9DCE1; --line-soft:#E8EAEE;
+  --sign-green:#1E6B3C; --amber:#B96A00; --loss:#B3261E; --gain:#1E7A46;
+  --chip:#EFF1F4; --th:#F7F8F9; --shadow:0 1px 3px rgba(20,22,27,.08);
+  color-scheme: light;
+}
+[data-theme="dark"]{
+  --red:#E8232E; --red-bright:#FF4049; --road:#0D0F13; --ink:#ECEEF1; --ink-soft:#A6ABB5;
+  --bg:#14161B; --surface:#1C1F26; --line:#2C3038; --line-soft:#24272E;
+  --sign-green:#2E8B52; --amber:#D98E2B; --loss:#F2655E; --gain:#4CC077;
+  --chip:#262A32; --th:#20242B; --shadow:0 1px 3px rgba(0,0,0,.4);
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
+h1,h2,h3,.disp{font-family:'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.01em}
+h2{font-size:26px;font-weight:600;margin:0 0 4px}
+h3{font-size:19px;font-weight:600;margin:0 0 10px}
+.sub{color:var(--ink-soft);font-size:13.5px;margin:0 0 18px}
+a{color:var(--red)}
+/* ── Brand bar ── */
+.brandbar{background:var(--road);color:#fff;border-bottom:4px solid var(--red)}
+.brandbar .inner{max-width:1240px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.brandbar img{height:52px;width:auto;display:block}
+.brandbar.no-img img{display:none}
+.authbar{display:inline-flex;align-items:center;gap:8px}
+.brandbar .ttl{flex:1;min-width:220px}
+.brandbar .ttl .t1{font-family:'Barlow Condensed';font-size:25px;font-weight:600;line-height:1.1}
+.brandbar .ttl .t2{font-size:12.5px;color:#B9BEC7;margin-top:2px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font-family:'Barlow';font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--ink-soft)}
+.btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+.btn.primary:hover{background:var(--red-bright);border-color:var(--red-bright)}
+.btn.ghost{background:transparent;border-color:#3A3F49;color:#E7E9ED}
+.btn.ghost:hover{border-color:#8A909C}
+/* ── Tabs ── */
+.tabrail{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.tabrail .inner{max-width:1240px;margin:0 auto;padding:0 12px;display:flex;gap:2px;overflow-x:auto}
+.tab{font-family:'Barlow Condensed';font-size:16.5px;font-weight:600;padding:13px 16px 11px;border:0;background:none;color:var(--ink-soft);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--red);border-bottom-color:var(--red)}
+/* ── Layout ── */
+main{max-width:1240px;margin:0 auto;padding:26px 20px 80px}
+.panel{display:none}.panel.active{display:block}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow)}
+.card.flush{padding:0;overflow:hidden}
+.card .hd{padding:14px 20px;border-bottom:1px solid var(--line-soft);display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.card .bd{padding:16px 20px}
+.note{font-size:12.5px;color:var(--ink-soft)}
+.flag{display:inline-block;font-size:11px;font-weight:700;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 6px;vertical-align:1px}
+.src{display:inline-block;font-size:11px;font-weight:600;color:var(--ink-soft);background:var(--chip);border-radius:4px;padding:2px 7px}
+/* ── Highway-sign KPI ── */
+.signrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.sign{background:var(--sign-green);border:3px solid #fff;outline:2px solid var(--sign-green);border-radius:10px;color:#fff;padding:12px 16px 10px}
+.sign.red{background:var(--red);outline-color:var(--red)}
+.sign.dark{background:var(--road);outline-color:var(--road)}
+.sign .k{font-size:12px;font-weight:600;letter-spacing:.06em;opacity:.92}
+.sign .v{font-family:'Barlow Condensed';font-size:38px;font-weight:700;line-height:1.05;margin-top:2px}
+.sign .d{font-size:12px;opacity:.9;margin-top:2px}
+/* ── Tables ── */
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{background:var(--th);text-align:left;font-weight:600;color:var(--ink-soft);padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:700;border-top:2px solid var(--line);background:var(--th)}
+.pos{color:var(--gain);font-weight:600}.neg{color:var(--loss);font-weight:600}
+/* ── Inputs: everything editable ── */
+input[type=number],input[type=text],input[type=email],select{font-family:'Barlow';font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:6px 8px;width:100%}
+input:focus,select:focus{outline:2px solid var(--red);outline-offset:0;border-color:var(--red)}
+input.cell{width:84px;text-align:right;padding:4px 6px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:4px}
+.fieldrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.chartbox{position:relative;height:300px}
+.chartbox.tall{height:340px}
+/* ── Modal ── */
+.overlay{position:fixed;inset:0;background:rgba(10,12,16,.55);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:10px;max-width:560px;width:100%;padding:22px 24px;max-height:90vh;overflow:auto}
+.modal h3{margin-top:0}
+/* ── Report / letterhead ── */
+#reportSheet{background:#fff;color:#1A1C22;border:1px solid var(--line);border-radius:8px;max-width:860px;margin:0 auto;padding:48px 56px;box-shadow:var(--shadow)}
+#reportSheet .lh{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #C4111B;padding-bottom:16px;margin-bottom:8px}
+#reportSheet .lh img{height:64px}
+#reportSheet .lh .co{text-align:right;font-size:12px;color:#4A4E58;line-height:1.5}
+#reportSheet h1{font-size:30px;margin:18px 0 2px}
+#reportSheet .meta{font-size:12.5px;color:#4A4E58;margin-bottom:22px}
+#reportSheet h2{font-size:20px;border-bottom:1px solid #D9DCE1;padding-bottom:4px;margin:26px 0 10px}
+#reportSheet table{font-size:12.5px}
+#reportSheet .rsign{display:inline-block;background:#1E6B3C;color:#fff;border:2px solid #fff;outline:1.5px solid #1E6B3C;border-radius:8px;padding:8px 16px;margin:4px 10px 4px 0}
+#reportSheet .rsign .v{font-family:'Barlow Condensed';font-size:26px;font-weight:700}
+#reportSheet .rsign .k{font-size:11px;letter-spacing:.05em}
+#reportSheet .foot{margin-top:34px;padding-top:12px;border-top:1px solid #D9DCE1;font-size:11.5px;color:#4A4E58;display:flex;justify-content:space-between}
+@media print{
+  body.mgm-print{background:#fff}
+  body.mgm-print .brandbar,body.mgm-print .tabrail,
+  body.mgm-print .noprint,body.mgm-print .actions{display:none!important}
+  body.mgm-print main{padding:0;max-width:none}
+  body.mgm-print .panel{display:none!important}
+  body.mgm-print #panel-report{display:block!important}
+  body.mgm-print #reportSheet{border:0;box-shadow:none;padding:24px 8px;max-width:none}
+}
+@media(max-width:640px){
+  .brandbar img{height:40px}
+  #reportSheet{padding:24px 18px}
+}
+</style>
+</head>
+<body>
+<header class="brandbar">
+  <div class="inner">
+    <img id="logoImg" src="../assets/roadys-logo-cover.png" alt="Roady's"
+         onerror="this.parentElement.classList.add('no-img')">
+    <div class="ttl">
+      <div class="t1">Membership Growth Model</div>
+      <div class="t2">3-Year Projection · Fuel, Vendor Programs &amp; Rewards Revenue · Roady's Command Center</div>
+    </div>
+    <div class="actions noprint">
+      <span id="authBar" class="authbar"></span>
+      <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
+      <button class="btn ghost" onclick="openEmail()">✉ Email</button>
+      <button class="btn ghost" onclick="doPrint()">⎙ Print</button>
+      <button class="btn primary" onclick="MGM.switchTab('report')">Generate Report</button>
+    </div>
+  </div>
+</header>
+<nav class="tabrail noprint">
+  <div class="inner" id="tabrail"></div>
+</nav>
+<main>
+  <section class="panel active" id="panel-starting"></section>
+  <section class="panel" id="panel-additions"></section>
+  <section class="panel" id="panel-losses"></section>
+  <section class="panel" id="panel-pipeline"></section>
+  <section class="panel" id="panel-participation"></section>
+  <section class="panel" id="panel-gallons"></section>
+  <section class="panel" id="panel-revpermember"></section>
+  <section class="panel" id="panel-cost"></section>
+  <section class="panel" id="panel-staffing"></section>
+  <section class="panel" id="panel-cashflow"></section>
+  <section class="panel" id="panel-historical"></section>
+  <section class="panel" id="panel-report"></section>
+</main>
+
+<!-- ════════ EMAIL MODAL ════════ -->
+<div class="overlay" id="emailOverlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <h3>Send Report Summary</h3>
+    <div class="field"><label>To</label><input type="email" id="emTo" placeholder="recipient@roadyscorp.com"></div>
+    <div class="field"><label>Subject</label><input type="text" id="emSubject"></div>
+    <div class="field"><label>Message preview</label>
+      <textarea id="emBody" rows="9" style="width:100%;font-family:'Barlow';font-size:13px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:8px"></textarea></div>
+    <p class="note">Opens your mail client with the summary pre-filled. For the full formatted report, use Print / PDF and attach it.</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="document.getElementById('emailOverlay').classList.remove('open')">Cancel</button>
+      <button class="btn primary" onclick="sendEmail()">Open in Mail</button>
+    </div>
+  </div>
+</div>
+<script>
+const $ = s=>document.querySelector(s), $$ = s=>[...document.querySelectorAll(s)];
+
+// User-authored labels and prose reach innerHTML; escape so a pasted
+// '<' or '&' renders literally instead of breaking the table or report.
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+/* ═══════════════ CHARTS ═══════════════ */
+let CH={};
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function baseOpts(){
+  const grid=css('--line-soft'), tick=css('--ink-soft');
+  return {responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:tick,font:{family:'Barlow',size:12}}}},
+    scales:{x:{grid:{color:grid},ticks:{color:tick}},y:{grid:{color:grid},ticks:{color:tick}}}};
+}
+function mkChart(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($(id),cfg); }
+
+/* ═══════════════ MGM STATE ═══════════════ */
+const MGM = {};
+const MM = MembershipModel;
+const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
+
+MGM.state = MM.defaultState(MGM_CONFIG);
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY));
+  if (saved) MGM.state = Object.assign(MM.defaultState(MGM_CONFIG), saved);
+} catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
+
+MGM.save = function () {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); }
+  catch (e) { console.warn('[MGM] save failed', e); }
+};
+
+// Live data, populated only when signed in (Tasks 10 and 16).
+MGM.leads = [];
+MGM.profiles = [];
+MGM.pnlActuals = null;
+
+// The injected baseline lookup that keeps the engine pure.
+MGM.baselineFor = function (profile, roadway) {
+  try { return BusDevGallonsCalc.getBaselineRow(profile, roadway) || null; }
+  catch (e) { return null; }
+};
+
+// One place that assembles every layer, so no renderer recomputes a slice
+// of the model on its own and drifts.
+MGM.model = function () {
+  const st = MGM.state;
+  const pipeline = MM.pipelineModel(st, MGM.leads, MGM.profiles);
+  const M = MM.runModel(st, MM.addsOpts(st, pipeline));
+  const R = MM.revenueModel(st, M);
+  const F = MM.cashflowModel(st, M, R);
+  return {
+    st, pipeline, M, R, F,
+    rpm: MM.revPerMember(st, M, MGM.pnlActuals),
+    gallons: MM.gallonProduction(st, MGM.baselineFor, pipeline),
+    participation: MM.participationModel(st, M),
+    cost: MM.costModel(st, M, R),
+    capacity: MM.capacityModel(st, M, pipeline),
+    valuation: MM.valuation(st, R[R.length - 1], F.length ? F[F.length - 1].ebitda : null)
+  };
+};
+
+/* ═══════════════ TABS ═══════════════ */
+const TAB_ORDER = ['starting', 'additions', 'losses', 'pipeline', 'participation',
+  'gallons', 'revpermember', 'cost', 'staffing', 'cashflow', 'historical', 'report'];
+
+MGM.renderTabs = function () {
+  const t = MGM.state.labels.tabs;
+  document.getElementById('tabrail').innerHTML = TAB_ORDER.map(k =>
+    `<button class="tab${k === MGM.tab ? ' active' : ''}" data-tab="${k}"
+       onclick="MGM.switchTab('${k}')">${esc(t[k])}</button>`).join('');
+};
+
+MGM.tab = 'starting';
+MGM.switchTab = function (k) {
+  MGM.tab = k;
+  TAB_ORDER.forEach(x => {
+    const p = document.getElementById('panel-' + x);
+    if (p) p.classList.toggle('active', x === k);
+  });
+  MGM.renderTabs();
+  MGM.refresh();
+};
+
+/* ═══════════════ RENDER DISPATCH ═══════════════ */
+// Renderers register here; tabs 1-12 fill in over Tasks 9-13 and 17.
+MGM.renderers = {};
+
+MGM.refresh = function () {
+  const fn = MGM.renderers[MGM.tab];
+  if (fn) {
+    try { fn(MGM.model()); }
+    catch (e) {
+      console.error('[MGM] render failed', MGM.tab, e);
+      document.getElementById('panel-' + MGM.tab).innerHTML =
+        `<div class="card"><h3>This tab could not render</h3>
+         <p class="note">${esc(e.message)}</p></div>`;
+    }
+  }
+  if (MGM.bindAll) MGM.bindAll();
+};
+MGM.refreshSoft = MGM.refresh;
+
+// Placeholder so an unimplemented tab says so instead of showing blank.
+// This block must sit AFTER every real MGM.renderers.* assignment in source
+// order; the `||` then only fills tabs nothing has claimed yet.
+TAB_ORDER.forEach(k => {
+  MGM.renderers[k] = MGM.renderers[k] || (() => {
+    document.getElementById('panel-' + k).innerHTML =
+      `<div class="card"><h3>${esc(MGM.state.labels.tabs[k])}</h3>
+       <p class="note">Not implemented yet.</p></div>`;
+  });
+});
+
+/* theme toggle: pre-existing brand-bar control, independent of the v1
+   growth model being ported out from under it here, so it is kept working
+   rather than left as a dead button nobody owns in a later task. */
+const themePref = localStorage.getItem('roadys_mgm_theme');
+if (themePref) document.documentElement.dataset.theme = themePref;
+else if (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark';
+document.getElementById('themeBtn').onclick = () => {
+  const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = cur;
+  localStorage.setItem('roadys_mgm_theme', cur);
+  Object.values(CH).forEach(c => c.destroy()); CH = {};
+  MGM.refresh();
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  MGM.renderTabs();
+  MGM.switchTab('starting');
+});
+</script>
+</body>
+</html>
