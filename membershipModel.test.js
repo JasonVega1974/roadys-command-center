@@ -1983,152 +1983,176 @@ test("the page's own boot probe accepts the shipped engine", () => {
   assert.equal(pageBootProbe()(MembershipModel), null);
 });
 
-test("the page's own boot probe rejects engines that are broken in each way it checks", () => {
-  // Negative controls for the probe, using the real one. Each stub is a shape
-  // that actually reached a page during this work.
-  const probe = pageBootProbe();
+// The engine shapes that have actually reached a page during this work, as
+// DATA -- because two tests need them: the control below, and the mutation run
+// that checks each line of the probe is necessary.
+function brokenEngines() {
   const ok = MembershipModel;
   const stub = over => Object.assign({}, ok, over);
-
-  assert.equal(probe(null), 'did not load');
-  assert.equal(probe({}), 'loaded but is incomplete or out of date');
-  // Present but not a function: a type check is what this arm exists for.
-  assert.equal(probe(stub({ mergeState: 'not a function' })),
-               'loaded but is incomplete or out of date');
-  // Counts without deleting -- round 8's engine.
-  assert.equal(probe(stub({ stripResidue: o => ({ obj: o, removed: 3, failed: 0 }) })),
-               'is not working correctly');
-  // Depth-blind -- round 9's.
-  assert.equal(probe(stub({
-    stripResidue: o => { if (o && o.copy !== undefined) delete o.copy; return { obj: o, removed: 3, failed: 0 }; }
-  })), 'is not working correctly');
-  // Always clean -- defeats the publish boundary's rule.
-  assert.equal(probe(stub({ residueVerdict: () => 'clean' })), 'is not working correctly');
-  // defaultState exists and throws -- round 11's.
-  assert.equal(probe(stub({ defaultState: () => { throw new Error('x'); } })),
-               'is not working correctly');
-  // defaultState returns an empty model -- round 12's second residual.
-  assert.equal(probe(stub({ defaultState: () => ({}) })), 'is not working correctly');
-  // Right shape, merges nothing -- round 12's.
-  assert.equal(probe(stub({ mergeState: d => ({ state: d, added: [], unknown: [] }) })),
-               'is not working correctly');
-  // ONE STUB PER ASSERTION, each defeated by exactly one line of the probe.
-  //
-  // The first version of these controls was the habit again, one layer out: it
-  // asserted "the probe rejects this stub" -- something about the outcome --
-  // rather than "every assertion in the probe is load-bearing". Each stub was
-  // caught by some remaining line, so deleting any single assertion from the
-  // page's probe left all controls green. Measured: removing the merged-value
-  // check and removing the retention check each gave 108/0.
-  //
-  // Split so that deleting any one assertion fails a named control. That makes
-  // the page's probe tamper-evident from here, which is the whole reason this
-  // test executes the real probe instead of describing it.
   const base = (d, sv) => MembershipModel.mergeState(d, sv);
-
-  // Only the `m.state.revenue.duesPerLoc !== 1` line catches this.
-  assert.equal(probe(stub({
-    mergeState: (d, sv) => { const o = base(d, sv); o.state.revenue.duesPerLoc = 999; return o; }
-  })), 'is not working correctly', 'the merged VALUE check is not load-bearing');
-
-  // Only the `m.state.zzzProbeKey !== 'kept'` line catches this.
-  assert.equal(probe(stub({
-    mergeState: (d, sv) => { const o = base(d, sv); delete o.state.zzzProbeKey; return o; }
-  })), 'is not working correctly', 'the retained-key check is not load-bearing');
-
-  // Only the `m.unknown.indexOf('zzzProbeKey') < 0` line catches this.
-  assert.equal(probe(stub({
-    mergeState: (d, sv) => { const o = base(d, sv); o.unknown = []; return o; }
-  })), 'is not working correctly', 'the unknown-REPORTING check is not load-bearing');
-
-  // Only the `typeof d.revenue.duesPerLoc !== 'number'` line catches this: the
-  // model is otherwise well-formed and the merge works.
-  assert.equal(probe(stub({
-    defaultState: c => { const d = MembershipModel.defaultState(c); delete d.revenue; return d; }
-  })), 'is not working correctly', 'the defaultState content check is not load-bearing');
-
-  // The depth and array assertions needed their own stubs too. The earlier
-  // depth-blind stub was caught by `removed !== 3` before the depth line was
-  // reached, so dropping either of those two assertions left the suite green --
-  // measured. These strip correctly, report the right count, and then put ONE
-  // key back, so exactly one assertion stands between them and acceptance.
-  assert.equal(probe(stub({
-    stripResidue: o => {
-      const r = MembershipModel.stripResidue(o);
-      if (o && o.a && o.a.b && o.a.b.c && o.a.b.c.d) o.a.b.c.d.copy = {};
-      return r;                      // count is right; the nested key survives
-    }
-  })), 'is not working correctly', 'the DEPTH assertion is not load-bearing');
-
-  assert.equal(probe(stub({
-    stripResidue: o => {
-      const r = MembershipModel.stripResidue(o);
-      if (o && Array.isArray(o.list) && o.list[0]) o.list[0].copy = {};
-      return r;                      // count is right; the array key survives
-    }
-  })), 'is not working correctly', 'the ARRAY assertion is not load-bearing');
-
-  // Leaves only the TOP-LEVEL key, with the right count.
-  assert.equal(probe(stub({
-    stripResidue: o => {
-      const r = MembershipModel.stripResidue(o);
-      if (o && typeof o === 'object' && !Array.isArray(o)) o.copy = {};
-      return r;
-    }
-  })), 'is not working correctly', 'the top-level assertion is not load-bearing');
-
-  // Strips all three correctly and MISREPORTS the count. Only the count
-  // assertion stands between this and acceptance -- and a wrong count is not
-  // cosmetic: scenarioList decides whether to write the cleaned store back
-  // from it, and the page reports it to the reader.
-  assert.equal(probe(stub({
-    stripResidue: o => { MembershipModel.stripResidue(o); return { obj: o, removed: 1, failed: 0 }; }
-  })), 'is not working correctly', 'the count assertion is not load-bearing');
-
-  // WEAKENING, not just deletion. A reviewer showed "all nine are
-  // load-bearing" held under deleting an assertion but not under weakening
-  // one: `'copy' in x` relaxed to a truthiness test, and
-  // `zzzProbeKey !== 'kept'` relaxed to `== null`, both left every control
-  // green. Deletion-sensitivity is strictly weaker than the claim, which is
-  // the same substitution as the five instances before it -- this time in the
-  // controls that were meant to catch it.
-  //
-  // `copy = null` is the shape that matters: `'copy' in x` is false only when
-  // the key is ABSENT, so a truthiness check would accept an engine that
-  // nulls the key instead of deleting it -- leaving `"copy":` in the
-  // serialised payload, which makes every publish and every export refuse
-  // forever while blaming data that is fine.
-  // ONE STUB PER LOCATION. A single stub that nulled the top-level key was
-  // caught by the first `in` assertion, so the depth and array ones could
-  // still be weakened to truthiness undetected -- the same "caught by some
-  // other line" error as the deletion controls, one level down.
+  // Strips correctly, reports the right count, then nulls exactly one key.
   const nullOnly = where => o => {
-    MembershipModel.stripResidue(o);                 // a correct strip first
+    MembershipModel.stripResidue(o);
     if (where === 'top' && o) o.copy = null;
     if (where === 'deep' && o && o.a && o.a.b && o.a.b.c && o.a.b.c.d) o.a.b.c.d.copy = null;
     if (where === 'array' && o && Array.isArray(o.list) && o.list[0]) o.list[0].copy = null;
-    return { obj: o, removed: 3, failed: 0 };        // and the right count
+    return { obj: o, removed: 3, failed: 0 };
   };
-  for (const where of ['top', 'deep', 'array']) {
-    assert.equal(probe(stub({ stripResidue: nullOnly(where) })), 'is not working correctly',
-      'the `in` form at ' + where + ' is not load-bearing: a truthiness check ' +
-      'would accept copy=null there');
+  // Strips correctly and puts ONE key back, count intact.
+  const putBack = where => o => {
+    const r = MembershipModel.stripResidue(o);
+    if (where === 'deep' && o && o.a && o.a.b && o.a.b.c && o.a.b.c.d) o.a.b.c.d.copy = {};
+    if (where === 'array' && o && Array.isArray(o.list) && o.list[0]) o.list[0].copy = {};
+    if (where === 'top' && o) o.copy = {};
+    return r;
+  };
+  return [
+    ['absent',            null,                                              'did not load'],
+    ['empty object',      {},                                                'loaded but is incomplete or out of date'],
+    ['member not a fn',   stub({ mergeState: 'not a function' }),            'loaded but is incomplete or out of date'],
+    ['counts, deletes nothing', stub({ stripResidue: o => ({ obj: o, removed: 3, failed: 0 }) }), 'is not working correctly'],
+    ['depth-blind',       stub({ stripResidue: o => { if (o && o.copy !== undefined) delete o.copy; return { obj: o, removed: 3, failed: 0 }; } }), 'is not working correctly'],
+    ['verdict always clean',   stub({ residueVerdict: () => 'clean' }),      'is not working correctly'],
+    ['verdict always residue', stub({ residueVerdict: () => 'residue' }),    'is not working correctly'],
+    ['defaultState throws', stub({ defaultState: () => { throw new Error('x'); } }), 'is not working correctly'],
+    ['defaultState empty',  stub({ defaultState: () => ({}) }),              'is not working correctly'],
+    ['defaultState has no revenue', stub({ defaultState: c => { const d = MembershipModel.defaultState(c); delete d.revenue; return d; } }), 'is not working correctly'],
+    ['merge skips its walk', stub({ mergeState: d => ({ state: d, added: [], unknown: [] }) }), 'is not working correctly'],
+    ['merge wrong value',  stub({ mergeState: (d, sv) => { const o = base(d, sv); o.state.revenue.duesPerLoc = 999; return o; } }), 'is not working correctly'],
+    ['merge drops kept key', stub({ mergeState: (d, sv) => { const o = base(d, sv); delete o.state.zzzProbeKey; return o; } }), 'is not working correctly'],
+    ['merge tampers kept key', stub({ mergeState: (d, sv) => { const o = base(d, sv); o.state.zzzProbeKey = 'tampered'; return o; } }), 'is not working correctly'],
+    ['merge hides unknowns', stub({ mergeState: (d, sv) => { const o = base(d, sv); o.unknown = []; return o; } }), 'is not working correctly'],
+    ['miscounts',          stub({ stripResidue: o => { MembershipModel.stripResidue(o); return { obj: o, removed: 1, failed: 0 }; } }), 'is not working correctly'],
+    ['nulls top',          stub({ stripResidue: nullOnly('top') }),          'is not working correctly'],
+    ['nulls deep',         stub({ stripResidue: nullOnly('deep') }),         'is not working correctly'],
+    ['nulls in array',     stub({ stripResidue: nullOnly('array') }),        'is not working correctly'],
+    ['leaves top',         stub({ stripResidue: putBack('top') }),           'is not working correctly'],
+    ['leaves deep',        stub({ stripResidue: putBack('deep') }),          'is not working correctly'],
+    ['leaves in array',    stub({ stripResidue: putBack('array') }),         'is not working correctly']
+  ];
+}
+
+test("the page's own boot probe rejects every engine shape that has reached a page", () => {
+  const probe = pageBootProbe();
+  for (const [name, engine, expected] of brokenEngines()) {
+    assert.equal(probe(engine), expected, 'the probe accepted: ' + name);
+  }
+});
+
+test('every condition in the page probe is necessary -- nothing survives its removal', () => {
+  // THE SEVENTH INSTANCE OF ONE HABIT, and the reviewer's own fix for it.
+  //
+  // The controls above assert `probe(stub) === 'is not working correctly'`.
+  // Every failing arm of the probe returns that same string, so those
+  // assertions cannot tell WHICH line rejected a stub: necessity held only by
+  // construction, and nothing checked the construction. Measured -- adding a
+  // catch-all to the probe and then deleting the top, depth or array
+  // assertion left the suite green at 109/0 in all three cases.
+  //
+  // The sequence, as the reviewer traced it:
+  //   the strip            "works on one input"       for "never throws"
+  //   the probe of it      "exists"                   for "calling it works"
+  //   the probe's asserts  "right fields"             for "the merge merged"
+  //   the mirror test      "claims to be the same"    for being the same
+  //   the drift guard      "one side matches a literal" for "both sides agree"
+  //   the controls         "deleting each one fails"  for "each is necessary"
+  //   their predicate      "X rejects Y"              for "X is why Y is rejected"
+  //
+  // Their fix is a change of claim, not another layer: from "X rejects Y" to
+  // NOTHING SURVIVES THE REMOVAL OF X -- a property a machine can enumerate
+  // and a sentence cannot overstate. "Resists weakening" was never the right
+  // claim either; the weakening space is unbounded, so nine hand-written
+  // stubs establish "resists these nine" and no more. This is bounded: one
+  // mutation operator (delete a condition), applied to every condition, with
+  // the surviving set pinned exactly.
+  //
+  // It is only possible because round 14 made the probe extractable as a
+  // string, which is the one thing that round got right.
+  const page = readPage();
+  const start = page.indexOf('function problem(e) {');
+  let depth = 0, end = -1;
+  for (let i = page.indexOf('{', start); i < page.length; i++) {
+    if (page[i] === '{') depth++;
+    else if (page[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+  }
+  const src = page.slice(start, end);
+  const needs = matchOnce(page, /^\s*const NEEDS = \[[^\]]*\];/m, 'const NEEDS')[0];
+  const build = body => new Function('MGM_CONFIG', needs + '\n' + body + '\nreturn problem;')(MGM_CONFIG);
+
+  // ONE OPERATOR, applied uniformly: replace each condition with `false`, so
+  // the arm is disabled without breaking the parse.
+  //
+  // The first version deleted the condition's LINE, which cannot work for a
+  // condition spanning lines -- so three of the thirteen were skipped,
+  // unmutated and silently uncovered, and the run reported no survivors while
+  // having tested less than it claimed. Skipping is the quiet-coverage-gap
+  // shape this PR keeps finding, so the operator changed rather than the skip
+  // being merely recorded. Paren counting finds each condition's extent,
+  // single-line or not.
+  const conditions = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src.slice(i, i + 3) !== 'if ' && src.slice(i, i + 3) !== 'if(') continue;
+    if (i > 0 && /[A-Za-z0-9_$.]/.test(src[i - 1])) continue;
+    const open = src.indexOf('(', i);
+    if (open < 0) continue;
+    let d = 0, close = -1;
+    for (let j = open; j < src.length; j++) {
+      if (src[j] === '(') d++;
+      else if (src[j] === ')') { d--; if (d === 0) { close = j; break; } }
+    }
+    if (close > open) { conditions.push([open, close]); i = close; }
+  }
+  assert.ok(conditions.length >= 10,
+    'expected to find the probe conditions, found ' + conditions.length +
+    ' -- extraction is probably wrong, which would make this test vacuous');
+
+  const shapes = brokenEngines();
+  const survivors = [];
+  for (const [open, close] of conditions) {
+    const text = src.slice(open + 1, close).replace(/\s+/g, ' ').trim();
+    let probe;
+    try { probe = build(src.slice(0, open + 1) + 'false' + src.slice(close)); }
+    catch (e) { survivors.push('UNPARSEABLE: ' + text); continue; }
+    // Necessary means: with this condition disabled, at least one
+    // known-broken engine is now ACCEPTED, or rejected for the wrong reason.
+    const stillCaught = shapes.every(([, engine, expected]) => {
+      let got; try { got = probe(engine); } catch (e2) { got = 'threw'; }
+      return got === expected;
+    });
+    if (stillCaught) survivors.push(text);
   }
 
-  // Sets the retained key to a WRONG value rather than removing it, so
-  // `!== 'kept'` catches it and `== null` would not.
-  assert.equal(probe(stub({
-    mergeState: (d, sv) => { const o = base(d, sv); o.state.zzzProbeKey = 'tampered'; return o; }
-  })), 'is not working correctly',
-    "the exact-value form is not load-bearing: an `== null` check would accept a wrong value");
-
-  // Always says 'residue', which satisfies the dirty case and fails the clean
-  // one. Not a disclosure -- it refuses everything -- but it would make every
-  // publish and every export refuse forever, with a message blaming data that
-  // is fine. Caught only by the clean-case assertion.
-  assert.equal(probe(stub({ residueVerdict: () => 'residue' })),
-               'is not working correctly',
-               'the CLEAN-case verdict assertion is not load-bearing');
+  // Pinned EXACTLY, not as a subset: a new survivor fails, and so does an
+  // entry that stops surviving, so the list cannot go stale in either
+  // direction. Each entry needs a reason a reader can act on.
+  // Pinned EXACTLY, not as a subset: a new survivor fails, and so does an
+  // entry that stops surviving, so the list cannot go stale in either
+  // direction. Each entry carries a reason a reader can act on.
+  //
+  // OPERATOR SET, stated so the claim is bounded rather than implied: one
+  // operator -- replace a whole condition with `false` -- applied to all
+  // thirteen conditions in the probe. That is condition-level, not
+  // clause-level. A reviewer ran a finer set (28 mutants including individual
+  // clauses) and found one sub-clause fully shadowed: `typeof d !== 'object'`
+  // is unreachable behind the `!d.revenue` and
+  // `typeof d.revenue.duesPerLoc !== 'number'` clauses beside it. It is kept
+  // as a defensive total check, not because it is load-bearing, and it is
+  // recorded here so the difference between the two operator sets is on the
+  // page rather than mistaken for coverage.
+  const BENIGN_SURVIVORS = [
+    // Shape guard on mergeState's return. The three assertions after it read
+    // m.state.revenue.duesPerLoc, m.state.zzzProbeKey and m.unknown, so a
+    // malformed return throws into the surrounding try and is caught anyway.
+    // Kept because it makes the arm total at its own line instead of relying
+    // on the next line's shape, which is the kind of implicit dependency this
+    // PR has been removing.
+    '!m || !m.state || !Array.isArray(m.unknown) || !Array.isArray(m.added)'
+  ];
+  assert.deepEqual(survivors.sort(), BENIGN_SURVIVORS.slice().sort(),
+    'the set of probe conditions whose removal changes nothing has moved.\n' +
+    'A NEW entry is a dead or shadowed check -- delete it or strengthen a stub.\n' +
+    'A MISSING entry means a condition became necessary -- drop it from the list.\n' +
+    'Observed: ' + JSON.stringify(survivors, null, 1));
 });
 
 // RESTORED after being deleted by accident in round 14.
