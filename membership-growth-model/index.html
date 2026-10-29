@@ -1441,10 +1441,15 @@ MGM.renderers.gallons = function (D) {
      <a href="../bus-dev-potential-gallons/" target="_blank">Bus Dev Potential Gallons</a> tool.</p>
   <div class="signrow">
     ${/* G.mapped is 0 when no group resolved a baseline -- reachable if
-          busDevGallonsCalculator.js fails to load. "0 gal/mo across 375
-          locations" is a business claim; the absence of an engine is not a
+          busDevGallonsCalculator.js fails to load. "0 gal/mo across the whole
+          network" is a business claim; the absence of an engine is not a
           production figure. The printed report already said "Not computed"
-          here, so the screen was the half that disagreed. */ ''}
+          here, so the screen was the half that disagreed.
+
+          The location count that used to be written out here went stale in the
+          first data refresh after it was written, which is the staleness this
+          file's own documentation warns about. Phrased without a count now, so
+          it cannot go stale again. */ ''}
     ${G.mapped
       ? sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')
       : sign('EXISTING NETWORK', '—', 'gallons engine not loaded')}
@@ -2466,11 +2471,11 @@ MGM.drawMonthlyHistory = function (st) {
 // unset default, which is the one thing this row exists to distinguish.
 const fmGal = n => '$' + (Math.round(n * 1000) / 1000).toFixed(3);
 
-// Cents, where cents are the whole point. fm$ rounds to whole dollars, so the
-// billable dues figure prints as "$382" -- and the difference this project
-// spent a correction on is $382.47 (dues ÷ the 375 locations that bill) versus
-// $366.82 (dues ÷ all 391 billed records), four points of dues realization
-// apart. Rounding both to "$382" and "$367" keeps them distinguishable by luck,
+// Cents, where cents are the whole point. fm$ rounds to whole dollars, and the
+// difference this project spent a correction on is dues ÷ the locations that
+// BILL versus dues ÷ all billed records -- about four points of dues
+// realization apart. Both rates round to figures that happen to stay
+// distinguishable, by luck,
 // not by design, and the report is the artifact where the figure gets quoted.
 const fmCents = n => (n < 0 ? '-$' : '$') +
   Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3491,9 +3496,13 @@ MGM.sendEmail = function () {
 //     the limitations card, which accept a value and move nothing, and are
 //     disclosed rather than quietly described as drivers.
 //  2. Every FIGURE is read live out of MGM_CONFIG or computed by the engine,
-//     never typed into the prose. A hardcoded 375 in a paragraph goes stale the
-//     first time the refresh script runs; `cfg.groups` cannot. Where a figure
-//     is quoted as PROVENANCE ("this came from that export") it is read from
+//     never typed into the prose. A hardcoded count in a paragraph goes stale
+//     the first time the refresh script runs; `cfg.groups` cannot. This very
+//     sentence used to name the then-current count as its example, and that
+//     example went stale in the next refresh -- so the rule now states the
+//     shape and not the instance, which is also what SR-11 requires of any
+//     guard. Where a figure is quoted as PROVENANCE ("this came from that
+//     export") it is read from
 //     MGM_CONFIG -- the shipped value -- not from MGM.state, because a reader's
 //     own edit does not change where the shipped number came from. The card
 //     says so when the two differ.

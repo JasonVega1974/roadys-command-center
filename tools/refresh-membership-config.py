@@ -43,9 +43,15 @@ CONFIG = "membershipModelConfig.js"
 START = "// ── MGM_DATA ──"
 END = "// ── /MGM_DATA ──"
 
-# Rows that are not member locations. Verified against the 2026-10-28 export:
-# the corporate rows are Fuelman/RCheck payment records and the demo company
-# holds seed data. Dropping them is what makes the base 375 rather than 380.
+# Rows that are not member locations: the corporate rows are Fuelman/RCheck
+# payment records and the demo company holds seed data. Dropping them is what
+# separates the active member base from the raw active-row count.
+#
+# Deliberately no figures here. This comment named the pair from the export it
+# was written against, and both numbers went stale at the next refresh -- which
+# is a script whose whole job is to keep such numbers current. The script prints
+# the dropped rows and the resulting base on every run; that output is the
+# record, not a comment that cannot update itself.
 EXCLUDE_COMPANIES = {"roady's corporate office", "demo truck stops"}
 EXCLUDE_COMPANY_RE = re.compile(r"^test company\s*#", re.I)
 
@@ -163,6 +169,14 @@ def read_locations(path):
                                 cell(row, cols, "Name"), st))
                 continue
             status[st] += 1
+            # Counted AFTER the junk filter above, so these are real sites.
+            # Worth stating because the arithmetic is a trap: the Oct 29 export
+            # has 10 raw onboarding rows, 3 of them test/demo, leaving 7 -- and
+            # 7 is exactly what the PREVIOUS config carried as its raw count
+            # before that hand correction to 4. A reader comparing the two
+            # could reasonably conclude the exclusion stopped working and
+            # "re-fix" 7 back to 4. It is working; the figure moved because the
+            # data did.
             if st != "active":
                 continue
             key = classify(cell(row, cols, "Group"), cell(row, cols, "Type"))

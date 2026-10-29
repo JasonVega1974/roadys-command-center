@@ -532,34 +532,74 @@ test('SR-11: no gated value from the local actuals appears in any committed file
   // the refresh script derives mechanically from the export rather than
   // anything hand-entered, with layer 1's structural rules still applying.
   //
-  // REASONED, NOT MEASURED. Three attempts to demonstrate it in isolation all
-  // failed, each for a different reason worth knowing: every substitute gated
-  // literal tried already collides with some other number legitimately in a
-  // committed file (a gallon baseline, a pinned count), so the scan fired on
-  // that instead; and the "literal #N" in the failure message is positional
-  // within the scanned set, so it renumbers whenever this allowlist changes.
-  // Those two facts together mean a clean control could not be built here.
+  // MEASURED, and wider than first documented. Three of my own attempts to
+  // isolate this failed -- every substitute gated literal I picked already
+  // collided with another number in a committed file, and the "literal #N" in
+  // the failure message is positional within the scanned set, so it renumbers
+  // whenever this allowlist changes. I recorded it as reasoned-not-measured.
   //
-  // That failure is itself the argument for this allowlist over the
+  // A reviewer then built the control, with two changes that make it work:
+  // plant a value taken FROM the computed scannable set, and measure per-file
+  // hit lines rather than pass/fail, which makes the renumbering irrelevant.
+  // Five arms, and the result is one correction to what is written above:
+  //
+  //   the exemption is ONE VALUE ACROSS ALL SIX SCANNED FILES, not one field.
+  //
+  // A gated figure equal to billing.companies is unreported wherever it sits
+  // -- including in the SQL migration -- which is wider than "a figure pasted
+  // into billing.companies". The exemption subtracts a NUMBER from the scan;
+  // it cannot know which field that number came from.
+  //
+  // Mitigation, also measured: the arm that plants it in billing.companies
+  // still fails the suite, through the CSV-aggregates test that pins that
+  // field. So the honest statement is "SR-11 misses that one value; another
+  // test catches it in the field this allowlist exists for."
+  //
+  // The three failed attempts remain the argument for this allowlist over the
   // alternative: three- and four-digit integers collide often enough that
   // raising the distinctiveness threshold generally would have blunted the
-  // scan far more than exempting one field does.
-  const ALLOWLISTED_PUBLIC_FIELDS = ['companies'];
+  // scan far more than exempting one value does.
+  // BY PATH, not by regex. The first version matched
+  // `new RegExp(field + ':\\s*([0-9]+...)')` against the whole config text,
+  // and a review showed that `zeroBillCompanies` was held off only by its
+  // capital C: a `paying_companies:` line above it, a lowercase spelling, or
+  // even a COMMENT containing `companies: NNN` would capture the exemption and
+  // silently point it at a different number. The config is already required by
+  // this file, so read the field.
+  const ALLOWLISTED_PUBLIC_PATHS = [['billing', 'companies']];
   const coincidental = new Set();
-  for (const field of ALLOWLISTED_PUBLIC_FIELDS) {
-    const m = new RegExp(field + String.raw`:\s*([0-9]+(?:\.[0-9]+)?)`)
-      .exec(fs.readFileSync(path.join(root, 'membershipModelConfig.js'), 'utf8'));
-    assert.ok(m, 'allowlisted field ' + field + ' is no longer in the config -- ' +
-      'remove it from ALLOWLISTED_PUBLIC_FIELDS rather than leaving a dead ' +
+  for (const p of ALLOWLISTED_PUBLIC_PATHS) {
+    const v = p.reduce((o, k) => (o == null ? o : o[k]), MGM_CONFIG);
+    assert.equal(typeof v, 'number',
+      'allowlisted path ' + p.join('.') + ' is not a number in the config -- ' +
+      'remove it from ALLOWLISTED_PUBLIC_PATHS rather than leaving a dead ' +
       'exemption that silently widens this scan');
-    coincidental.add(Number(m[1]));
+    coincidental.add(v);
   }
 
   const all = [...literals(localSrc)];
-  const scannable = all.filter(n =>
-    n !== 0 && digits(n).length >= 3 && !publicLiterals.has(n) && !isYear(n)
-    && !coincidental.has(n));
+  const base = n => n !== 0 && digits(n).length >= 3 && !publicLiterals.has(n) && !isYear(n);
+  const scannable = all.filter(n => base(n) && !coincidental.has(n));
   const excluded = all.length - scannable.length;
+
+  // SAY SO WHEN THE EXEMPTION IS DOING NOTHING. A review measured it inert at
+  // the commit that introduced it -- once the refreshed config is COMMITTED,
+  // the value is already-public by the subtraction above, so the exemption
+  // changes nothing and carries only risk.
+  //
+  // It is not dead across the workflow, though: it is load-bearing in the
+  // window between regenerating the config and committing it, because
+  // publicLiterals is read from HEAD on purpose (a value cannot be made public
+  // by sitting in your own working tree). So rather than delete it or keep it
+  // silently, report which state it is in -- an exemption that has stopped
+  // mattering is then visible to the next reader instead of rotting.
+  if (scannable.length === all.filter(base).length) {
+    t.diagnostic('the SR-11 allowlist (' +
+      ALLOWLISTED_PUBLIC_PATHS.map(p => p.join('.')).join(', ') +
+      ') is currently INERT: the committed config already makes those values ' +
+      'public, so removing the allowlist would not change this scan. It still ' +
+      'covers the window between a data refresh and its commit.');
+  }
 
   if (!scannable.length) {
     // Also a visible skip, and the more dangerous case: the file EXISTS, so an
@@ -863,7 +903,14 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   near(r.streams.rewardsBreakage, 209981.038648, 'rewardsBreakage');
   near(r.total, 2362684.376155, 'total');
   // Ties back to the per-member figure the reconciliation tile reports.
-  near(r.total / r.members, 5941, '$/member/yr');
+  // NOT A CHECK ON THE REFRESH. A review pointed out this ratio cannot fail
+  // for any member count: every stream is members x a driver, so total/members
+  // is the driver sum regardless of the base. It is a check on the DRIVERS
+  // summing to the documented figure, which is worth keeping and is what the
+  // comment below spells out -- but it was wrongly cited as evidence that the
+  // Oct 29 repins were verified. The figures that actually moved with the base
+  // are the per-stream absolutes above.
+  near(r.total / r.members, 5941, '$/member/yr (driver sum, base-independent)');
 });
 
 test('fuelProgramMargin defaults to zero, so no prospective fuel revenue', () => {
