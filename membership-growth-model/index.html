@@ -281,6 +281,7 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
   <section class="panel" id="panel-historical"></section>
   <section class="panel" id="panel-report"></section>
   <section class="panel" id="panel-about"></section>
+  <section class="panel" id="panel-pnl"></section>
 </main>
 
 <!-- ════════ EMAIL MODAL ════════ -->
@@ -617,17 +618,33 @@ MGM.runFor = function (st) {
 // label renders a button reading "undefined".
 const TAB_ORDER = ['starting', 'additions', 'losses', 'pipeline', 'participation',
   'gallons', 'revpermember', 'cost', 'staffing', 'cashflow', 'historical', 'report',
-  'about'];
+  'about', 'pnl'];
+
+// Tabs only an administrator may see. The RLS policy on mgm_pnl_actuals is the
+// actual boundary -- this only stops the tool from showing a non-admin a form
+// it could never read or save. Kept in TAB_ORDER so the renderer, the panel and
+// the labels all exist; renderTabs hides the button and the renderer refuses.
+const ADMIN_ONLY_TABS = ['pnl'];
 
 MGM.renderTabs = function () {
   const t = MGM.state.labels.tabs;
-  document.getElementById('tabrail').innerHTML = TAB_ORDER.map(k =>
+  document.getElementById('tabrail').innerHTML = TAB_ORDER
+    // An admin-only tab shows no button to anyone else. If the active tab
+    // becomes hidden -- an admin signs out while on it -- switchTab sends them
+    // somewhere they can actually be.
+    .filter(k => ADMIN_ONLY_TABS.indexOf(k) < 0 || MGM.canEdit())
+    .map(k =>
     `<button class="tab${k === MGM.tab ? ' active' : ''}" data-tab="${k}"
        onclick="MGM.switchTab('${k}')">${esc(t[k])}</button>`).join('');
 };
 
 MGM.tab = 'starting';
 MGM.switchTab = function (k) {
+  // An admin-only tab is unreachable for anyone else, including by a stale
+  // MGM.tab after an admin signs out while standing on it. Without this the
+  // rail would show no active button and the panel would hold the refusal
+  // card with no obvious way back.
+  if (ADMIN_ONLY_TABS.indexOf(k) >= 0 && !MGM.canEdit()) k = TAB_ORDER[0];
   MGM.tab = k;
   TAB_ORDER.forEach(x => {
     const p = document.getElementById('panel-' + x);
@@ -2580,7 +2597,7 @@ MGM.renderers.report = function (D) {
     ${prose(rp.closing)}
     <div class="foot">
       <span>${esc(rp.footer)}</span>
-      <span>Questions: ${esc(rp.contact || 'info@kingdom-creatives.com')}</span>
+      <span>Questions: ${esc(rp.contact || 'jason@roadyscorp.com')}</span>
     </div>
   </div>`;
 };
@@ -3878,6 +3895,302 @@ MGM.resetAllCopy = function () {
   MGM.save(); MGM.refresh();
 };
 
+/* ═══════════════════ P&L ACTUALS — ADMIN ONLY ═══════════════════
+   The one place the auth-gated income-statement figures can be entered,
+   reviewed and exported from inside the tool. Everything on this tab feeds
+   every P&L-derived figure elsewhere: the Revenue per Member reconciliation,
+   the margin that drives the valuation's EBITDA lens, and the printed
+   report's reconciliation section.
+
+   THREE RULES THIS TAB EXISTS TO HOLD.
+
+   1. The figures live in `mgm_pnl_actuals`, whose SELECT policy is
+      mgm_is_admin() -- admin-only on read as well as write, because this repo
+      is public, its anon key is published, and a session is cheap to obtain
+      while signups are open.
+
+   2. They NEVER enter MGM.state. State is what MGM.save writes to
+      localStorage, what scenarioSave pushes to mgm_scenarios (readable by ANY
+      signed-in user), and what exportJSON serialises. A figure in state is a
+      figure published to every signed-in reader. The working buffer below is
+      MGM.pnlDraft, on MGM, deliberately not on MGM.state -- and the SR-11
+      shape guard in membershipModel.test.js fails the build if anything
+      margin-named is ever assigned into MGM.state.
+
+   3. The tab is not rendered, and its button is not shown, to a non-admin.
+      That is a convenience, not the boundary: the boundary is the RLS policy,
+      which refuses the read regardless of what the browser does.
+
+   Export is admin-only for the same reason the CSV is: these ARE the figures.
+*/
+
+// Stream keys must match what revenueModel produces, or the reconciliation
+// compares different things under matching labels.
+MGM.PNL_STREAMS = [
+  ['dues',            'Core dues'],
+  ['duesAncillary',   'Ancillary dues (renewal, set-up, ad)'],
+  ['settlement',      'Fuel settlement, net'],
+  ['fuelProgram',     'Fuel program margin'],
+  ['vendor',          'Vendor programs'],
+  ['rewards',         'Rewards fees'],
+  ['rewardsBreakage', 'Rewards breakage']
+];
+
+// Null, never 0: an unset figure must not become a reported zero. Written as
+// `null` rather than a numeric literal also keeps the SR-11 numeric-assignment
+// guard satisfied -- a digit after `netMarginPct:` in committed source is
+// exactly what it bans.
+MGM.pnlBlankDraft = function () {
+  const d = { id: '', period_label: '', period_months: 12, member_basis: null,
+              source: '', streams: {}, totals: {} };
+  MGM.PNL_STREAMS.forEach(s => { d.streams[s[0]] = null; });
+  d.totals.totalPerMemberYr = null;
+  d.totals.ebitdaMarginPct = null;
+  d.totals.netMarginPct = null;
+  d.totals.marginBasisDetail = '';
+  return d;
+};
+
+MGM.pnlDraft = null;
+
+// Seeded from what is actually loaded, so an admin edits the live period
+// rather than retyping it. Falls back to a blank draft when nothing is loaded.
+MGM.pnlDraftInit = function () {
+  if (MGM.pnlDraft) return MGM.pnlDraft;
+  const d = MGM.pnlBlankDraft();
+  const a = MGM.pnlActuals;
+  if (a) {
+    d.id = a.id || '';
+    d.period_label = a.periodLabel || '';
+    if (a.periodMonths != null) d.period_months = a.periodMonths;
+    if (a.memberBasis != null) d.member_basis = a.memberBasis;
+    d.source = a.source || '';
+    Object.keys(a.streams || {}).forEach(k => { d.streams[k] = a.streams[k]; });
+    if (a.totalPerMemberYr != null) d.totals.totalPerMemberYr = a.totalPerMemberYr;
+  }
+  // The margins are held session-only, not on pnlActuals, so read them there.
+  if (MGM.loadedMarginPct != null) d.totals.ebitdaMarginPct = MGM.loadedMarginPct;
+  if (MGM.loadedNetMarginPct != null) d.totals.netMarginPct = MGM.loadedNetMarginPct;
+  if (MGM.loadedMarginBasisDetail) d.totals.marginBasisDetail = MGM.loadedMarginBasisDetail;
+  MGM.pnlDraft = d;
+  return d;
+};
+
+// Bound by data-pnl rather than data-k, so the binding layer cannot route any
+// of this into MGM.state even by accident.
+MGM.pnlWrite = function (path, raw, isNum) {
+  const d = MGM.pnlDraftInit();
+  const parts = path.split('.');
+  let cur = d;
+  for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]];
+  const last = parts[parts.length - 1];
+  if (!isNum) { cur[last] = raw; return; }
+  // '' means "not supplied" and must stay null. Number('') is 0, which would
+  // turn an empty box into a reported figure of zero.
+  cur[last] = (raw === '' || raw === null) ? null
+            : (isFinite(Number(raw)) ? Number(raw) : null);
+};
+
+MGM.bindPnl = function (root) {
+  (root || document).querySelectorAll('[data-pnl]').forEach(el => {
+    if (el.dataset.pnlBound) return;
+    el.dataset.pnlBound = '1';
+    const path = el.dataset.pnl, isNum = el.type === 'number';
+    // Write on input, re-render on change -- the same split the data-k fields
+    // use, for the same reason: re-rendering mid-keystroke destroys the node
+    // being typed into.
+    el.addEventListener('input', () => MGM.pnlWrite(path, el.value, isNum));
+    el.addEventListener('change', () => { MGM.pnlWrite(path, el.value, isNum); MGM.refresh(); });
+  });
+};
+
+MGM.pnlSaveToCloud = async function () {
+  if (!MGM.requireAdmin('Saving P&L actuals')) return;
+  const d = MGM.pnlDraftInit();
+  if (!String(d.id || '').trim()) {
+    return alert('Give the period an id first — e.g. 2026-09. It is the primary key, '
+               + 'so saving twice with the same id updates that period rather than '
+               + 'adding a second copy of it.');
+  }
+  const sb = MGM.sb();
+  if (!sb) return alert('No connection — cannot save.');
+
+  const row = {
+    id: String(d.id).trim(),
+    period_label: d.period_label || '',
+    period_months: d.period_months == null ? 12 : Number(d.period_months),
+    member_basis: d.member_basis == null ? 0 : Number(d.member_basis),
+    streams: d.streams || {},
+    totals: d.totals || {},
+    source: d.source || ''
+  };
+
+  const { error } = await sb.from('mgm_pnl_actuals').upsert(row, { onConflict: 'id' });
+  if (error) {
+    // A refused write is a refusal, not a failure to reach the server. The
+    // policy is WITH CHECK mgm_is_admin(), so a non-admin gets a permission
+    // error and must not be told to try again.
+    return alert('The P&L was NOT saved.\n\n' + (error.message || String(error))
+      + '\n\nIf this is a permission error, the write policy on mgm_pnl_actuals '
+      + 'is admin-only and this account is not on the roster.');
+  }
+  // Re-read through the normal gated path, so what is now displayed is what
+  // the server actually holds -- not what was typed.
+  MGM.pnlDraft = null;
+  await MGM.loadPnlActuals();
+  MGM.refresh();
+  alert('Saved. Every P&L-derived figure on this tool now reads this period:\n'
+      + '  • Revenue per Member reconciliation\n'
+      + '  • the EBITDA lens on Valuation, if a margin was entered\n'
+      + '  • the printed report\'s reconciliation section');
+};
+
+MGM.exportPnl = function () {
+  // Admin-only, exactly like the CSV and for a stronger reason: this file IS
+  // the gated data, not a figure derived from it.
+  if (!MGM.requireAdmin('Exporting the P&L actuals')) return;
+  const d = MGM.pnlDraftInit();
+  MGM.dl('mgm-pnl-actuals' + (d.id ? '-' + String(d.id).trim() : '') + '.json',
+    JSON.stringify({
+      _warning: 'AUTH-GATED P&L ACTUALS. Do not commit this file, paste it into '
+              + 'a ticket, or attach it to a public pull request. It is the '
+              + 'income statement. The repo this tool ships from is public.',
+      exportedAt: new Date().toISOString(),
+      actuals: d
+    }, null, 2), 'application/json');
+};
+
+MGM.pnlClearDraft = function () {
+  if (!MGM.requireAdmin('Clearing the P&L form')) return;
+  if (!confirm('Clear the form?\n\nThis only clears what is on screen. The saved '
+             + 'period in mgm_pnl_actuals is untouched until you save again.')) return;
+  MGM.pnlDraft = MGM.pnlBlankDraft();
+  MGM.refresh();
+};
+
+MGM.renderers.pnl = function (D) {
+  const { st } = D;
+  const host = document.getElementById('panel-pnl');
+
+  // Not rendered at all for a non-admin. The RLS policy is the boundary; this
+  // keeps the tool from displaying an empty form it could never save.
+  if (!MGM.canEdit()) {
+    host.innerHTML = `
+      <h2>${esc(st.labels.tabs.pnl)}</h2>
+      <div class="card"><h3>Administrators only</h3>
+        <p class="note">The P&amp;L actuals are auth-gated: <code>mgm_pnl_actuals</code>
+          is readable and writable only by an administrator, because this tool ships
+          from a public repository whose Supabase anon key is published. Every other
+          tab is fully available to you — the model, the projection, the valuation,
+          the printed report and the JSON export all work without this.</p>
+        <p class="note">${esc(MGM.pnlWhy ? MGM.pnlWhy() : '')}</p>
+      </div>`;
+    return;
+  }
+
+  const d = MGM.pnlDraftInit();
+  const v = x => (x == null ? '' : x);
+  const numRow = (label, path, step) => `
+    <tr><td>${label}</td><td class="num"><input class="cell" type="number"
+      ${step ? 'step="' + step + '"' : ''} data-pnl="${path}"
+      value="${v(MM.getPath(d, path))}"></td></tr>`;
+
+  host.innerHTML = `
+  <h2>${esc(st.labels.tabs.pnl)}</h2>
+  <p class="sub">Enter the income-statement figures once here; every P&amp;L-derived
+     number on this tool reads them. Admin-only, and they never enter the model's
+     own saved state.</p>
+
+  <div class="card"><h3>Where these figures go, and where they do not</h3>
+    <p class="note"><b>They feed:</b> the Revenue per Member reconciliation and its
+      per-stream variance, the EBITDA lens on ${esc(st.labels.tabs.cashflow)} and
+      Valuation (only if an EBITDA margin is entered below), and the
+      reconciliation section of the printed report.</p>
+    <p class="note"><b>They are never written into the model's state.</b> That
+      matters because the model's state is what gets saved to this browser, pushed
+      to the shared scenario table — which <i>any</i> signed-in user may read — and
+      serialised by the JSON export. These figures live only in
+      <code>mgm_pnl_actuals</code>, whose read policy is administrators only, and
+      in this form while you are on it. Reload the page and the form reads the
+      server again, not a local copy.</p>
+    <p class="note">Leave a box <b>empty</b> rather than entering a zero for anything
+      the statement does not report. An em dash on a tile means "not supplied";
+      a $0 means "a figure of zero was supplied deliberately", and the tool
+      distinguishes them everywhere.</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Period</h3>
+      <table>
+        <tr><td>Period id <span class="note">(primary key, e.g. 2026-09)</span></td>
+          <td><input class="cell" type="text" data-pnl="id" value="${esc(v(d.id))}"></td></tr>
+        <tr><td>Label</td><td><input class="cell" type="text" data-pnl="period_label"
+          value="${esc(v(d.period_label))}" placeholder="Jan–Sep 2026"></td></tr>
+        ${numRow('Months the period covers', 'period_months')}
+        ${numRow('Member basis (locations the figures cover)', 'member_basis')}
+        <tr><td>Source</td><td><input class="cell" type="text" data-pnl="source"
+          value="${esc(v(d.source))}" placeholder="filename or statement reference"></td></tr>
+      </table>
+      <p class="note">Saving with an id that already exists <b>updates</b> that
+        period. The id is the primary key, so a new id adds a period rather than
+        replacing one — the tool reads the highest id.</p>
+    </div>
+
+    <div class="card"><h3>Totals</h3>
+      <table>
+        ${numRow('Revenue per member, per year', 'totals.totalPerMemberYr')}
+        ${numRow('EBITDA margin %', 'totals.ebitdaMarginPct', '0.01')}
+        ${numRow('Net margin % <span class="note">(recorded, never applied)</span>',
+                 'totals.netMarginPct', '0.01')}
+      </table>
+      <p class="note"><b>Only the EBITDA margin drives the valuation.</b> A net
+        margin is not an EBITDA margin, and feeding one into the other's slot
+        would misattribute it — so the net margin is recorded for the provenance
+        note to name, and is applied to nothing.</p>
+      <p class="note">A margin entered here is used only when no margin has been
+        typed on the Valuation card and no real costs have been entered. A
+        hand-typed assumption always wins over a loaded figure, and real costs
+        win over both.</p>
+      <div style="margin-top:8px">
+        <label class="note">Margin basis detail — what the figure is loaded with</label>
+        <textarea class="prose" data-pnl="totals.marginBasisDetail"
+          placeholder="e.g. fully-loaded whole-entity, no segment split, payroll unallocated">${esc(v(d.totals.marginBasisDetail))}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="card"><h3>Per-stream actuals, per member per year</h3>
+    <table>
+      <tr><th>Stream</th><th class="num">Actual $/member/yr</th></tr>
+      ${MGM.PNL_STREAMS.map(s => `<tr><td>${s[1]}</td>
+        <td class="num"><input class="cell" type="number" step="0.01"
+          data-pnl="streams.${s[0]}" value="${v(d.streams[s[0]])}"></td></tr>`).join('')}
+    </table>
+    <p class="note">These keys match the streams the model itself produces, so the
+      reconciliation compares like with like. A stream left empty shows an em dash
+      in both the actual and the variance column rather than a false zero.</p>
+  </div>
+
+  <div class="card"><h3>Save and export</h3>
+    <div class="actions">
+      <button class="btn" onclick="MGM.pnlSaveToCloud()">☁️ Save to mgm_pnl_actuals</button>
+      <button class="btn ghost" onclick="MGM.exportPnl()">⬇ Export P&amp;L (JSON)</button>
+      <button class="btn ghost" onclick="MGM.pnlClearDraft()">Clear form</button>
+    </div>
+    <p class="note">Saving re-reads the period back through the normal gated path,
+      so what you see afterwards is what the server holds rather than what was
+      typed. The export carries a header warning that the file is the income
+      statement — it must not be committed, pasted into a ticket, or attached to a
+      pull request, because the repository this tool ships from is public.</p>
+    <p class="note">Currently loaded: <b>${esc(MGM.pnlActuals ? (MGM.pnlActuals.periodLabel || '(unlabelled period)') : 'nothing')}</b>
+      — ${esc(MGM.pnlWhy ? MGM.pnlWhy() : '')}</p>
+  </div>
+
+  ${MGM.tabNotes('pnl')}`;
+
+  MGM.bindPnl(host);
+};
+
 MGM.bindAll = function (root) {
   root = root || document;
 
@@ -4277,6 +4590,9 @@ MGM.renderAuth = function () {
     if ('disabled' in el) el.disabled = !admin;
     el.classList.toggle('read-only', !admin);
   });
+
+  // ...and must not leave them standing on an admin-only tab.
+  if (!admin && ADMIN_ONLY_TABS.indexOf(MGM.tab) >= 0) MGM.tab = TAB_ORDER[0];
 
   // Losing admin (sign-out, or a session expiring in another tab) must also
   // drop edit mode. Otherwise body.mgm-edit survives with no way to turn it

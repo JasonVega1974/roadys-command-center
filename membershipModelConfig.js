@@ -226,6 +226,8 @@
   // code change. See Task 8.
   var LABELS = {
     tabs: {
+      // Admin-only tab: the gated income-statement figures.
+      pnl: 'P&L Actuals',
       starting: 'Starting Membership', additions: 'New Additions',
       losses: 'Member Losses', pipeline: 'Sales Pipeline',
       participation: 'Program Participation', gallons: 'Fuel Gallon Production',
@@ -249,6 +251,7 @@
       funnel: 'Pipeline by stage', gallons: 'Gallon production by group'
     },
     notes: {
+      pnl: '',
       starting: '', additions: '', losses: '', pipeline: '', participation: '',
       gallons: '', revpermember: '', cost: '', staffing: '', cashflow: '',
       historical: '', about: ''
@@ -261,7 +264,7 @@
     subtitle: '3-Year Projection',
     footer: "Roady's Command Center · Internal",
     generatedBy: 'Jason Vega — VP, Digital Strategy & Innovation',
-    contact: 'info@kingdom-creatives.com',
+    contact: 'jason@roadyscorp.com',
     disclosure: 'PTP conversions & Change of Ownership excluded from growth counts.',
     intro: '', methodology: '', closing: ''
   };
