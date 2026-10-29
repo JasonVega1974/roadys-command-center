@@ -371,6 +371,57 @@ test('SR-11: no committed file assigns an undeclared number to a P&L field', (t)
     });
   });
 
+  // ── Second arm: the VARIABLE shape ──────────────────────────────────────
+  //
+  // The scan above matches a literal number. The live risk is not a literal:
+  // the auth-gated margin is deliberately held outside MGM.state, in
+  // session-only MGM.loadedMarginPct, and applied to a throwaway copy inside
+  // MGM.runFor. That containment is a NEGATIVE property -- nothing reaches
+  // MGM.state -- and negative properties rot. Two concrete edits would reopen
+  // it silently, and neither assigns a literal:
+  //
+  //   MGM.state.valuation.ebitdaMargin = D.effectiveMargin;   // "simplify the captions"
+  //   JSON.stringify(MGM.runFor(MGM.state))                   // export the model, not the state
+  //
+  // The first puts the gated figure in every saved scenario and every export;
+  // mgm_scenarios is readable by any signed-in user while mgm_pnl_actuals is
+  // admin-only, so that single line defeats the read policy. The second
+  // serialises a runFor result, whose effectiveMargin and marginBasisDetail
+  // carry the figure by design.
+  //
+  // So ban the SHAPE, not one spelling of it. Raised by the implementer who
+  // built the containment: their comments were the only thing guarding it, and
+  // a comment is not a test.
+  const SHAPES = [
+    { re: /MGM\.state[A-Za-z0-9_.\[\]'"]*\s*=\s*[^;\n]*(?:[Mm]argin|pnlActual)/,
+      why: 'assigns something margin-named or P&L-sourced into MGM.state. The ' +
+           'gated margin must stay in session-only MGM.loadedMarginPct and be ' +
+           'applied to a COPY inside runFor; state is serialised into ' +
+           'localStorage, into saved scenarios and into any export.' },
+    { re: /JSON\.stringify\(\s*(?:MGM\.)?runFor\(|JSON\.stringify\([^)]*effectiveMargin/,
+      why: 'serialises a runFor result. Export MGM.state, never a runFor ' +
+           'result -- effectiveMargin and marginBasisDetail carry the gated ' +
+           'figure deliberately.' }
+  ];
+
+  const shapeOffences = [];
+  ['membershipModel.js', path.join('membership-growth-model', 'index.html')]
+    .forEach(rel => {
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      src.split('\n').forEach((line, i) => {
+        if (line.trim().startsWith('//')) return;   // a comment describing the ban
+        SHAPES.forEach(sh => {
+          if (sh.re.test(line)) {
+            shapeOffences.push(rel + ':' + (i + 1) + '  ' + sh.why);
+          }
+        });
+      });
+    });
+
+  assert.deepEqual(shapeOffences, [],
+    'a committed file reopens the gated-margin containment:\n  ' +
+    shapeOffences.join('\n  '));
+
   assert.deepEqual(offences, [],
     'undeclared number assigned to a P&L field. Either it is a real figure -- in ' +
     'which case remove it, this repo is PUBLIC -- or it is a synthetic value, in ' +
