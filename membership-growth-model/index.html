@@ -14,6 +14,15 @@
 <script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
 <script src="../membershipModel.js?v=2026-10-28"></script>
+<!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
+     SDK tag has to come first. Never construct a second client here -- see
+     MGM.sb() below. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../roadysBD.js?v=2026-10-28"></script>
+<!-- GITIGNORED dev-only P&L fallback (.gitignore: membershipPnlActuals.local.js).
+     Expected to 404 in production, where the figures live in the admin-gated
+     mgm_pnl_actuals table; the onerror keeps that expected 404 silent. -->
+<script src="../membershipPnlActuals.local.js" onerror="void 0"></script>
 <style>
 :root{
   --red:#C4111B; --red-bright:#E8232E; --road:#14161B; --ink:#1A1C22; --ink-soft:#4A4E58;
@@ -149,6 +158,46 @@ body.mgm-edit .lbl-in{border-color:var(--line);background:var(--surface)}
 .assume{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;
         border-radius:10px;background:var(--chip);color:var(--ink-soft);margin-left:6px}
 @media print{.mgm-editonly,.noprint{display:none !important}}
+/* ── Admin gating (Task 19) ───────────────────────────────────────────── */
+/* A non-admin keeps every view: tabs, charts, print, export. What they lose
+   is the write path, and they are told so in words rather than left to
+   discover a dead field. */
+.read-only{opacity:.75;cursor:default}
+/* The edit-only controls (row tools, + Add, Reset) are hidden for anyone who
+   is not a confirmed admin. MGM.renderAuth() is the ONLY place that sets or
+   clears body.mgm-admin; if that line is ever dropped, this rule hides every
+   edit control including the admin's own. */
+body:not(.mgm-admin) .mgm-editonly{display:none !important}
+.adminbar{font-family:'Barlow';font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:10px}
+.adminbar.ro{background:var(--chip);color:var(--ink-soft)}
+.adminbar.rw{background:var(--sign-green);color:#fff}
+.adminbar.pending{background:var(--chip);color:var(--ink-soft);font-style:italic}
+.authbar .who{font-size:12.5px;color:#B9BEC7}
+/* ── Scenario bar (Task 14) ───────────────────────────────────────────── */
+/* Lives outside the panels so the active scenario and its load notice survive
+   a tab switch and every MGM.refresh(). An alert() would be wiped by the next
+   render, and the notice has to outlast the load that produced it. */
+.scenbar{background:var(--chip);border-bottom:1px solid var(--line)}
+.scenbar .inner{max-width:1240px;margin:0 auto;padding:8px 20px;font-size:12.5px;color:var(--ink-soft)}
+.scenbar b{color:var(--ink)}
+.scenbar .warn{color:var(--amber);font-weight:600}
+.scenbar code{font-size:11.5px}
+/* ── Sign-in gate ─────────────────────────────────────────────────────── */
+/* Ported from bus-dev-potential-gallons/index.html:468-480 so all four pages
+   present the same gate. The BDPG rules are NOT copied verbatim: they are
+   written against that page's token names (--border2, --accent, --muted,
+   --text, --ff, --fb), none of which exist here, and an unresolved var()
+   falls back to the property's initial value -- a transparent border and an
+   inherited colour, i.e. an unreadable box. Same geometry, this page's
+   tokens. */
+.pin-overlay{position:fixed;inset:0;background:rgba(10,12,16,.7);z-index:999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.pin-box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:32px;text-align:center;min-width:280px;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.pin-box h3{font-family:'Barlow Condensed';font-size:21px;margin:0 0 6px;color:var(--ink)}
+.pin-box p{font-size:12.5px;color:var(--ink-soft);margin:0 0 18px}
+.pin-input{width:260px;display:block;margin:0 auto 10px;background:var(--bg);border:2px solid var(--line);border-radius:8px;color:var(--ink);padding:10px;font-family:'Barlow';font-size:14px;text-align:left}
+.pin-input:focus{outline:none;border-color:var(--red)}
+.pin-err{color:var(--loss);font-size:12.5px;margin-top:8px;min-height:1.2em;font-weight:600}
+@media print{.pin-overlay{display:none !important}}
 </style>
 </head>
 <body>
@@ -165,12 +214,17 @@ body.mgm-edit .lbl-in{border-color:var(--line);background:var(--surface)}
       <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
       <button class="btn ghost" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost" onclick="MGM.resetAll()">Reset all</button>
+      <button class="btn ghost" onclick="MGM.applyPreset('Conservative')">Conservative</button>
+      <button class="btn ghost" onclick="MGM.applyPreset('Base')">Base</button>
+      <button class="btn ghost" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
+      <button class="btn ghost" onclick="MGM.scenarioSave()">Save scenario…</button>
       <button class="btn ghost" onclick="openEmail()">✉ Email</button>
       <button class="btn ghost" onclick="doPrint()">⎙ Print</button>
       <button class="btn primary" onclick="MGM.switchTab('report')">Generate Report</button>
     </div>
   </div>
 </header>
+<div class="scenbar noprint" id="scenarioBar" style="display:none"></div>
 <nav class="tabrail noprint">
   <div class="inner" id="tabrail"></div>
 </nav>
@@ -232,7 +286,16 @@ const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatib
 MGM.state = MM.defaultState(MGM_CONFIG);
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-  if (saved) MGM.state = Object.assign(MM.defaultState(MGM_CONFIG), saved);
+  // MM.mergeState, NOT Object.assign. Object.assign is shallow and 17 of the
+  // 25 top-level state keys are nested objects, so each was replaced
+  // wholesale: a returning user's stored state silently lost every nested
+  // field added since their last visit, and `MM._n(undefined)` is 0, so the
+  // loss landed as a real-looking zero rather than an error. Measured on two
+  // fields: $198,467/yr of revenue gone with nothing on screen saying so.
+  // This is the most load-bearing of the four merge sites because it runs on
+  // EVERY page load. mergeState mutates its first argument, so it gets a
+  // fresh defaultState, never a shared object.
+  if (saved) MGM.state = MM.mergeState(MM.defaultState(MGM_CONFIG), saved).state;
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
 
 MGM.save = function () {
@@ -244,6 +307,70 @@ MGM.save = function () {
 MGM.leads = [];
 MGM.profiles = [];
 MGM.pnlActuals = null;
+
+// WHY a reason and not just a null. The P&L read is ADMIN-ONLY
+// (sql/2026-10-28-mgm-scenarios.sql: mgm_pnl_actuals_read USING
+// mgm_is_admin()), so "no actual figure" has five different causes and they
+// need five different sentences. Collapsing them to one null made the
+// reconciliation tile tell a signed-in non-admin to "sign in" -- advice they
+// had already taken, and which will never work for them. Never infer the
+// reason from an empty array; it is decided from the session and the admin
+// check. 'anon' covers "the admin check has not resolved yet" too, because
+// claiming "not an admin" before the server has answered is the one wrong
+// thing to say.
+MGM.pnlReason = 'anon';   // 'anon' | 'not-admin' | 'none-loaded' | 'error' | 'ok'
+MGM.pnlError = '';
+
+// SESSION-ONLY, and deliberately NOT inside MGM.state.
+//
+// The loaded EBITDA margin is a P&L actual. mgm_pnl_actuals is admin-only on
+// SELECT, but mgm_scenarios is readable by ANY signed-in user -- and both
+// MGM.save() (localStorage) and a scenario save serialise MGM.state wholesale.
+// So a margin written into MGM.state.valuation would travel into a saved
+// scenario and let a non-admin read the gated figure straight out of it,
+// defeating the read policy the migration exists to enforce. An admin would
+// not even have to type it: merely loading the page and saving a scenario
+// would be enough.
+//
+// Held here instead, applied to a COPY of the state at the moment a valuation
+// is computed (see MGM.runFor), and gone on reload. Nothing serialises it:
+// MGM.save writes JSON.stringify(MGM.state), scenarioSave deep-copies
+// MGM.state, and an export reads MGM.state -- none of them can reach MGM.
+MGM.loadedMarginPct = null;            // drives the lens; EBITDA margin only
+MGM.loadedNetMarginPct = null;         // reported for provenance, NEVER applied
+MGM.loadedMarginBasisDetail = null;
+
+// Three states, and the distinction is load-bearing:
+//   null  = not determined (anonymous, or the check has not resolved)
+//   false = signed in, confirmed NOT on the admin roster
+//   true  = confirmed admin
+// MGM.canEdit() must test === true, never truthiness: collapsing null and
+// false into one falsy case is harmless, but treating a non-boolean truthy
+// value (a "yes" string, a 1) as admin is not. There is no automated test for
+// this -- the page layer has no test seam -- so it is held by the manual
+// checks in the task-19 verification list.
+MGM.isAdmin = null;
+MGM.canEdit = () => MGM.isAdmin === true;
+
+// One guard for every state mutation, applied at the FUNCTION, not the markup.
+// `body:not(.mgm-admin) .mgm-editonly{display:none}` hides the row tools, the
+// + Add buttons and the per-section Reset buttons, but three mutating controls
+// deliberately live OUTSIDE .mgm-editonly because they are actions rather than
+// edit affordances -- "Reset all" in the header, "Use split basis" on Member
+// Losses and "Use N gal as the model average" on Fuel Gallon Production. Those
+// stay visible and explain themselves on click, per this task's "a disabled
+// control with a stated reason beats a missing one". Gating the handler rather
+// than the class also means a control added later cannot quietly open a write
+// path by forgetting a CSS class.
+MGM.requireAdmin = function (what) {
+  if (MGM.canEdit()) return true;
+  alert((what || 'This change') + ' is limited to administrators. ' +
+    (MGM.isAdmin === false
+      ? 'You are signed in, but this account is not on the admin list.'
+      : 'Sign in with an admin account to make changes.') +
+    ' Viewing, printing and exporting stay open.');
+  return false;
+};
 
 // crm_leads requires a session (sql/2026-10-05-crm-leads-require-auth.sql),
 // so an unsigned page gets an empty pipeline and says so. Never substitute
@@ -313,20 +440,80 @@ MGM.baselineFor = function (profile, roadway) {
 
 // One place that assembles every layer, so no renderer recomputes a slice
 // of the model on its own and drifts.
-MGM.model = function () {
-  const st = MGM.state;
+// MGM.model() runs the live state; MGM.runFor(st) runs any state through the
+// IDENTICAL path. Task 14's scenario comparison needs a full independent
+// re-run per column, and the first draft of that card assembled its own
+// stack -- which meant it passed F[last].ebitda as the valuation override
+// unconditionally, so its "Current" column reported a materially higher
+// indicated value, on two lenses, for the very same inputs the Profit & Cash
+// Flow tab was showing on one. See the ebitdaOverride note below for why that
+// branch is wrong. One function, so a comparison column and the live page
+// cannot disagree about the same state.
+MGM.model = function () { return MGM.runFor(MGM.state); };
+
+MGM.runFor = function (st) {
   const pipeline = MM.pipelineModel(st, MGM.leads, MGM.profiles);
   const M = MM.runModel(st, MM.addsOpts(st, pipeline));
   const R = MM.revenueModel(st, M);
   const F = MM.cashflowModel(st, M, R);
+  const cost = MM.costModel(st, M, R);
+
+  // A zero-cost cash bridge must NOT become a valuation basis. With costs
+  // unset, cashflowModel's EBITDA is revenue minus nothing -- a 100% margin --
+  // and passing it as the override produced a $9.09M headline midpoint against
+  // $3.03M on the margin branch: a 3x overstatement on the shipped defaults,
+  // against a real net margin that is a small fraction of 100% (the figure
+  // itself is auth-gated and never committed to this public repo). It also made
+  // valuation.ebitdaMargin dead code, since the override always won.
+  // So: only hand over a computed EBITDA once real costs exist.
+  //
+  // NOT covered by membershipModel.test.js -- that suite tests the engine, and
+  // passes even with this line reverted. Changing it needs a hand check:
+  // defaults must give a $3.03M midpoint, exactly half the revenue lens.
+  const ebitdaOverride = (!cost.unset && F.length) ? F[F.length - 1].ebitda : null;
+
+  // The loaded P&L margin is session-only and must never enter MGM.state:
+  // scenarioSave and an export both serialise state wholesale, and
+  // mgm_scenarios is readable by ANY signed-in user while mgm_pnl_actuals is
+  // admin-only -- so a margin in state lets a non-admin read the gated figure
+  // out of a saved scenario, defeating that policy. Applied here, against a
+  // copy, at the moment a valuation is computed. A hand-typed margin still
+  // wins; the loaded figure only fills an unset one, as before.
+  //
+  // `typedMargin` keeps its original meaning throughout the page: what the
+  // reader typed. `effectiveMargin` is what the lens actually used. Those two
+  // diverge exactly when a loaded actual is in play, and SIX caption sites
+  // used to read the state value to decide what to say -- which after this
+  // change would caption "no margin set" over a lens that has a basis. Both
+  // the value and its provenance are therefore returned, and every caption
+  // reads these rather than the state.
+  const typedMargin = st.valuation.ebitdaMargin;
+  const marginFromPnl = !typedMargin && MGM.loadedMarginPct != null;
+  const effectiveMargin = typedMargin ? Number(typedMargin)
+                        : (marginFromPnl ? MGM.loadedMarginPct : null);
+
+  const vst = marginFromPnl
+    ? Object.assign({}, st, { valuation:
+        Object.assign({}, st.valuation, { ebitdaMargin: MGM.loadedMarginPct }) })
+    : st;
+
   return {
-    st, pipeline, M, R, F,
+    st, pipeline, M, R, F, cost,
     rpm: MM.revPerMember(st, M, MGM.pnlActuals),
     gallons: MM.gallonProduction(st, MGM.baselineFor, pipeline),
     participation: MM.participationModel(st, M),
-    cost: MM.costModel(st, M, R),
     capacity: MM.capacityModel(st, M, pipeline),
-    valuation: MM.valuation(st, R[R.length - 1], F.length ? F[F.length - 1].ebitda : null)
+    valuation: MM.valuation(vst, R[R.length - 1], ebitdaOverride),
+    // null, never 0, for "no margin in force" -- 0 is a real margin a reader
+    // could mean, so it cannot double as "absent".
+    effectiveMargin: effectiveMargin,
+    typedMargin: typedMargin ? Number(typedMargin) : null,
+    marginFromPnl: marginFromPnl,
+    marginBasisDetail: marginFromPnl ? MGM.loadedMarginBasisDetail : null,
+    // For the provenance note only. Present whenever an admin session loaded
+    // them, regardless of which one (if either) is driving the lens.
+    loadedMarginPct: MGM.loadedMarginPct,
+    loadedNetMarginPct: MGM.loadedNetMarginPct
   };
 };
 
@@ -367,6 +554,10 @@ MGM.refresh = function () {
          <p class="note">${esc(e.message)}</p></div>`;
     }
   }
+  // Outside the panel, so they survive a tab switch. Guarded because refresh()
+  // runs during the very first render, before the Task 14/16 definitions below
+  // have been evaluated on a partially loaded page.
+  if (MGM.renderScenarioBar) MGM.renderScenarioBar();
   if (MGM.bindAll) MGM.bindAll();
 };
 MGM.refreshSoft = MGM.refresh;
@@ -446,7 +637,8 @@ MGM.renderers.starting = function (D) {
             data-k="billing.locations" value="${st.billing.locations}"></td></tr>
         <tr><td>Monthly dues total</td><td class="num"><input class="cell" type="number"
             data-k="billing.monthlyDuesTotal" value="${st.billing.monthlyDuesTotal}"></td></tr>
-        <tr><td>Billable $/location</td><td class="num"><input class="cell" type="number" step="0.01"
+        <tr><td>Billable $/location (dues ÷ <i>paying</i> locations)</td>
+          <td class="num"><input class="cell" type="number" step="0.01"
             data-k="billing.duesPerLocBillable" value="${st.billing.duesPerLocBillable}"></td></tr>
         <tr><td>Paying locations</td><td class="num"><input class="cell" type="number"
             data-k="billing.payingLocations" value="${st.billing.payingLocations}"></td></tr>
@@ -457,6 +649,11 @@ MGM.renderers.starting = function (D) {
          onboarding and offboarding sites the active list excludes, and
          ${st.billing.zeroBillCompanies} companies bill nothing. The projection
          runs from the active count.</p>
+      <p class="note">Billable $/location divides the dues total by the
+         <b>${fmt(st.billing.payingLocations)}</b> paying locations, not by all
+         <b>${fmt(st.billing.locations)}</b> billed ones. Dividing by the larger
+         figure understates what a billable location is worth and so overstates
+         the dues realization on Revenue per Member.</p>
     </div>
   </div>
 
@@ -566,6 +763,8 @@ MGM.renderers.additions = function (D) {
        is a whole-network split.</p>
   </div>
 
+  ${MGM.renderCompare ? MGM.renderCompare() : ''}
+
   ${MGM.tabNotes('additions')}`;
 };
 
@@ -614,7 +813,15 @@ MGM.renderers.losses = function (D) {
   <div class="signrow">
     ${sign('PROJECTED LOSSES', fmt(totalLost), 'over the projection', 'red')}
     ${sign('STEADY RATE', pct1(st.attrition.steady), 'annual, recurring')}
-    ${sign('3-YR DERIVED', pct1(d.avg), 'lost / prior count', 'dark')}
+    <!-- derivedAttrition returns avg:0, NOT null, when no year has both a loss
+         and a prior-year count, so pct1's null guard never fires: this tile
+         read "0.0%" under the caption "lost / prior count", asserting that
+         members never leave. Every input behind it is editable on Historical
+         Data. Gate on rows.length -- the same field the table below keys on --
+         and let the caption explain the em dash. -->
+    ${sign('3-YR DERIVED', d.rows.length ? pct1(d.avg) : '—',
+           d.rows.length ? 'lost / prior count'
+                         : 'no year has both a loss and a prior count', 'dark')}
     ${sign('STRUCTURAL', fmt(M.years.reduce((a, r) => a + r.structuralLost, 0)),
            'one-off consolidation', 'dark')}
   </div>
@@ -635,7 +842,16 @@ MGM.renderers.losses = function (D) {
     <p class="note">${esc(st.attrition.note)}</p>
   </div>
 
-  <div class="card"><h3>Historical decomposition at ${pct1(st.attrition.steadyAlt)} steady</h3>
+  <!-- The heading and the "two components always sum back" sentence are claims
+       ABOUT THE ROWS. attritionSplit derives its rows from derivedAttrition,
+       so with no year carrying both a loss and a prior-year count there are no
+       rows — and the heading plus that sentence used to stand over an empty
+       body, asserting a property of a decomposition that was not there. Both
+       are now keyed to split.rows.length, and the empty case says why it is
+       empty instead of going quiet. -->
+  <div class="card"><h3>Historical decomposition${split.rows.length
+      ? ` at ${pct1(st.attrition.steadyAlt)} steady` : ''}</h3>
+    ${split.rows.length ? `
     <table>
       <tr><th>Year</th><th class="num">Prior count</th><th class="num">Lost</th>
           <th class="num">Total rate</th><th class="num">Steady</th>
@@ -648,7 +864,15 @@ MGM.renderers.losses = function (D) {
     </table>
     <p class="note">Structural is clamped at zero — a year quieter than the steady
        assumption has no structural loss, not negative structural loss. The two
-       components always sum back to the realized total.</p>
+       components always sum back to the realized total.</p>`
+    : `<p class="note">Nothing to decompose. A realized rate can only be derived
+       for a year that has both a loss figure and a prior-year count, and no year
+       in <b>Historical Data</b> currently has both — so there is no realized
+       total here to split into steady and structural parts. Enter a prior-year
+       <b>Total count</b> and a <b>Lost</b> figure on Historical Data and this
+       table fills in. The ${pct1(st.attrition.steadyAlt)} pre-spike baseline
+       above is unaffected: it is a hand-entered assumption, not derived from
+       this table.</p>`}
   </div>
 
   <div class="card"><h3>Structural overrides by projection year</h3>
@@ -848,6 +1072,7 @@ MGM.makeGroupKey = function (label, taken) {
 };
 
 MGM.addGroup = function () {
+  if (!MGM.requireAdmin('Adding a group')) return;
   const label = (prompt('Group name:', 'New group') || '').trim();
   if (!label) return;
   const taken = MGM.state.groups.map(g => g.key);
@@ -866,6 +1091,8 @@ MGM.addGroup = function () {
 // stability; it was dead code, because the risk it warned about cannot occur.
 
 MGM.useSplitBasis = function () {
+  // Visible outside .mgm-editonly, so the guard has to be here.
+  if (!MGM.requireAdmin('Switching to the split basis')) return;
   MGM.state.attrition.steady = MGM.state.attrition.steadyAlt;
   MGM.save(); MGM.refresh();
 };
@@ -1039,10 +1266,889 @@ MGM.renderers.gallons = function (D) {
 };
 
 MGM.useGallonsInModel = function (perMember) {
+  // Visible outside .mgm-editonly, so the guard has to be here.
+  if (!MGM.requireAdmin('Changing the model average gallons')) return;
   MM.setPath(MGM.state, 'revenue.avgGallons', Math.round(perMember));
   MGM.save(); MGM.refresh();
   alert('Avg gallons per participating location set to ' + fmt(perMember) +
         ' on Revenue per Member.');
+};
+
+/* ═══════════════ TAB RENDERERS: Revenue per Member, Cost to Acquire & Serve,
+   Staffing & Capacity, Profit & Cash Flow (Task 12) ═══════════════ */
+const STREAM_KEYS = ['dues', 'duesAncillary', 'settlement', 'fuelProgram',
+  'vendor', 'rewards', 'rewardsBreakage'];
+
+MGM.renderers.revpermember = function (D) {
+  const { st, R, rpm } = D;
+  const last = R[R.length - 1];
+  const L = st.labels.streams;
+
+  document.getElementById('panel-revpermember').innerHTML = `
+  <h2>${esc(st.labels.tabs.revpermember)}</h2>
+  <p class="sub">Seven net per-member streams, calibrated against the Jan–Sep 2026 P&amp;L.</p>
+  <div class="signrow">
+    ${sign('FINAL-YEAR REVENUE', fmM(last.total), `${last.year}, all streams`)}
+    ${sign('$ / MEMBER / YR', fm$(rpm.derived.total), 'from the drivers', 'dark')}
+    ${sign('DUES REALIZATION', pct1(rpm.duesRealization),
+           `${fm$(st.revenue.duesPerLoc)} realized vs ${fm$(st.billing.duesPerLocBillable)} billable`, 'red')}
+    ${sign('AVG MEMBERS', fmt(last.members), `${last.year} average`, 'dark')}
+  </div>
+
+  <div class="card"><h3>Drivers</h3>
+    <table>
+      <tr><th>Stream</th><th class="num">Driver</th><th class="num">$/member/yr</th></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.dues" value="${esc(L.dues)}"></td>
+        <td class="num"><input class="cell" type="number" step="0.01" data-k="revenue.duesPerLoc"
+          value="${st.revenue.duesPerLoc}"> /mo ${MGM.editedMark('revenue.duesPerLoc')}</td>
+        <td class="num">${fm$(rpm.derived.dues)}</td></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.duesAncillary" value="${esc(L.duesAncillary)}"></td>
+        <td class="num"><input class="cell" type="number" data-k="revenue.duesAncillaryPerMember"
+          value="${st.revenue.duesAncillaryPerMember}"> /yr</td>
+        <td class="num">${fm$(rpm.derived.duesAncillary)}</td></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.settlement" value="${esc(L.settlement)}"></td>
+        <td class="num"><input class="cell" type="number" data-k="revenue.settlementNetPerMember"
+          value="${st.revenue.settlementNetPerMember}"> /yr</td>
+        <td class="num ${rpm.derived.settlement < 0 ? 'neg' : ''}">${fm$(rpm.derived.settlement)}</td></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.fuelProgram" value="${esc(L.fuelProgram)}"></td>
+        <td class="num"><input class="cell" type="number" step="0.001" data-k="revenue.fuelProgramMargin"
+          value="${st.revenue.fuelProgramMargin}"> /gal × ${fmt(st.revenue.avgGallons)} gal
+          × ${pct1(MM.partPct(st, 'fuel'))}</td>
+        <td class="num">${fm$(rpm.derived.fuelProgram)}</td></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.vendor" value="${esc(L.vendor)}"></td>
+        <td class="num"><input class="cell" type="number" data-k="revenue.vendorPM"
+          value="${st.revenue.vendorPM}"> /mo × ${pct1(MM.partPct(st, 'vendor'))}</td>
+        <td class="num">${fm$(rpm.derived.vendor)}</td></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewards" value="${esc(L.rewards)}"></td>
+        <td class="num"><input class="cell" type="number" data-k="revenue.rewardsPM"
+          value="${st.revenue.rewardsPM}"> /mo × ${pct1(MM.partPct(st, 'rewards'))}</td>
+        <td class="num">${fm$(rpm.derived.rewards)}</td></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewardsBreakage" value="${esc(L.rewardsBreakage)}"></td>
+        <td class="num"><input class="cell" type="number" data-k="revenue.rewardsBreakagePerMember"
+          value="${st.revenue.rewardsBreakagePerMember}"> /yr</td>
+        <td class="num">${fm$(rpm.derived.rewardsBreakage)}</td></tr>
+      <tr class="total"><td>Total</td><td class="num"></td>
+        <td class="num"><b>${fm$(rpm.derived.total)}</b></td></tr>
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.resetSection('revenue')">Reset drivers</button>
+    </div>
+    <p class="note"><b>Fuel program margin defaults to $0.00/gal.</b> The P&amp;L
+      shows fuel settlement netting <i>negative</i>, so any positive per-gallon
+      margin here is a forward assumption you own — not something the P&amp;L
+      supports. Participation percentages live on the Program Participation tab.</p>
+    <p class="note">Rewards breakage is expired-points revenue: real, but a buyer
+      discounts it. It is held as a flat per-member figure rather than inside the
+      program fee so it never scales with participation.</p>
+  </div>
+
+  <div class="card"><h3>Reconciliation</h3>
+    <table>
+      <tr><th>Stream</th><th class="num">From drivers</th>
+          <th class="num">P&amp;L actual</th><th class="num">Variance</th></tr>
+      ${STREAM_KEYS.map(k => {
+        const a = rpm.actualStreams ? rpm.actualStreams[k] : null;
+        return `<tr><td>${esc(L[k])}</td>
+          <td class="num">${fm$(rpm.derived[k])}</td>
+          <td class="num">${a == null ? '<span class="note">—</span>' : fm$(a)}</td>
+          <td class="num ${a != null && rpm.derived[k] - a < 0 ? 'neg' : ''}">${
+            a == null ? '—' : fm$(rpm.derived[k] - a)}</td></tr>`;
+      }).join('')}
+      <tr class="total"><td>Total $/member/yr</td>
+        <td class="num"><b>${fm$(rpm.derived.total)}</b></td>
+        <!-- NOT "sign in to reconcile". The P&L read is admin-only, so the
+             most likely reader of this cell is a signed-in non-admin, for whom
+             "sign in" is advice they have already taken and that will never
+             work. The reason is rendered, never guessed -- one wording per
+             MGM.pnlReason, from MGM.PNL_REASON_TEXT. -->
+        <td class="num"><b>${rpm.actual == null
+          ? `<span class="note">${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'not available')}</span>`
+          : fm$(rpm.actual)}</b></td>
+        <td class="num">${rpm.varianceVsActual == null ? '—' : fm$(rpm.varianceVsActual)}</td></tr>
+    </table>
+
+    <table style="margin-top:14px">
+      <tr><th>${esc(st.benchmark.label)}</th><th class="num">Value</th><th class="num">Variance</th></tr>
+      <tr><td><input class="lbl-in" type="text" data-k="benchmark.label" value="${esc(st.benchmark.label)}"></td>
+        <td class="num"><input class="cell" type="number" step="500" data-k="benchmark.lostMemberValue"
+          value="${st.benchmark.lostMemberValue}"></td>
+        <td class="num neg">${fm$(rpm.varianceVsBenchmark)}</td></tr>
+    </table>
+    <p class="note"><span class="assume">cross-check, not an override</span>
+      ${esc(st.benchmark.caveat)}</p>
+    <p class="note">Source: ${esc(st.benchmark.source)}</p>
+    ${rpm.actual == null
+      ? `<p class="note">P&amp;L actuals are auth-gated and never committed to this public
+         repo — the read on <code>mgm_pnl_actuals</code> is restricted to administrators.
+         Right now: <b>${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'not available')}</b>. The
+         <b>From drivers</b> column above is complete and unaffected; only the comparison
+         is missing.</p>`
+      : `<p class="note">Reconciled against <b>${esc((MGM.pnlActuals && MGM.pnlActuals.periodLabel) || 'the loaded P&amp;L period')}</b>.</p>`}
+  </div>
+
+  <div class="card"><h3>Revenue by year</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Avg members</th>
+        ${STREAM_KEYS.map(k => `<th class="num">${esc(L[k])}</th>`).join('')}
+        <th class="num">Total</th></tr>
+      ${R.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${fmt(r.members)}</td>
+        ${STREAM_KEYS.map(k => `<td class="num${r.streams[k] < 0 ? ' neg' : ''}">${fm$(r.streams[k])}</td>`).join('')}
+        <td class="num"><b>${fm$(r.total)}</b></td></tr>`).join('')}
+    </table>
+    <p class="note">Annualized run-rate per year on the average member count.
+      Excludes gross fuel settlement pass-through, which is ~95% of the P&amp;L's
+      Total Income and is not revenue.</p>
+  </div>
+
+  <div class="card flush"><div style="padding:18px 20px 0">${MGM.chartTitle('revenue')}</div>
+    <div style="height:280px;padding:10px 20px 20px"><canvas id="chRevenue"></canvas></div></div>
+
+  ${MGM.tabNotes('revpermember')}`;
+
+  mkChart('#chRevenue', {
+    type: 'bar',
+    data: {
+      labels: R.map(r => r.year),
+      datasets: STREAM_KEYS.map((k, i) => ({
+        label: st.labels.streams[k], data: R.map(r => r.streams[k]),
+        backgroundColor: [css('--red'), css('--amber'), css('--loss'),
+          css('--sign-green'), css('--gain'), css('--ink-soft'), css('--chip')][i]
+      }))
+    },
+    options: (() => { const o = baseOpts(); o.scales.x.stacked = true; o.scales.y.stacked = true; return o; })()
+  });
+};
+
+MGM.renderers.cost = function (D) {
+  const { st, cost: C, R } = D;
+
+  document.getElementById('panel-cost').innerHTML = `
+  <h2>${esc(st.labels.tabs.cost)}</h2>
+  <p class="sub">Acquisition and service economics. Defaults are an explicit zero —
+     nothing here is guessed.</p>
+  ${C.unset ? `<p class="note"><span class="assume">unset</span> Enter a sales
+     spend or a per-member cost below, or sign in to load the P&amp;L-derived
+     figures. Until then acquisition and service costs are zero and
+     Profit &amp; Cash Flow equals revenue.</p>` : ''}
+  <div class="signrow">
+    ${sign('CAC', C.unset ? '—' : fm$(C.cac), 'per new member')}
+    ${sign('COST TO SERVE', C.unset ? '—' : fm$(C.costToServePerMember), 'per member / yr', 'dark')}
+    ${sign('LTV', C.ltv == null ? '—' : fm$(C.ltv),
+           C.lifeYears == null ? 'churn unset' : `${fmt1(C.lifeYears)} yr member life`, 'red')}
+    ${sign('LTV / CAC', C.ltvCac == null ? '—' : fmt1(C.ltvCac) + '×',
+           C.payback == null ? 'payback n/a' : `${fmt1(C.payback)} mo payback`, 'dark')}
+  </div>
+
+  <div class="card"><h3>Inputs</h3>
+    <table>
+      <tr><td>Sales &amp; marketing spend / month</td><td class="num">
+        <input class="cell" type="number" data-k="costs.salesSpendPerMonth"
+          value="${st.costs.salesSpendPerMonth}"></td></tr>
+      <tr><td>Acquisition cost per member (overrides the derived CAC)</td><td class="num">
+        <input class="cell" type="number" data-k="costs.acquisitionPerMember"
+          value="${st.costs.acquisitionPerMember}"></td></tr>
+      <tr><td>Cost to serve per member / yr</td><td class="num">
+        <input class="cell" type="number" data-k="costs.costToServePerMember"
+          value="${st.costs.costToServePerMember}"></td></tr>
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.resetSection('costs')">Reset costs</button>
+    </div>
+    <p class="note">LTV uses the model's own steady attrition
+      (${pct1(st.attrition.steady)} → ${C.lifeYears == null ? '—' : fmt1(C.lifeYears)}
+      year average member life), not a separate assumption. Change it on the
+      Member Losses tab and LTV follows.</p>
+    <p class="note">Payback and LTV/CAC report <b>—</b> rather than infinity when
+      CAC is zero: an unset cost is not an instant payback.</p>
+  </div>
+
+  <div class="card"><h3>By year</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Months</th><th class="num">Spend</th>
+          <th class="num">New members</th><th class="num">CAC</th>
+          <th class="num">Acquisition cost</th><th class="num">Cost to serve</th>
+          <th class="num">Revenue</th></tr>
+      ${/* Em dash means "not supplied", the same rule the tiles above and the
+            cash bridge on Profit & Cash Flow follow -- this table used to mix
+            a real "$0" into the same row as its own "—" CAC. The gate is the
+            INPUT each column derives from, not the aggregate C.unset flag: a
+            cost to serve can be entered while sales spend is not, and then the
+            Spend column is genuinely unsupplied while Cost to serve is a real
+            figure. Acquisition follows the CAC it is computed from (CAC is
+            live once either sales spend or the per-member override is set), so
+            once that exists a year showing $0 because it models no adds is a
+            real zero and prints as one. Revenue is computed, never supplied,
+            so it always prints a figure. */''}
+      ${C.byYear.map(r => `<tr><td>${r.year}</td>
+        <td class="num">${r.months}</td>
+        <td class="num">${st.costs.salesSpendPerMonth ? fm$(r.spend) : '—'}</td>
+        <td class="num">${fmt1(r.adds)}</td>
+        <td class="num">${r.cac ? fm$(r.cac) : '—'}</td>
+        <td class="num">${r.cac ? fm$(r.acquisition) : '—'}</td>
+        <td class="num">${st.costs.costToServePerMember ? fm$(r.costToServe) : '—'}</td>
+        <td class="num">${fm$(r.revenue)}</td></tr>`).join('')}
+    </table>
+    <p class="note">2026 covers only the months after the as-of date, so its
+      spend is proportionally smaller.</p>
+    <p class="note"><b>—</b> means nothing has been supplied for that column,
+      not that the figure is zero. Spend follows the monthly sales spend and
+      Cost to serve follows the per-member cost, each independently; CAC and
+      Acquisition cost appear once either the sales spend or the per-member
+      acquisition override is set. So one column can show a real <b>$0</b>
+      while another is still blank.</p>
+  </div>
+
+  ${MGM.tabNotes('cost')}`;
+};
+
+MGM.renderers.staffing = function (D) {
+  const { st, capacity: K, pipeline: p } = D;
+  const reps = st.staffing.reps;
+  // Open-lead/open-location counts are live crm_leads data, gated the same
+  // way the Sales Pipeline and Fuel Gallon Production tabs gate it: a 0 here
+  // when nobody is signed in would assert "this rep has no open pipeline",
+  // which is a business fact the page cannot know yet. Keyed to the actual
+  // state (unsigned/loading/error), not a blanket "sign in" that would
+  // mislabel a mid-load or error state for a signed-in user.
+  const loadedPipe = MGM.pipelineState === 'ok';
+  const whyNotPipe = { unsigned: 'not signed in',
+                        loading:  'loading…',
+                        error:    'could not load' }[MGM.pipelineState] || 'not loaded';
+
+  document.getElementById('panel-staffing').innerHTML = `
+  <h2>${esc(st.labels.tabs.staffing)}</h2>
+  <p class="sub">Whether the modeled adds are achievable at the modeled headcount.</p>
+  ${K.unset ? `<p class="note"><span class="assume">capacity unset</span>
+     Enter a monthly capacity per rep below. A gap computed against zero capacity
+     would be meaningless, so none is shown.</p>` : ''}
+  <div class="signrow">
+    ${sign('REPS', fmt(reps.length), 'on the roster')}
+    ${sign('CAPACITY', K.unset ? '—' : fmt1(K.totalCapacity), 'new locations / mo', 'dark')}
+    ${sign('MODELED ADDS', fmt1(K.modeledAddsPerMonth), 'new locations / mo', 'red')}
+    ${sign('GAP', K.gap == null ? '—' : (K.gap > 0 ? '+' + fmt1(K.gap) : fmt1(K.gap)),
+           K.gap == null ? 'capacity unset'
+             : (K.gap > 0 ? 'short of plan' : 'capacity to spare'), 'dark')}
+  </div>
+
+  <div class="card"><h3>Roster</h3>
+    <table>
+      <tr><th>Rep</th><th class="num">Capacity (new locs/mo)</th>
+          <th class="num">Cost / yr</th><th class="num">Open leads</th>
+          <th class="num">Open locations</th></tr>
+      ${reps.map((r, i) => {
+        const o = K.byOwner[r.name] || { openLeads: 0, openLocations: 0 };
+        return `<tr>
+          <td><input class="lbl-in" type="text" data-k="staffing.reps.${i}.name" value="${esc(r.name)}">
+              ${MGM.rowTools('staffing.reps', i, reps.length)}</td>
+          <td class="num"><input class="cell" type="number" step="0.1"
+              data-k="staffing.reps.${i}.capacityLeads" value="${r.capacityLeads}"></td>
+          <td class="num"><input class="cell" type="number"
+              data-k="staffing.reps.${i}.costPerYear" value="${r.costPerYear}"></td>
+          <td class="num">${loadedPipe ? fmt(o.openLeads) : '—'}</td>
+          <td class="num">${loadedPipe ? fmt(o.openLocations) : '—'}</td></tr>`;
+      }).join('')}
+      ${/* B3, examined and judged a real defect, not a real zero. The two
+            per-rep inputs ship at 0 because capacity and cost were
+            deliberately left unset rather than guessed (the config says so),
+            and the CAPACITY tile above already prints "—" for exactly this
+            state -- so a Total reading "0.0" contradicted a tile on the same
+            screen and asserted that this roster can onboard nobody, which is
+            the business claim the tile refuses to make. Capacity follows
+            K.unset, the same flag the tile reads, so the two cannot diverge.
+            Cost has no unset flag of its own, so a zero TOTAL means every rep
+            is zero, i.e. nothing was supplied -- the same rule the cash
+            bridge applies to add-backs and capex. A roster where one rep
+            carries a real cost totals nonzero and prints the figure. The
+            per-rep cells stay as inputs showing their stored 0; an input is
+            not an assertion. */''}
+      <tr class="total"><td>Total</td>
+        <td class="num">${K.unset ? '—' : fmt1(K.totalCapacity)}</td>
+        <td class="num">${K.totalCost ? fm$(K.totalCost) : '—'}</td>
+        <td class="num">${loadedPipe ? fmt(p.openLeads) : '—'}</td>
+        <td class="num">${loadedPipe ? fmt(p.openLocations) : '—'}</td></tr>
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.addRow('staffing.reps',{name:'New rep',capacityLeads:0,costPerYear:0})">+ Add rep</button>
+      <button class="btn" onclick="MGM.resetSection('staffing')">Reset roster</button>
+    </div>
+    <p class="note">Open-lead counts come live from <code>crm_leads.owner</code>.
+      ${loadedPipe ? '' : `${esc(whyNotPipe)} — load the Sales Pipeline tab to populate them.`}
+      A name here must match the CRM owner name exactly to pair up.</p>
+  </div>
+
+  ${loadedPipe && Object.keys(K.byOwner).some(name => !reps.find(r => r.name === name))
+    ? `<div class="card"><h3>In the CRM but not on the roster</h3>
+       <table><tr><th>Owner</th><th class="num">Open leads</th></tr>
+       ${Object.entries(K.byOwner).filter(([name]) => !reps.find(r => r.name === name))
+         .map(([name, v]) => `<tr><td>${esc(name)}</td>
+           <td class="num">${fmt(v.openLeads)}</td></tr>`).join('')}</table>
+       <p class="note">These owners carry pipeline but have no capacity entry, so
+         they contribute nothing to the capacity figure.</p></div>` : ''}
+
+  ${MGM.tabNotes('staffing')}`;
+};
+
+MGM.renderers.cashflow = function (D) {
+  const { st, F, valuation: v, cost: C,
+          effectiveMargin: EM, typedMargin: TM, marginFromPnl: MFP,
+          marginBasisDetail: MBD } = D;
+  // EM is the margin the EBITDA lens actually used; TM is what the reader
+  // typed. They differ only when an admin's session has loaded a P&L actual,
+  // which never enters MGM.state (see MGM.runFor). Captions read EM/MFP;
+  // the one bound <input> below reads st.valuation.ebitdaMargin, because an
+  // input must show what it will write back.
+  // `pnlMargin` is the one phrase naming the loaded source, defined once so
+  // five captions cannot word the same provenance five ways.
+  const marginSrc = MFP ? 'margin loaded from the P&L' : 'margin assumption';
+  const last = F[F.length - 1] ||
+    { year: st.CURRENT_YEAR, ebitda: 0, revenue: 0, cash: 0, margin: 0 };
+
+  document.getElementById('panel-cashflow').innerHTML = `
+  <h2>${esc(st.labels.tabs.cashflow)}</h2>
+  <p class="sub">Revenue less cost to serve and acquisition cost, to EBITDA and cash.</p>
+  <div class="signrow">
+    ${sign('FINAL-YEAR REVENUE', fmM(last.revenue), `${last.year}`)}
+    ${sign('EBITDA', fmM(last.ebitda),
+           C.unset ? 'costs unset — equals revenue (100% margin)' : pct1(last.margin) + ' margin', 'dark')}
+    ${sign('CASH', fmM(last.cash),
+           C.unset ? 'costs unset — no cost subtracted yet' : 'after capex', 'red')}
+    ${(() => {
+      // The boldest number on the page must not defer its basis to the card
+      // below, and it must not be an average of a real method with an absent
+      // one. With costs unset the valuation declines the cash bridge and falls
+      // back to the margin branch, so at the shipped 0% margin the EBITDA lens
+      // is genuinely $0 -- and `v.mid`, which this tile used to print, was
+      // then exactly half the only lens that existed.
+      //
+      // `v.indicated` is the engine's single answer to "what should be
+      // displayed" (the midpoint at two lenses, the lens itself at one, null
+      // at none) and `v.lensCount` is the only thing the LABEL may be keyed
+      // on. Both live in the engine on purpose: the printed report, the CSV
+      // and the scenario comparison read the same two fields, so the screen
+      // and the paper cannot state different headline numbers. Reading
+      // `v.mid` anywhere outside the two-lens case reintroduces exactly that
+      // split.
+      if (v.lensCount === 0)
+        return sign('INDICATED VALUE', '—', 'no lens has a basis', 'dark');
+
+      if (v.lensCount === 1)
+        // Name the METHOD, because a single-method figure is a different kind
+        // of claim from a midpoint and must not be read as one. Which lens is
+        // live is read off the engine's own lens values, never re-derived from
+        // the input state, so this caption cannot contradict `lensCount`.
+        return sign('INDICATED VALUE', fmM(v.indicated),
+          (v.rev ? 'revenue multiple' : 'EBITDA multiple') + ', single method', 'dark');
+
+      // Two live lenses, so the midpoint is a real two-method midpoint. Branch
+      // order matters: real costs win over a margin assumption, because the
+      // override path ignores the margin entirely once it is supplied. The
+      // "no live lens" and "revenue lens only" arms this chain used to carry
+      // are gone — `lensCount` decides those cases above, and an EBITDA lens
+      // that is live here always has a nonzero `ebitdaBase` behind it.
+      // EM, not st.valuation.ebitdaMargin: a loaded actual drives the lens
+      // without being in state, so reading state here would caption
+      // "add-backs only" over a lens that is resting on a real margin.
+      const liveBasis =
+        !C.unset       ? 'EBITDA lens computed from real costs'
+        : EM != null   ? `EBITDA lens from the ${pct1(EM)} ${marginSrc}`
+        : 'EBITDA lens from add-backs only';
+      return sign('VALUATION MIDPOINT', fmM(v.indicated), liveBasis, 'dark');
+    })()}
+  </div>
+
+  <div class="card"><h3>Cash bridge</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Revenue</th><th class="num">Cost to serve</th>
+          <th class="num">Acquisition</th><th class="num">Add-backs</th>
+          <th class="num">EBITDA</th><th class="num">Margin</th>
+          <th class="num">Capex</th><th class="num">Cash</th></tr>
+      ${/* Em dash means "not supplied" in all four supplied columns. Cost to
+            serve and acquisition are only unsupplied while C.unset -- once real
+            costs exist a genuine $0 in one year is a real figure and prints as
+            $0. Add-backs and capex are direct inputs with no unset flag of their
+            own, so for them zero IS unsupplied. EBITDA, Margin and Cash are
+            computed, never supplied, so they always print a figure. */''}
+      ${F.map(r => `<tr><td>${r.year}</td>
+        <td class="num">${fm$(r.revenue)}</td>
+        <td class="num">${C.unset ? '—' : fm$(-r.costToServe)}</td>
+        <td class="num">${C.unset ? '—' : fm$(-r.acquisition)}</td>
+        <td class="num">${r.normalization ? fm$(r.normalization) : '—'}</td>
+        <td class="num ${r.ebitda < 0 ? 'neg' : ''}"><b>${fm$(r.ebitda)}</b></td>
+        <td class="num">${pct1(r.margin)}</td>
+        <td class="num">${r.capex ? fm$(-r.capex) : '—'}</td>
+        <td class="num ${r.cash < 0 ? 'neg' : ''}">${fm$(r.cash)}</td></tr>`).join('')}
+    </table>
+    ${C.unset ? `<p class="note"><span class="assume">costs unset</span>
+      EBITDA equals revenue because acquisition and service costs are still zero.
+      Set them on the Cost to Acquire &amp; Serve tab.</p>` : ''}
+  </div>
+
+  <div class="card"><h3>Assumptions</h3>
+    <table>
+      <tr><td>Capex / yr</td><td class="num"><input class="cell" type="number"
+        data-k="cashflow.capexPerYear" value="${st.cashflow.capexPerYear}"></td></tr>
+      <tr><td>Working capital days</td><td class="num"><input class="cell" type="number"
+        data-k="cashflow.workingCapitalDays" value="${st.cashflow.workingCapitalDays}"></td></tr>
+      <tr><td>EBITDA normalization add-backs</td><td class="num"><input class="cell" type="number"
+        step="1000" data-k="valuation.ebitdaNormalization"
+        value="${st.valuation.ebitdaNormalization}">${MGM.editedMark('valuation.ebitdaNormalization')}</td></tr>
+    </table>
+    <p class="note">Add-backs are explicit and attributable.
+      ${(() => {
+        // PROVENANCE, not value. valuation.ebitdaMargin is an assumption input
+        // -- it is labelled "used only when costs are unset" on the Valuation
+        // card -- so its value can never establish that a P&L reported it. A 0
+        // there means "nothing supplied", not "the margin is zero", and calling
+        // it "the P&L's actual net margin" invented a financial fact about a
+        // real company on a page served from a public repo.
+        // MGM.pnlActuals is the auth-gated load (Task 16) and is null until an
+        // administrator signs in, so it is the only thing here that can tell a
+        // reported figure from a typed one. It may not exist at all yet, hence
+        // every read below is guarded; absent, this degrades to "nothing is
+        // loaded", which is the truth.
+        const a = MGM.pnlActuals || null;
+        // The reported figures come from the LOADER's own reads of the row
+        // (MGM.loadedMarginPct / MGM.loadedNetMarginPct, surfaced by
+        // MGM.runFor), not from a shape guessed at here. The previous version
+        // did `(a && a.totals) || a` and hunted for a margin on it -- but
+        // MGM.loadPnlActuals builds MGM.pnlActuals as
+        // {periodLabel, totalPerMemberYr, streams}, with no `totals` key at
+        // all, so that lookup always missed and the "a margin IS reported" arm
+        // below was unreachable. One reader of the row, in the loader.
+        //
+        // The NAME still travels with the figure: an EBITDA margin is not a
+        // net margin, and only the EBITDA one is ever applied to the lens.
+        const reportedE = D.loadedMarginPct;
+        const reportedN = D.loadedNetMarginPct;
+        const entered = TM;                       // what the reader typed
+        const period = (a && a.periodLabel) ? ` (${esc(a.periodLabel)})` : '';
+
+        // Where the figure came from. Each arm claims provenance ONLY. The
+        // page CAN now tell a loaded figure from a typed one -- the loaded one
+        // lives on MGM, outside the state a typed one writes to -- so the old
+        // "this page cannot tell which" arm is gone. It was true only while
+        // the loader wrote into valuation.ebitdaMargin, which it no longer
+        // does, and leaving it would have been a false disclaimer.
+        const names = [];
+        if (reportedE != null) names.push(`EBITDA margin <b>${pct1(reportedE)}</b>`);
+        if (reportedN != null) names.push(`net margin <b>${pct1(reportedN)}</b>`);
+
+        const prov =
+          names.length
+            ? `The P&amp;L${period} reports ${names.join(' and ')}.` +
+              (entered
+                ? ` The <b>${pct1(entered)}</b> on the Valuation card was entered by hand
+                    and overrides ${names.length > 1 ? 'the EBITDA figure' : 'it'}.`
+                : (reportedE != null
+                    ? ` The EBITDA figure is driving the lens for this session only — it is
+                        not stored in this page's state, so it cannot reach a saved scenario
+                        or an export.`
+                    : ` A net margin is not an EBITDA margin, so it is reported here and
+                        applied to nothing.`))
+          : !a
+            ? (entered
+                ? `No P&amp;L actual is loaded; the <b>${pct1(entered)}</b> margin on the
+                   Valuation card is an entered assumption, not a reported figure.`
+                : `No P&amp;L actual is loaded and no margin assumption is entered.`)
+            : (entered
+                ? `The loaded P&amp;L${period} reports no margin figure of its own, so the
+                   <b>${pct1(entered)}</b> margin on the Valuation card is an entered
+                   assumption.`
+                : `The loaded P&amp;L${period} reports no margin figure and none is entered.`);
+
+        // What the lens is resting on RIGHT NOW. Kept separate from provenance
+        // because the two are independent: with real costs entered the margin is
+        // not in use at all, so a note that says "the EBITDA lens has no basis"
+        // because no margin was supplied would contradict the tile above it,
+        // which correctly reads "computed from real costs".
+        //
+        // EM, not `entered`: a loaded actual gives the lens a real basis
+        // without ever being typed, and saying "no basis" over it is exactly
+        // the label overclaim this change could otherwise have introduced.
+        const lens = !C.unset
+          ? ' The EBITDA lens is not using a margin at all: real costs are entered, so it is computed from them.'
+          : EM != null ? ''
+          : v.ebitdaBase
+            ? ` The EBITDA lens is resting on the ${fm$(v.ebitdaBase)} of add-backs alone.`
+            : ' The EBITDA lens has no basis.';
+
+        // Only offer an action that would change something. With EM already in
+        // force there is nothing to fix, so no hint at all. And no "sign in" to
+        // someone who has: the reason comes from MGM.pnlWhy().
+        const hint = (C.unset && EM == null)
+          ? (a
+              ? ' Enter a margin on the Valuation card to give the EBITDA lens a basis.'
+              : ` Enter a margin on the Valuation card to give the EBITDA lens a basis, or load the P&amp;L figure — ${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'it is not available')}.`)
+          : '';
+
+        // The basis caveat that travelled with the loaded figure. Only an
+        // admin's session can hold it, so rendering it discloses nothing a
+        // non-admin is not already denied.
+        const basis = (MFP && MBD)
+          ? ` <span class="assume">basis</span> ${esc(MBD)}`
+          : '';
+
+        return prov + lens + hint + basis;
+      })()}
+      If you are arguing for a normalized figure, enter it as an add-back above so
+      a reader can see the adjustment rather than finding it baked into a margin.</p>
+    <p class="note"><span class="assume">${esc(st.valuation.marginBasis)}</span>
+      ${esc(st.valuation.marginBasisNote)}</p>
+  </div>
+
+  <div class="card"><h3>Valuation</h3>
+    <table>
+      <tr><th>Lens</th><th class="num">Basis</th><th class="num">Multiple</th><th class="num">Value</th></tr>
+      <tr><td>Recurring revenue</td><td class="num">${fm$(v.basis)}</td>
+        <td class="num"><input class="cell" type="number" step="0.1" data-k="valuation.revMultiple"
+          value="${st.valuation.revMultiple}">×</td>
+        <td class="num"><b>${fmM(v.rev)}</b></td></tr>
+      <tr><td>EBITDA${C.unset
+        ? (EM != null
+            ? ` (at ${pct1(EM)} ${MFP ? 'margin, loaded from the P&amp;L' : 'margin'})`
+            : (v.ebitdaBase
+                ? ' (add-backs only — costs unset and no margin set)'
+                : ' (no basis — costs unset and no margin set)'))
+        : ' (computed from real costs)'}</td>
+        <td class="num">${fm$(v.ebitdaBase)}</td>
+        <td class="num"><input class="cell" type="number" step="0.5" data-k="valuation.ebitdaMultiple"
+          value="${st.valuation.ebitdaMultiple}">×</td>
+        <td class="num"><b>${fmM(v.ebitda)}</b></td></tr>
+      ${(() => {
+        // A lens with no basis values at $0.00M, and printing that as the low
+        // bound of a row labelled "Indicated range" reads as a genuine floor of
+        // zero rather than as a lens that was never supplied. So this row keys
+        // off `v.lensCount` -- the SAME engine field the headline tile reads --
+        // rather than recomputing "which lenses are live" from v.rev / v.ebitda
+        // here. Two independent derivations of the same condition is how a card
+        // and a tile drift into disagreeing.
+        //
+        // The one-lens arm no longer prints "(midpoint $X)" beside the figure.
+        // It is the number the owner's decision exists to stop publishing --
+        // half of the only method that has a basis -- and standing it next to
+        // the single-method figure republishes it under the one label that
+        // makes it look authoritative. Which lens is live is still named.
+        if (v.lensCount === 2)
+          return `<tr class="total"><td colspan="3">Indicated range (midpoint)</td>
+            <td class="num">${fmM(v.low)} – ${fmM(v.high)} (${fmM(v.indicated)})</td></tr>`;
+        if (v.lensCount === 1)
+          return `<tr class="total"><td colspan="3">Indicated value — single method
+              (one live lens: ${v.rev ? 'revenue' : 'EBITDA'})</td>
+            <td class="num">${fmM(v.indicated)}</td></tr>`;
+        return `<tr class="total"><td colspan="3">No live lens — no indicated range</td>
+          <td class="num">—</td></tr>`;
+      })()}
+    </table>
+    <table style="margin-top:12px">
+      <tr><td>EBITDA margin % (used only when costs are unset)
+        ${MFP ? `<br><span class="note">Blank, and that is correct: the
+          ${pct1(EM)} the lens is using came from the P&amp;L this session and is
+          deliberately <b>not</b> stored in this page's state, so it is never
+          written to a saved scenario or an export. Typing a value here
+          overrides it.</span>` : ''}</td><td class="num">
+        <!-- The bound input shows the TYPED value, never the effective one.
+             Rendering a loaded figure into a data-k input would make the next
+             keystroke write it into MGM.state, which is the leak this whole
+             arrangement exists to prevent. -->
+        <input class="cell" type="number" step="0.1" data-k="valuation.ebitdaMargin"
+          value="${st.valuation.ebitdaMargin}">${MGM.editedMark('valuation.ebitdaMargin')}</td></tr>
+    </table>
+    <!-- No multiple is quoted here, deliberately. This repo is public and the
+         model's revenue total is committed in it, so a multiple printed beside
+         that total back-solves the gated P&L figure it is a multiple of. The
+         same sentence in membershipModel.js was rewritten for the same
+         reason; this is the third instance of the shape found on this branch. -->
+    <p class="note"><b>Both lenses apply to the model's own revenue total</b> —
+      net per-member streams. Never to the P&amp;L's Total Income, which is ~95%
+      gross settlement pass-through; using that as the basis would overstate it
+      substantially. The figures behind that comparison live in
+      <code>mgm_pnl_actuals</code> and are available to administrators only.</p>
+    <p class="note">${C.unset
+      ? (EM != null
+          ? `The EBITDA lens is using the ${pct1(EM)} ${marginSrc}${
+              MFP ? ' for this session only' : ''}. Enter real costs on Cost to Acquire &amp; Serve and it switches to the computed EBITDA above.`
+          // "Sign in to load the P&L figure" was wrong advice for the most
+          // likely reader: the P&L read is admin-only, so a signed-in
+          // non-admin has already signed in and signing in again will never
+          // help. Same reason-driven wording as the reconciliation tile.
+          : (v.ebitdaBase
+              ? `No EBITDA margin is set and no costs are entered, so the EBITDA lens rests on the ${fm$(v.ebitdaBase)} of add-backs alone. Type a margin below. The real margin could come from the P&amp;L instead, but that read is admin-gated and is deliberately not shipped in this repo — right now, ${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'it is not available')}.`
+              : `No EBITDA margin is set, no costs are entered and there are no add-backs, so the EBITDA lens reads zero. Type a margin below. The real margin could come from the P&amp;L instead, but that read is admin-gated and is deliberately not shipped in this repo — right now, ${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'it is not available')}.`))
+      : 'The EBITDA lens is using the computed EBITDA from the cash bridge, not the margin assumption.'}</p>
+    <div class="mgm-editonly"><button class="btn"
+      onclick="MGM.resetSection('valuation')">Reset valuation</button></div>
+  </div>
+
+  ${MGM.tabNotes('cashflow')}`;
+};
+
+/* ═══════════════ TAB RENDERER: Historical Data (Task 13) ═══════════════ */
+
+// A year's monthly series has to be twelve cells. Nothing in the UI can
+// produce anything else today, but `monthlyHistory` is reachable by a `data-k`
+// write and by scenario load, and `row.map` / `row.reduce` on a non-array
+// throws — which MGM.refresh's catch turns into a blank tab, taking the annual
+// table and both charts down with the one bad year.
+//
+// So normalize, and PAD rather than skip: a padded row still renders twelve
+// bound inputs, so the reader sees the damage and can repair it in place (the
+// first cell write makes setPath replace the bad container with a real array).
+// Skipping would hide the corrupted year entirely and leave no route back to
+// it. Padding is with `null`, never 0 — an absent month is not a zero month,
+// and `rowTotal` below keeps it out of the total.
+const MH_MONTHS = 12;
+MGM.monthlyRow = function (raw) {
+  const arr = Array.isArray(raw) ? raw : [];
+  const cells = [];
+  for (let i = 0; i < MH_MONTHS; i++) cells.push(arr[i] == null ? null : arr[i]);
+  return { cells,
+           ok: Array.isArray(raw) && raw.length === MH_MONTHS,
+           extra: Math.max(0, arr.length - MH_MONTHS) };
+};
+
+// "2010, 2011, … 2018" compresses to "2010–2018" only when the run really is
+// unbroken; a gap has to print as a list, or the note claims years it does not
+// cover.
+MGM.yearSpan = function (ys) {
+  if (!ys.length) return '';
+  if (ys.length === 1) return String(ys[0]);     // not "2016–2016"
+  return (ys[ys.length - 1] - ys[0] === ys.length - 1)
+    ? `${ys[0]}–${ys[ys.length - 1]}` : ys.join(', ');
+};
+
+MGM.renderers.historical = function (D) {
+  const { st } = D;
+  const d = MM.derivedAttrition(st.history);
+  const mh = st.monthlyHistory || {};
+  // A non-numeric key cannot be reached from this tab's inputs, but a scenario
+  // could carry one, and `String(NaN).slice(2)` would label a chart column "N".
+  const years = Object.keys(mh).map(Number)
+    .filter(y => Number.isFinite(y)).sort((a, b) => a - b);
+  const badKeys = Object.keys(mh).filter(k => !Number.isFinite(Number(k)));
+  const rows = {};                      // year -> normalized twelve-cell row
+  years.forEach(y => { rows[y] = MGM.monthlyRow(mh[y]); });
+  const malformed = years.filter(y => !rows[y].ok);
+
+  // A prior count of 0 is a reachable edit — the column is a plain number
+  // input — and `100 * lost / 0` is Infinity, which pct1 prints verbatim as
+  // "Infinity%". Not derivable is not a rate.
+  const rateCell = v => (v == null || !isFinite(v)) ? '—' : pct1(v);
+  // There is deliberately no `brokenRate` flag any more. It tested
+  // `d.rows.some(r => !isFinite(r.rate))`, which derivedAttrition's
+  // `prev.count > 0` guard made permanently false -- zero-count years are
+  // excluded from `rows` rather than emitted with an infinite rate. The
+  // sentence it gated told the reader those rows "read as em dashes", and
+  // they do not appear at all, so it was a false statement that happened to
+  // be unreachable. rateCell's own !isFinite arm stays as formatting-layer
+  // defence in depth if that engine guard is ever relaxed.
+
+  // derivedAttrition averages `rows.slice(-3)`, so with one or two derivable
+  // years the figure is an average of one or two — "Three-year average" over
+  // it would claim a span the number does not have.
+  const avgSpan = Math.min(d.rows.length, 3);
+  const avgLabel = (avgSpan >= 3 || avgSpan === 0) ? 'Three-year average'
+    : avgSpan === 1 ? 'Average of the single derivable year'
+    : 'Average of the two derivable years';
+
+  // An all-cleared row sums to 0 under `+v||0`, and "0" there asserts a year
+  // with no signups where the truth is a year with nothing entered.
+  const rowTotal = cells => cells.some(v => v != null)
+    ? fmt(cells.reduce((a, v) => a + (+v || 0), 0)) : '—';
+
+  // The brief's note asserted "each year's monthly total equals its New column
+  // (2023 → 38, …)". True of the shipped data — verified — but both series are
+  // editable, so a hardcoded figure goes stale on the first edit, and
+  // `monthlyHistory` spans 2010–2026 while `history` starts at 2019, so nine of
+  // the seventeen rows have no annual row to reconcile against at all.
+  // Reconcile live, and name the span the claim actually covers.
+  const annual = {};
+  st.history.forEach(h => { if (h && h.year != null) annual[h.year] = h; });
+  // `tot` is null, not 0, for a year with no month supplied — otherwise the
+  // mismatch line would print "monthly 0 vs New 19" beside a row total that
+  // correctly reads as an em dash, two different claims about one row.
+  const recon = years.filter(y => annual[y] && annual[y].newR != null).map(y => ({
+    y, newR: +annual[y].newR,
+    tot: rows[y].cells.some(v => v != null)
+      ? rows[y].cells.reduce((a, v) => a + (+v || 0), 0) : null
+  }));
+  const offBy = recon.filter(r => r.tot !== r.newR);
+  const monthlyOnly = years.filter(y => !(annual[y] && annual[y].newR != null));
+
+  // The partial-year marker follows the as-of date rather than hardcoding
+  // "2026 / Jan–Oct", which would mislabel the row the day either changes.
+  const asOf = `Jan–${MONTH_NAMES[Math.min(11, Math.max(0, st.ASOF_MONTH - 1))]}`;
+  const lastYear = st.history.reduce(
+    (a, h) => (h && h.year != null && h.year > a ? h.year : a), st.CURRENT_YEAR);
+
+  document.getElementById('panel-historical').innerHTML = `
+  <h2>${esc(st.labels.tabs.historical)}</h2>
+  <p class="sub">Source data feeding New Additions, Member Losses and Revenue per
+     Member. Roady's + Roady's Lite only — PTPC and COO excluded throughout.</p>
+
+  <div class="card"><h3>Annual signups and losses</h3>
+    <table>
+      <tr><th>Year</th><th class="num">New (Roady's)</th><th class="num">Lost</th>
+          <th class="num">Total count</th><th></th></tr>
+      ${st.history.map((h, i) => `<tr>
+        <td><input class="cell" type="number" data-k="history.${i}.year"
+            value="${h.year == null ? '' : h.year}">
+            ${h.year === st.CURRENT_YEAR ? ` <span class="note">${asOf}</span>` : ''}</td>
+        <td class="num"><input class="cell" type="number" data-k="history.${i}.newR"
+            value="${h.newR == null ? '' : h.newR}">${MGM.editedMark(`history.${i}.newR`)}</td>
+        <td class="num"><input class="cell" type="number" data-k="history.${i}.lost"
+            value="${h.lost == null ? '' : h.lost}">${MGM.editedMark(`history.${i}.lost`)}</td>
+        <td class="num"><input class="cell" type="number" data-k="history.${i}.count"
+            value="${h.count == null ? '' : h.count}">${MGM.editedMark(`history.${i}.count`)}</td>
+        <td>${MGM.rowTools('history', i, st.history.length)}</td></tr>`).join('')}
+      ${st.history.length ? '' : `<tr><td colspan="5" class="note">No annual rows
+        entered. Add one below, or reset the section to the shipped series.</td></tr>`}
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.addRow('history',{year:${lastYear + 1},newR:0,lost:null,count:null})">+ Add year</button>
+      <button class="btn" onclick="MGM.resetSection('history')">Reset history</button>
+    </div>
+    <p class="note">The shipped series was verified against
+      <code>Historical member signups.xlsx</code> row by row: 2025's 25 is 20
+      Roady's + 5 Roady's Lite, 2026's 32 is 30 + 2. An
+      <span class="edited">edited</span> badge means that cell no longer carries
+      the verified figure.</p>
+  </div>
+
+  <div class="card"><h3>Derived attrition</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Lost</th><th class="num">Prior count</th><th class="num">Rate</th></tr>
+      ${d.rows.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.lost)}</td>
+        <td class="num">${fmt(r.base)}</td><td class="num">${rateCell(r.rate)}</td></tr>`).join('')}
+      ${d.rows.length ? '' : `<tr><td colspan="4" class="note">No year has both a
+        loss figure and a prior-year count, so no rate can be derived.</td></tr>`}
+      <!-- derivedAttrition returns avg:0, NOT null, when no year has both a
+           loss and a prior-year count — so pct1's null guard never fires and
+           this read "0.0%", asserting that members never leave. Every value
+           feeding it is user-editable, so an empty count column is reachable. -->
+      <tr class="total"><td colspan="3">${avgLabel}</td>
+        <td class="num"><b>${d.rows.length ? rateCell(d.avg) : '—'}</b></td></tr>
+    </table>
+    <p class="note">Rate is lost ÷ prior-year count, for every year where both are
+      known. ${d.rows.length
+      ? `This table is a cross-check, not an input: nothing in the engine reads it.
+         The model runs on the <b>Steady annual attrition</b> field on Member Losses
+         (${pct1(st.attrition.steady)}), an independent value seeded from this
+         average by hand. Editing history moves this table and the Member Losses
+         decomposition immediately; it does not move the modelled rate.`
+      : `<b>No year currently has both a loss figure and a prior-year count, so no
+         rate can be derived.</b> Nothing downstream breaks — the engine never read
+         this figure. The model runs on the <b>Steady annual attrition</b> field on
+         Member Losses (${pct1(st.attrition.steady)}), which is entered by hand and
+         is unaffected either way.`}</p>
+  </div>
+
+  <div class="card"><h3>Monthly signups${years.length
+      ? `, ${MGM.yearSpan(years)}` : ''}</h3>
+    ${!years.length ? '<p class="note">No monthly series loaded.</p>' : `
+    <div style="overflow-x:auto">
+    <table>
+      <tr><th>Year</th>${MONTH_NAMES.map(m => `<th class="num">${m}</th>`).join('')}
+        <th class="num">Total</th></tr>
+      ${years.map(y => `<tr><td>${y}${rows[y].ok ? ''
+        : ' <span class="ovr">malformed</span>'}</td>
+        ${rows[y].cells.map((v, i) => `<td class="num"><input class="cell" type="number"
+          data-k="monthlyHistory.${y}.${i}" value="${v == null ? '' : v}"></td>`).join('')}
+        <td class="num"><b>${rowTotal(rows[y].cells)}</b></td></tr>`).join('')}
+    </table></div>
+    ${malformed.length ? `<p class="note neg"><b>${malformed.length} year
+      row${malformed.length === 1 ? '' : 's'} (${MGM.yearSpan(malformed)})
+      ${malformed.length === 1 ? 'is' : 'are'} not a twelve-month array.</b> Shown
+      padded to twelve cells so the row can be repaired in place; blank cells are
+      missing months, not zero months${malformed.some(y => rows[y].extra)
+        ? ', and values past December are not displayed' : ''}.</p>` : ''}
+    `}
+    ${badKeys.length ? `<p class="note neg"><b>${badKeys.length} monthlyHistory
+      key${badKeys.length === 1 ? ' is' : 's are'} not a year
+      (${badKeys.map(k => esc(k)).join(', ')})</b> — not shown in the grid above
+      and not charted. Dropping a key silently would hide signups; fix it in the
+      scenario or the config.</p>` : ''}
+    <p class="note">${!recon.length
+      ? '<b>No year appears in both tables</b>, so no monthly total can be reconciled against an annual New column.'
+      : offBy.length
+        ? `<b>${offBy.length} year${offBy.length === 1 ? '' : 's'} no longer
+           reconcile${offBy.length === 1 ? 's' : ''} against the annual table:</b>
+           ${offBy.map(r => `${r.y} (${r.tot == null ? 'no month entered'
+             : 'monthly ' + fmt(r.tot)} vs New ${fmt(r.newR)})`).join(', ')}.
+           Both series are editable, so one of the two has been changed.`
+        : recon.length === 1
+          ? `The one year appearing in both tables (${recon[0].y}) reconciles: its
+             monthly total equals its New column.`
+          : `All ${recon.length} years appearing in both tables reconcile
+             (${MGM.yearSpan(recon.map(r => r.y))}): each year's monthly total
+             equals its New column.`}${monthlyOnly.length
+      ? ` ${MGM.yearSpan(monthlyOnly)} ${monthlyOnly.length === 1 ? 'is' : 'are'}
+          monthly-only — there is no annual row to reconcile
+          ${monthlyOnly.length === 1 ? 'it' : 'them'} against.` : ''}</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card flush"><div style="padding:18px 20px 0">${MGM.chartTitle('history')}</div>
+      ${st.history.length
+        ? '<div style="height:260px;padding:10px 20px 20px"><canvas id="chHistory"></canvas></div>'
+        : '<p class="note" style="padding:10px 20px 20px">No annual rows entered — nothing to chart.</p>'}</div>
+    <div class="card flush"><div style="padding:18px 20px 0">
+      ${MGM.chartTitle('monthly')}</div>
+      ${years.length
+        ? '<div style="height:260px;padding:10px 20px 20px"><canvas id="chMonthly"></canvas></div>'
+        : '<p class="note" style="padding:10px 20px 20px">No monthly series loaded — nothing to chart.</p>'}
+      <!-- The four examples are the ones the source series documents as batch
+           deals, not simply the four largest cells: 2013-12's 34 is the second
+           largest month in the shipped data and is NOT documented as a group
+           signing, so naming it here would attribute a cause the source does
+           not state. Member company names stay out of this public repo. -->
+      <p class="note" style="padding:0 20px 18px">Spikes are batch deals, not
+        seasonality: in the shipped series 2013-05 = 61, 2017-09 = 18,
+        2024-09 = 22 and 2026-06 = 19 are each one multi-location group signing
+        at once, not a seasonal peak that repeats.</p></div>
+  </div>
+
+  ${MGM.tabNotes('historical')}`;
+
+  // Draw only where a canvas was actually rendered: mkChart hands $(id)
+  // straight to Chart, and `new Chart(null, …)` throws into MGM.refresh's
+  // catch — blanking the very tab that just explained why there is no chart.
+  if (st.history.length) MGM.drawHistory(st);
+  if (years.length) MGM.drawMonthlyHistory(st);
+};
+
+MGM.drawHistory = function (st) {
+  const h = st.history;
+  mkChart('#chHistory', {
+    type: 'bar',
+    data: { labels: h.map(x => x.year), datasets: [
+      // null, not 0: a year with no figure entered has to be a gap in the
+      // series, not a bar sitting on the axis.
+      { label: "New signups (Roady's)", data: h.map(x => x.newR == null ? null : x.newR),
+        backgroundColor: css('--gain') },
+      { label: 'Lost', data: h.map(x => x.lost == null ? null : -x.lost),
+        backgroundColor: css('--loss') }
+    ]},
+    options: (() => { const o = baseOpts(); o.scales.x.stacked = true; o.scales.y.stacked = true; return o; })()
+  });
+};
+
+MGM.drawMonthlyHistory = function (st) {
+  const mh = st.monthlyHistory || {};
+  const years = Object.keys(mh).map(Number)
+    .filter(y => Number.isFinite(y)).sort((a, b) => a - b);
+  const labels = [], data = [];
+  // Same normalization as the grid, for the same reason: a row that is not an
+  // array would throw here instead, and the chart has to plot exactly the
+  // twelve cells the grid shows.
+  years.forEach(y => MGM.monthlyRow(mh[y]).cells.forEach((v, i) => {
+    labels.push(`${MONTH_NAMES[i]} ${String(y).slice(2)}`);
+    data.push(v == null ? null : v);
+  }));
+  mkChart('#chMonthly', {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'New signups', data, backgroundColor: css('--gain') }] },
+    options: baseOpts()
+  });
 };
 
 /* ═══════════════ BINDING (Task 8) ═══════════════ */
@@ -1053,6 +2159,33 @@ MGM.useGallonsInModel = function (perMember) {
 // scenarios, Supabase sync and JSON export all follow for free.
 MGM.bindAll = function (root) {
   root = root || document;
+
+  // A non-admin gets no write listeners at all. The server would refuse the
+  // write anyway (the RLS write policies are the real boundary), but a field
+  // that accepts a keystroke and then silently fails to persist is the same
+  // "looks saved, wasn't" defect MGM.bindWrite's refusal machinery exists to
+  // prevent. applyWriteFailures still runs, so a refusal raised before the
+  // mode changed stays visible; then we return, which costs a read-only
+  // visitor nothing -- tab switching, print and export are inline handlers
+  // elsewhere, not bound here.
+  const ro = !MGM.canEdit();
+  root.querySelectorAll('[data-k],[data-k-text]').forEach(el => {
+    if ('disabled' in el) el.disabled = ro;
+    el.classList.toggle('read-only', ro);
+  });
+  if (ro) {
+    // The prose textareas carry no `value` attribute in their markup -- the
+    // binding pass below is what fills them from state. Returning before that
+    // would show a read-only viewer EMPTY notes on every tab and print an
+    // empty Notes block into their report, which reads as "no assumptions
+    // were recorded" rather than "you may not edit them". So hydrate first,
+    // then return without attaching listeners.
+    root.querySelectorAll('[data-k-text]').forEach(el => {
+      el.value = MM.getPath(MGM.state, el.dataset.kText) || '';
+    });
+    MGM.applyWriteFailures(root);
+    return;
+  }
 
   root.querySelectorAll('[data-k]').forEach(el => {
     if (el.dataset.mgmBound) return;
@@ -1138,6 +2271,7 @@ MGM.applyWriteFailures = function (root) {
 };
 
 MGM.addRow = function (listPath, template) {
+  if (!MGM.requireAdmin('Adding a row')) return;
   const list = MM.getPath(MGM.state, listPath) || [];
   list.push(JSON.parse(JSON.stringify(template)));
   MM.setPath(MGM.state, listPath, list);
@@ -1145,11 +2279,13 @@ MGM.addRow = function (listPath, template) {
 };
 
 MGM.removeRow = function (listPath, i) {
+  if (!MGM.requireAdmin('Removing a row')) return;
   (MM.getPath(MGM.state, listPath) || []).splice(i, 1);
   MGM.save(); MGM.refresh();
 };
 
 MGM.moveRow = function (listPath, i, delta) {
+  if (!MGM.requireAdmin('Reordering rows')) return;
   const list = MM.getPath(MGM.state, listPath) || [];
   const j = i + delta;
   if (j < 0 || j >= list.length) return;
@@ -1211,6 +2347,7 @@ MGM.editedMark = function (path) {
 };
 
 MGM.resetSection = function (path) {
+  if (!MGM.requireAdmin('Resetting a section')) return;
   const dflt = MM.getPath(MGM_CONFIG, path);
   if (dflt === undefined) return;
   MM.setPath(MGM.state, path, JSON.parse(JSON.stringify(dflt)));
@@ -1218,6 +2355,7 @@ MGM.resetSection = function (path) {
 };
 
 MGM.resetAll = function () {
+  if (!MGM.requireAdmin('Resetting every value')) return;
   if (!confirm('Reset every value and label to the shipped defaults?')) return;
   MGM.state = MM.defaultState(MGM_CONFIG);
   MGM.save(); MGM.refresh();
@@ -1228,6 +2366,13 @@ MGM.resetAll = function () {
 // and always off for print so the report shows values, not form controls.
 MGM.editMode = false;
 MGM.toggleEdit = function () {
+  // The UI gate is NOT the security boundary -- the RLS write policies on
+  // mgm_scenarios / mgm_pnl_actuals are, and they hold against a console
+  // user who sets MGM.isAdmin = true. This exists so the tool does not invite
+  // an edit the server will then refuse, and so a read-only viewer is told
+  // plainly that they are one. A disabled control with a stated reason beats
+  // a missing one, so the button stays and explains itself.
+  if (!MGM.requireAdmin('Editing')) return;
   MGM.editMode = !MGM.editMode;
   document.body.classList.toggle('mgm-edit', MGM.editMode);
   document.getElementById('editBtn').textContent =
@@ -1237,6 +2382,751 @@ MGM.toggleEdit = function () {
 window.addEventListener('beforeprint', () => document.body.classList.remove('mgm-edit'));
 window.addEventListener('afterprint', () =>
   document.body.classList.toggle('mgm-edit', MGM.editMode));
+
+/* ═══════════════ SIGN-IN, ADMIN STATUS, CLOUD SYNC (Tasks 16 / 19) ═══════════════ */
+
+// Never construct a client here. roadysBD.js owns the one client whose session
+// the RLS policies recognise; a second client would carry no session and every
+// query would 403. (Same note as CRM.html and bus-dev-potential-gallons.)
+MGM.sb = function () {
+  try { return (window.RoadysBD && RoadysBD.auth.client()) || null; }
+  catch (e) { return null; }
+};
+
+MGM.authEmail = function () {
+  try { return (window.RoadysBD && RoadysBD.auth.email()) || ''; }
+  catch (e) { return ''; }
+};
+
+// Ported from bus-dev-potential-gallons/index.html:8700-8732 so all four pages
+// present the same gate. Sign-ups are disabled in the Supabase dashboard, so
+// the account list IS the allowlist -- deliberately no sign-up affordance.
+// Unlike BDPG this is an ACTION, not a boot gate: the tool stays fully usable
+// unsigned (view, print, export), so nothing is hidden behind it.
+function bdShowLoginGate(onReady) {
+  RoadysBD.auth.init().then(function (session) {
+    if (session) { onReady(); return; }
+    var ov = document.createElement('div');
+    ov.className = 'pin-overlay';
+    ov.innerHTML =
+      '<div class="pin-box">' +
+      '<h3>🔒 Sign in</h3>' +
+      '<p>Membership Growth Model — Roady\'s</p>' +
+      '<input type="email" class="pin-input bd-email" placeholder="email" autocomplete="username"/>' +
+      '<input type="password" class="pin-input bd-pw" placeholder="password" autocomplete="current-password"/>' +
+      '<div class="pin-err"></div>' +
+      '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center">' +
+      '<button class="btn" data-mgm-cancel>Cancel</button>' +
+      '<button class="btn primary bd-go">Sign in</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var em = ov.querySelector('.bd-email'), pw = ov.querySelector('.bd-pw'),
+        err = ov.querySelector('.pin-err'), go = ov.querySelector('.bd-go'),
+        cancel = ov.querySelector('[data-mgm-cancel]');
+    var submit = function () {
+      err.textContent = '';
+      go.disabled = true; go.textContent = 'Signing in…';
+      RoadysBD.auth.signIn(em.value.trim(), pw.value).then(function (r) {
+        go.disabled = false; go.textContent = 'Sign in';
+        if (!r.ok) { err.textContent = r.error || 'Sign-in failed'; pw.value = ''; pw.focus(); return; }
+        ov.remove();
+        onReady();
+      });
+    };
+    go.onclick = submit;
+    // BDPG's gate has no Cancel because the page is unusable without a
+    // session. This one is dismissable: everything except cloud sync and the
+    // P&L reconciliation works signed out, so trapping the reader behind an
+    // overlay they do not need would be the wrong trade.
+    if (cancel) cancel.onclick = function () { ov.remove(); };
+    [em, pw].forEach(function (i) {
+      i.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+    });
+    setTimeout(function () { em.focus(); }, 50);
+  });
+}
+
+// Resolve admin status SERVER-side. Do NOT reimplement this as a client query:
+// a `.ilike('email', email)` would make the user's own address a SQL pattern
+// (PostgREST passes the value through as a LIKE pattern, so `_`, `%` and -- via
+// PostgREST's own `*` translation -- `*` are all wildcards), and a second
+// implementation of a security predicate can disagree with the first. The RPC
+// is SECURITY DEFINER, pins search_path, reads auth.jwt()->>'email' (which the
+// client cannot forge), and is the IDENTICAL predicate the RLS write policies
+// on mgm_scenarios / mgm_pnl_actuals evaluate.
+MGM.adminError = '';
+MGM.loadAdminStatus = async function () {
+  const sb = MGM.sb();
+  const email = MGM.authEmail();
+  MGM.adminError = '';
+  // No client and no session: anonymous, which is "not determined", not "not
+  // an admin" -- the bar wording differs between the two.
+  if (!sb || !email) { MGM.isAdmin = null; return; }
+  try {
+    const { data, error } = await sb.rpc('mgm_is_admin');
+    // A query error counts as NOT admin -- failing closed, because the
+    // alternative is granting edit rights on a network hiccup. The reason is
+    // kept separately so the bar can say "could not be confirmed" instead of
+    // asserting the roster does not list them, which would be a different
+    // claim and might be false.
+    if (error) { MGM.isAdmin = false; MGM.adminError = error.message || String(error); return; }
+    // `data === true`, never a truthy test: mgm_is_admin() RETURNS boolean, so
+    // a scalar-returning RPC lands the value directly in `data` (same shape as
+    // aggregator-planner.html's get_optin_token, which uses `data` as the
+    // scalar). A `"f"` or a `0` must not pass.
+    MGM.isAdmin = (data === true);
+  } catch (e) {
+    MGM.isAdmin = false;
+    MGM.adminError = e.message || String(e);
+  }
+};
+
+// ── The auth / permission bar ─────────────────────────────────────────────
+// One function renders the whole #authBar, because the account identity and
+// the permission level are one sentence to the reader and two functions
+// writing the same element would race. Every state is named in WORDS: a bar
+// that implies a mode instead of stating it is how a user ends up misreading
+// their own permissions.
+MGM.renderAuth = function () {
+  const email = MGM.authEmail();
+  const admin = MGM.canEdit();
+
+  // The ONLY place body.mgm-admin is set or cleared. The CSS rule
+  // `body:not(.mgm-admin) .mgm-editonly{display:none}` hides every edit
+  // control -- including an admin's -- if this line is ever dropped.
+  document.body.classList.toggle('mgm-admin', admin);
+
+  // Losing admin (sign-out, or a session expiring in another tab) must also
+  // drop edit mode. Otherwise body.mgm-edit survives with no way to turn it
+  // off, since toggleEdit() now refuses for a non-admin.
+  if (!admin && MGM.editMode) {
+    MGM.editMode = false;
+    document.body.classList.remove('mgm-edit');
+    const eb = document.getElementById('editBtn');
+    if (eb) eb.textContent = '✎ Edit';
+  }
+
+  let bar;
+  if (!email) {
+    bar = '<span class="adminbar ro">Read-only — sign in as an admin to edit</span>';
+  } else if (MGM.isAdmin === true) {
+    bar = '<span class="adminbar rw">Admin — editing enabled</span>';
+  } else if (MGM.isAdmin === false && MGM.adminError) {
+    // Signed in, but the check itself failed. "Not an admin" would be a claim
+    // about the roster that this code has no evidence for; it is still
+    // read-only, because the check fails closed.
+    bar = '<span class="adminbar ro">Read-only — your access could not be confirmed</span>';
+  } else if (MGM.isAdmin === false) {
+    bar = '<span class="adminbar ro">Read-only — this account is not an admin</span>';
+  } else {
+    // Signed in, isAdmin still null: the RPC has not answered. Saying either
+    // "not an admin" or "sign in" here would be false, so it says neither.
+    bar = '<span class="adminbar pending">Checking your access…</span>';
+  }
+
+  // Two different buttons, not one disabled one. Pushing is admin-only
+  // (mgm_scenarios INSERT/UPDATE are WITH CHECK mgm_is_admin()), so offering
+  // a non-admin a "Sync" button means offering a save the database will
+  // refuse -- and reading mgm_scenarios IS open to any signed-in user, so
+  // there is a genuinely useful action to offer them instead. The label says
+  // which half they get.
+  const cloudBtn = admin
+    ? '<button class="btn ghost" onclick="MGM.syncScenarios()" title="Push local scenarios to the shared set, then merge the shared set back down">☁️ Sync scenarios</button>'
+    : '<button class="btn ghost" onclick="MGM.pullScenarios()" title="Read the shared scenarios. Saving is limited to administrators, so nothing is pushed.">☁️ Refresh shared scenarios</button>';
+
+  document.getElementById('authBar').innerHTML = email
+    ? `<span class="who">${esc(email)}</span>${bar}${cloudBtn}
+       <button class="btn ghost" onclick="RoadysBD.auth.signOut().then(function(){location.reload();})">Sign out</button>`
+    : `${bar}<button class="btn ghost" onclick="MGM.signIn()">Sign in to sync</button>`;
+
+  if (MGM.adminError) {
+    document.getElementById('authBar').innerHTML +=
+      `<span class="who" title="${esc(MGM.adminError)}">(admin check failed)</span>`;
+  }
+};
+
+MGM.signIn = function () {
+  bdShowLoginGate(async () => {
+    // AWAIT, in this order, and all of them. loadAdminStatus must resolve
+    // before anything renders or loadPnlActuals decides its reason: an
+    // unawaited call leaves MGM.isAdmin null, which renders every data-k
+    // input disabled and would land an admin on a read-only page until some
+    // later redraw happened to unlock it.
+    await MGM.loadAdminStatus();
+    await MGM.loadPnlActuals();
+    await MGM.loadPipeline();
+    // PULL only, never push, on sign-in. Reading mgm_scenarios is open to any
+    // signed-in user; writing is admin-only, so an automatic push here would
+    // hand a non-admin a wall of server refusals for something they never
+    // asked for. Pushing is the explicit ☁️ Sync button.
+    await MGM.pullScenarios({ quiet: true });
+    MGM.renderAuth();
+    MGM.refresh();
+  });
+};
+
+// ── The gated P&L ─────────────────────────────────────────────────────────
+// Two sources, neither of them this repo's committed files: the admin-gated
+// mgm_pnl_actuals table in production, and a gitignored local file for
+// development. Sets MGM.pnlReason alongside the data -- see its declaration
+// for why the reason is not inferred from an empty result.
+MGM.loadPnlActuals = async function () {
+  MGM.pnlError = '';
+  // Clear the session-only margin FIRST, so a failed or downgraded reload
+  // (signed out, admin check now failing) cannot leave the previous load's
+  // figure driving the lens while every caption says nothing is loaded.
+  MGM.loadedMarginPct = null;
+  MGM.loadedNetMarginPct = null;
+  MGM.loadedMarginBasisDetail = null;
+  if (typeof MGM_PNL_ACTUALS !== 'undefined' && MGM_PNL_ACTUALS) {
+    MGM.pnlActuals = MGM_PNL_ACTUALS;       // gitignored dev fallback
+    MGM.pnlReason = 'ok';
+    MGM.applyPnlTotals(MGM_PNL_ACTUALS.totals || {});
+    return;
+  }
+  const sb = MGM.sb();
+  if (!sb || !MGM.authEmail()) {
+    MGM.pnlActuals = null; MGM.pnlReason = 'anon'; return;
+  }
+  // The admin check is the input, read defensively so this composes whether
+  // loadAdminStatus() ran first or not. Anything other than an explicit
+  // `false` is 'anon' -- "not an admin" must never be claimed before the
+  // server has actually said so.
+  if (MGM.isAdmin !== true) {
+    MGM.pnlActuals = null;
+    MGM.pnlReason = (MGM.isAdmin === false && !MGM.adminError) ? 'not-admin' : 'anon';
+    return;
+  }
+  const { data, error } = await sb.from('mgm_pnl_actuals')
+    .select('*').order('id', { ascending: false }).limit(1);
+  if (error) {
+    // A failure to READ is not "no data". Naming it keeps the tile from
+    // asserting a business fact about a request that never completed.
+    MGM.pnlActuals = null; MGM.pnlReason = 'error';
+    MGM.pnlError = error.message || String(error);
+    return;
+  }
+  if (!data || !data.length) {
+    // An admin with an empty table. This is the state immediately after the
+    // migration runs, and it must not look like a permission problem.
+    MGM.pnlActuals = null; MGM.pnlReason = 'none-loaded'; return;
+  }
+  const row = data[0];
+  const t = row.totals || {};
+  MGM.pnlActuals = {
+    periodLabel: row.period_label,
+    totalPerMemberYr: t.totalPerMemberYr,
+    streams: row.streams || {}
+  };
+  MGM.pnlReason = 'ok';
+  MGM.applyPnlTotals(t);
+};
+
+// The real EBITDA margin and its basis detail are auth-gated and never
+// committed. Apply them to state only once a session has supplied them, and
+// only if the user has not already typed a margin of their own -- overwriting
+// a hand-entered assumption with a loaded one would silently replace the
+// reader's own input.
+MGM.applyPnlTotals = function (t) {
+  t = t || {};
+  // Same validity checks as before -- an empty string and a null both coerce
+  // to a number isFinite() accepts, so both are rejected explicitly. What
+  // changed is the destination: these land on MGM, never on MGM.state. The
+  // "only if the user has not already typed one" rule moved with them, to
+  // MGM.runFor, where the typed value is still what wins.
+  const num = k => (t[k] !== null && t[k] !== '' && t[k] !== undefined
+                    && isFinite(Number(t[k]))) ? Number(t[k]) : null;
+  // ONLY ebitdaMarginPct drives the EBITDA lens. A net margin is not an EBITDA
+  // margin, and feeding one into the other's slot is the misattribution the
+  // add-backs provenance note was rewritten to remove -- so netMarginPct is
+  // recorded for that note to name and is never applied to anything.
+  MGM.loadedMarginPct = num('ebitdaMarginPct');
+  MGM.loadedNetMarginPct = num('netMarginPct');
+  MGM.loadedMarginBasisDetail = t.marginBasisDetail || null;
+};
+
+// What the reconciliation tile (and the Valuation card) says for each reason.
+// One table, so two surfaces cannot give a reader two different explanations
+// of the same state -- and so none of them can tell a signed-in non-admin to
+// sign in, which is advice they have already taken and which will never work.
+MGM.PNL_REASON_TEXT = {
+  anon:          'sign in as an admin to reconcile',
+  'not-admin':   'P&L reconciliation is limited to administrators',
+  'none-loaded': 'no P&L period has been loaded yet — the table is empty',
+  error:         'the P&L could not be loaded',
+  // Reached only when a period DID load but carries no per-member total, since
+  // every caller of pnlWhy() is already inside an "actual is missing" branch.
+  // An empty string here would leave a blank cell, which asserts nothing and
+  // explains nothing.
+  ok:            'the loaded P&L period carries no per-member total'
+};
+MGM.pnlWhy = function () {
+  if (MGM.pnlReason === 'error') {
+    return MGM.PNL_REASON_TEXT.error + (MGM.pnlError ? ' — ' + MGM.pnlError : '');
+  }
+  // 'anon' is also the reason when the admin check has not resolved or failed,
+  // because claiming "not an admin" before the server has said so would be a
+  // claim we have no evidence for. But a reader WITH a session must never be
+  // told to sign in -- they have, and it will never help. So the one reason
+  // value carries three different sentences depending on why it is 'anon'.
+  if (MGM.pnlReason === 'anon' && MGM.authEmail()) {
+    return MGM.adminError
+      ? 'your administrator access could not be confirmed — ' + MGM.adminError
+      : 'checking whether this account is an administrator';
+  }
+  return MGM.PNL_REASON_TEXT[MGM.pnlReason] || 'not available';
+};
+
+// ── Scenario cloud sync ───────────────────────────────────────────────────
+// Read, compute from that snapshot, write guarded by the `updated_at` we read.
+// updated_at is trigger-maintained (touch_mgm_scenarios_updated_at), so it is
+// the version token. An empty returned array means the guarded UPDATE matched
+// nothing: NEVER retry -- a retry would overwrite whatever the other owner
+// wrote.
+//
+// But an empty array has TWO causes under RLS and they need opposite messages.
+// `mgm_scenarios_update` is `USING (mgm_is_admin())`, and a row a policy
+// filters out is simply not there to update: PostgREST returns 200 with an
+// empty body, NOT a 403. So a non-admin's refused write and a genuine
+// concurrent edit are indistinguishable at this call site. We re-ask the
+// server which one it was, with the same predicate the policy uses.
+MGM.cloudSave = async function (rec) {
+  const sb = MGM.sb();
+  if (!sb) return { ok: false, reason: 'no-client' };
+
+  const { data: existing, error: readErr } = await sb
+    .from('mgm_scenarios').select('id,updated_at').eq('id', rec.id).maybeSingle();
+  if (readErr) return { ok: false, reason: 'error', detail: readErr.message };
+
+  const row = {
+    id: rec.id, name: rec.name, scope: rec.scope || 'company',
+    owner_email: MGM.authEmail(),
+    state: rec.state
+  };
+
+  if (!existing) {
+    const { error } = await sb.from('mgm_scenarios').insert(row);
+    // An INSERT refused by WITH CHECK does raise an error (42501), unlike the
+    // UPDATE above, so a non-admin's first save is named correctly here
+    // without a second round trip.
+    if (error) {
+      return /row-level security|42501|permission/i.test(error.message || '')
+        ? { ok: false, reason: 'refused', detail: error.message }
+        : { ok: false, reason: 'conflict', detail: error.message };
+    }
+    return { ok: true, created: true };
+  }
+
+  const seen = existing.updated_at;
+  const { data, error } = await sb.from('mgm_scenarios')
+    .update(row).eq('id', rec.id).eq('updated_at', seen).select();
+  if (error) {
+    return /row-level security|42501|permission/i.test(error.message || '')
+      ? { ok: false, reason: 'refused', detail: error.message }
+      : { ok: false, reason: 'error', detail: error.message };
+  }
+  if (!data || data.length === 0) {
+    // Ask the server which of the two it was rather than guessing. Without
+    // this, a non-admin is told "someone else changed it first" -- a specific
+    // factual claim about another person's edit, invented to explain a
+    // permission denial.
+    await MGM.loadAdminStatus();
+    return MGM.isAdmin === true
+      ? { ok: false, reason: 'conflict' }
+      : { ok: false, reason: 'refused' };
+  }
+  return { ok: true };
+};
+
+// Merge the shared cloud set down into the local list. Read-only, so any
+// signed-in user can run it; the sign-in path uses this instead of a full
+// sync so nobody is handed refusals they did not ask for.
+MGM.pullScenarios = async function (opts) {
+  opts = opts || {};
+  const sb = MGM.sb();
+  if (!sb || !MGM.authEmail()) return { ok: false, reason: 'anon' };
+  const { data: cloud, error } = await sb
+    .from('mgm_scenarios').select('*').eq('scope', 'company');
+  if (error) {
+    if (!opts.quiet) alert('Could not read cloud scenarios: ' + error.message);
+    return { ok: false, reason: 'error', detail: error.message };
+  }
+  const local = MGM.scenarioList();
+  const buried = MGM.scenarioTombstones();
+  let pulled = 0, skipped = 0;
+  (cloud || []).forEach(c => {
+    // A scenario deleted here stays deleted here. mgm_scenarios has no DELETE
+    // policy by design, so the cloud row outlives a local delete -- without
+    // this the next pull would resurrect it and nothing would explain why.
+    if (buried.indexOf(c.id) >= 0) { skipped++; return; }
+    const rec = { id: c.id, name: c.name, scope: c.scope, state: c.state, updated_at: c.updated_at };
+    const i = local.findIndex(s => s.id === c.id);
+    if (i >= 0) local[i] = rec; else { local.push(rec); pulled++; }
+  });
+  MGM.scenarioWriteAll(local);
+  MGM.refresh();
+  const out = { ok: true, cloudCount: (cloud || []).length, pulled, skipped };
+  if (!opts.quiet) {
+    // A button that completes silently looks broken, and "0 new" has to be
+    // distinguishable from "it did not run".
+    alert(`${out.cloudCount} shared scenario(s) in the cloud; ${pulled} new here, ` +
+      `${out.cloudCount - pulled - skipped} already present` +
+      (skipped ? `, ${skipped} you deleted locally and left alone.` : '.') +
+      (MGM.canEdit() ? '' : '\n\nNothing was pushed — saving scenarios is limited to administrators.'));
+  }
+  return out;
+};
+
+MGM.syncScenarios = async function () {
+  const sb = MGM.sb();
+  if (!sb || !MGM.authEmail()) {
+    alert('Sign in first to sync scenarios.');
+    return;
+  }
+  const list = MGM.scenarioList();
+  if (!list.length) {
+    // Nothing to push is not a failure, and "0 pushed" with no explanation
+    // reads like one.
+    const r0 = await MGM.pullScenarios({ quiet: true });
+    alert(r0.ok
+      ? `No local scenarios to push. ${r0.cloudCount} shared scenario(s) in the cloud` +
+        (r0.skipped ? `, ${r0.skipped} of them deleted locally and left alone.` : '.')
+      : 'Could not read cloud scenarios: ' + (r0.detail || r0.reason));
+    MGM.renderAuth();
+    return;
+  }
+
+  let pushed = 0;
+  const conflicts = [], refused = [], errors = [];
+  for (const rec of list) {
+    const r = await MGM.cloudSave(rec);
+    if (r.ok) pushed++;
+    else if (r.reason === 'conflict') conflicts.push(rec.name);
+    else if (r.reason === 'refused') refused.push(rec.name);
+    else errors.push(rec.name + ': ' + (r.detail || r.reason));
+  }
+
+  const pull = await MGM.pullScenarios({ quiet: true });
+  if (!pull.ok) { alert('Pushed ' + pushed + ', but reading the cloud back failed: ' + (pull.detail || pull.reason)); return; }
+
+  const parts = [`Pushed ${pushed} of ${list.length}; ${pull.cloudCount} shared scenario(s) in the cloud.`];
+  if (refused.length) parts.push(
+    `The server REFUSED these — writing scenarios is limited to administrators, ` +
+    `so nothing was saved for them: ${refused.join(', ')}.`);
+  if (conflicts.length) parts.push(
+    `Someone else changed these first, so they were NOT overwritten: ${conflicts.join(', ')}. ` +
+    `Reload to see their version before saving again.`);
+  if (errors.length) parts.push(`Failed: ${errors.join('; ')}.`);
+  if (pull.skipped) parts.push(
+    `${pull.skipped} cloud scenario(s) you deleted locally were left in place and not pulled back — ` +
+    `removing the shared copy is a Supabase SQL-editor job.`);
+  alert(parts.join('\n\n'));
+  MGM.renderAuth();
+};
+
+/* ═══════════════ SCENARIOS (Task 14) ═══════════════ */
+
+const SCEN_KEY = 'roadys_mgm_scenarios_v1';
+// Local tombstones. mgm_scenarios has NO DELETE policy and no DELETE grant --
+// deliberately, since browser-initiated deletes of shared state are not
+// wanted -- so a deleted scenario's cloud row survives. Without this list the
+// next pull brings it straight back and the delete appears to undo itself.
+// The list is the mechanism; scenarioDelete() states the consequence in words.
+const SCEN_DELETED_KEY = 'roadys_mgm_scenarios_deleted_v1';
+
+// Fields that live in `state` but are view/meta, not model inputs. They are
+// absent from MGM_CONFIG, so mergeState correctly reports them as "unknown"
+// (a field this build does not have) -- which would make every scenario saved
+// after a preset was applied announce a phantom obsolete field. Filtered out
+// of the notice, not out of the state.
+const SCEN_META_KEYS = ['activeScenario'];
+
+MGM.scenarioList = function () {
+  try {
+    const v = JSON.parse(localStorage.getItem(SCEN_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+};
+
+MGM.scenarioWriteAll = function (list) {
+  try { localStorage.setItem(SCEN_KEY, JSON.stringify(list)); }
+  catch (e) { alert('Could not save the scenario — browser storage is full.'); }
+};
+
+MGM.scenarioTombstones = function () {
+  try {
+    const v = JSON.parse(localStorage.getItem(SCEN_DELETED_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+};
+
+MGM.scenarioBury = function (id, bury) {
+  const t = MGM.scenarioTombstones().filter(x => x !== id);
+  if (bury) t.push(id);
+  try { localStorage.setItem(SCEN_DELETED_KEY, JSON.stringify(t)); } catch (e) {}
+};
+
+MGM.scenarioId = name => 'scn_' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+MGM.scenarioSave = function () {
+  // Not just a UI nicety: mgm_scenarios INSERT/UPDATE are
+  // `WITH CHECK (mgm_is_admin())`, so a non-admin's save would be refused by
+  // the database on the next sync anyway. Better to say so before they type a
+  // name than after.
+  if (!MGM.requireAdmin('Saving a scenario')) return;
+  const name = (prompt('Scenario name:', MGM.state.activeScenario || 'Base') || '').trim();
+  if (!name) return;
+  const list = MGM.scenarioList();
+  const id = MGM.scenarioId(name);
+  const rec = {
+    id, name, scope: 'company',
+    state: JSON.parse(JSON.stringify(MGM.state)),
+    updated_at: new Date().toISOString()
+  };
+  const i = list.findIndex(s => s.id === id);
+  if (i >= 0) {
+    // Name the EXISTING row, not the name just typed. The id is a slug of the
+    // name, so "Base Case" and "Base-Case" share one id -- quoting the new
+    // name would ask permission to overwrite a scenario that does not exist
+    // while silently replacing one that does.
+    if (!confirm(list[i].name === name
+      ? `Overwrite the saved scenario "${name}"?`
+      : `"${name}" and the saved scenario "${list[i].name}" share the same id (${id}).\n\nSaving will REPLACE "${list[i].name}". Continue?`)) return;
+    list[i] = rec;
+  } else { list.push(rec); }
+  MGM.scenarioWriteAll(list);
+  // Re-saving a name that was deleted before is an un-delete, so the
+  // tombstone has to go or the next pull would silently drop it again.
+  MGM.scenarioBury(id, false);
+  MGM.state.activeScenario = name;
+  MGM.scenarioNotice = null;
+  MGM.save(); MGM.refresh();
+};
+
+MGM.scenarioLoad = function (id) {
+  const rec = MGM.scenarioList().find(s => s.id === id);
+  if (!rec) return;
+  // MM.mergeState, not Object.assign: a shallow merge replaces each of the 17
+  // nested top-level keys wholesale, so a scenario saved before a nested field
+  // existed reopens with that field undefined -- and MM._n(undefined) is 0, a
+  // silent zero rather than an error. mergeState mutates its first argument,
+  // so it gets a fresh defaultState every time.
+  const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), rec.state || {});
+  MGM.state = merged.state;
+  MGM.scenarioNotice = MGM.scenarioNoticeFor(rec, merged);
+  MGM.save(); MGM.refresh();
+};
+
+// A silent default-fill is better than a silent zero, but it is still a number
+// the user did not enter, so say so -- and say it somewhere a redraw does not
+// wipe, which rules out alert(). Lives in #scenarioBar beside the scenario
+// name and persists until another scenario is loaded or saved.
+MGM.scenarioNotice = null;
+MGM.scenarioNoticeFor = function (rec, merged) {
+  const added = (merged.added || []).slice();
+  const unknown = (merged.unknown || []).filter(p => SCEN_META_KEYS.indexOf(p) < 0);
+  const ov = MGM.state.gallons && MGM.state.gallons.groupBaselineOverride;
+  const overrides = ov ? Object.keys(ov).filter(k => ov[k] !== null && ov[k] !== '') : [];
+  if (!added.length && !unknown.length && !overrides.length) return null;
+  return { name: rec.name, added, unknown, overrides };
+};
+
+MGM.scenarioRename = function (id) {
+  if (!MGM.requireAdmin('Renaming a scenario')) return;
+  const list = MGM.scenarioList();
+  const rec = list.find(s => s.id === id);
+  if (!rec) return;
+  const name = (prompt('Rename scenario:', rec.name) || '').trim();
+  if (!name || name === rec.name) return;
+  // The id is derived from the name, so a rename is a new id. Keep the old row
+  // out of the way rather than leaving two copies behind.
+  const newId = MGM.scenarioId(name);
+  if (newId !== id && list.some(s => s.id === newId)) {
+    alert('A scenario named "' + name + '" already exists.');
+    return;
+  }
+  rec.name = name; rec.id = newId; rec.updated_at = new Date().toISOString();
+  MGM.scenarioWriteAll(list);
+  MGM.scenarioBury(newId, false);
+  // The old cloud row cannot be deleted from here (no DELETE policy), and the
+  // new id will be inserted on the next sync, so bury the old id or the next
+  // pull re-adds the pre-rename copy alongside the renamed one.
+  if (newId !== id) MGM.scenarioBury(id, true);
+  if (MGM.state.activeScenario) MGM.state.activeScenario = name;
+  MGM.save(); MGM.refresh();
+  alert('Renamed locally. Sync to push the new name to the cloud. The pre-rename cloud row, if any, stays until it is removed in the Supabase SQL editor — it will not be pulled back here.');
+};
+
+MGM.scenarioDelete = function (id) {
+  if (!MGM.requireAdmin('Deleting a scenario')) return;
+  const rec = MGM.scenarioList().find(s => s.id === id);
+  if (!rec) return;
+  if (!confirm(`Delete the local scenario "${rec.name}"?\n\n` +
+    'The shared cloud copy is NOT deleted — mgm_scenarios has no delete policy ' +
+    'by design, so removing it is a Supabase SQL-editor job. This browser will ' +
+    'stop showing it either way and will not pull it back.')) return;
+  MGM.scenarioWriteAll(MGM.scenarioList().filter(s => s.id !== id));
+  MGM.scenarioBury(id, true);
+  if (MGM.scenarioNotice && MGM.scenarioNotice.name === rec.name) MGM.scenarioNotice = null;
+  MGM.refresh();
+  alert(`"${rec.name}" is gone from this browser and will not come back on the next sync. ` +
+    `The shared copy is still in mgm_scenarios; to remove it for everyone, run in the Supabase SQL editor:\n\n` +
+    `delete from public.mgm_scenarios where id = '${id}';\n\n` +
+    `(That needs a role with delete rights — the browser has none, deliberately.)`);
+};
+
+MGM.applyPreset = function (name) {
+  // A preset writes model inputs, so it is an edit, not a view.
+  if (!MGM.requireAdmin('Applying a preset')) return;
+  MM.applyScenario(MGM.state, name);
+  MGM.scenarioNotice = null;
+  MGM.save(); MGM.refresh();
+};
+
+// The bar outside the panels, so the active scenario name and any load notice
+// survive a tab switch and every refresh.
+MGM.renderScenarioBar = function () {
+  const el = document.getElementById('scenarioBar');
+  if (!el) return;
+  const n = MGM.scenarioNotice;
+  // A scenario saved before any preset was applied carries no activeScenario,
+  // so fall back to the loaded record's name rather than printing an unnamed
+  // "Loaded scenario" above a warning about it.
+  const nm = MGM.state.activeScenario || (n && n.name) || '';
+  if (!nm && !n) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const show = ps => ps.slice(0, 3).map(p => `<code>${esc(p)}</code>`).join(', ')
+    + (ps.length > 3 ? `, and ${ps.length - 3} more` : '');
+  let msg = '';
+  if (n && n.added.length) msg += ` <span class="warn">This scenario predates
+    ${n.added.length} field${n.added.length === 1 ? '' : 's'}</span>, now at
+    ${n.added.length === 1 ? 'its' : 'their'} current default${n.added.length === 1 ? '' : 's'}:
+    ${show(n.added)}. Review ${n.added.length === 1 ? 'it' : 'them'} before quoting a figure from it.`;
+  if (n && n.unknown.length) msg += ` <span class="warn">It carries ${n.unknown.length}
+    field${n.unknown.length === 1 ? '' : 's'} this build no longer uses</span>
+    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept but unused.`;
+  if (n && n.overrides.length) msg += ` <span class="warn">It carries overridden gallon
+    baselines</span> that differ from the Bus Dev engine (${show(n.overrides)}) —
+    see Fuel Gallon Production.`;
+  el.style.display = '';
+  el.innerHTML = `<div class="inner">${nm ? `Scenario: <b>${esc(nm)}</b>` : 'Loaded scenario'}${msg}</div>`;
+};
+
+// Each column is a FULL independent re-run through MGM.runFor, so a scenario
+// differing in any input -- not just attrition -- shows its real effect, and
+// the Current column is computed by exactly the code the rest of the page
+// uses.
+MGM.renderCompare = function () {
+  const cols = [{ name: 'Current', state: MGM.state, live: true }]
+    .concat(MGM.scenarioList().map(s => {
+      // Deep merge here too: a comparison against a scenario that predates a
+      // field must compare against that field's default, not against a zero.
+      const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), s.state || {});
+      return {
+        name: s.name, id: s.id, state: merged.state,
+        stale: merged.added.length,
+        extra: merged.unknown.filter(p => SCEN_META_KEYS.indexOf(p) < 0).length
+      };
+    }));
+
+  const runs = cols.map(c => {
+    const D = MGM.runFor(c.state);
+    const last = D.R[D.R.length - 1];
+    const lastF = D.F.length ? D.F[D.F.length - 1] : null;
+    const years = D.M.years;
+    return {
+      name: c.name, id: c.id, live: c.live, stale: c.stale, extra: c.extra,
+      D, last, lastF,
+      // `cost.unset` is the same gate MGM.runFor applies to the valuation
+      // override: with no costs entered, the cash bridge's EBITDA is revenue
+      // minus nothing, so printing it as "EBITDA" would assert a 100% margin.
+      ebitda: (!D.cost.unset && lastF) ? lastF.ebitda : null,
+      // The valuation EBITDA lens is NOT the cash-bridge EBITDA above: with no
+      // costs entered the lens can still rest on a margin or on add-backs. A
+      // row labelled plain "EBITDA" reading an em dash beside a two-lens
+      // "Indicated value" reads as a contradiction, so both are named.
+      valBasis: !D.cost.unset ? 'real costs'
+        : D.effectiveMargin != null
+          ? pct1(D.effectiveMargin) + (D.marginFromPnl ? ' margin (P&L, this session)' : ' margin (entered)')
+        : D.valuation.ebitdaBase ? 'add-backs only'
+        : 'none',
+      endLoc: years.length ? years[years.length - 1].end : null,
+      netGrowth: years.length ? years[years.length - 1].end - years[0].start : null,
+      newModeled: years.reduce((a, y) => a + y.newModeled, 0),
+      lost: years.reduce((a, y) => a + y.lost, 0),
+      steady: (c.state.attrition || {}).steady,
+      basis: (c.state.salesPipeline || {}).basis
+    };
+  });
+
+  // Every cell goes through a formatter that maps absence to an em dash. A
+  // comparison table is the single most screenshot-able surface here, so a 0
+  // standing for "could not be computed" would travel without its caption.
+  const dash = (v, f) => (v === null || v === undefined || (typeof v === 'number' && !isFinite(v))) ? '—' : f(v);
+  const rows = [
+    ['Steady attrition',    r => pct1(r.steady)],
+    ['Add basis',           r => r.basis === 'pipeline' ? 'Pipeline' : 'Flat'],
+    ['Ending locations',    r => dash(r.endLoc, fmt)],
+    ['Net growth',          r => dash(r.netGrowth, d => (d >= 0 ? '+' : '') + fmt1(d))],
+    // newModeled, NOT newAdds: newAdds folds in the current year's YTD
+    // signings, which are already inside the opening count, so it would
+    // report a bigger number here than the New Additions tab shows.
+    ['Modeled new members', r => dash(r.newModeled, fmt1)],
+    ['Projected losses',    r => dash(r.lost, fmt1)],
+    ['Final-year revenue',  r => dash(r.last ? r.last.total : null, fmM)],
+    ['$/member/yr',         r => dash(r.last && r.last.members ? r.last.total / r.last.members : null, fm$)],
+    // null when costs are unset, NOT 0: "EBITDA $0.00M" is a business claim
+    // and the truth is that no costs were entered.
+    ['EBITDA (cash bridge)', r => r.ebitda === null ? '— <span class="note">(no costs entered)</span>' : fmM(r.ebitda)],
+    ['Valuation EBITDA basis', r => esc(r.valBasis)],
+    // indicated, never mid: a scenario whose costs and margin are unset has
+    // one live lens, and mid would report half of it.
+    ['Indicated value',     r => dash(r.D.valuation.indicated, fmM)],
+    ['Lenses with a basis', r => String(r.D.valuation.lensCount)]
+  ];
+
+  // A column header naming a scenario must not imply the comparison is
+  // like-for-like when that scenario predates fields the current one has.
+  const head = r => esc(r.name) + (r.live ? ' <span class="note">(live)</span>' : '')
+    + (r.stale ? ` <span class="ovr" title="Fields this scenario did not carry, shown at today's defaults">${r.stale} defaulted</span>` : '')
+    + (r.extra ? ` <span class="ovr" title="Fields this build no longer uses">${r.extra} unused</span>` : '');
+
+  const anyStale = runs.some(r => r.stale || r.extra);
+
+  return `<div class="card"><h3>Scenario comparison</h3>
+    <div style="overflow-x:auto"><table>
+      <tr><th>Measure</th>${runs.map(r => `<th class="num">${head(r)}</th>`).join('')}</tr>
+      ${rows.map(([label, fn]) => `<tr><td>${label}</td>${
+        runs.map(r => `<td class="num">${fn(r)}</td>`).join('')}</tr>`).join('')}
+      <tr><td></td>${runs.map(r => r.id
+        ? `<td class="num"><button class="btn" onclick="MGM.scenarioLoad('${esc(r.id)}')">Load</button>
+           <button class="btn mgm-editonly" onclick="MGM.scenarioRename('${esc(r.id)}')">✎</button>
+           <button class="btn mgm-editonly" onclick="MGM.scenarioDelete('${esc(r.id)}')">✕</button></td>`
+        : '<td class="num"><span class="note">live</span></td>').join('')}</tr>
+    </table></div>
+    ${runs.length === 1
+      ? `<p class="note">No saved scenarios yet — use <b>Save scenario…</b> in the header.
+         The single column is the live model, not a comparison.</p>`
+      : ''}
+    ${anyStale
+      ? `<p class="note"><span class="ovr">not fully like-for-like</span> A column marked
+         <b>defaulted</b> was saved before some of today's inputs existed, so those cells
+         carry current defaults rather than anything that scenario recorded. One marked
+         <b>unused</b> carries inputs this build dropped. Load it to see which fields.</p>`
+      : ''}
+    <p class="note">Every column is a complete independent re-run of the model on
+      that scenario's own inputs — not a re-scaled version of the live figures.</p>
+    ${runs.some(r => r.D.marginFromPnl)
+      ? `<p class="note"><span class="assume">session-only basis</span> The valuation
+         columns rest on an EBITDA margin loaded from the P&amp;L for this session. It
+         is deliberately not stored in any scenario, so a reader without
+         administrator access sees the same scenarios valued on the revenue lens
+         alone. That is a different figure, not a disagreement — and no direction
+         is claimed for it here, because a margin-derived EBITDA lens can land
+         either side of the revenue lens depending on the margin and the
+         multiple.</p>`
+      : ''}
+  </div>`;
+};
 
 // ── Chart titles, tab notes and tab renaming ────────────────────────────────
 // Every chart heading rendered by Tasks 9–13 is an input bound to its label,
@@ -1276,14 +3166,30 @@ document.getElementById('themeBtn').onclick = () => {
   MGM.refresh();
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   MGM.renderTabs();
   MGM.switchTab('starting');
-  // Unsigned today (MGM.sb/RoadysBD land in Task 16); the guard inside
-  // loadPipeline makes this a no-op until then, leaving pipelineState
-  // at its 'unsigned' default.
-  MGM.loadPipeline();
-  MGM.loadRegionVariance();
+
+  // Restore the session BEFORE anything decides what the reader may do. Every
+  // await below is load-bearing:
+  //
+  //  - loadAdminStatus is async, and an un-awaited call would leave
+  //    MGM.isAdmin null through the first render: bindAll would disable every
+  //    data-k input and an admin would land on a read-only page that only
+  //    unlocks if something later happens to redraw.
+  //  - loadPnlActuals reads MGM.isAdmin to pick its reason, so it must run
+  //    after the admin check or it would report 'anon' to an admin.
+  if (window.RoadysBD) { try { await RoadysBD.auth.init(); } catch (e) {} }
+  await MGM.loadAdminStatus();
+  MGM.renderAuth();
+  await MGM.loadPnlActuals();
+  // Unsigned, loadPipeline's own guard makes this a no-op and leaves
+  // pipelineState at its 'unsigned' default.
+  await MGM.loadPipeline();
+  if (MGM.authEmail()) await MGM.pullScenarios({ quiet: true });
+  MGM.loadRegionVariance();      // fetch + its own refresh; nothing waits on it
+  MGM.renderAuth();
+  MGM.refresh();
 });
 </script>
 </body>
