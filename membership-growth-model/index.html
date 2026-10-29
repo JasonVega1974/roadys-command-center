@@ -359,7 +359,19 @@ const MM = (function () {
     // Behavioural, cheap, and the two properties everything downstream relies
     // on. Wrapped because a broken engine may throw rather than answer wrongly.
     try {
-      if (e.stripResidue({ copy: {} }).removed !== 1) return 'is not working correctly';
+      // THE EFFECT, not the reported count. The first version of this probe
+      // asked only whether `removed` came back as 1, so an engine that
+      // incremented the counter without performing the delete passed all
+      // three checks and was waved through -- 92 buttons, full API, no error
+      // card, measured. That is the same defect this guard exists to catch,
+      // committed inside the guard: a success report trusted instead of the
+      // thing it reports on. It has now happened enough times in this work
+      // that the rule is explicit -- assert the state afterwards, never the
+      // return value alone.
+      const probe = { copy: {} };
+      const r = e.stripResidue(probe);
+      if (!r || r.removed !== 1) return 'is not working correctly';
+      if ('copy' in probe) return 'is not working correctly';
       if (e.residueVerdict({ state: { copy: {} } }) !== 'residue') return 'is not working correctly';
       if (e.residueVerdict({ state: { a: 1 } }) !== 'clean') return 'is not working correctly';
     } catch (err) {
@@ -3207,13 +3219,6 @@ MGM.exportCSV = function () {
 // Live CRM and P&L data are likewise not included: they are not ours to
 // redistribute in a file someone emails on.
 MGM.exportJSON = function () {
-  // Same guard syncScenarios got, for the same reason. A review found the
-  // round-4 try/catch sat BELOW the first MM.stripResidue call, so a missing
-  // engine still threw uncaught here: no file, no message, dead button --
-  // while engineSkew() could have named the cause. The guard belongs above
-  // every engine call in the function, not above most of them.
-  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('build an export', 'nothing-moved')); return; }
-
   // Measured: this carried residue with MGM.state fully clean, because the
   // scenario list is serialised separately. scenarioList() now strips, so this
   // is covered -- the explicit strip here is belt and braces for a future
@@ -3244,6 +3249,23 @@ MGM.exportJSON = function () {
       ? 'Could not build the export: one of your saved scenarios is nested too '
       + 'deeply to serialise. Delete it from the Scenarios tab and export again.'
       : 'Could not build the export: ' + (e && e.message || 'unknown error'));
+    return;
+  }
+  // Verify the OUTBOUND BYTES, the way cloudSave verifies its row. A review
+  // measured this route carrying residue into a downloaded file with zero
+  // warning, under an engine whose strip silently did nothing -- cloudSave
+  // refused in the same fixture, because it checks its own payload rather than
+  // trusting that a strip ran upstream. An exported file is a disclosure
+  // surface exactly like the shared table; it gets the same treatment.
+  //
+  // Checks the serialised string, so it is testing what would actually leave
+  // the browser.
+  if (MM.residueVerdict(body) !== 'clean') {
+    console.error('[MGM] REFUSED to export: the payload still carries data from '
+                + 'the removed text-override feature.');
+    alert('The export was not created: it still carries stored text from a '
+        + 'removed feature, which may include a figure only administrators may '
+        + 'see.\n\nReload the page and try again — the reload cleans it.');
     return;
   }
   MGM.dl('membership-growth-model.json', body, 'application/json');
@@ -4606,9 +4628,6 @@ MGM.syncScenarios = async function () {
     alert('Sign in first to sync scenarios.');
     return;
   }
-  // Before anything, not after a failure: a stale engine made this function
-  // throw on its first cloudSave and return nothing at all to the reader.
-  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('sync scenarios', 'nothing-moved')); return; }
   const list = MGM.scenarioList();
   if (!list.length) {
     // Nothing to push is not a failure, and "0 pushed" with no explanation
@@ -4745,34 +4764,6 @@ MGM.reportableUnknown = function (merged) {
 // not, and relying on a human to bump a string is not a mechanism.
 //
 // So: one list, checked at boot and again before any sync, reported in words.
-// Returns null when the engine is fine, or a human-readable reason when it is
-// not. Delegates to MGM.engineProblem, defined with the binding at the top of
-// this script, so the boot check and this one are the same check -- there is no
-// second list and no revision constant to keep in step.
-//
-// Deliberately does NOT throw: a diagnostic that crashes its caller is how the
-// problem it diagnoses stayed invisible for two rounds.
-MGM.engineSkew = function () {
-  try {
-    const p = typeof MGM.engineProblem === 'function' ? MGM.engineProblem() : null;
-    if (!p) return null;
-    return 'the model script ' + p;
-  } catch (e) {
-    return 'the model script could not be checked';
-  }
-};
-
-MGM.engineSkewMessage = function (what, settled) {
-  return 'Cannot ' + what + ': ' + MGM.engineSkew() + '.\n\n'
-       + 'Your browser is almost certainly serving a cached copy of an older '
-       + 'script. Reload the page (hold Shift while reloading, or empty the '
-       + 'cache) and try again.'
-       + (settled === 'nothing-moved'
-           ? ' Nothing was changed or uploaded.'
-           : ' Nothing was uploaded. This browser\'s own saved copy may already '
-             + 'have been tidied on load, which is safe and changes no figures.');
-};
-
 MGM.stripResidue = function (obj) {
   const r = MM.stripResidue(obj);
   MGM.stripResidue.removed = r.removed;
@@ -5239,13 +5230,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // so every definition exists by now.
   try { MGM.scenarioList(); } catch (e) {}
 
-  // Say it once, up front. A reader who sees this knows why the page is
-  // behaving oddly instead of discovering it one dead button at a time.
-  const _skew = MGM.engineSkew();
-  if (_skew) {
-    try { console.error('[MGM] ' + _skew); } catch (e) {}
-    alert(MGM.engineSkewMessage('use this page safely'));   // no 'nothing-moved'
-  }
+  // No engine check here. It would be dead code: the guard inside the `const MM`
+  // initialiser throws when the engine is unusable, and that happens during
+  // script evaluation -- so if this handler is running at all, the engine
+  // already passed. A review confirmed the old check returned "fine" on every
+  // engine that reached this point, and its fallback arm returned "fine" on
+  // error too, which is the wrong direction for a guard to fail.
 
   MGM.renderTabs();
   MGM.switchTab('starting');

@@ -1934,7 +1934,13 @@ test("the engine satisfies the page's boot smoke check", () => {
   // These are the exact three assertions the page makes. They are pinned here
   // so that a change to the engine which would make every page refuse to load
   // fails in node first, where it is cheap to see.
-  assert.equal(MembershipModel.stripResidue({ copy: {} }).removed, 1);
+  // The EFFECT, not just the count. This asserted only `removed === 1`, the
+  // same weakness a review found in the page's probe: an engine that
+  // increments the counter without performing the delete satisfied both. A
+  // success report is not evidence of the thing it reports on.
+  const probe = { copy: {} };
+  assert.equal(MembershipModel.stripResidue(probe).removed, 1);
+  assert.equal('copy' in probe, false, 'the key must actually be gone');
   assert.equal(MembershipModel.residueVerdict({ state: { copy: {} } }), 'residue');
   assert.equal(MembershipModel.residueVerdict({ state: { a: 1 } }), 'clean');
 });
@@ -1982,17 +1988,32 @@ test('nothing in the page reads the engine before the guard has passed', () => {
   // ReferenceError -- loud, and it leaves nothing clickable, so not the F1-r5
   // shape -- but it still halts the script and gives a blank page, which is
   // the F1-r4 shape. Both names, then.
-  // Anchored to STATEMENT POSITION (line start), not "anywhere in the text".
-  // Unanchored, this fired on the binding's own comment block, which mentions
-  // `MM.defaultState()` while explaining why the guard exists -- a test
-  // failing on prose that documents it. Comment-stripping is not the answer
-  // here either; it was the losing move twice already. A statement begins a
-  // line, a mention sits after `//` or inside `/* */`, so the anchor separates
-  // them without parsing anything.
-  const before = page.slice(0, iBind);
-  assert.ok(!/^\s*MembershipModel\s*\./m.test(before),
-    'nothing may call MembershipModel directly before the guard');
-  assert.ok(!/^\s*MM\s*\.\s*[A-Za-z_$]/m.test(before),
+  // Scoped to THE SCRIPT BODY and judged per line, because `before` otherwise
+  // spans all the HTML and CSS above it.
+  const iScript = page.lastIndexOf('<script>', iBind);
+  const region = page.slice(iScript + '<script>'.length, iBind);
+
+  // A line is code if it does not begin a comment. That is enough to separate
+  // statements from prose without parsing, and it is why the binding's own
+  // comment block -- which mentions MM.defaultState() while explaining the
+  // guard -- does not trip this. Comment-stripping was the losing move twice
+  // in this work and is not used.
+  const codeLines = region.split('\n')
+    .filter(l => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l));
+
+  // THE IDENTIFIER, not a call shape. Earlier versions matched
+  // `MembershipModel.` and `MM.` in statement position, and a review got past
+  // both with `MembershipModel['defaultState'](…)` and with
+  // `const E = MembershipModel; E.defaultState(…)` -- 109/0 each, both
+  // reproducing the dead-buttons page. Enumerating call spellings is
+  // unwinnable; forbidding the NAME is not.
+  const touching = codeLines.filter(l => /\bMembershipModel\b/.test(l));
+  assert.deepEqual(touching, [],
+    'no code may reference MembershipModel before the binding that guards it ' +
+    '-- not by call, by bracket access, or by aliasing it to another name');
+
+  const usingMM = codeLines.filter(l => /\bMM\b/.test(l));
+  assert.deepEqual(usingMM, [],
     'nothing may use MM before the binding that guards it -- that is a ' +
     'temporal-dead-zone ReferenceError, which halts the script and gives a ' +
     'blank page with no error card');
