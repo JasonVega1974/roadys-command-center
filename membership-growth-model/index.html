@@ -13,7 +13,7 @@
 <script src="../busDevGallonsConfig.js"></script>
 <script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
-<script src="../membershipModel.js?v=2026-10-29"></script>
+<script src="../membershipModel.js?v=r4"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
      SDK tag has to come first. Never construct a second client here -- see
      MGM.sb() below. -->
@@ -3149,11 +3149,27 @@ MGM.exportJSON = function () {
   // since it does, the two must not be left out of step.
   MGM.stripResidue(MGM.state);
   if (MGM.stripResidue.removed) MGM.save();
-  MGM.dl('membership-growth-model.json', JSON.stringify({
-    state: MGM.state,
-    scenarios: MGM.stripResidue(MGM.scenarioList()),
-    exportedAt: new Date().toISOString()
-  }, null, 2), 'application/json');
+
+  // Serialise inside a try and SAY SO on failure. JSON.stringify is recursive
+  // and a saved scenario nested deeply enough makes it throw -- uncaught, so
+  // the button did nothing at all and the reader got no file and no message.
+  // Silence on a click is the failure class this whole PR has been clearing.
+  let body;
+  try {
+    body = JSON.stringify({
+      state: MGM.state,
+      scenarios: MGM.stripResidue(MGM.scenarioList()),
+      exportedAt: new Date().toISOString()
+    }, null, 2);
+  } catch (e) {
+    console.error('[MGM] export failed', e);
+    alert(/call stack|recursion/i.test(e && e.message || '')
+      ? 'Could not build the export: one of your saved scenarios is nested too '
+      + 'deeply to serialise. Delete it from the Scenarios tab and export again.'
+      : 'Could not build the export: ' + (e && e.message || 'unknown error'));
+    return;
+  }
+  MGM.dl('membership-growth-model.json', body, 'application/json');
 };
 
 MGM.importJSON = function (file) {
@@ -3197,8 +3213,7 @@ MGM.importJSON = function (file) {
       MGM.scenarioNotice = MGM.scenarioNoticeFor(
         { name: file.name || 'the imported file' }, merged);
       MGM.save(); MGM.refresh();
-      const unknown = (merged.unknown || [])
-        .filter(path => SCEN_META_KEYS.indexOf(path) < 0);
+      const unknown = MGM.reportableUnknown(merged);
       const parts = ['Model imported from ' + (file.name || 'the file') + '.'];
       if (merged.added.length) parts.push(merged.added.length +
         ' field(s) were not in the file and are now at this build\'s defaults, ' +
@@ -3606,8 +3621,8 @@ MGM.renderers.about = function (D) {
       hand-typed data stay distinguishable.</p>
     <p class="note"><b>One consequence worth knowing.</b> When an administrator's
       session has loaded the real margin, it drives that session's EBITDA lens but
-      is deliberately <i>never written</i> to the model by this tool — so nothing it saves, syncs or exports carries it, and no saved
-      scenario and no export. An administrator and a non-admin therefore see
+      is deliberately <i>never written</i> to the model by this tool — so nothing
+      it saves, syncs or exports carries it. An administrator and a non-admin therefore see
       genuinely <b>different valuation headlines for the same saved scenario</b>.
       That is not a bug and not a disagreement: each is correct for the inputs it
       had, and both are captioned.</p>`)}
@@ -4514,6 +4529,9 @@ MGM.syncScenarios = async function () {
     alert('Sign in first to sync scenarios.');
     return;
   }
+  // Before anything, not after a failure: a stale engine made this function
+  // throw on its first cloudSave and return nothing at all to the reader.
+  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('sync scenarios')); return; }
   const list = MGM.scenarioList();
   if (!list.length) {
     // Nothing to push is not a failure, and "0 pushed" with no explanation
@@ -4596,6 +4614,22 @@ const SCEN_DELETED_KEY = 'roadys_mgm_scenarios_deleted_v1';
 // of the notice, not out of the state.
 const SCEN_META_KEYS = ['activeScenario'];
 
+// Paths that mergeState reports as unrecognised but which this build then
+// REMOVES rather than keeps. Reporting them among the "kept, and still travel
+// with this model" fields is a straight contradiction: a review measured the
+// import notice announcing 3 kept fields while the residue count on disk was
+// 0, because mergeState sees the raw file before the strip runs.
+//
+// `copy` and anything beneath it: the residue of the reverted text-override
+// feature. See MGM.stripResidue.
+const SCEN_DROPPED_KEYS = ['copy'];
+
+MGM.reportableUnknown = function (merged) {
+  return (merged && merged.unknown || []).filter(p =>
+    SCEN_META_KEYS.indexOf(p) < 0 &&
+    !SCEN_DROPPED_KEYS.some(d => p === d || p.indexOf(d + '.') === 0));
+};
+
 // Residue of the removed copy-override feature. ONE definition, applied at
 // every point a state object enters or leaves this page, because the load-path
 // cleanup alone was not enough: the push to mgm_scenarios reads the LOCAL
@@ -4612,8 +4646,56 @@ const SCEN_META_KEYS = ['activeScenario'];
 //     cleaned durably rather than filtered on every read
 // Delegates to the engine, where the rule is unit-tested. The page keeps the
 // `.removed` surface its callers already read.
+// What this page needs the engine to provide, and the revision it was written
+// against. Checked, not assumed.
+//
+// The cache-busting query string on the engine's script tag was forgotten
+// twice in three rounds of one fix. The second time, the page ran against the
+// previous engine, MM.residueVerdict did not exist, and Sync died with a
+// TypeError and ZERO feedback -- a reader clicked it and nothing happened, on
+// data that was perfectly clean. Failing closed was right; being silent was
+// not, and relying on a human to bump a string is not a mechanism.
+//
+// So: one list, checked at boot and again before any sync, reported in words.
+MGM.ENGINE_NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
+MGM.ENGINE_REV_EXPECTED = 4;
+
+// Returns null when the engine is fine, or a human-readable reason when it is
+// not. Deliberately does NOT throw: a diagnostic that crashes its caller is
+// how the thing it diagnoses stayed invisible.
+MGM.engineSkew = function () {
+  if (typeof MM !== 'object' || !MM) return 'the model script did not load at all';
+  const missing = MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function');
+  if (missing.length) {
+    return 'the model script is out of date — it is missing ' + missing.join(', ');
+  }
+  if (MM.ENGINE_REV !== MGM.ENGINE_REV_EXPECTED) {
+    return 'the model script is revision ' + (MM.ENGINE_REV === undefined ? 'unknown' : MM.ENGINE_REV)
+         + ' but this page expects revision ' + MGM.ENGINE_REV_EXPECTED;
+  }
+  return null;
+};
+
+MGM.engineSkewMessage = function (what) {
+  return 'Cannot ' + what + ': ' + MGM.engineSkew() + '.\n\n'
+       + 'Your browser is almost certainly serving a cached copy of an older '
+       + 'script. Reload the page (hold Shift while reloading, or empty the '
+       + 'cache) and try again. Nothing was changed or uploaded.';
+};
+
 MGM.stripResidue = function (obj) {
-  MGM.stripResidue.removed = MM.stripResidue(obj).removed;
+  const r = MM.stripResidue(obj);
+  MGM.stripResidue.removed = r.removed;
+  // Carried through, not discarded. The engine reports deletes that did NOT
+  // succeed precisely so a caller can act on them; dropping the number here
+  // would make a partial strip indistinguishable from a complete one, which is
+  // the reported-as-fixed shape this whole fix exists to close.
+  MGM.stripResidue.failed = r.failed;
+  if (r.failed) {
+    try { console.error('[MGM] ' + r.failed + ' stored text override map(s) could '
+                      + 'not be removed (the property is not writable). Uploads '
+                      + 'are checked separately and will refuse to publish them.'); } catch (e) {}
+  }
   return obj;
 };
 
@@ -4656,10 +4738,28 @@ MGM.scenarioList = function () {
   try {
     MGM.stripResidue(v);
     if (MGM.stripResidue.removed) {
-      console.warn('[MGM] removed ' + MGM.stripResidue.removed + ' stored text '
-                 + 'override map(s) from a removed feature, across ' + v.length
-                 + ' saved scenario(s)');
-      try { localStorage.setItem(SCEN_KEY, JSON.stringify(v)); } catch (e2) {}
+      // Log what actually happened, separately for memory and for disk. This
+      // logged the removal unconditionally and swallowed the write-back
+      // failure into an empty catch -- so with one pathologically deep record
+      // present, the disk was never repaired, the same line printed on EVERY
+      // read, and the symptom read exactly like success. A review measured it
+      // five times in one probe against an unchanged 48 KB store.
+      let persisted = false, writeErr = null;
+      try { localStorage.setItem(SCEN_KEY, JSON.stringify(v)); persisted = true; }
+      catch (e2) { writeErr = e2; }
+      try {
+        if (persisted) {
+          console.warn('[MGM] removed ' + MGM.stripResidue.removed + ' stored text '
+                     + 'override map(s) from a removed feature, across ' + v.length
+                     + ' saved scenario(s), and saved the cleaned list.');
+        } else {
+          console.error('[MGM] cleaned ' + MGM.stripResidue.removed + ' stored text '
+                      + 'override map(s) IN MEMORY ONLY — the cleaned list could not '
+                      + 'be written back, so this repeats on every read and the '
+                      + 'stored copy stays as it was. Uploads are checked separately '
+                      + 'and will refuse to publish it.', writeErr);
+        }
+      } catch (e3) {}
     }
   } catch (e3) {
     try {
@@ -4785,7 +4885,7 @@ MGM.scenarioLoad = function (id) {
 MGM.scenarioNotice = null;
 MGM.scenarioNoticeFor = function (rec, merged) {
   const added = (merged.added || []).slice();
-  const unknown = (merged.unknown || []).filter(p => SCEN_META_KEYS.indexOf(p) < 0);
+  const unknown = MGM.reportableUnknown(merged);
   const ov = MGM.state.gallons && MGM.state.gallons.groupBaselineOverride;
   const overrides = ov ? Object.keys(ov).filter(k => ov[k] !== null && ov[k] !== '') : [];
   if (!added.length && !unknown.length && !overrides.length) return null;
@@ -4887,7 +4987,7 @@ MGM.renderCompare = function () {
       return {
         name: s.name, id: s.id, state: merged.state,
         stale: merged.added.length,
-        extra: merged.unknown.filter(p => SCEN_META_KEYS.indexOf(p) < 0).length
+        extra: MGM.reportableUnknown(merged).length
       };
     }));
 
@@ -5048,6 +5148,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // appearing to. DOMContentLoaded fires after the whole script is evaluated,
   // so every definition exists by now.
   try { MGM.scenarioList(); } catch (e) {}
+
+  // Say it once, up front. A reader who sees this knows why the page is
+  // behaving oddly instead of discovering it one dead button at a time.
+  const _skew = MGM.engineSkew();
+  if (_skew) {
+    try { console.error('[MGM] ' + _skew); } catch (e) {}
+    alert(MGM.engineSkewMessage('use this page safely'));
+  }
 
   MGM.renderTabs();
   MGM.switchTab('starting');

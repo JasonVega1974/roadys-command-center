@@ -330,31 +330,32 @@
   // told the reader to reload and retry -- advice that cannot work, for a
   // record that was never dirty. Failing closed is right; lying about why is
   // not.
+  // Bumped whenever this file changes in a way the page depends on. The page
+  // CHECKS it (see MGM.engineSkew) rather than assuming, because the cache-
+  // busting query string has now been forgotten twice in three rounds of one
+  // fix -- and the second time it left Sync completely dead, silently, for any
+  // reader holding the previous engine. A version string a human must remember
+  // to bump is not a mechanism; a runtime check that shouts is.
+  //
+  // Not a date: rounds 2 and 3 of this fix shipped on the same calendar day,
+  // so a date could not have told them apart even if it had been bumped.
+  var ENGINE_REV = 4;
+
   function residueVerdict(json) {
     if (typeof json !== 'string') {
       try { json = JSON.stringify(json); } catch (e) { return 'unverifiable'; }
     }
+    // JSON.stringify(undefined) RETURNS undefined rather than throwing, so the
+    // catch above does not fire. An earlier version then called .indexOf on it
+    // and threw -- a guard beaten by its own structure, the sixth time in this
+    // fix. Anything not a string by here cannot be checked, so it cannot be
+    // published.
     if (typeof json !== 'string') return 'unverifiable';
-    return json.indexOf('"copy":') < 0 ? 'clean' : 'residue';
-  }
-
-  function payloadIsResidueFree(json) {
-    if (typeof json !== 'string') {
-      try { json = JSON.stringify(json); } catch (e) { return false; }
-    }
-    // FAILS CLOSED on anything that is not a string by this point. JSON.
-    // stringify(undefined) returns undefined rather than throwing, so the
-    // `catch` above does not fire and the next line threw TypeError on the
-    // guard itself -- a guard beaten by its own structure, which is the exact
-    // failure mode that defeated five earlier versions of this fix. An
-    // unverifiable payload must not be publishable.
-    if (typeof json !== 'string') return false;
     // `"copy":` and not `"copy"`, because JSON puts a colon after a key and
-    // nothing else. Matching the bare quoted word also matched a string VALUE
-    // equal to "copy" -- a scenario note of exactly that word was refused
-    // publication. A value containing the word with its own quotes is escaped
-    // as \"copy\", so it cannot collide either way.
-    return json.indexOf('"copy":') < 0;
+    // nothing else. Matching the bare quoted word also refused a scenario note
+    // whose value was the word copy. A quoted occurrence inside a string VALUE
+    // is escaped as \"copy\", so it cannot collide either way.
+    return json.indexOf('"copy":') < 0 ? 'clean' : 'residue';
   }
 
   function mergeState(defaults, saved) {
@@ -848,8 +849,8 @@
       getPath: getPath,
       setPath: setPath,
       mergeState: mergeState,
+      ENGINE_REV: ENGINE_REV,
       stripResidue: stripResidue,
-      payloadIsResidueFree: payloadIsResidueFree,
       residueVerdict: residueVerdict,
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,

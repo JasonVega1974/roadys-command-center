@@ -1797,44 +1797,49 @@ test('stripResidue never throws, whatever it is handed', () => {
   });
 });
 
-test('payloadIsResidueFree refuses a payload carrying the key', () => {
+test('residueVerdict refuses a payload carrying the key', () => {
   // The publish boundary's own check. It tests a KEY NAME, which is why it
   // works where three earlier guards failed: those matched gated VALUES
   // against rendered text, and the page rounds and reformats figures, so a
   // value stored at two decimals and displayed at one defeated all three. A
   // key name is never rounded, reformatted or localised.
-  const F = MembershipModel.payloadIsResidueFree;
-  assert.equal(F({ id: 's1', state: { revenue: { duesPerLoc: 7 } } }), true);
-  assert.equal(F({ id: 's1', state: { copy: { 'a|1': RESIDUE_MARK } } }), false);
-  assert.equal(F({ id: 's1', state: { a: { b: { copy: {} } } } }), false,
+  // Tests the function cloudSave ACTUALLY RUNS. An earlier round shipped two
+  // exported definitions of this one rule and these tests pointed at the one
+  // production did not use -- so the live rule had no coverage at all while the
+  // suite read as green. The duplicate is deleted.
+  const clean = p => MembershipModel.residueVerdict(p) === 'clean';
+  assert.equal(clean({ id: 's1', state: { revenue: { duesPerLoc: 7 } } }), true);
+  assert.equal(clean({ id: 's1', state: { copy: { 'a|1': RESIDUE_MARK } } }), false);
+  assert.equal(clean({ id: 's1', state: { a: { b: { copy: {} } } } }), false,
     'at any depth');
-  assert.equal(F({ id: 's1', state: { list: [{ copy: {} }] } }), false,
+  assert.equal(clean({ id: 's1', state: { list: [{ copy: {} }] } }), false,
     'inside an array');
-  assert.equal(F('{"state":{"copy":{}}}'), false, 'accepts pre-serialised JSON');
-  assert.equal(F('{"state":{}}'), true);
+  assert.equal(clean('{"state":{"copy":{}}}'), false, 'accepts pre-serialised JSON');
+  assert.equal(clean('{"state":{}}'), true);
 });
 
-test('payloadIsResidueFree fails CLOSED on anything it cannot serialise', () => {
+test('residueVerdict fails CLOSED on anything it cannot serialise', () => {
   // A payload that cannot be serialised cannot be checked, and an unverifiable
   // payload must not be published. Returning true here would make one
   // unserialisable field a disclosure.
   const cyc = { id: 's1' }; cyc.self = cyc;
-  assert.equal(MembershipModel.payloadIsResidueFree(cyc), false, 'unserialisable');
+  const clean = p => MembershipModel.residueVerdict(p) === 'clean';
+  assert.equal(clean(cyc), false, 'unserialisable');
   // JSON.stringify(undefined) returns undefined rather than throwing, so the
   // catch does not fire. The first version of the guard then called .indexOf
   // on it and THREW -- a guard beaten by its own structure, for the sixth time
   // in this fix. Found by this test.
-  assert.equal(MembershipModel.payloadIsResidueFree(undefined), false, 'unverifiable');
+  assert.equal(clean(undefined), false, 'unverifiable');
   // Not every odd input is unverifiable: a payload that serialises cleanly
   // carries no residue, whatever else is wrong with it. Fail-closed is about
   // what cannot be CHECKED, not about what looks unusual.
-  assert.equal(MembershipModel.payloadIsResidueFree(null), true);
+  assert.equal(clean(null), true);
 });
 
-test('payloadIsResidueFree does not reject a value that merely mentions copy', () => {
+test('residueVerdict does not reject a value that merely mentions copy', () => {
   // It matches the quoted KEY, not the word, so a scenario legitimately named
   // "Copy of Base" -- or a note containing the word -- still publishes.
-  const F = MembershipModel.payloadIsResidueFree;
+  const F = p => MembershipModel.residueVerdict(p) === 'clean';
   assert.equal(F({ id: 's1', name: 'Copy of Base', state: {} }), true);
   assert.equal(F({ id: 's1', state: { notes: 'copy this to the board' } }), true);
   // A quoted occurrence inside a string VALUE is escaped by JSON.stringify, so
