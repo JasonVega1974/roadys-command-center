@@ -302,6 +302,205 @@ test('no P&L identifier leaks into the engine or the page', () => {
     'the page must not assign a nonzero ebitdaMargin literal — the real figure is auth-gated and arrives at runtime');
 });
 
+test('SR-11: no committed file assigns an undeclared number to a P&L field', (t) => {
+  // LAYER 1 of the SR-11 gate. Always runs; needs no secret.
+  //
+  // SR-11: a guard, test, assertion message, comment or example describing a
+  // banned value must never contain that value anywhere in it. Three separate
+  // occurrences of that shape happened in THIS file:
+  //
+  //   1. the config leak scan asserted a regex that spelled the gated
+  //      percentage out in order to ban it
+  //   2. the same figure stood as a test FIXTURE, on the reasoning that a
+  //      fixture is not data -- it is as recoverable as a config default
+  //   3. the replacement comment for (1) illustrated the banned pattern using
+  //      that same real figure, written hours after removing (1) for exactly
+  //      that reason
+  //
+  // So this scan deliberately includes THIS FILE. The earlier cross-file guard
+  // exempted it on the grounds that it "holds no data at all, only fixtures",
+  // which was false when written -- see SR-10. No file is exempt by category.
+  //
+  // Rather than ban numbers outright, every legitimate value is DECLARED.
+  // Adding to the allow-list is then a deliberate, reviewable act, and the
+  // reviewer's only question is: is this number obviously not the real one?
+  const fs = require('node:fs'), path = require('node:path');
+  const root = __dirname;
+
+  const FILES = ['membershipModelConfig.js', 'membershipModel.js',
+    'membershipModel.test.js', path.join('membership-growth-model', 'index.html')];
+
+  // Field names that hold, or could hold, a figure off the income statement.
+  const PNL_FIELDS = ['grossProfit', 'gross_profit', 'netIncome', 'net_income',
+    'netMargin', 'net_margin', 'settlementSpread', 'settlement_spread',
+    'payrollTotal', 'payroll_total', 'opexTotal', 'opex_total',
+    'ebitdaMargin', 'marginPct', 'totalPerMemberYr'];
+
+  // Declared non-secret values. Each one is here because a human looked at it
+  // and could see it is not a real figure. Do not add a value you cannot say
+  // that about.
+  const DECLARED = new Map([
+    [0,    'the shipped placeholder: "explicitly unset", asserted by its own test'],
+    [25,   'LEGACY_STATE only -- the v1 tool’s own unsupported hardcoded margin, ' +
+           'preserved verbatim so the golden regression tests reproduce v1 output'],
+    [7.5,  'arbitrary test fixture for "a margin is set"'],
+    [10,   'arbitrary test fixture'],
+    [80,   'arbitrary test fixture, deliberately implausible'],
+    [12.3, 'arbitrary illustration in the cross-file guard’s own comment'],
+    [7000, 'arbitrary stand-in for a loaded per-member actual; the variance test ' +
+           'pins the SIGN rather than a figure']
+  ]);
+
+  const pattern = new RegExp(
+    '(' + PNL_FIELDS.join('|') + ')[A-Za-z0-9_]*\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)', 'gi');
+
+  const offences = [];
+  FILES.forEach(rel => {
+    const abs = path.join(root, rel);
+    assert.ok(fs.existsSync(abs), rel + ' must exist for this guard to mean anything');
+    const src = fs.readFileSync(abs, 'utf8');
+    src.split('\n').forEach((line, i) => {
+      let m;
+      pattern.lastIndex = 0;
+      while ((m = pattern.exec(line)) !== null) {
+        const value = Number(m[2]);
+        if (!DECLARED.has(value)) {
+          offences.push(rel + ':' + (i + 1) + '  ' + m[1] + ' = ' + m[2]);
+        }
+      }
+    });
+  });
+
+  assert.deepEqual(offences, [],
+    'undeclared number assigned to a P&L field. Either it is a real figure -- in ' +
+    'which case remove it, this repo is PUBLIC -- or it is a synthetic value, in ' +
+    'which case add it to DECLARED with a note saying why it is obviously not real:\n  ' +
+    offences.join('\n  '));
+});
+
+test('SR-11: no gated value from the local actuals appears in any committed file', (t) => {
+  // LAYER 2. Runs only where the secret is available.
+  //
+  // Layer 1 cannot catch a BARE figure -- a percentage inside a regex, a number
+  // in prose -- because no structural rule distinguishes it from any other
+  // decimal. The only way to scan for it is to know it, and the only way to
+  // know it without committing it is to read the gitignored source at runtime.
+  // No gated value is ever written into this file, or into a failure message.
+  //
+  // The local file is read as TEXT and its numeric literals extracted, NOT
+  // require()d. It is a browser <script> that assigns a global rather than a
+  // CommonJS module, so require() returns {} -- which made an earlier version
+  // of this test scan an empty set and report a confident pass. Reading the
+  // bytes needs no module semantics and cannot regress that way.
+  const fs = require('node:fs'), path = require('node:path');
+  const root = __dirname;
+  const LOCAL = path.join(root, 'membershipPnlActuals.local.js');
+
+  if (!fs.existsSync(LOCAL)) {
+    // SKIP VISIBLY. A check that silently passes when it could not run is the
+    // same failure mode as the self-exemption behind SR-10 -- the output must
+    // say "not performed", never "passed".
+    t.skip('membershipPnlActuals.local.js is absent on this machine, so there is ' +
+           'no gated value to scan for. This check did NOT run.');
+    return;
+  }
+
+  const localSrc = fs.readFileSync(LOCAL, 'utf8');
+
+  // Every numeric literal in the file, deduped. A value needs enough digits to
+  // be distinctive: "12" would match a date, a month index and a step
+  // attribute, where 1672075 or 1.27 would not.
+  const digits = n => String(Math.abs(n)).replace(/[^0-9]/g, '').replace(/^0+/, '');
+  const literals = src => new Set(
+    (src.match(/-?\d+(?:\.\d+)?/g) || []).map(Number).filter(n => isFinite(n)));
+
+  // The gated file also holds PUBLIC context -- the period year, the member
+  // basis, counts that are committed by decision. Those are not secrets and
+  // matching them produced a hit in all six files on the first run, including
+  // the SQL migration and a Python script. The secret is precisely the set of
+  // numbers in the gated file that are NOT already public, so subtract:
+  //
+  //   - every literal in membershipModelConfig.js, the committed data file
+  //   - calendar years, which appear legitimately everywhere
+  //
+  // This cannot hide a secret that was already leaked INTO the config: that is
+  // layer 1's job, plus the config-only word-ban and structural rules above.
+  // "Already public" must mean ALREADY COMMITTED, read from git -- not from the
+  // working copy. Reading the working copy made this guard self-defeating: a
+  // secret pasted into the config became "public" by this very subtraction and
+  // was excluded from the scan, so the one leak the layer exists to catch was
+  // the one it disqualified. A control proved it: injecting a real gated value
+  // into the config did not fail the suite. You cannot make a value public by
+  // putting it in your own uncommitted tree.
+  let publicSrc = null;
+  try {
+    publicSrc = require('node:child_process')
+      .execFileSync('git', ['show', 'HEAD:membershipModelConfig.js'],
+                    { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) { /* no git, or the file is not committed yet */ }
+
+  if (publicSrc === null) {
+    // Fall back, but SAY the subtraction is weaker -- in this state a value
+    // pasted into the working config would be excluded.
+    publicSrc = fs.readFileSync(path.join(root, 'membershipModelConfig.js'), 'utf8');
+    t.diagnostic('could not read the committed config from git; falling back to the ' +
+      'working copy, which means a gated value pasted into the config would be ' +
+      'treated as already-public and NOT reported');
+  }
+  const publicLiterals = literals(publicSrc);
+  const isYear = n => Number.isInteger(n) && n >= 1900 && n <= 2100;
+
+  const all = [...literals(localSrc)];
+  const scannable = all.filter(n =>
+    n !== 0 && digits(n).length >= 3 && !publicLiterals.has(n) && !isYear(n));
+  const excluded = all.length - scannable.length;
+
+  if (!scannable.length) {
+    // Also a visible skip, and the more dangerous case: the file EXISTS, so an
+    // existence check passes, yet it yields nothing to look for. An assertion
+    // over an empty set is green by construction. Say so rather than bank it.
+    t.skip('membershipPnlActuals.local.js exists but yields no sufficiently ' +
+           'distinctive numeric literal, so there is nothing to scan for. ' +
+           'This check did NOT meaningfully run.');
+    return;
+  }
+
+  const FILES = ['membershipModelConfig.js', 'membershipModel.js',
+    'membershipModel.test.js', path.join('membership-growth-model', 'index.html'),
+    path.join('sql', '2026-10-28-mgm-scenarios.sql'),
+    path.join('tools', 'refresh-membership-config.py')];
+
+  const hits = [];
+  FILES.forEach(rel => {
+    const abs = path.join(root, rel);
+    if (!fs.existsSync(abs)) return;
+    const src = fs.readFileSync(abs, 'utf8');
+    scannable.forEach((n, idx) => {
+      const plain = String(n).replace('.', '\\.');
+      const grouped = (Math.abs(n) >= 1000 && Number.isInteger(n))
+        ? String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+        : null;
+      const alts = grouped ? plain + '|' + grouped : plain;
+      if (new RegExp('(^|[^0-9.,])(' + alts + ')([^0-9.]|$)').test(src)) {
+        // The value is NOT named in the message -- naming it here would commit
+        // it, which is the whole point of SR-11.
+        hits.push(rel + ' contains a gated value (local-file literal #' + idx + ')');
+      }
+    });
+  });
+
+  assert.deepEqual(hits, [],
+    'a figure from the auth-gated actuals appears in a committed file. This repo ' +
+    'is PUBLIC. Remove it -- and if it sits inside a guard, a comment or an ' +
+    'example, remember SR-11: a guard needs the shape, never the instance:\n  ' +
+    hits.join('\n  '));
+
+  // State the coverage, so a thin scan is visible rather than looking thorough.
+  t.diagnostic('scanned ' + scannable.length + ' gated literal(s) across ' +
+    FILES.length + ' committed file(s); ' + excluded + ' of ' + all.length +
+    ' local literals excluded as already-public, a calendar year, or too few digits');
+});
+
 test('labels cover all twelve tabs', () => {
   assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 12);
 });
