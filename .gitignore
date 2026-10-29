@@ -20,3 +20,25 @@ reports/
 
 # Working/verification artifacts - never commit (can include stale full-page copies)
 scratchpad/
+
+# P&L actuals — never commit (public repo; financial statement data)
+membershipPnlActuals.local.js
+
+# Tooling scratch directories
+.playwright-mcp/
+.worktrees/
+
+# A nested full copy of this repo inside itself (~9.9MB), including a local
+# .claude/settings.local.json. Created by a clone or copy run from inside the
+# repo rather than its parent. Ignored rather than deleted — remove by hand
+# once you have confirmed nothing in it is wanted.
+/roadys-command-center/
+
+# Shell-quoting accident, Oct 21 2026: a mangled grep argument became a
+# redirect target, so this file is ANSI-coloured grep output. Safe to delete.
+elect(*
+
+# The MGM refresh-script fixtures are deliberately committed: they are tiny,
+# synthetic, and they are the only test input for tools/refresh-membership-config.py.
+# The blanket *.csv rule above would otherwise swallow them.
+!tools/fixtures/*.csv
