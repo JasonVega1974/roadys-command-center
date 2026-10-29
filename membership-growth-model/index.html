@@ -381,12 +381,37 @@ const MM = (function () {
       // defaultState is called here with the SAME argument the line below
       // passes it, so this genuinely covers that call site rather than
       // resembling it.
+      // Asserts WHAT THE CALLER DEPENDS ON, not the shape of the answer.
+      //
+      // A reviewer found this exact arm to be the third instance of one habit
+      // of mine, each a weaker claim standing in for a stronger one:
+      //   round 10 -- "works on one input"      taken for "never throws"
+      //   round 11 -- "exists"                  taken for "calling it works"
+      //   round 12 -- "result has the right fields" taken for "the merge merged"
+      // The tell is identical each time: the assertion checks something ABOUT
+      // the output instead of the property the call site relies on. Here, an
+      // engine whose merge skipped its walk returned a perfectly shaped result
+      // and the page loaded with a saved 777 showing as 362 and a user's own
+      // field silently gone -- verbatim the failure mergeState's own comment
+      // says it exists to prevent.
       const d = e.defaultState(MGM_CONFIG);
-      if (!d || typeof d !== 'object') return 'is not working correctly';
-      const m = e.mergeState(e.defaultState(MGM_CONFIG), { revenue: { duesPerLoc: 1 } });
+      // Not just "an object": `{}` passed that, and `{}` is a model with every
+      // driver missing.
+      if (!d || typeof d !== 'object' || !d.revenue
+          || typeof d.revenue.duesPerLoc !== 'number') {
+        return 'is not working correctly';
+      }
+      // The VALUE must arrive, and an unrecognised key must be RETAINED --
+      // which is the behaviour the residue fix is built around, so it is the
+      // one property here worth asserting twice.
+      const m = e.mergeState(e.defaultState(MGM_CONFIG),
+                             { revenue: { duesPerLoc: 1 }, zzzProbeKey: 'kept' });
       if (!m || !m.state || !Array.isArray(m.unknown) || !Array.isArray(m.added)) {
         return 'is not working correctly';
       }
+      if (m.state.revenue.duesPerLoc !== 1) return 'is not working correctly';
+      if (m.state.zzzProbeKey !== 'kept') return 'is not working correctly';
+      if (m.unknown.indexOf('zzzProbeKey') < 0) return 'is not working correctly';
 
       // NESTED five deep and inside an array, because depth is the property
       // this fix got wrong twice: once when the load path cleaned only

@@ -1926,23 +1926,57 @@ function stripLineComments(src) {
 // reads its copy from HTML, so the coupling is asserted across the two files.
 
 test("the engine satisfies the page's boot smoke check", () => {
-  // The page does not ask the engine for a revision number any more -- two
-  // reviews beat that, once because nothing coupled the two constants and once
-  // because a second assignment shadowed the page's copy while the suite
-  // stayed green. It smoke-tests BEHAVIOUR at binding time instead.
+  // The page smoke-tests the engine's BEHAVIOUR at binding time rather than
+  // asking for a revision number -- two reviews beat that pairing, once
+  // because nothing coupled the two constants and once because a second
+  // assignment shadowed the page's copy while the suite stayed green.
   //
-  // These are the exact three assertions the page makes. They are pinned here
-  // so that a change to the engine which would make every page refuse to load
-  // fails in node first, where it is cheap to see.
-  // The EFFECT, not just the count. This asserted only `removed === 1`, the
-  // same weakness a review found in the page's probe: an engine that
-  // increments the counter without performing the delete satisfied both. A
-  // success report is not evidence of the thing it reports on.
-  const probe = { copy: {} };
-  assert.equal(MembershipModel.stripResidue(probe).removed, 1);
-  assert.equal('copy' in probe, false, 'the key must actually be gone');
+  // This mirrors the page's probe, so an engine change that would make every
+  // page refuse to load fails in node first, where it is cheap to see.
+  //
+  // It has to be kept in step by hand, and it was not: a review found this
+  // test still claiming to be "the exact three assertions the page makes"
+  // while holding a flat two-key probe and never calling defaultState or
+  // mergeState -- so it passed on all four engine shapes that make the page
+  // refuse. The protection survived through other tests; the claimed mirror
+  // did not exist. Hence the assertion below that the two are actually the
+  // same set.
+  const probe = { copy: {}, a: { b: { c: { d: { copy: {} } } } }, list: [{ copy: {} }] };
+  const r = MembershipModel.stripResidue(probe);
+  assert.equal(r.removed, 3);
+  // The EFFECT, not the count: an engine incrementing `removed` without
+  // deleting satisfied a count-only assertion.
+  assert.equal('copy' in probe, false);
+  assert.equal('copy' in probe.a.b.c.d, false, 'at depth, which the real store reaches');
+  assert.equal('copy' in probe.list[0], false, 'and inside an array');
   assert.equal(MembershipModel.residueVerdict({ state: { copy: {} } }), 'residue');
   assert.equal(MembershipModel.residueVerdict({ state: { a: 1 } }), 'clean');
+
+  const d = MembershipModel.defaultState(MGM_CONFIG);
+  assert.equal(typeof d.revenue.duesPerLoc, 'number', 'not merely "an object"');
+  const m = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG),
+                                       { revenue: { duesPerLoc: 1 }, zzzProbeKey: 'kept' });
+  // The VALUE arrives, and an unknown key is RETAINED. Shape-only assertions
+  // here passed an engine whose merge skipped its walk entirely.
+  assert.equal(m.state.revenue.duesPerLoc, 1);
+  assert.equal(m.state.zzzProbeKey, 'kept');
+  assert.ok(m.unknown.includes('zzzProbeKey'));
+});
+
+test("the page's boot probe and this test assert the same things", () => {
+  // Stops the mirror above from silently drifting again. Compares the set of
+  // engine calls each one makes, which is the property that matters -- not the
+  // text, which would make every rewording a failure.
+  const page = readPage();
+  const iBind = page.indexOf('const MM = (function () {');
+  const iEnd = page.indexOf('}());', iBind);
+  const probeSrc = page.slice(iBind, iEnd);
+  const pageCalls = new Set((probeSrc.match(/\be\.([a-zA-Z]+)\s*\(/g) || [])
+    .map(x => x.replace(/^e\./, '').replace(/\s*\($/, '')));
+  const mine = new Set(['stripResidue', 'residueVerdict', 'defaultState', 'mergeState']);
+  assert.deepEqual([...pageCalls].sort(), [...mine].sort(),
+    'the page probe calls a different set of engine functions than the test ' +
+    'above mirrors -- update both, or this mirror is decoration');
 });
 
 test("every function the page's boot guard requires is exported", () => {
@@ -2034,7 +2068,14 @@ test('nothing in the page reads the engine before the guard has passed', () => {
     // the position test, because its first `*/` is not the last two
     // characters. This is a cost reduction only -- a review noted that round
     // 10 began reporting single-line block comments, which are unambiguous.
-    if (t.startsWith('/*') && t.endsWith('*/') && t.indexOf('*/') === t.length - 2) {
+    //
+    // Except that `${...}` is EVALUATED, so a line inside a template literal
+    // is not a comment however it is punctuated. A reviewer got
+    // `/* ${MembershipModel.defaultState(MGM_CONFIG)} */` past all three
+    // conditions above -- in one line, without `inBlock`, which is a different
+    // branch from the gap recorded below and wider than that note described.
+    if (t.startsWith('/*') && t.endsWith('*/') && t.indexOf('*/') === t.length - 2
+        && !t.includes('${')) {
       continue;
     }
     if (t.startsWith('/*')) {
@@ -2047,11 +2088,17 @@ test('nothing in the page reads the engine before the guard has passed', () => {
 
   // KNOWN GAP, left deliberately on a reviewer's recommendation: a template
   // literal whose continuation line begins with `/*` exempts an interpolation
-  // below it. It is strictly narrower than the shape it replaced, no such
-  // construct exists in this region, and chasing it means writing the
-  // tokenizer that comment-stripping already proved to be the losing move
-  // twice in this work. Recorded rather than fixed, so the next reader knows
-  // the boundary instead of assuming there is none.
+  // BELOW it, via the inBlock branch. Strictly narrower than the shape it
+  // replaced, no such construct exists in this region, and chasing it means
+  // writing the tokenizer that comment-stripping already proved to be the
+  // losing move twice in this work.
+  //
+  // The first version of this note said "an interpolation below it" and was
+  // then read as covering the whole family. It did not: a reviewer reached the
+  // same end through a different branch -- one line, no inBlock -- and that
+  // one IS fixed above, by excluding `${`. A recorded boundary is only useful
+  // if it states its extent, so: this note covers the multi-line inBlock
+  // branch and nothing else.
 
   // THE IDENTIFIER, not a call shape. Earlier versions matched
   // `MembershipModel.` and `MM.` in statement position, and a review got past
