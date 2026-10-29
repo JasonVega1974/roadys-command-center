@@ -287,6 +287,24 @@ MGM.loadPipeline = async function () {
   MGM.refresh();
 };
 
+// Mirrors BDPG.dataUrl() (bus-dev-potential-gallons/index.html:822-824) so a
+// stale CDN copy cannot silently rescale every figure on this page.
+MGM.dataUrl = p => p + '?v=' + encodeURIComponent(BDPG_CONFIG.DATA_ASOF);
+
+MGM.regionVariance = null;
+MGM.loadRegionVariance = async function () {
+  try {
+    const r = await fetch(MGM.dataUrl('../region_variance.json'));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    MGM.regionVariance = await r.json();
+  } catch (e) {
+    // Fail visibly on the card: a silent 0% would look like a real answer.
+    MGM.regionVariance = null;
+    console.warn('[MGM] region_variance.json unavailable', e);
+  }
+  MGM.refresh();
+};
+
 // The injected baseline lookup that keeps the engine pure.
 MGM.baselineFor = function (profile, roadway) {
   try { return BusDevGallonsCalc.getBaselineRow(profile, roadway) || null; }
@@ -852,6 +870,181 @@ MGM.useSplitBasis = function () {
   MGM.save(); MGM.refresh();
 };
 
+/* ═══════════════ TAB RENDERERS: Program Participation and Fuel Gallon
+   Production (Task 11) ═══════════════ */
+MGM.renderers.participation = function (D) {
+  const { st, participation: P, M } = D;
+  const progs = [
+    ['fuel', 'Fuel program'],
+    ['vendor', 'Vendor programs'],
+    ['rewards', 'Rewards program']
+  ];
+
+  document.getElementById('panel-participation').innerHTML = `
+  <h2>${esc(st.labels.tabs.participation)}</h2>
+  <p class="sub">Participation rates own these percentages; Revenue per Member
+     consumes them. One source, two views.</p>
+  <div class="signrow">
+    ${progs.map(([k, label], i) => sign(
+      label.toUpperCase(), pct1(MM.partPct(st, k)),
+      `${fmt(P.length ? P[P.length - 1][k] : 0)} members in ${M.years[M.years.length - 1].year}`,
+      i === 2 ? 'red' : (i === 1 ? 'dark' : ''))).join('')}
+    ${sign('MEMBERS', fmt(P.length ? P[P.length - 1].members : 0), 'final-year average', 'dark')}
+  </div>
+
+  <div class="card"><h3>Rates and ramp</h3>
+    <table>
+      <tr><th>Program</th><th class="num">Participation %</th>
+          <th class="num">Ramp (months)</th></tr>
+      ${progs.map(([k, label]) => `<tr><td>${esc(label)}</td>
+        <td class="num"><input class="cell" type="number" min="0" max="100" step="0.5"
+            data-k="participation.${k}.pct" value="${st.participation[k].pct}">
+            ${MGM.editedMark(`participation.${k}.pct`)}</td>
+        <td class="num"><input class="cell" type="number" min="0"
+            data-k="participation.${k}.rampMonths" value="${st.participation[k].rampMonths}"></td></tr>`).join('')}
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.resetSection('participation')">Reset participation</button>
+    </div>
+    <p class="note">Calibrated against the Jan–Sep 2026 P&amp;L. Rewards'
+       participation drives the <b>program fee</b> only — breakage from expired
+       points is a separate per-member line on Revenue per Member and does not
+       scale with participation.</p>
+  </div>
+
+  <div class="card"><h3>Participating members by year</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Avg members</th>
+        ${progs.map(([, l]) => `<th class="num">${esc(l)}</th>`).join('')}</tr>
+      ${P.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.members)}</td>
+        ${progs.map(([k]) => `<td class="num">${fmt(r[k])}</td>`).join('')}</tr>`).join('')}
+    </table>
+  </div>
+
+  ${MGM.tabNotes('participation')}`;
+};
+
+MGM.renderers.gallons = function (D) {
+  const { st, gallons: G, pipeline: p, M } = D;
+  const gcfg = st.gallons;
+  const rv = MGM.regionVariance || {};
+  const profiles = (() => {
+    try { return BusDevGallonsCalc.getProfiles(); } catch (e) { return []; }
+  })();
+
+  // Pipeline inbound comes from the same live crm_leads fetch Task 10 gated on
+  // MGM.pipelineState. `G.inbound` is a real 0 only when the pipeline loaded
+  // AND no open lead carries gallons; any other state means "unknown", not
+  // "zero" — this tab must not let that absence print as a bare 0 any more
+  // than the Sales Pipeline tab does. loadedG/whyNotG are this renderer's own
+  // locals (MGM.renderers.pipeline's loadedP/whyNot are scoped there).
+  const loadedG = MGM.pipelineState === 'ok';
+  const whyNotG = { unsigned: 'not loaded — sign in on Sales Pipeline',
+                     loading:  'loading…',
+                     error:    'could not load' }[MGM.pipelineState] || 'not loaded';
+
+  document.getElementById('panel-gallons').innerHTML = `
+  <h2>${esc(st.labels.tabs.gallons)}</h2>
+  <p class="sub">Network-level production from the live Bus Dev gallons engine.
+     Per-prospect value props live in the
+     <a href="../bus-dev-potential-gallons/" target="_blank">Bus Dev Potential Gallons</a> tool.</p>
+  <div class="signrow">
+    ${sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')}
+    ${sign('PIPELINE INBOUND', loadedG ? fmt(G.inbound) : '—',
+           loadedG ? `${p.openLeads} open leads` : whyNotG, 'dark')}
+    ${loadedG
+      ? sign('TOTAL', fmt(G.total), fmt(G.total * 12) + ' gal / yr', 'red')
+      : sign('EXISTING ONLY', fmt(G.existing),
+             fmt(G.existing * 12) + ' gal / yr · pipeline ' + whyNotG, 'red')}
+    ${sign('PER MEMBER', fmt(G.perMember), 'gal / mo, existing network', 'dark')}
+  </div>
+
+  <div class="card"><h3>Production by group</h3>
+    <table>
+      <tr><th>Group</th><th class="num">Locations</th><th>Engine profile</th>
+          <th>Roadway</th><th class="num">Baseline gal/mo</th><th class="num">Gallons / mo</th></tr>
+      ${G.byGroup.map(r => `<tr>
+        <td>${esc(r.label)}${r.unmapped ? ' <span class="ovr">unmapped</span>' : ''}</td>
+        <td class="num">${fmt(r.count)}</td>
+        <td><select class="cell" data-k="gallons.groupProfile.${r.key}.0">
+          ${profiles.map(pr => `<option${pr === r.profile ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
+        </select></td>
+        <td><select class="cell" data-k="gallons.groupProfile.${r.key}.1">
+          ${(() => { try { return BusDevGallonsCalc.getValidRoadways(r.profile) || []; }
+                     catch (e) { return []; } })()
+            .map(rd => `<option${rd === r.roadway ? ' selected' : ''}>${esc(rd)}</option>`).join('')}
+        </select></td>
+        <td class="num"><input class="cell" type="number"
+            data-k="gallons.groupBaselineOverride.${r.key}"
+            value="${r.overridden ? r.baseline : ''}" placeholder="${fmt(r.engineBaseline)}">
+            ${r.overridden ? `<span class="ovr" title="Engine says ${fmt(r.engineBaseline)}">overridden · engine ${fmt(r.engineBaseline)}</span>` : ''}</td>
+        <td class="num"><b>${fmt(r.gallons)}</b></td></tr>`).join('')}
+      <tr class="total"><td>Existing network</td>
+        <td class="num">${fmt(M.startTotal)}</td><td colspan="3"></td>
+        <td class="num"><b>${fmt(G.existing)}</b></td></tr>
+    </table>
+    ${G.byGroup.some(r => r.overridden) ? `<p class="note"><span class="ovr">
+      Overridden baselines in use</span> These figures no longer match the Bus Dev
+      gallons engine. <button class="btn"
+      onclick="MGM.resetSection('gallons.groupBaselineOverride')">Revert to engine values</button></p>` : ''}
+    ${G.mapped < G.byGroup.length ? `<p class="note neg">${G.byGroup.length - G.mapped}
+      group(s) are unmapped and contribute zero gallons. Pick a profile and roadway above.</p>` : ''}
+    <p class="note"><span class="assume">assumption</span> Group → profile
+      assignments are assumptions, not measurements: the engine assigns a profile
+      per location from <code>dieselLanes</code> + <code>roadway</code>, which this
+      tool does not have per group. Reading
+      <code>network-locations.json</code> for real per-location profiles is a
+      future refinement.</p>
+    <p class="note">Baselines are read live from
+      <code>busDevGallonsConfig.js</code> and are never written back.</p>
+  </div>
+
+  <div class="card"><h3>Pipeline inbound</h3>
+    <table>
+      <tr><th>Source</th><th class="num">Gal / mo</th></tr>
+      <tr><td>Open leads — modeled profiles and estimates</td>
+          <td class="num">${loadedG ? fmt(G.inbound) : '—'}</td></tr>
+      <tr class="total"><td>Total inbound</td>
+          <td class="num"><b>${loadedG ? fmt(G.inbound) : '—'}</b></td></tr>
+    </table>
+    <p class="note">A final <code>bd_value_profiles.final_gallons</code> takes
+      precedence over a lead's hand-entered <code>est_gallons</code>.
+      ${loadedG ? '' : `<span class="ovr">${esc(whyNotG)}</span> Pipeline inbound is
+      unknown, not zero, until it loads — the figures above read '—' rather than 0.`}</p>
+  </div>
+
+  <div class="card"><h3>Region variance</h3>
+    ${MGM.regionVariance
+      ? `<p class="note">Live from <code>region_variance.json</code>, as of
+         ${esc(rv.asOf)} — ${Object.keys(rv).filter(k => typeof rv[k] === 'number').length} regions.</p>
+         <table><tr><th>Region</th><th class="num">Variance</th><th class="num">n</th></tr>
+         ${Object.keys(rv).filter(k => typeof rv[k] === 'number').map(k =>
+           `<tr><td>${esc(k)}</td><td class="num">${rv[k] > 0 ? '+' : ''}${rv[k]}%</td>
+            <td class="num">${(rv.n || {})[k] || '—'}</td></tr>`).join('')}</table>`
+      : '<p class="note neg">region_variance.json could not be loaded — region variance unavailable.</p>'}
+    <p class="note">Shown for reference. Region variance is a per-location
+      adjustment in the Bus Dev tool and is <b>not</b> applied to these
+      network aggregates.</p>
+  </div>
+
+  <div class="card"><h3>Feed the revenue model</h3>
+    <p class="note">Revenue per Member currently uses
+      <b>${fmt(st.revenue.avgGallons)}</b> gal/mo per participating location.</p>
+    <button class="btn primary" onclick="MGM.useGallonsInModel(${G.perMember})">
+      Use ${fmt(G.perMember)} gal as the model average</button>
+    <p class="note" style="margin-top:10px"><b>${esc(gcfg.caveat)}</b></p>
+  </div>
+
+  ${MGM.tabNotes('gallons')}`;
+};
+
+MGM.useGallonsInModel = function (perMember) {
+  MM.setPath(MGM.state, 'revenue.avgGallons', Math.round(perMember));
+  MGM.save(); MGM.refresh();
+  alert('Avg gallons per participating location set to ' + fmt(perMember) +
+        ' on Revenue per Member.');
+};
+
 /* ═══════════════ BINDING (Task 8) ═══════════════ */
 // data-k       scalar — number | text | date | select, dotted state path
 // data-k-list  repeating rows — add / remove / reorder
@@ -1090,6 +1283,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // loadPipeline makes this a no-op until then, leaving pipelineState
   // at its 'unsigned' default.
   MGM.loadPipeline();
+  MGM.loadRegionVariance();
 });
 </script>
 </body>
