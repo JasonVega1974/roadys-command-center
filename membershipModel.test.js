@@ -1669,3 +1669,66 @@ test('valuationHeadline has no value when no lens has a basis', () => {
   assert.equal(h.value, null, 'null, never 0 — absence is not a $0 valuation');
   assert.match(h.caption, /no lens has a basis/);
 });
+
+// ── stripResidue: the removed text-override layer's leftovers ──────────────
+// A placeholder stands in for the sensitive value everywhere below, per SR-11:
+// a test describing a banned value must not contain it.
+const RESIDUE_MARK = 'PLACEHOLDER-NOT-A-REAL-VALUE';
+
+test('stripResidue removes a top-level copy map and counts it', () => {
+  const r = MembershipModel.stripResidue({ copy: { 'a|1': RESIDUE_MARK }, keep: 1 });
+  assert.equal('copy' in r.obj, false);
+  assert.equal(r.obj.keep, 1);
+  assert.equal(r.removed, 1);
+});
+
+test('stripResidue reaches copy nested at any depth', () => {
+  const r = MembershipModel.stripResidue({ a: { b: { c: { copy: { 'x|9': RESIDUE_MARK } } } } });
+  assert.equal('copy' in r.obj.a.b.c, false);
+  assert.equal(r.removed, 1);
+});
+
+test('stripResidue walks arrays, which is how the scenario store is shaped', () => {
+  const store = [
+    { id: 's1', name: 'One', copy: { 'r|0': RESIDUE_MARK },
+      state: { copy: { 'b|2': RESIDUE_MARK }, revenue: { duesPerLoc: 7 } } },
+    { id: 's2', name: 'Two', state: { nested: { copy: { 'c|3': RESIDUE_MARK } } } }
+  ];
+  const r = MembershipModel.stripResidue(store);
+  assert.equal(JSON.stringify(r.obj).includes(RESIDUE_MARK), false);
+  assert.equal(r.removed, 3, 'record-level, state-level and deep-nested all counted');
+  // Everything that is not the residue survives.
+  assert.equal(r.obj.length, 2);
+  assert.deepEqual(r.obj.map(x => x.name), ['One', 'Two']);
+  assert.equal(r.obj[0].state.revenue.duesPerLoc, 7);
+  assert.ok(r.obj[1].state.nested, 'the container of a stripped copy is kept');
+});
+
+test('stripResidue keeps unknown keys -- over-stripping would lose user data', () => {
+  // mergeState deliberately retains keys this build does not know, and that
+  // retention is what let the residue survive. The fix must target one key
+  // name, not "anything unfamiliar".
+  const r = MembershipModel.stripResidue({ zzzUnknownFutureField: 'KEEP-ME', copy: {} });
+  assert.equal(r.obj.zzzUnknownFutureField, 'KEEP-ME');
+  assert.equal('copy' in r.obj, false);
+});
+
+test('stripResidue reports zero on already-clean input, so no needless rewrite', () => {
+  const r = MembershipModel.stripResidue({ revenue: { duesPerLoc: 7 }, list: [{ a: 1 }] });
+  assert.equal(r.removed, 0);
+});
+
+test('stripResidue removes an empty copy map too', () => {
+  // `copy: {}` carries no value but is still a field of a feature that no
+  // longer exists; leaving it would keep reporting an unknown field forever.
+  assert.equal(MembershipModel.stripResidue({ copy: {} }).removed, 1);
+});
+
+test('stripResidue tolerates null, primitives and cycles', () => {
+  assert.equal(MembershipModel.stripResidue(null).removed, 0);
+  assert.equal(MembershipModel.stripResidue(42).removed, 0);
+  const o = { copy: { k: RESIDUE_MARK } };
+  o.self = o;                       // a saved object graph should never cycle,
+  const r = MembershipModel.stripResidue(o);     // but crashing on one would be worse than
+  assert.equal(r.removed, 1);       // the problem it guards.
+});

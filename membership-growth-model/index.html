@@ -13,7 +13,7 @@
 <script src="../busDevGallonsConfig.js"></script>
 <script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
-<script src="../membershipModel.js?v=2026-10-28"></script>
+<script src="../membershipModel.js?v=2026-10-29"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
      SDK tag has to come first. Never construct a second client here -- see
      MGM.sb() below. -->
@@ -2709,7 +2709,7 @@ MGM.reportAssumptions = function (D) {
     // loaded figure never enters MGM.state, by design.
     ['EBITDA', C.unset
       ? (MFP
-          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state by this tool, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. This tool never writes it into the model's state, so nothing it saves, syncs or exports carries it — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
@@ -3122,9 +3122,13 @@ MGM.exportCSV = function () {
 // Live CRM and P&L data are likewise not included: they are not ours to
 // redistribute in a file someone emails on.
 MGM.exportJSON = function () {
+  // Measured: this carried residue with MGM.state fully clean, because the
+  // scenario list is serialised separately. scenarioList() now strips, so this
+  // is covered -- the explicit strip here is belt and braces for a future
+  // caller that builds the payload some other way.
   MGM.dl('membership-growth-model.json', JSON.stringify({
-    state: MGM.state,
-    scenarios: MGM.scenarioList(),
+    state: MGM.stripResidue(MGM.state),
+    scenarios: MGM.stripResidue(MGM.scenarioList()),
     exportedAt: new Date().toISOString()
   }, null, 2), 'application/json');
 };
@@ -3171,7 +3175,9 @@ MGM.importJSON = function (file) {
         ' field(s) were not in the file and are now at this build\'s defaults, ' +
         'not at anything the file recorded. They are listed in the notice above the tabs.');
       if (unknown.length) parts.push(unknown.length +
-        ' field(s) in the file are not used by this build. They were kept but do nothing.');
+        ' field(s) in the file are not used by this build. Their values are kept '
+      + 'and still travel with this model into saves, scenarios and exports, even '
+      + 'though nothing reads them.');
       if (!merged.added.length && !unknown.length)
         parts.push('Every field this build uses was present in the file.');
       alert(parts.join('\n\n'));
@@ -3221,7 +3227,7 @@ MGM.summaryText = function () {
       : 'Indicated value: not available — no valuation lens has a basis. That is an absent figure, not a value of zero.');
   if (D.marginFromPnl) lines.push(
     'The EBITDA lens rests on a margin loaded from the P&L for this session only. ' +
-    'It is not stored in the model, so the same inputs without administrator ' +
+    'It is not stored in the model by this tool, so the same inputs without administrator ' +
     'access value on the revenue lens alone.');
   lines.push('',
     st.report.disclosure,
@@ -3571,7 +3577,7 @@ MGM.renderers.about = function (D) {
       hand-typed data stay distinguishable.</p>
     <p class="note"><b>One consequence worth knowing.</b> When an administrator's
       session has loaded the real margin, it drives that session's EBITDA lens but
-      is deliberately <i>never stored</i> in the model — so it reaches no saved
+      is deliberately <i>never written</i> to the model by this tool — so it reaches no saved
       scenario and no export. An administrator and a non-admin therefore see
       genuinely <b>different valuation headlines for the same saved scenario</b>.
       That is not a bug and not a disagreement: each is correct for the inputs it
@@ -4505,14 +4511,67 @@ const SCEN_DELETED_KEY = 'roadys_mgm_scenarios_deleted_v1';
 // of the notice, not out of the state.
 const SCEN_META_KEYS = ['activeScenario'];
 
+// Residue of the removed copy-override feature. ONE definition, applied at
+// every point a state object enters or leaves this page, because the load-path
+// cleanup alone was not enough: the push to mgm_scenarios reads the LOCAL
+// SCENARIO STORE, not MGM.state, so a record saved while the feature was live
+// kept its `copy` key through unlimited reloads and went up verbatim on one
+// Sync. A review measured that; it is the gap removing the feature existed to
+// close.
+//
+// Three chokepoints cover every route found:
+//   - the load path          (roadys_mgm_v2)        -- already done above
+//   - scenarioList()          read of the store      -- so cloudSave,
+//     exportJSON and scenarioLoad all receive clean records
+//   - scenarioWriteAll()      write to the store     -- so the store itself is
+//     cleaned durably rather than filtered on every read
+// Delegates to the engine, where the rule is unit-tested. The page keeps the
+// `.removed` surface its callers already read.
+MGM.stripResidue = function (obj) {
+  MGM.stripResidue.removed = MM.stripResidue(obj).removed;
+  return obj;
+};
+
 MGM.scenarioList = function () {
+  var v;
   try {
-    const v = JSON.parse(localStorage.getItem(SCEN_KEY));
-    return Array.isArray(v) ? v : [];
+    v = JSON.parse(localStorage.getItem(SCEN_KEY));
   } catch (e) { return []; }
+  if (!Array.isArray(v)) return [];
+
+  // The strip gets its OWN try, outside the parse's. It used to sit inside it,
+  // and when the call failed the shared `catch` returned [] -- so every saved
+  // scenario silently vanished from the UI and the store stayed dirty, while
+  // the page looked like it had simply lost the user's work. Found by a probe
+  // run against a stale cached engine, which is exactly how a version skew
+  // reaches a real user.
+  //
+  // Degrading here means the residue survives this read, which is no worse
+  // than before this fix existed. Degrading into an empty list would destroy
+  // the appearance of the user's data, which is far worse. So: log loudly,
+  // hand back the real list.
+  try {
+    MGM.stripResidue(v);
+    if (MGM.stripResidue.removed) {
+      console.warn('[MGM] removed ' + MGM.stripResidue.removed + ' stored text '
+                 + 'override map(s) from a removed feature, across ' + v.length
+                 + ' saved scenario(s)');
+      try { localStorage.setItem(SCEN_KEY, JSON.stringify(v)); } catch (e2) {}
+    }
+  } catch (e3) {
+    try {
+      console.error('[MGM] could not clean saved scenarios (model script out of '
+                  + 'date or failed to load?). Showing them as stored:', e3);
+    } catch (e4) {}
+  }
+  return v;
 };
 
 MGM.scenarioWriteAll = function (list) {
+  // Strip on write too, so the store is cleaned durably instead of being
+  // filtered on every read -- and so a poisoned row pulled down from the cloud
+  // cannot be persisted locally and then pushed back up.
+  MGM.stripResidue(list);
   try { localStorage.setItem(SCEN_KEY, JSON.stringify(list)); }
   catch (e) { alert('Could not save the scenario — browser storage is full.'); }
 };
@@ -4674,9 +4733,9 @@ MGM.renderScenarioBar = function () {
     ${show(n.added)}. Review ${n.added.length === 1 ? 'it' : 'them'} before quoting a figure from it.`;
   if (n && n.unknown.length) msg += ` <span class="warn">It carries ${n.unknown.length}
     field${n.unknown.length === 1 ? '' : 's'} this build no longer uses</span>
-    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept, and
-    still travel with this model into saves, scenarios and exports even though
-    nothing reads them.`;
+    (${show(n.unknown)}); ${n.unknown.length === 1
+      ? 'the value is kept, and still travels with this model into saves, scenarios and exports even though nothing reads it'
+      : 'the values are kept, and still travel with this model into saves, scenarios and exports even though nothing reads them'}.`;
   if (n && n.overrides.length) msg += ` <span class="warn">It carries overridden gallon
     baselines</span> that differ from the Bus Dev engine (${show(n.overrides)}) —
     see Fuel Gallon Production.`;
@@ -4845,6 +4904,18 @@ document.getElementById('themeBtn').onclick = () => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Repair the saved-scenario store once, up front, so the guarantee does not
+  // depend on the reader happening to open the Scenarios tab. scenarioList()
+  // strips and writes back; calling it here is the whole repair.
+  //
+  // It runs HERE, not in MGM.load, on purpose. MGM.load is called hundreds of
+  // lines above scenarioList's definition, and an earlier fix on this very bug
+  // put a remediation call there: it threw TypeError on every load, the
+  // adjacent catch swallowed it, and the remediation never once ran while
+  // appearing to. DOMContentLoaded fires after the whole script is evaluated,
+  // so every definition exists by now.
+  try { MGM.scenarioList(); } catch (e) {}
+
   MGM.renderTabs();
   MGM.switchTab('starting');
 

@@ -240,6 +240,42 @@
   //
   // Presence is tested with `in`, never truthiness, so an explicit 0 or null
   // in the saved state survives instead of being overwritten by the default.
+  // Removes the residue of a removed feature: `copy` maps left in saved state
+  // and saved scenarios by a text-override layer that was reverted.
+  //
+  // It lives in the engine, not the page, so the test suite can see it. In an
+  // earlier round of this same fix the decision logic was written straight
+  // into the page, and 98 passing tests could not reach five of six findings
+  // against it. Being hard to test is not a property of the problem here.
+  //
+  // Deletes `copy` at ANY depth and keeps every other key, including keys this
+  // build does not recognise -- mergeState deliberately retains unknown state,
+  // and that retention is exactly what let this residue survive the revert.
+  // Over-stripping would silently discard a user's data, so the rule is one
+  // key name and nothing else.
+  //
+  // Returns {obj, removed}: a caller that strips a store on read needs the
+  // count to decide whether to write the cleaned version back. Stripping
+  // without reporting left the on-disk store dirty forever while every
+  // consumer saw clean data -- true of the hand-off, false of the store.
+  function stripResidue(obj) {
+    var removed = 0;
+    // A `seen` set, not because saved state should ever cycle -- it comes from
+    // JSON.parse, which cannot produce one -- but because this also runs over
+    // the live in-memory state object, and a guard that crashes the page is
+    // worse than the residue it was removing. A test asserted the tolerance
+    // and the first version failed it with a stack overflow.
+    var seen = (typeof WeakSet === 'function') ? new WeakSet() : null;
+    (function walk(v) {
+      if (!v || typeof v !== 'object') return;
+      if (seen) { if (seen.has(v)) return; seen.add(v); }
+      if (Array.isArray(v)) { v.forEach(walk); return; }
+      if (v.copy !== undefined) { delete v.copy; removed++; }
+      Object.keys(v).forEach(function (k) { walk(v[k]); });
+    })(obj);
+    return { obj: obj, removed: removed };
+  }
+
   function mergeState(defaults, saved) {
     var added = [], unknown = [];
 
@@ -731,6 +767,7 @@
       getPath: getPath,
       setPath: setPath,
       mergeState: mergeState,
+      stripResidue: stripResidue,
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,
       partPct: partPct,
