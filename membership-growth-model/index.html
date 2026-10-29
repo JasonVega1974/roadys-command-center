@@ -1218,14 +1218,25 @@ MGM.renderers.gallons = function (D) {
      Per-prospect value props live in the
      <a href="../bus-dev-potential-gallons/" target="_blank">Bus Dev Potential Gallons</a> tool.</p>
   <div class="signrow">
-    ${sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')}
+    ${/* G.mapped is 0 when no group resolved a baseline -- reachable if
+          busDevGallonsCalculator.js fails to load. "0 gal/mo across 375
+          locations" is a business claim; the absence of an engine is not a
+          production figure. The printed report already said "Not computed"
+          here, so the screen was the half that disagreed. */ ''}
+    ${G.mapped
+      ? sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')
+      : sign('EXISTING NETWORK', '—', 'gallons engine not loaded')}
     ${sign('PIPELINE INBOUND', loadedG ? fmt(G.inbound) : '—',
            loadedG ? `${p.openLeads} open leads` : whyNotG, 'dark')}
-    ${loadedG
-      ? sign('TOTAL', fmt(G.total), fmt(G.total * 12) + ' gal / yr', 'red')
-      : sign('EXISTING ONLY', fmt(G.existing),
-             fmt(G.existing * 12) + ' gal / yr · pipeline ' + whyNotG, 'red')}
-    ${sign('PER MEMBER', fmt(G.perMember), 'gal / mo, existing network', 'dark')}
+    ${!G.mapped
+      ? sign('TOTAL', '—', 'gallons engine not loaded', 'red')
+      : loadedG
+        ? sign('TOTAL', fmt(G.total), fmt(G.total * 12) + ' gal / yr', 'red')
+        : sign('EXISTING ONLY', fmt(G.existing),
+               fmt(G.existing * 12) + ' gal / yr · pipeline ' + whyNotG, 'red')}
+    ${G.mapped
+      ? sign('PER MEMBER', fmt(G.perMember), 'gal / mo, existing network', 'dark')
+      : sign('PER MEMBER', '—', 'gallons engine not loaded', 'dark')}
   </div>
 
   <div class="card"><h3>Production by group</h3>
@@ -1333,7 +1344,12 @@ MGM.renderers.revpermember = function (D) {
     ${sign('FINAL-YEAR REVENUE', fmM(last.total), `${last.year}, all streams`)}
     ${sign('$ / MEMBER / YR', fm$(rpm.derived.total), 'from the drivers', 'dark')}
     ${sign('DUES REALIZATION', pct1(rpm.duesRealization),
-           `${fm$(st.revenue.duesPerLoc)} realized vs ${fm$(st.billing.duesPerLocBillable)} billable`, 'red')}
+           /* fmCents on the billable figure, not fm$. Rounded to whole
+              dollars it read "$362 realized vs $382 billable", whose quotient
+              is 94.8% -- printed beside a tile correctly showing 94.6%, which
+              is computed from the unrounded 382.47. The caption appeared to
+              contradict its own tile by two tenths of a point. */
+           `${fm$(st.revenue.duesPerLoc)} realized vs ${fmCents(st.billing.duesPerLocBillable)} billable`, 'red')}
     ${sign('AVG MEMBERS', fmt(last.members), `${last.year} average`, 'dark')}
   </div>
 
@@ -2356,7 +2372,9 @@ MGM.renderers.report = function (D) {
         <input type="file" accept=".json" style="display:none"
           onchange="if(this.files[0]){MGM.importJSON(this.files[0]);this.value='';}"></label>
     </div>
-    <p class="note">Print, CSV and JSON export are open to everyone.
+    <p class="note">Print and JSON export are open to everyone;
+       <b>CSV export is limited to administrators</b>, because its valuation
+       columns can be divided to recover the auth-gated P&amp;L margin.
       <b>Import</b> replaces every value in this browser's copy of the model, so
       it is limited to administrators — the same rule as Reset all. The button stays
       visible and explains itself on click rather than disappearing.
@@ -2847,6 +2865,17 @@ const CSV_NS = 'not supplied';
 const CSV_NL = 'not loaded';
 
 MGM.exportCSV = function () {
+  // Admin-only, unlike print and JSON export.
+  //
+  // The CSV carries the valuation `basis` and `ebitdaBase` as separate
+  // columns, and dividing one by the other recovers the EBITDA margin exactly
+  // -- so when an admin session has loaded the gated P&L margin, the CSV
+  // reproduces it to full precision. A review injected 41.7% and recovered
+  // 41.7%. JSON export is unaffected: it serialises MGM.state, which the
+  // loaded margin deliberately never enters.
+  //
+  // A non-admin keeps the screen, the print packet and the JSON export.
+  if (!MGM.requireAdmin('Exporting the CSV')) return;
   const D = MGM.model();
   const { st, M, R, F, pipeline: p, gallons: G, cost: C, capacity: K, rpm } = D;
   const q = s => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
@@ -3032,12 +3061,15 @@ MGM.exportJSON = function () {
 };
 
 MGM.importJSON = function (file) {
-  // An import replaces every value in this browser's model -- a bigger change
-  // than Reset all, which is already admin-gated. Viewing, printing and
-  // exporting stay open to everyone; writing the model does not. Gating here
-  // also keeps a non-admin out of the state where the model has been replaced
-  // and every input is disabled, leaving no way to put it back.
-  if (!MGM.requireAdmin('Importing a model file')) return;
+  // Deliberately NOT admin-gated. An import mutates this browser's own
+  // localStorage and nothing else -- no Supabase write, no shared state -- so
+  // opening a model a colleague sent you is a viewing action, and a read-only
+  // viewer keeps it. An earlier revision gated this; the owner reverted it on
+  // exactly that reasoning.
+  //
+  // The concern it was added for -- a non-admin stranded with a replaced model
+  // and no way back -- is handled instead by the import notice naming what the
+  // file carried, and by Reset all remaining available to an admin.
   const r = new FileReader();
   r.onerror = () => alert('Could not read this file.');
   r.onload = () => {
@@ -3168,7 +3200,7 @@ MGM.sendEmail = function () {
 //  1. EVERY SENTENCE HERE IS A CLAIM ABOUT THE TOOL. A tutorial that has
 //     drifted from the thing it describes is worse than no tutorial, because a
 //     reader cannot tell which half is stale. So no sentence asserts a coupling
-//     the renderers do not actually have -- including the four inputs named in
+//     the renderers do not actually have -- including the five inputs named in
 //     the limitations card, which accept a value and move nothing, and are
 //     disclosed rather than quietly described as drivers.
 //  2. Every FIGURE is read live out of MGM_CONFIG or computed by the engine,
@@ -3421,7 +3453,8 @@ MGM.renderers.about = function (D) {
         <b>Print / PDF</b> prints the report alone, not the tab you were on.
         <b>CSV</b> and <b>JSON</b> export everything, and the JSON reopens the
         model identically. <b>Email</b> opens a draft in your own mail client —
-        nothing is sent from the page. Print, CSV and JSON are open to everyone;
+        nothing is sent from the page. Print and JSON are open to everyone,
+        CSV is administrators only;
         import replaces the whole model and so is admin-only.</td></tr>
 
       <tr><td><b>${T('about')}</b></td><td>This tab. Needs no sign-in and no live
@@ -3584,7 +3617,7 @@ MGM.renderers.about = function (D) {
       <li><b><code>attrition.steady</code> does not track the history you
         edit.</b> It is an independent, hand-entered input, seeded once from the
         three-year derived average, which is ${(Math.round(da.avg * 100) / 100).toFixed(2)}%
-        against the ${pct1(cfg.attrition.steady)} the model carries). Editing a <i>Total count</i> or <i>Lost</i>
+        against the ${pct1(cfg.attrition.steady)} the model carries. Editing a <i>Total count</i> or <i>Lost</i>
         figure on ${T('historical')} moves the displayed derived rate and the
         decomposition on ${T('losses')} <b>but not the rate the model runs on</b>,
         and nothing on screen flags the divergence. Check both.</li>
@@ -3606,7 +3639,7 @@ MGM.renderers.about = function (D) {
         is absent or genuinely zero.</b> The tables carry an em dash for absence;
         the charts have no way to.</li>
 
-      <li><b>Four inputs accept a value and change nothing.</b> Named here rather
+      <li><b>Five inputs accept a value and change nothing.</b> Named here rather
         than left to be discovered: the three per-program <i>Ramp (months)</i>
         fields on ${T('participation')}, the <i>Average cycle (days)</i> field on
         ${T('pipeline')} — which nothing derives either, despite its label — and
@@ -4046,7 +4079,7 @@ MGM.renderAuth = function () {
   // which half they get.
   const cloudBtn = admin
     ? '<button class="btn ghost" onclick="MGM.syncScenarios()" title="Push local scenarios to the shared set, then merge the shared set back down">☁️ Sync scenarios</button>'
-    : '<button class="btn ghost" onclick="MGM.pullScenarios()" title="Read the shared scenarios. Saving is limited to administrators, so nothing is pushed.">☁️ Refresh shared scenarios</button>';
+    : '<button class="btn ghost" onclick="MGM.pullScenarios()" title="Refresh the shared scenario list. Saving and opening a scenario are both limited to administrators, so this only updates the list you can see.">☁️ Refresh shared list</button>';
 
   document.getElementById('authBar').innerHTML = email
     ? `<span class="who">${esc(email)}</span>${bar}${cloudBtn}
@@ -4438,6 +4471,13 @@ MGM.scenarioSave = function () {
 };
 
 MGM.scenarioLoad = function (id) {
+  // A whole-model replacement, so it carries the same gate as Reset all and
+  // Import. Note for the record: this function writes NOTHING to Supabase --
+  // it reads the local list (which MGM.pullScenarios fills from the cloud),
+  // merges into MGM.state and saves to localStorage. The gate is here because
+  // replacing every value in the model is a bigger change than editing one,
+  // not because shared state is at risk.
+  if (!MGM.requireAdmin('Loading a scenario')) return;
   const rec = MGM.scenarioList().find(s => s.id === id);
   if (!rec) return;
   // MM.mergeState, not Object.assign: a shallow merge replaces each of the 17
@@ -4671,7 +4711,12 @@ MGM.chartTitle = function (key) {
 };
 
 MGM.tabNotes = function (key) {
-  return `<div class="card noprint-edit">
+  // No `noprint-edit` class: nothing defined one, so it styled nothing and
+  // implied a print behaviour that was never implemented. It is also
+  // unnecessary -- the print rules hide every panel except #panel-report, so
+  // this card cannot reach the page. The notes themselves DO print, through
+  // MGM.reportNotes, which is what the placeholder promises.
+  return `<div class="card">
     <h3>Notes &amp; assumptions</h3>
     <textarea class="prose" data-k-text="labels.notes.${key}"
       placeholder="Assumptions and caveats for this tab — printed with the report."></textarea>

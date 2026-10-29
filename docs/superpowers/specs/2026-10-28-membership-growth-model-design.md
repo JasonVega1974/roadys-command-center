@@ -160,6 +160,12 @@ profit; payroll, consulting and the seasonal annual meeting are its largest
 components. The model gets:
 
 - revenue multiple applied to **gross profit**, with Total Income shown
+  <!-- SUPERSEDED, kept for the record: the engine applies BOTH lenses to the
+       model's own revenue total, not to the statement's gross-profit line.
+       That is the correct behaviour -- the projection is built from
+       per-member drivers, so a multiple belongs on what the model itself
+       produces. This bullet describes the design as first drafted and now
+       reads as a live requirement when it is history. -->
   separately and explicitly labelled pass-through so nobody multiplies it;
 - `ebitdaMargin` shipping **unset (0)** in the committed config, with the real
   margin loaded at runtime from `mgm_pnl_actuals` for a signed-in reader;
