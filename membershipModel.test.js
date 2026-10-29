@@ -1890,6 +1890,27 @@ function readPage() {
   return fs.readFileSync(path.join(__dirname, 'membership-growth-model', 'index.html'), 'utf8');
 }
 
+// Requires EXACTLY ONE match in the page, and returns it.
+//
+// First-match semantics were shadowable: a review block-commented a copy of a
+// declaration above a real one, and the test read the commented value -- 109/0
+// against a genuine engine skew. `^\s*` anchoring stops `//` comments but not
+// the interior lines of a `/* */` block, and this file uses those idiomatically.
+//
+// Chasing that with a better comment-stripper is the losing move; it was tried
+// twice. The invariant that actually matters is that exactly one declaration
+// exists, so any second copy -- commented, indented, or live -- fails loudly
+// instead of silently winning.
+function matchOnce(src, re, what) {
+  const all = String(src).match(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'));
+  assert.ok(all, 'the page must declare ' + what);
+  assert.equal(all.length, 1,
+    'expected exactly one ' + what + ' in the page, found ' + all.length +
+    ' -- a second copy (including one inside a /* */ comment) would shadow this check: ' +
+    JSON.stringify(all));
+  return String(src).match(re);
+}
+
 // Strips `//` line comments before parsing a matched code fragment. A review
 // put an inline comment inside the ENGINE_NEEDS array and the test failed
 // claiming the page required a function named `// the strip 'residueVerdict'`
@@ -1906,8 +1927,8 @@ function stripLineComments(src) {
 
 test('ENGINE_REV matches the revision the page expects', () => {
   const page = readPage();
-  const m = page.match(/^\s*MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/m);
-  assert.ok(m, 'the page must declare MGM.ENGINE_REV_EXPECTED');
+  const m = matchOnce(page, /^\s*MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/m,
+                      'MGM.ENGINE_REV_EXPECTED');
   assert.equal(MembershipModel.ENGINE_REV, Number(m[1]),
     'bump BOTH: membershipModel.js ENGINE_REV and index.html ENGINE_REV_EXPECTED');
 });
@@ -1925,8 +1946,8 @@ test('the page requires every engine function it names, and all exist', () => {
   // without the engine exporting it, every load reports a false skew and the
   // page refuses to work -- so the list is checked against reality here.
   const page = readPage();
-  const m = page.match(/^\s*MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/m);
-  assert.ok(m, 'the page must declare MGM.ENGINE_NEEDS');
+  const m = matchOnce(page, /^\s*MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/m,
+                      'MGM.ENGINE_NEEDS');
   const needs = stripLineComments(m[1])
     .split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
   assert.ok(needs.length >= 2, 'expected a real list, got ' + JSON.stringify(needs));
@@ -1936,13 +1957,44 @@ test('the page requires every engine function it names, and all exist', () => {
   }
 });
 
+test('the engine guard is declared before anything reads the engine', () => {
+  // THE ONLY THING RECORDING THIS WAS A COMMENT. A review moved the two
+  // declarations back below their first use: the suite still passed 109/109
+  // while the page broke on a HEALTHY engine -- TypeError reading 'filter' of
+  // undefined, no error card, 15 buttons and 12 live handlers over an empty
+  // MGM. That is the F1-r5 defect reproduced, except now on a good engine.
+  //
+  // So the ordering is asserted, not described. Three positions, one order:
+  // the list is declared, the guard computes from it, and only then does
+  // anything call the engine.
+  const page = readPage();
+  const iNeeds = page.indexOf('MGM.ENGINE_NEEDS =');
+  const iRev   = page.indexOf('MGM.ENGINE_REV_EXPECTED =');
+  const iGuard = page.indexOf('const _engineBroken');
+  const iFirst = page.indexOf('MGM.state = MM.defaultState(');
+  for (const [name, i] of [['MGM.ENGINE_NEEDS', iNeeds], ['MGM.ENGINE_REV_EXPECTED', iRev],
+                           ['const _engineBroken', iGuard],
+                           ['MGM.state = MM.defaultState(', iFirst]]) {
+    assert.ok(i >= 0, 'expected the page to contain ' + name);
+  }
+  assert.ok(iNeeds < iGuard,
+    'MGM.ENGINE_NEEDS must be declared before const _engineBroken reads it');
+  assert.ok(iRev < iGuard,
+    'MGM.ENGINE_REV_EXPECTED must be declared before const _engineBroken reads it');
+  assert.ok(iGuard < iFirst,
+    'the engine guard must run before the first engine call, or an unusable ' +
+    'engine renders a full page of dead controls instead of an error card');
+});
+
 test('the engine cache-bust is not a date, and the page requests it', () => {
   // Rounds 2 and 3 of this fix shipped on the same calendar day, so a date
   // key could not have separated them even if it had been bumped -- and it
   // was not, leaving Sync dead and silent for anyone holding the old engine.
+  // Unique too, closing the review's note that this one was still unanchored:
+  // a second <script> tag with a different ?v= would make the check meaningless.
   const page = readPage();
-  const m = page.match(/membershipModel\.js\?v=([^"']+)/);
-  assert.ok(m, 'the page must cache-bust membershipModel.js');
+  const m = matchOnce(page, /membershipModel\.js\?v=([^"']+)/,
+                      'cache-busted membershipModel.js script tag');
   assert.ok(!/^\d{4}-\d{2}-\d{2}$/.test(m[1]),
     'a bare date cannot separate two revisions shipped the same day: ' + m[1]);
 });
