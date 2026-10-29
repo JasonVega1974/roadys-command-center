@@ -3,15 +3,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { MGM_CONFIG } = require('./membershipModelConfig.js');
 
-test('group counts sum to the 375 verified active base', () => {
-  assert.equal(MGM_CONFIG.groups.reduce((a, g) => a + g.count, 0), 375);
+test('group counts sum to the 397 verified active base', () => {
+  assert.equal(MGM_CONFIG.groups.reduce((a, g) => a + g.count, 0), 397);
 });
 
 test('group split matches the verified location-list breakdown', () => {
   const byLabel = Object.fromEntries(MGM_CONFIG.groups.map(g => [g.label, g.count]));
   assert.deepEqual(byLabel, {
-    'Truck Stop': 155, 'Truck Stop-Service Center': 6, 'C-Stores': 22,
-    'PPO': 87, "Roady's Lite": 7, 'Fuel Stops': 9, 'PTP': 89
+    'Truck Stop': 152, 'Truck Stop-Service Center': 5, 'C-Stores': 21,
+    'PPO': 98, "Roady's Lite": 5, 'Fuel Stops': 29, 'PTP': 87
   });
 });
 
@@ -19,22 +19,26 @@ test('source mix sums to 100', () => {
   assert.equal(MGM_CONFIG.sources.reduce((a, s) => a + s.pct, 0), 100);
 });
 
-test('billing aggregates match company_membership_report_2026-10-28.csv', () => {
+test('billing aggregates match company_membership_report_2026-10-29.csv', () => {
   const b = MGM_CONFIG.billing;
-  assert.equal(b.companies, 181);
-  assert.equal(b.locations, 391);
-  assert.equal(b.monthlyDuesTotal, 143426);
-  assert.equal(b.payingLocations, 375);
+  // Three of these four were confirmed against Interstate's own dashboard on
+  // the same day, exactly: 173 companies, 411 billed locations, $142,305
+  // monthly membership billing.
+  assert.equal(b.companies, 173);
+  assert.equal(b.locations, 411);
+  assert.equal(b.monthlyDuesTotal, 142305);
+  assert.equal(b.payingLocations, 395);
 });
 
 test('duesPerLocBillable divides by paying locations, not all locations', () => {
-  // Shipped as 143426/391 = 366.82, which published a 98.7% dues realization
-  // against a denominator that included 16 locations billing $0. The honest
-  // figure is 143426/375 = 382.47 and 94.6%. This pins the denominator so the
-  // name and the arithmetic cannot drift apart again.
+  // Shipped once as total/all-locations, which published a 98.7% dues
+  // realization against a denominator that included the locations billing $0.
+  // The honest figure divides by PAYING locations only. This pins the
+  // denominator so the name and the arithmetic cannot drift apart again --
+  // the Oct 29 refresh is 142305/395 = 360.27, not 142305/411 = 346.24.
   const b = MGM_CONFIG.billing;
-  assert.equal(b.locations, 391);
-  assert.equal(b.payingLocations, 375);
+  assert.equal(b.locations, 411);
+  assert.equal(b.payingLocations, 395);
   assert.ok(b.payingLocations < b.locations, 'some locations bill nothing');
   assert.equal(b.duesPerLocBillable,
     Math.round((b.monthlyDuesTotal / b.payingLocations) * 100) / 100);
@@ -501,9 +505,60 @@ test('SR-11: no gated value from the local actuals appears in any committed file
   const publicLiterals = literals(publicSrc);
   const isYear = n => Number.isInteger(n) && n >= 1900 && n <= 2100;
 
+  // ── One narrow allowlist, BY FIELD NAME, never by value ──────────────
+  //
+  // The Oct 29 data refresh set billing.companies to a figure that
+  // coincidentally equals a gated value in the local actuals (the
+  // fuelProgram line). A three-digit integer collision, at exactly this
+  // scan's distinctiveness floor.
+  //
+  // It is not a leak: billing.companies is the count of companies in the
+  // billing export, independently derivable from the location export and
+  // visible on Interstate's own dashboard. Nobody reading a public company
+  // count can infer a P&L line from it.
+  //
+  // KEYED ON THE FIELD, not the number, because writing the number here is
+  // exactly what SR-11 forbids: "a guard, test, or comment describing a
+  // banned value must never contain that value anywhere in it." So this reads
+  // the value out of the config at run time and subtracts that one literal.
+  //
+  // The owner approved this specific allowlist and explicitly declined the
+  // alternative -- raising the distinctiveness threshold for all bare
+  // three-digit integers -- which would have been a general weakening.
+  //
+  // RESIDUAL, and the honest status of it: by construction a gated figure
+  // placed in billing.companies would be subtracted from the scan and so
+  // missed by this layer. That is the whole cost -- one field, holding a count
+  // the refresh script derives mechanically from the export rather than
+  // anything hand-entered, with layer 1's structural rules still applying.
+  //
+  // REASONED, NOT MEASURED. Three attempts to demonstrate it in isolation all
+  // failed, each for a different reason worth knowing: every substitute gated
+  // literal tried already collides with some other number legitimately in a
+  // committed file (a gallon baseline, a pinned count), so the scan fired on
+  // that instead; and the "literal #N" in the failure message is positional
+  // within the scanned set, so it renumbers whenever this allowlist changes.
+  // Those two facts together mean a clean control could not be built here.
+  //
+  // That failure is itself the argument for this allowlist over the
+  // alternative: three- and four-digit integers collide often enough that
+  // raising the distinctiveness threshold generally would have blunted the
+  // scan far more than exempting one field does.
+  const ALLOWLISTED_PUBLIC_FIELDS = ['companies'];
+  const coincidental = new Set();
+  for (const field of ALLOWLISTED_PUBLIC_FIELDS) {
+    const m = new RegExp(field + String.raw`:\s*([0-9]+(?:\.[0-9]+)?)`)
+      .exec(fs.readFileSync(path.join(root, 'membershipModelConfig.js'), 'utf8'));
+    assert.ok(m, 'allowlisted field ' + field + ' is no longer in the config -- ' +
+      'remove it from ALLOWLISTED_PUBLIC_FIELDS rather than leaving a dead ' +
+      'exemption that silently widens this scan');
+    coincidental.add(Number(m[1]));
+  }
+
   const all = [...literals(localSrc)];
   const scannable = all.filter(n =>
-    n !== 0 && digits(n).length >= 3 && !publicLiterals.has(n) && !isYear(n));
+    n !== 0 && digits(n).length >= 3 && !publicLiterals.has(n) && !isYear(n)
+    && !coincidental.has(n));
   const excluded = all.length - scannable.length;
 
   if (!scannable.length) {
@@ -798,15 +853,15 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   // would pass even if a formula were wrong.
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const r = MembershipModel.revenueModel(st, MembershipModel.runModel(st))[0];
-  near(r.members, 375.884577, 'members');
-  near(r.streams.dues, 1632842.602458, 'dues');
-  near(r.streams.duesAncillary, 44730.264662, 'duesAncillary');
-  near(r.streams.settlement, -55630.917395, 'settlement');
+  near(r.members, 397.691361, 'members');
+  near(r.streams.dues, 1727571.272516, 'dues');
+  near(r.streams.duesAncillary, 47325.271968, 'duesAncillary');
+  near(r.streams.settlement, -58858.321439, 'settlement');
   near(r.streams.fuelProgram, 0, 'fuelProgram — zero by design');
-  near(r.streams.vendor, 347317.349142, 'vendor');
-  near(r.streams.rewards, 65403.916397, 'rewards');
-  near(r.streams.rewardsBreakage, 198467.056652, 'rewardsBreakage');
-  near(r.total, 2233130.271916, 'total');
+  near(r.streams.vendor, 367466.817635, 'vendor');
+  near(r.streams.rewards, 69198.296827, 'rewards');
+  near(r.streams.rewardsBreakage, 209981.038648, 'rewardsBreakage');
+  near(r.total, 2362684.376155, 'total');
   // Ties back to the per-member figure the reconciliation tile reports.
   near(r.total / r.members, 5941, '$/member/yr');
 });
@@ -884,14 +939,28 @@ test('revPerMember reports the variance against a loaded actual', () => {
 test('dues realization is reported from the billable vs realized rates', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
-  // 382.47 is 143426 / 375 PAYING locations. The denominators are spelled out
-  // rather than read back off the config, so this stays an independent check
-  // of the published figure rather than restating the implementation: against
-  // the old 366.82 (dues / all 391 locations) this reads 98.7%, against the
-  // correct rate it reads 94.6%.
-  near(rpm.duesRealization, 100 * 362 / 382.47, 'realization %');
-  assert.ok(rpm.duesRealization > 94.6 && rpm.duesRealization < 94.7,
-    `realization must land at 94.6%, not the 98.7% the all-locations denominator published; got ${rpm.duesRealization}`);
+  // 360.27 is 142305 / 395 PAYING locations, from the Oct 29 export. The
+  // denominators are spelled out rather than read back off the config, so this
+  // stays an independent check of the published figure rather than a
+  // restatement of the implementation. Dividing by all 411 locations instead
+  // would read 346.24 and overstate realization, which is the error this test
+  // was written to pin.
+  near(rpm.duesRealization, 100 * 362 / 360.27, 'realization %');
+
+  // THE BAND MOVED PAST 100%, AND THAT IS A FLAGGED OPEN ITEM, not a repin.
+  // The Oct 29 refresh took the billable rate from 382.47 to 360.27 while the
+  // model's assumed revenue.duesPerLoc stayed at 362, so realization went
+  // 94.6% -> 100.5%: the model now assumes slightly MORE per location than
+  // the blended rate actually billed.
+  //
+  // duesPerLoc is a revenue driver and changing it moves the valuation, so it
+  // is a decision rather than arithmetic. The owner's call was to leave it and
+  // fold it into the rewards-calibration work, where the other drivers are
+  // being set from real P&L figures. This band is deliberately asserted ABOVE
+  // 100 so that work cannot quietly land without confronting it.
+  assert.ok(rpm.duesRealization > 100.4 && rpm.duesRealization < 100.6,
+    `realization is expected at 100.5% until duesPerLoc is recalibrated with the `
+    + `rewards work; got ${rpm.duesRealization}`);
 });
 
 test('GOLDEN: valuation under legacy settings reproduces the v1 exactly', () => {
@@ -1024,25 +1093,25 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
   const last = R[R.length - 1];
-  near(last.total, 2424563.806607, 'final-year revenue basis');
+  near(last.total, 2522782.875833, 'final-year revenue basis');
 
   // Margin unset (the shipped default): the EBITDA lens is zero, so the
   // revenue lens is the high end.
   st.valuation.ebitdaMargin = 0;
   const a = MembershipModel.valuation(st, last);
-  near(a.rev, 6061409.516516, 'revenue lens at 2.5x');
+  near(a.rev, 6306957.189582, 'revenue lens at 2.5x');
   near(a.ebitda, 0, 'EBITDA lens is zero at an unset margin');
   near(a.low, 0, 'low is the EBITDA lens here');
-  near(a.high, 6061409.516516, 'high is the revenue lens here');
-  near(a.mid, 3030704.758258, 'midpoint');
+  near(a.high, 6306957.189582, 'high is the revenue lens here');
+  near(a.mid, 3153478.594791, 'midpoint');
 
   // An 80% margin inverts the ordering: the EBITDA lens is now on top.
   st.valuation.ebitdaMargin = 80;
   const b = MembershipModel.valuation(st, last);
-  near(b.ebitda, 9698255.226426, 'EBITDA lens at 80% x 5');
-  near(b.low, 6061409.516516, 'low is now the revenue lens');
-  near(b.high, 9698255.226426, 'high is now the EBITDA lens');
-  near(b.mid, 7879832.371471, 'midpoint follows the inversion');
+  near(b.ebitda, 10091131.503331, 'EBITDA lens at 80% x 5');
+  near(b.low, 6306957.189582, 'low is now the revenue lens');
+  near(b.high, 10091131.503331, 'high is now the EBITDA lens');
+  near(b.mid, 8199044.346457, 'midpoint follows the inversion');
 });
 
 test('indicated is the single lens when only one has a basis, never half of it', () => {
@@ -1059,8 +1128,8 @@ test('indicated is the single lens when only one has a basis, never half of it',
 
   const defaults = MembershipModel.valuation(st, last);
   assert.equal(defaults.lensCount, 1, 'only the revenue lens has a basis');
-  near(defaults.indicated, 6061409.516516, 'indicated is the whole revenue lens');
-  near(defaults.mid, 3030704.758258, 'mid still reports the two-method midpoint');
+  near(defaults.indicated, 6306957.189582, 'indicated is the whole revenue lens');
+  near(defaults.mid, 3153478.594791, 'mid still reports the two-method midpoint');
   assert.notEqual(defaults.indicated, defaults.mid,
     'the headline figure must not be half of the only live lens');
 
@@ -1254,13 +1323,17 @@ test('gallon production multiplies group counts by mapped baselines', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
   const g = MembershipModel.gallonProduction(st, baselineFor, p);
+  // Still written out as arithmetic rather than pasted from the engine's
+  // output: only the group counts moved in the Oct 29 refresh, and this
+  // product was checked independently (2,619,418) before the figure was
+  // changed here.
   const expected =
-    155 * 10492 + 6 * 5250 + 22 * 2338 + 87 * 5630 +
-    7 * 6174 + 9 * 5630 + 89 * 2338;
+    152 * 10492 + 5 * 5250 + 21 * 2338 + 98 * 5630 +
+    5 * 6174 + 29 * 5630 + 87 * 2338;
   near(g.existing, expected, 'existing network gal/mo');
   assert.equal(g.inbound, p.gallons);
   near(g.total, expected + p.gallons, 'total');
-  near(g.perMember, expected / 375, 'per existing member');
+  near(g.perMember, expected / 397, 'per existing member');
 });
 
 test('a per-group baseline override changes only that group', () => {
@@ -1268,7 +1341,7 @@ test('a per-group baseline override changes only that group', () => {
   const before = MembershipModel.gallonProduction(st, baselineFor, null);
   st.gallons.groupBaselineOverride = { cstore: 4000 };
   const after = MembershipModel.gallonProduction(st, baselineFor, null);
-  near(after.existing - before.existing, 22 * (4000 - 2338), 'delta is C-Stores only');
+  near(after.existing - before.existing, 21 * (4000 - 2338), 'delta is C-Stores only');
   assert.equal(after.byGroup.find(r => r.key === 'cstore').overridden, true);
   assert.equal(after.byGroup.find(r => r.key === 'ts').overridden, false);
 });
@@ -1482,8 +1555,8 @@ test('the valuation panel consumes the computed EBITDA, not the margin assumptio
   // read back from the code under test:
   //   margin   = 2,424,563.806607 x 25%
   //   computed = 2,424,563.806607 - 163,242.808053 - 240,000
-  near(viaMargin.ebitdaBase, 606140.951652, 'margin lens: 25% of final-year revenue');
-  near(viaComputed.ebitdaBase, 2021320.998554, 'computed lens: revenue less real costs');
+  near(viaMargin.ebitdaBase, 630695.718958, 'margin lens: 25% of final-year revenue');
+  near(viaComputed.ebitdaBase, 2112927.102338, 'computed lens: revenue less real costs');
 
   // DIRECTION IS DELIBERATELY NOT ASSERTED. With these modest cost inputs
   // ($20k/mo spend, $400/member/yr) the computed EBITDA lands ~3.3x ABOVE a 25%
@@ -1530,7 +1603,7 @@ test('adding a group flows through every dependent layer', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   st.groups.push({ key: 'newgrp', label: 'New Group', count: 25 });
   const M = MembershipModel.runModel(st);
-  assert.equal(M.startTotal, 400, 'roll-forward sees it');
+  assert.equal(M.startTotal, 422, 'roll-forward sees it');
   const R = MembershipModel.revenueModel(st, M);
   assert.ok(R[0].streams.dues > 0, 'revenue sees it');
 });
