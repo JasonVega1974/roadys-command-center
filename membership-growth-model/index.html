@@ -189,12 +189,6 @@ body.mgm-edit .lbl-in{border-color:var(--line);background:var(--surface)}
    is the write path, and they are told so in words rather than left to
    discover a dead field. */
 .read-only{opacity:.75;cursor:default}
-/* Static text made editable in edit mode. Dotted underline rather than a box:
-   these are headings and sentences, and 470 input boxes would be unreadable. */
-body.mgm-edit .copy-edit{outline:none;border-bottom:1px dotted var(--line);cursor:text}
-body.mgm-edit .copy-edit:hover{background:var(--surface)}
-body.mgm-edit .copy-edit:focus{background:var(--surface);border-bottom-color:var(--red)}
-.copy-mark{cursor:pointer;user-select:none}
 /* The edit-only controls (row tools, + Add, Reset) are hidden for anyone who
    is not a confirmed admin. MGM.renderAuth() is the ONLY place that sets or
    clears body.mgm-admin; if that line is ever dropped, this rule hides every
@@ -246,12 +240,6 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
       <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
       <button class="btn ghost" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost" onclick="MGM.resetAll()">Reset all</button>
-      <!-- Separate from Reset all on purpose: that restores FIGURES to the
-           shipped data, this restores WORDING. Someone who has relabelled the
-           tool's terminology for their audience should not lose it by resetting
-           a driver, and vice versa. -->
-      <button class="btn ghost mgm-editonly" onclick="MGM.resetAllCopy()"
-        title="Restore the shipped wording for every text item you have edited. Figures are untouched.">Restore wording</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
@@ -343,7 +331,32 @@ try {
   // This is the most load-bearing of the four merge sites because it runs on
   // EVERY page load. mergeState mutates its first argument, so it gets a
   // fresh defaultState, never a shared object.
-  if (saved) MGM.state = MM.mergeState(MM.defaultState(MGM_CONFIG), saved).state;
+  if (saved) {
+    var merged = MM.mergeState(MM.defaultState(MGM_CONFIG), saved);
+    MGM.state = merged.state;
+
+    // Removing the copy-override feature has to remove its DATA, not just its
+    // code. mergeState keeps keys it does not recognise -- deliberately, so an
+    // unknown field is preserved rather than destroyed -- and `copy` is now
+    // unrecognised, so a stored override survives verbatim and silently.
+    //
+    // It renders nowhere, but it is live data: re-saved to localStorage on the
+    // next save, copied into any scenario saved afterwards, serialised into
+    // the JSON export, and pushed to mgm_scenarios on one Sync click. Since
+    // some of those overrides captured an interpolated auth-gated P&L figure,
+    // and mgm_scenarios is readable by ANY signed-in user, leaving the residue
+    // keeps republishing exactly what removing the feature was meant to stop.
+    //
+    // So drop it. Nothing can read it any more, so nothing is lost but the
+    // wording, which reverts to the shipped text -- the correct fallback now
+    // that overrides do not exist.
+    if (merged.state.copy !== undefined) {
+      try { console.warn('[MGM] dropped ' + Object.keys(merged.state.copy || {}).length
+            + ' stored text override(s) from a removed feature'); } catch (e2) {}
+      delete merged.state.copy;
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e3) {}
+    }
+  }
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
 
 MGM.save = function () {
@@ -2696,7 +2709,7 @@ MGM.reportAssumptions = function (D) {
     // loaded figure never enters MGM.state, by design.
     ['EBITDA', C.unset
       ? (MFP
-          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state by this tool, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
@@ -3724,160 +3737,6 @@ MGM.renderers.about = function (D) {
 // data-k-text  prose — multi-line, stored as plain text
 // Every control writes to MGM.state and nothing else, so localStorage,
 // scenarios, Supabase sync and JSON export all follow for free.
-/* ═══════════════════ UNIVERSAL COPY OVERRIDES ═══════════════════
-   Every FIGURE was already editable through `data-k`. This makes every piece
-   of static TEXT editable too -- card titles, subtitles, column headers, row
-   labels, caveats, list items, tile labels -- across all thirteen tabs.
-
-   Why an override layer rather than ~470 more `data-k` attributes: that would
-   have been 470 chances to mistype a state path, 470 new keys in a state
-   object that scenarios and exports serialise, and a permanent tax on every
-   future edit to the page's prose.
-
-   KEYING. A key is the tab plus a hash of the DEFAULT text. Two consequences,
-   both deliberate:
-
-     - Position-independent. Adding or removing a table row cannot shift an
-       override onto a different sentence. CLAUDE.md documents that exact
-       hazard for this project's index-keyed seed arrays ("Inserting in the
-       middle shifts every id after it and a saved visit restores its answers
-       into the wrong rows"). A content hash cannot do that.
-
-     - Self-invalidating in the right direction. If a later release rewrites a
-       sentence, its hash changes and the override ORPHANS rather than
-       silently re-pointing at different words. Orphans are surfaced by
-       MGM.copyOrphans(), not swept under.
-
-   Scoped per tab, so editing a column header on one tab does not silently
-   change the same words on another. Predictable beats fewer keystrokes here.
-
-   NOT OVERRIDABLE, on purpose:
-     - anything containing a bound input, select or textarea
-     - .num cells and .v tile values -- COMPUTED FIGURES
-     - the auth bar
-   A derived figure must never be replaceable by typed text. This whole build
-   fought one defect class -- a value asserting something the model did not
-   compute -- nineteen times; letting someone hand-write "$6.06M" over a
-   calculated cell would be the worst instance of it. The auth bar is excluded
-   because it states the reader's own permissions, which they must not be able
-   to relabel.
-
-   An overridden string carries a marker, the same way an edited figure does.
-   You can change the words; you cannot change them invisibly.
-*/
-
-// Selector for text that is pure copy. `.k` and `.d` are a sign tile's label
-// and caption; `.v` is its value and is absent here by design.
-MGM.COPY_SEL = 'h2, h3, p.sub, p.note, th, td, li, caption, .k, .d, .lbl, label';
-
-MGM.copyHash = function (s) {
-  // djb2, hex. ~470 strings against 32 bits makes a collision vanishingly
-  // unlikely, and the length prefix separates same-hash different-length text.
-  var h = 5381;
-  for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return s.length.toString(36) + '-' + (h >>> 0).toString(36);
-};
-
-MGM.copyNorm = function (s) {
-  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
-};
-
-// Eligible = pure copy, with no computed value inside it.
-MGM.copyEligible = function (el) {
-  if (!el || el.dataset.copyKey) return false;
-  if (el.closest('#authBar, .adminbar')) return false;
-  if (el.classList.contains('num') || el.classList.contains('v')) return false;
-  if (el.querySelector('input, select, textarea, button, canvas')) return false;
-  // Only leaf-ish text: an element whose own text is produced by children we
-  // will visit separately would be edited twice.
-  if (el.querySelector(MGM.COPY_SEL)) return false;
-  var t = MGM.copyNorm(el.textContent);
-  return t.length >= 2 && /[A-Za-z]/.test(t);
-};
-
-// Applied after every render, from MGM.bindAll. Idempotent.
-MGM.applyCopy = function (root) {
-  root = root || document;
-  var tab = MGM.tab || 'x';
-  var copy = (MGM.state.copy = MGM.state.copy || {});
-  var editable = MGM.canEdit();
-
-  root.querySelectorAll(MGM.COPY_SEL).forEach(function (el) {
-    if (!MGM.copyEligible(el)) return;
-
-    var deflt = MGM.copyNorm(el.textContent);
-    var key = tab + '|' + MGM.copyHash(deflt);
-    el.dataset.copyKey = key;
-    el.dataset.copyDefault = deflt;
-
-    var over = copy[key];
-    if (typeof over === 'string' && over !== deflt) {
-      el.textContent = over;
-      if (!el.querySelector('.copy-mark')) {
-        var m = document.createElement('span');
-        m.className = 'edited copy-mark';
-        m.title = 'Text edited from the shipped wording. Click to restore.';
-        m.textContent = ' ✎';
-        m.style.cursor = 'pointer';
-        m.onclick = function (e) {
-          e.stopPropagation();
-          delete MGM.state.copy[key];
-          MGM.save(); MGM.refresh();
-        };
-        el.appendChild(m);
-      }
-    }
-
-    if (!editable) { el.removeAttribute('contenteditable'); return; }
-
-    el.setAttribute('contenteditable', 'plaintext-only');
-    el.classList.add('copy-edit');
-    if (el.dataset.copyBound) return;
-    el.dataset.copyBound = '1';
-
-    // Write on BLUR, never on input. MGM.refresh rebuilds the panel with
-    // innerHTML, so re-rendering mid-edit would destroy the node being typed
-    // into -- the same defect that made every numeric field commit a wrong
-    // value after one keystroke. Nothing re-renders until the edit is done.
-    el.addEventListener('blur', function () {
-      var now = MGM.copyNorm(el.textContent).replace(/\s*✎$/, '');
-      var base = el.dataset.copyDefault;
-      var k = el.dataset.copyKey;
-      if (now === base) { if (MGM.state.copy[k] !== undefined) delete MGM.state.copy[k]; }
-      else if (now.length) { MGM.state.copy[k] = now; }
-      else { return MGM.refresh(); }   // refuse an empty label; put it back
-      MGM.save(); MGM.refresh();
-    });
-    el.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
-      if (ev.key === 'Escape') { el.textContent = el.dataset.copyDefault; el.blur(); }
-    });
-  });
-};
-
-// Overrides whose default text no longer appears anywhere. Surfaced rather
-// than hidden: an override that matches nothing is a silent no-op otherwise,
-// and the reader would believe their wording was in effect.
-MGM.copyOrphans = function () {
-  var live = {};
-  document.querySelectorAll('[data-copy-key]').forEach(function (el) {
-    live[el.dataset.copyKey] = 1;
-  });
-  return Object.keys(MGM.state.copy || {}).filter(function (k) { return !live[k]; });
-};
-
-MGM.copyCount = function () { return Object.keys(MGM.state.copy || {}).length; };
-
-MGM.resetAllCopy = function () {
-  if (!MGM.requireAdmin('Restoring the shipped wording')) return;
-  var n = MGM.copyCount();
-  if (!n) return alert('No text has been edited.');
-  if (!confirm('Restore the shipped wording for all ' + n + ' edited text item(s)?\n\n'
-             + 'Figures and labels you edited through their own inputs are not affected.')) return;
-  MGM.state.copy = {};
-  MGM.save(); MGM.refresh();
-};
-
 MGM.bindAll = function (root) {
   root = root || document;
 
@@ -3904,7 +3763,6 @@ MGM.bindAll = function (root) {
     root.querySelectorAll('[data-k-text]').forEach(el => {
       el.value = MM.getPath(MGM.state, el.dataset.kText) || '';
     });
-    MGM.applyCopy(root);      // see overridden wording; contenteditable is withheld
     MGM.applyWriteFailures(root);
     return;
   }
@@ -3960,7 +3818,6 @@ MGM.bindAll = function (root) {
   // Must run AFTER binding, on every call: bindAll is invoked at the end of
   // every MGM.refresh(), which is the redraw that would otherwise have wiped
   // the refusal marker created by the write that triggered the redraw.
-  MGM.applyCopy(root);
   MGM.applyWriteFailures(root);
 };
 
@@ -4817,7 +4674,9 @@ MGM.renderScenarioBar = function () {
     ${show(n.added)}. Review ${n.added.length === 1 ? 'it' : 'them'} before quoting a figure from it.`;
   if (n && n.unknown.length) msg += ` <span class="warn">It carries ${n.unknown.length}
     field${n.unknown.length === 1 ? '' : 's'} this build no longer uses</span>
-    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept but unused.`;
+    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept, and
+    still travel with this model into saves, scenarios and exports even though
+    nothing reads them.`;
   if (n && n.overrides.length) msg += ` <span class="warn">It carries overridden gallon
     baselines</span> that differ from the Bus Dev engine (${show(n.overrides)}) —
     see Fuel Gallon Production.`;
