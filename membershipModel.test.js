@@ -1911,79 +1911,389 @@ function matchOnce(src, re, what) {
   return String(src).match(re);
 }
 
-// Strips `//` line comments before parsing a matched code fragment. A review
-// put an inline comment inside the ENGINE_NEEDS array and the test failed
-// claiming the page required a function named `// the strip 'residueVerdict'`
-// -- a false failure on a legitimate edit. Plain multi-line reformatting was
-// already safe; this makes commenting safe too.
-function stripLineComments(src) {
-  return String(src).replace(/\/\/[^\n]*/g, '');
-}
 
 // A review set ENGINE_REV to 5 and the whole suite still passed: nothing
 // referenced it. That is the same gap as the cache-busting query string --
 // a number a human must remember to keep in step, with no check. The page
 // reads its copy from HTML, so the coupling is asserted across the two files.
 
-test('ENGINE_REV matches the revision the page expects', () => {
+// ── The page's own boot probe, EXECUTED against the shipped engine ─────────
+//
+// This replaces a hand-written mirror of the probe plus a guard on that
+// mirror. Both are deleted, and the reason is the more useful artifact of this
+// work than either was.
+//
+// A reviewer traced one habit of mine across five rounds, each a weaker claim
+// standing in for a stronger one:
+//
+//   the strip            -- "works on one input"        for "never throws"
+//   the probe of it      -- "exists"                    for "calling it works"
+//   the probe's asserts  -- "result has the right fields" for "the merge merged"
+//   the mirror test      -- "claims to be the same assertions" for being them
+//   the drift guard      -- "one side matches a literal"  for "both sides agree"
+//
+// Their generalisation: THE PATTERN MIGRATES OUTWARD. Each round it moved one
+// layer out -- the strip, then the probe of the strip, then the probe's
+// assertions, then the guard on those assertions. Every fix I wrote added a
+// layer, and the habit simply moved into the new one.
+//
+// So this does not add a sixth layer. It removes two, by making the drift
+// impossible rather than detected: there is now ONE definition of the probe --
+// the page's -- and this test EXECUTES it. Nothing can be mirrored wrongly
+// because nothing is mirrored, and no guard on the mirror is needed because
+// there is no mirror.
+//
+// The probe has to live in the page and not the engine, which is why it cannot
+// simply be shared as an export: its whole purpose is for CURRENT page code to
+// check a possibly STALE engine. An engine carrying its own self-check would
+// bring a stale self-check with it and pass itself.
+//
+// Extraction is by brace counting and fails LOUDLY -- if the page's shape
+// changes so the probe cannot be found, this test errors rather than quietly
+// testing nothing.
+function pageBootProbe() {
   const page = readPage();
-  const m = matchOnce(page, /^\s*MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/m,
-                      'MGM.ENGINE_REV_EXPECTED');
-  assert.equal(MembershipModel.ENGINE_REV, Number(m[1]),
-    'bump BOTH: membershipModel.js ENGINE_REV and index.html ENGINE_REV_EXPECTED');
+
+  const needs = matchOnce(page, /^\s*const NEEDS = \[[^\]]*\];/m, 'const NEEDS')[0];
+
+  const start = page.indexOf('function problem(e) {');
+  assert.ok(start >= 0, "could not find the page's boot probe (function problem)");
+  let depth = 0, end = -1;
+  for (let i = page.indexOf('{', start); i < page.length; i++) {
+    if (page[i] === '{') depth++;
+    else if (page[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+  }
+  assert.ok(end > start, "could not find the end of the page's boot probe");
+  const src = page.slice(start, end);
+
+  // Sanity on the extraction itself, so a silently truncated capture cannot
+  // masquerade as a passing probe.
+  assert.ok(src.includes('stripResidue') && src.includes('residueVerdict')
+            && src.includes('defaultState') && src.includes('mergeState'),
+    'the extracted probe does not reference all four engine functions -- ' +
+    'extraction is probably truncated: ' + JSON.stringify(src.slice(0, 120)));
+
+  return new Function('MGM_CONFIG', needs + '\n' + src + '\nreturn problem;')(MGM_CONFIG);
+}
+
+test("the page's own boot probe accepts the shipped engine", () => {
+  // If this fails, every page load shows the error card and refuses to work.
+  // It is the whole acceptance test for the engine, run from the page's
+  // perspective rather than a description of it.
+  assert.equal(pageBootProbe()(MembershipModel), null);
 });
 
-test('ENGINE_REV is a number, not a string', () => {
-  // `'4'` made the page report "revision 4 but this page expects revision 4"
-  // -- a false skew that hard-blocked Sync with advice that could not fix it.
-  // The page coerces now, and this stops the shape arising in the first place.
-  assert.equal(typeof MembershipModel.ENGINE_REV, 'number');
-  assert.ok(isFinite(MembershipModel.ENGINE_REV));
-});
+// The engine shapes that have actually reached a page during this work, as
+// DATA -- because two tests need them: the control below, and the mutation run
+// that checks each line of the probe is necessary.
+function brokenEngines() {
+  const ok = MembershipModel;
+  const stub = over => Object.assign({}, ok, over);
+  const base = (d, sv) => MembershipModel.mergeState(d, sv);
+  // Strips correctly, reports the right count, then nulls exactly one key.
+  const nullOnly = where => o => {
+    MembershipModel.stripResidue(o);
+    if (where === 'top' && o) o.copy = null;
+    if (where === 'deep' && o && o.a && o.a.b && o.a.b.c && o.a.b.c.d) o.a.b.c.d.copy = null;
+    if (where === 'array' && o && Array.isArray(o.list) && o.list[0]) o.list[0].copy = null;
+    return { obj: o, removed: 3, failed: 0 };
+  };
+  // Strips correctly and puts ONE key back, count intact.
+  const putBack = where => o => {
+    const r = MembershipModel.stripResidue(o);
+    if (where === 'deep' && o && o.a && o.a.b && o.a.b.c && o.a.b.c.d) o.a.b.c.d.copy = {};
+    if (where === 'array' && o && Array.isArray(o.list) && o.list[0]) o.list[0].copy = {};
+    if (where === 'top' && o) o.copy = {};
+    return r;
+  };
+  return [
+    ['absent',            null,                                              'did not load'],
+    ['empty object',      {},                                                'loaded but is incomplete or out of date'],
+    ['member not a fn',   stub({ mergeState: 'not a function' }),            'loaded but is incomplete or out of date'],
+    ['counts, deletes nothing', stub({ stripResidue: o => ({ obj: o, removed: 3, failed: 0 }) }), 'is not working correctly'],
+    ['depth-blind',       stub({ stripResidue: o => { if (o && o.copy !== undefined) delete o.copy; return { obj: o, removed: 3, failed: 0 }; } }), 'is not working correctly'],
+    ['verdict always clean',   stub({ residueVerdict: () => 'clean' }),      'is not working correctly'],
+    ['verdict always residue', stub({ residueVerdict: () => 'residue' }),    'is not working correctly'],
+    ['defaultState throws', stub({ defaultState: () => { throw new Error('x'); } }), 'is not working correctly'],
+    ['defaultState empty',  stub({ defaultState: () => ({}) }),              'is not working correctly'],
+    ['defaultState has no revenue', stub({ defaultState: c => { const d = MembershipModel.defaultState(c); delete d.revenue; return d; } }), 'is not working correctly'],
+    ['merge skips its walk', stub({ mergeState: d => ({ state: d, added: [], unknown: [] }) }), 'is not working correctly'],
+    ['merge wrong value',  stub({ mergeState: (d, sv) => { const o = base(d, sv); o.state.revenue.duesPerLoc = 999; return o; } }), 'is not working correctly'],
+    ['merge drops kept key', stub({ mergeState: (d, sv) => { const o = base(d, sv); delete o.state.zzzProbeKey; return o; } }), 'is not working correctly'],
+    ['merge tampers kept key', stub({ mergeState: (d, sv) => { const o = base(d, sv); o.state.zzzProbeKey = 'tampered'; return o; } }), 'is not working correctly'],
+    ['merge hides unknowns', stub({ mergeState: (d, sv) => { const o = base(d, sv); o.unknown = []; return o; } }), 'is not working correctly'],
+    ['miscounts',          stub({ stripResidue: o => { MembershipModel.stripResidue(o); return { obj: o, removed: 1, failed: 0 }; } }), 'is not working correctly'],
+    ['nulls top',          stub({ stripResidue: nullOnly('top') }),          'is not working correctly'],
+    ['nulls deep',         stub({ stripResidue: nullOnly('deep') }),         'is not working correctly'],
+    ['nulls in array',     stub({ stripResidue: nullOnly('array') }),        'is not working correctly'],
+    ['leaves top',         stub({ stripResidue: putBack('top') }),           'is not working correctly'],
+    ['leaves deep',        stub({ stripResidue: putBack('deep') }),          'is not working correctly'],
+    ['leaves in array',    stub({ stripResidue: putBack('array') }),         'is not working correctly']
+  ];
+}
 
-test('the page requires every engine function it names, and all exist', () => {
-  // MGM.ENGINE_NEEDS is the page's own list. If someone adds a name to it
-  // without the engine exporting it, every load reports a false skew and the
-  // page refuses to work -- so the list is checked against reality here.
-  const page = readPage();
-  const m = matchOnce(page, /^\s*MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/m,
-                      'MGM.ENGINE_NEEDS');
-  const needs = stripLineComments(m[1])
-    .split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-  assert.ok(needs.length >= 2, 'expected a real list, got ' + JSON.stringify(needs));
-  for (const n of needs) {
-    assert.equal(typeof MembershipModel[n], 'function',
-      'the page requires MM.' + n + ' but the engine does not export it');
+test("the page's own boot probe rejects every engine shape that has reached a page", () => {
+  const probe = pageBootProbe();
+  for (const [name, engine, expected] of brokenEngines()) {
+    assert.equal(probe(engine), expected, 'the probe accepted: ' + name);
   }
 });
 
-test('the engine guard is declared before anything reads the engine', () => {
-  // THE ONLY THING RECORDING THIS WAS A COMMENT. A review moved the two
-  // declarations back below their first use: the suite still passed 109/109
-  // while the page broke on a HEALTHY engine -- TypeError reading 'filter' of
-  // undefined, no error card, 15 buttons and 12 live handlers over an empty
-  // MGM. That is the F1-r5 defect reproduced, except now on a good engine.
+test('every condition in the page probe is necessary -- nothing survives its removal', () => {
+  // THE SEVENTH INSTANCE OF ONE HABIT, and the reviewer's own fix for it.
   //
-  // So the ordering is asserted, not described. Three positions, one order:
-  // the list is declared, the guard computes from it, and only then does
-  // anything call the engine.
+  // The controls above assert `probe(stub) === 'is not working correctly'`.
+  // Every failing arm of the probe returns that same string, so those
+  // assertions cannot tell WHICH line rejected a stub: necessity held only by
+  // construction, and nothing checked the construction. Measured -- adding a
+  // catch-all to the probe and then deleting the top, depth or array
+  // assertion left the suite green at 109/0 in all three cases.
+  //
+  // The sequence, as the reviewer traced it:
+  //   the strip            "works on one input"       for "never throws"
+  //   the probe of it      "exists"                   for "calling it works"
+  //   the probe's asserts  "right fields"             for "the merge merged"
+  //   the mirror test      "claims to be the same"    for being the same
+  //   the drift guard      "one side matches a literal" for "both sides agree"
+  //   the controls         "deleting each one fails"  for "each is necessary"
+  //   their predicate      "X rejects Y"              for "X is why Y is rejected"
+  //
+  // Their fix is a change of claim, not another layer: from "X rejects Y" to
+  // NOTHING SURVIVES THE REMOVAL OF X -- a property a machine can enumerate
+  // and a sentence cannot overstate. "Resists weakening" was never the right
+  // claim either; the weakening space is unbounded, so nine hand-written
+  // stubs establish "resists these nine" and no more. This is bounded: one
+  // mutation operator (delete a condition), applied to every condition, with
+  // the surviving set pinned exactly.
+  //
+  // It is only possible because round 14 made the probe extractable as a
+  // string, which is the one thing that round got right.
   const page = readPage();
-  const iNeeds = page.indexOf('MGM.ENGINE_NEEDS =');
-  const iRev   = page.indexOf('MGM.ENGINE_REV_EXPECTED =');
-  const iGuard = page.indexOf('const _engineBroken');
-  const iFirst = page.indexOf('MGM.state = MM.defaultState(');
-  for (const [name, i] of [['MGM.ENGINE_NEEDS', iNeeds], ['MGM.ENGINE_REV_EXPECTED', iRev],
-                           ['const _engineBroken', iGuard],
-                           ['MGM.state = MM.defaultState(', iFirst]]) {
-    assert.ok(i >= 0, 'expected the page to contain ' + name);
+  const start = page.indexOf('function problem(e) {');
+  let depth = 0, end = -1;
+  for (let i = page.indexOf('{', start); i < page.length; i++) {
+    if (page[i] === '{') depth++;
+    else if (page[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
   }
-  assert.ok(iNeeds < iGuard,
-    'MGM.ENGINE_NEEDS must be declared before const _engineBroken reads it');
-  assert.ok(iRev < iGuard,
-    'MGM.ENGINE_REV_EXPECTED must be declared before const _engineBroken reads it');
-  assert.ok(iGuard < iFirst,
-    'the engine guard must run before the first engine call, or an unusable ' +
-    'engine renders a full page of dead controls instead of an error card');
+  const src = page.slice(start, end);
+  const needs = matchOnce(page, /^\s*const NEEDS = \[[^\]]*\];/m, 'const NEEDS')[0];
+  const build = body => new Function('MGM_CONFIG', needs + '\n' + body + '\nreturn problem;')(MGM_CONFIG);
+
+  // ONE OPERATOR, applied uniformly: replace each condition with `false`, so
+  // the arm is disabled without breaking the parse.
+  //
+  // The first version deleted the condition's LINE, which cannot work for a
+  // condition spanning lines -- so three of the thirteen were skipped,
+  // unmutated and silently uncovered, and the run reported no survivors while
+  // having tested less than it claimed. Skipping is the quiet-coverage-gap
+  // shape this PR keeps finding, so the operator changed rather than the skip
+  // being merely recorded. Paren counting finds each condition's extent,
+  // single-line or not.
+  const conditions = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src.slice(i, i + 3) !== 'if ' && src.slice(i, i + 3) !== 'if(') continue;
+    if (i > 0 && /[A-Za-z0-9_$.]/.test(src[i - 1])) continue;
+    const open = src.indexOf('(', i);
+    if (open < 0) continue;
+    let d = 0, close = -1;
+    for (let j = open; j < src.length; j++) {
+      if (src[j] === '(') d++;
+      else if (src[j] === ')') { d--; if (d === 0) { close = j; break; } }
+    }
+    if (close > open) { conditions.push([open, close]); i = close; }
+  }
+  assert.ok(conditions.length >= 10,
+    'expected to find the probe conditions, found ' + conditions.length +
+    ' -- extraction is probably wrong, which would make this test vacuous');
+
+  const shapes = brokenEngines();
+  const survivors = [];
+  for (const [open, close] of conditions) {
+    const text = src.slice(open + 1, close).replace(/\s+/g, ' ').trim();
+    let probe;
+    try { probe = build(src.slice(0, open + 1) + 'false' + src.slice(close)); }
+    catch (e) { survivors.push('UNPARSEABLE: ' + text); continue; }
+    // Necessary means: with this condition disabled, at least one
+    // known-broken engine is now ACCEPTED, or rejected for the wrong reason.
+    const stillCaught = shapes.every(([, engine, expected]) => {
+      let got; try { got = probe(engine); } catch (e2) { got = 'threw'; }
+      return got === expected;
+    });
+    if (stillCaught) survivors.push(text);
+  }
+
+  // Pinned EXACTLY, not as a subset: a new survivor fails, and so does an
+  // entry that stops surviving, so the list cannot go stale in either
+  // direction. Each entry needs a reason a reader can act on.
+  // Pinned EXACTLY, not as a subset: a new survivor fails, and so does an
+  // entry that stops surviving, so the list cannot go stale in either
+  // direction. Each entry carries a reason a reader can act on.
+  //
+  // OPERATOR SET, stated so the claim is bounded rather than implied: one
+  // operator -- replace a whole condition with `false` -- applied to all
+  // thirteen conditions in the probe. That is condition-level, not
+  // clause-level. A reviewer ran a finer set (28 mutants including individual
+  // clauses) and found one sub-clause fully shadowed: `typeof d !== 'object'`
+  // is unreachable behind the `!d.revenue` and
+  // `typeof d.revenue.duesPerLoc !== 'number'` clauses beside it. It is kept
+  // as a defensive total check, not because it is load-bearing, and it is
+  // recorded here so the difference between the two operator sets is on the
+  // page rather than mistaken for coverage.
+  const BENIGN_SURVIVORS = [
+    // Shape guard on mergeState's return. The three assertions after it read
+    // m.state.revenue.duesPerLoc, m.state.zzzProbeKey and m.unknown, so a
+    // malformed return throws into the surrounding try and is caught anyway.
+    // Kept because it makes the arm total at its own line instead of relying
+    // on the next line's shape, which is the kind of implicit dependency this
+    // PR has been removing.
+    '!m || !m.state || !Array.isArray(m.unknown) || !Array.isArray(m.added)'
+  ];
+  assert.deepEqual(survivors.sort(), BENIGN_SURVIVORS.slice().sort(),
+    'the set of probe conditions whose removal changes nothing has moved.\n' +
+    'A NEW entry is a dead or shadowed check -- delete it or strengthen a stub.\n' +
+    'A MISSING entry means a condition became necessary -- drop it from the list.\n' +
+    'Observed: ' + JSON.stringify(survivors, null, 1));
+});
+
+// RESTORED after being deleted by accident in round 14.
+//
+// That round removed four tests while describing two. Three were genuinely
+// subsumed by executing the page's probe; this one was not subsumed by
+// anything, because it asserts a property of the PAGE -- that no code reads
+// the engine before the guard runs -- and executing `problem()` says nothing
+// about where it is called from. With it gone, all four bypass shapes passed
+// at 108/0, including the two from round 8 that round 9 was written to fix.
+//
+// The mistake was mechanical and worth naming: I replaced a RANGE of the file
+// by its two endpoints without enumerating what sat between them. A reviewer
+// drew the rule out of it -- subtraction needs a subsumption check per deleted
+// item: WHICH SURVIVING TEST FAILS IF THIS PROPERTY BREAKS? Three of the four
+// had an answer. This one had none, and went out in the same commit.
+
+test('nothing in the page reads the engine before the guard has passed', () => {
+  // Asserted structurally, not by position. The guard runs INSIDE the
+  // initialiser of `const MM`, so MM does not exist until it has passed: any
+  // `MM.anything` above it is a temporal-dead-zone ReferenceError, not a
+  // silently dead page.
+  //
+  // This replaces a test that pinned the order of four literal needles. A
+  // review inserted one unrelated engine call above the guard -- a plausible
+  // edit -- and that test passed 110/110 while the page rendered 15 buttons
+  // and 12 live handlers over an empty model. Pinning one named call is not
+  // the property; having no window at all is.
+  const page = readPage();
+  const m = matchOnce(page, /^const MM = \(function \(\) \{/m, 'the MM binding IIFE');
+  const iBind = page.indexOf(m[0]);
+  const iThrow = page.indexOf("throw new Error('[MGM] membershipModel.js ' + broken)");
+  const iClose = page.indexOf('}());', iBind);
+  assert.ok(iThrow > iBind && iThrow < iClose,
+    'the guard must throw from INSIDE the MM initialiser, so no code can reach ' +
+    'MM before it has passed');
+  // And nothing may touch the engine before that point, under EITHER name.
+  // A control inserted `MM.mergeState(...)` above the binding and an earlier
+  // version of this assertion missed it, because it only looked for
+  // `MembershipModel.`. `MM.` above the binding is a temporal-dead-zone
+  // ReferenceError -- loud, and it leaves nothing clickable, so not the F1-r5
+  // shape -- but it still halts the script and gives a blank page, which is
+  // the F1-r4 shape. Both names, then.
+  // Scoped to THE SCRIPT BODY and judged per line, because `before` otherwise
+  // spans all the HTML and CSS above it.
+  const iScript = page.lastIndexOf('<script>', iBind);
+  const region = page.slice(iScript + '<script>'.length, iBind);
+
+  // A line is code unless it is a comment. Tracking `/* */` state across lines
+  // is the whole of the parsing here -- a review found the previous one-line
+  // test both over- and under-firing: a block-comment interior line not
+  // starting with `*` counted as code, and a code line starting with `*`
+  // counted as a comment.
+  //
+  // This is not the comment-STRIPPING that was the losing move twice in this
+  // work; nothing is rewritten and no match is run against altered text. It
+  // only decides, per line, whether the line is a statement.
+  // A line is EXEMPT only if it is unambiguously a whole-line comment: it
+  // starts with `//`, or we are inside a `/* */` block and the line does not
+  // close it. Every other line that mentions a watched name is reported.
+  //
+  // Deliberately conservative, because the previous version decided ambiguity
+  // and decided it wrongly in the dangerous direction: it discarded the entire
+  // line when leaving a block comment, so a review got
+  // `*/ MembershipModel.defaultState(cfg); /*` past it at 109/0, with the page
+  // showing 15 buttons and 12 live handlers over a broken engine.
+  //
+  // Writing a correct comment tokenizer is not the answer either -- string
+  // literals containing `/*` would defeat it, and the under-fire would be back
+  // in a subtler form. So: when a line mixes a block-comment delimiter with a
+  // watched name, this FAILS rather than guess. A false failure is loud and
+  // one line to resolve; a false pass is the dead-buttons page.
+  const codeLines = [];
+  let inBlock = false;
+  for (const line of region.split('\n')) {
+    const t = line.trim();
+    if (inBlock) {
+      if (!t.includes('*/')) continue;        // wholly inside the comment
+      inBlock = false;
+      codeLines.push(line);                   // closes it: may carry code too
+      continue;
+    }
+    if (!t) continue;
+    if (t.startsWith('//')) continue;
+    // A line that opens a block and closes it ONCE at the very end carries no
+    // code: nothing can follow the close. `/* a */ x /* b */` is excluded by
+    // the position test, because its first `*/` is not the last two
+    // characters. This is a cost reduction only -- a review noted that round
+    // 10 began reporting single-line block comments, which are unambiguous.
+    //
+    // Except that `${...}` is EVALUATED, so a line inside a template literal
+    // is not a comment however it is punctuated. A reviewer got
+    // `/* ${MembershipModel.defaultState(MGM_CONFIG)} */` past all three
+    // conditions above -- in one line, without `inBlock`, which is a different
+    // branch from the gap recorded below and wider than that note described.
+    if (t.startsWith('/*') && t.endsWith('*/') && t.indexOf('*/') === t.length - 2
+        && !t.includes('${')) {
+      continue;
+    }
+    if (t.startsWith('/*')) {
+      if (!t.includes('*/')) inBlock = true;
+      codeLines.push(line);                   // may carry code after the close
+      continue;
+    }
+    codeLines.push(line);
+  }
+
+  // KNOWN GAP, left deliberately on a reviewer's recommendation: a template
+  // literal whose continuation line begins with `/*` exempts an interpolation
+  // BELOW it, via the inBlock branch. Strictly narrower than the shape it
+  // replaced, no such construct exists in this region, and chasing it means
+  // writing the tokenizer that comment-stripping already proved to be the
+  // losing move twice in this work.
+  //
+  // The first version of this note said "an interpolation below it" and was
+  // then read as covering the whole family. It did not: a reviewer reached the
+  // same end through a different branch -- one line, no inBlock -- and that
+  // one IS fixed above, by excluding `${`. A recorded boundary is only useful
+  // if it states its extent, so: this note covers the multi-line inBlock
+  // branch and nothing else.
+
+  // THE IDENTIFIER, not a call shape. Earlier versions matched
+  // `MembershipModel.` and `MM.` in statement position, and a review got past
+  // both with `MembershipModel['defaultState'](…)` and with
+  // `const E = MembershipModel; E.defaultState(…)` -- 109/0 each, both
+  // reproducing the dead-buttons page. Enumerating call spellings is
+  // unwinnable; forbidding the NAME is not.
+  const touching = codeLines.filter(l => /\bMembershipModel\b/.test(l));
+  assert.deepEqual(touching, [],
+    'no code may reference MembershipModel before the binding that guards it ' +
+    '-- not by call, by bracket access, or by aliasing it to another name.\n' +
+    'This matches the NAME, so a line that merely mentions it in a string or a ' +
+    'trailing comment also fails. That is deliberate: enumerating call ' +
+    'spellings was bypassed twice. If the line is genuinely harmless, move it ' +
+    'below the MM binding -- nothing needs to run before the engine guard.');
+
+  const usingMM = codeLines.filter(l => /\bMM\b/.test(l));
+  assert.deepEqual(usingMM, [],
+    'nothing may use MM before the binding that guards it -- that is a ' +
+    'temporal-dead-zone ReferenceError, which halts the script and gives a ' +
+    'blank page with no error card');
 });
 
 test('the engine cache-bust is not a date, and the page requests it', () => {

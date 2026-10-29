@@ -13,7 +13,7 @@
 <script src="../busDevGallonsConfig.js"></script>
 <script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
-<script src="../membershipModel.js?v=r4"></script>
+<script src="../membershipModel.js?v=r5"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
      SDK tag has to come first. Never construct a second client here -- see
      MGM.sb() below. -->
@@ -316,56 +316,146 @@ function mkChart(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($(id),cfg
 
 /* ═══════════════ MGM STATE ═══════════════ */
 const MGM = {};
-// Bound defensively so a failed engine load is REPORTABLE rather than fatal.
-// This was `const MM = MembershipModel;`, which throws ReferenceError during
-// script evaluation if the engine 404s -- so nothing below it was ever
-// defined, MGM.engineSkew could not run, and the reader got a blank page with
-// no explanation. A review measured that: tabsRendered false, no alert at all.
-// Every MM use downstream either sits in a try or runs after MGM.engineSkew()
-// has had its say.
-const MM = (typeof MembershipModel === 'object' && MembershipModel)
-  ? MembershipModel : null;
+// THE GUARD IS PART OF BINDING THE ENGINE, not a step that happens to precede
+// its first use. That is deliberate and it is the third design of this check.
+//
+//   v1 tested `!MM` -- presence, not usability. A review set the global to an
+//      empty object: the guard did not fire and the page drew 15 buttons and
+//      12 live handlers over an empty MGM, so a click threw with no
+//      explanation.
+//   v2 tested usability but depended on SOURCE ORDER: the list had to be
+//      declared above the check, which had to sit above the first engine call.
+//      A review inserted one unrelated engine call above the check -- a
+//      plausible edit -- and the suite passed 110/110 while the page broke in
+//      exactly the v1 way. A test was then written to pin the order, and it
+//      pinned ONE named call rather than the property, so any other call
+//      reopened it silently.
+//   v3 (this) removes the window instead of guarding it. `MM` does not exist
+//      until the check has passed, so there is nothing to insert a call above:
+//      the temporal dead zone makes a pre-guard `MM.anything` a hard
+//      ReferenceError rather than a silently dead page. The invariant is
+//      enforced by the language, so no test has to describe it.
+//
+// The engine is also SMOKE-TESTED, not asked for its revision number. An
+// earlier version compared MM.ENGINE_REV against a constant declared here, and
+// two reviews beat that: once because nothing coupled the two numbers, and
+// once because a second assignment to the page's constant shadowed it while
+// the suite stayed green. Both are bookkeeping failures of a number that
+// stands in for behaviour. So check the behaviour: a correct engine strips a
+// `copy` key and refuses a payload carrying one. There is no constant left to
+// keep in step, and nothing to shadow.
+const MM = (function () {
+  const engine = (typeof MembershipModel === 'object' && MembershipModel)
+    ? MembershipModel : null;
+
+  // The functions this page cannot work without.
+  const NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
+
+  function problem(e) {
+    if (!e) return 'did not load';
+    if (NEEDS.filter(k => typeof e[k] !== 'function').length) {
+      return 'loaded but is incomplete or out of date';
+    }
+    // Behavioural, cheap, and the two properties everything downstream relies
+    // on. Wrapped because a broken engine may throw rather than answer wrongly.
+    try {
+      // THE EFFECT, not the reported count. The first version of this probe
+      // asked only whether `removed` came back as 1, so an engine that
+      // incremented the counter without performing the delete passed all
+      // three checks and was waved through -- 92 buttons, full API, no error
+      // card, measured. That is the same defect this guard exists to catch,
+      // committed inside the guard: a success report trusted instead of the
+      // thing it reports on. It has now happened enough times in this work
+      // that the rule is explicit -- assert the state afterwards, never the
+      // return value alone.
+      // EVERY function in NEEDS is exercised, not merely type-checked. Two of
+      // them -- defaultState and mergeState -- were only type-checked, and
+      // they are exactly the two called with no catch behind them: the line
+      // below this IIFE is `MGM.state = MM.defaultState(MGM_CONFIG)`, bare. An
+      // engine whose defaultState threw passed this probe and gave the
+      // dead-buttons page on EVERY load. A review found that by re-checking a
+      // claim I had asked it to verify, and it is the same mistake as the
+      // round before: a type check proves a function EXISTS, not that calling
+      // it works. Existence and behaviour are different claims.
+      //
+      // defaultState is called here with the SAME argument the line below
+      // passes it, so this genuinely covers that call site rather than
+      // resembling it.
+      // Asserts WHAT THE CALLER DEPENDS ON, not the shape of the answer.
+      //
+      // A reviewer found this exact arm to be the third instance of one habit
+      // of mine, each a weaker claim standing in for a stronger one:
+      //   round 10 -- "works on one input"      taken for "never throws"
+      //   round 11 -- "exists"                  taken for "calling it works"
+      //   round 12 -- "result has the right fields" taken for "the merge merged"
+      // The tell is identical each time: the assertion checks something ABOUT
+      // the output instead of the property the call site relies on. Here, an
+      // engine whose merge skipped its walk returned a perfectly shaped result
+      // and the page loaded with a saved 777 showing as 362 and a user's own
+      // field silently gone -- verbatim the failure mergeState's own comment
+      // says it exists to prevent.
+      const d = e.defaultState(MGM_CONFIG);
+      // Not just "an object": `{}` passed that, and `{}` is a model with every
+      // driver missing.
+      if (!d || typeof d !== 'object' || !d.revenue
+          || typeof d.revenue.duesPerLoc !== 'number') {
+        return 'is not working correctly';
+      }
+      // The VALUE must arrive, and an unrecognised key must be RETAINED --
+      // which is the behaviour the residue fix is built around, so it is the
+      // one property here worth asserting twice.
+      const m = e.mergeState(e.defaultState(MGM_CONFIG),
+                             { revenue: { duesPerLoc: 1 }, zzzProbeKey: 'kept' });
+      if (!m || !m.state || !Array.isArray(m.unknown) || !Array.isArray(m.added)) {
+        return 'is not working correctly';
+      }
+      if (m.state.revenue.duesPerLoc !== 1) return 'is not working correctly';
+      if (m.state.zzzProbeKey !== 'kept') return 'is not working correctly';
+      if (m.unknown.indexOf('zzzProbeKey') < 0) return 'is not working correctly';
+
+      // NESTED five deep and inside an array, because depth is the property
+      // this fix got wrong twice: once when the load path cleaned only
+      // `state.copy` and re-persisted two nested maps while logging a success,
+      // and once when the dropped-key filter was start-anchored against a
+      // depth-any strip. A flat probe then admitted a depth-blind engine, and
+      // a two-deep probe would admit one capped above two -- the real store
+      // reaches five. Folded in here on a reviewer's advice rather than spent
+      // as its own round, since this file has been edited eleven times and
+      // most of those edits introduced something.
+      const probe = { copy: {}, a: { b: { c: { d: { copy: {} } } } }, list: [{ copy: {} }] };
+      const r = e.stripResidue(probe);
+      if (!r || r.removed !== 3) return 'is not working correctly';
+      if ('copy' in probe) return 'is not working correctly';
+      if ('copy' in probe.a.b.c.d) return 'is not working correctly';
+      if ('copy' in probe.list[0]) return 'is not working correctly';
+      if (e.residueVerdict({ state: { copy: {} } }) !== 'residue') return 'is not working correctly';
+      if (e.residueVerdict({ state: { a: 1 } }) !== 'clean') return 'is not working correctly';
+    } catch (err) {
+      return 'is not working correctly';
+    }
+    return null;
+  }
+
+  const broken = problem(engine);
+  if (broken) {
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
+        + '<h3>This page could not load its model script</h3>'
+        + '<p class="note">membershipModel.js ' + broken + ', so nothing here '
+        + 'can be calculated. This is almost always a stale cache or a failed '
+        + 'download: reload the page (hold Shift while reloading, or empty the '
+        + 'cache). Nothing has been changed or uploaded.</p></div>';
+    });
+    // Stop here. Everything below needs the engine, and continuing would draw
+    // a page whose every control throws -- see the comment above.
+    throw new Error('[MGM] membershipModel.js ' + broken);
+  }
+
+  // Shared with the runtime check further down, so both use one definition.
+  MGM.engineProblem = function () { return problem(MM || engine); };
+  return engine;
+}());
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
-
-// What this page needs the engine to provide. Declared HERE, above the first
-// engine call, so the evaluation-time guard below and MGM.engineSkew() further
-// down are the same list -- one definition, two call sites.
-MGM.ENGINE_NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
-MGM.ENGINE_REV_EXPECTED = 4;
-
-// Before anything reads the engine. A missing or unusable engine is
-// unrecoverable -- this page is a model with a UI attached -- but it must SAY
-// so rather than fail blank or, worse, render a full page of dead buttons.
-//
-// Tests USABILITY, not presence. An earlier version tested `!MM` alone: a
-// review set the global to an empty object and the guard did not fire, so
-// MM.defaultState() threw during evaluation, the body was never replaced, and
-// the page drew its whole chrome with 12 live onclick handlers over an empty
-// MGM -- a click gave an uncaught TypeError and no feedback whatsoever. That
-// is worse than the blank page this guard was added to fix, since the 404 case
-// at least leaves nothing to click.
-//
-// The ReferenceError case is covered too: MM is bound defensively above,
-// because `const MM = MembershipModel;` throws during script evaluation when
-// the engine 404s, before any of this could run.
-const _engineBroken = !MM
-  ? 'did not load'
-  : (MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function').length
-      ? 'loaded but is incomplete or out of date'
-      : null);
-if (_engineBroken) {
-  document.addEventListener('DOMContentLoaded', function () {
-    document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
-      + '<h3>This page could not load its model script</h3>'
-      + '<p class="note">membershipModel.js ' + _engineBroken + ', so nothing here '
-      + 'can be calculated. This is almost always a stale cache or a failed '
-      + 'download: reload the page (hold Shift while reloading, or empty the '
-      + 'cache). Nothing has been changed or uploaded.</p></div>';
-  });
-  // Stop here. Everything below needs the engine, and continuing would draw a
-  // page whose controls all throw -- see the comment above.
-  throw new Error('[MGM] membershipModel.js ' + _engineBroken);
-}
 
 MGM.state = MM.defaultState(MGM_CONFIG);
 try {
@@ -3185,13 +3275,6 @@ MGM.exportCSV = function () {
 // Live CRM and P&L data are likewise not included: they are not ours to
 // redistribute in a file someone emails on.
 MGM.exportJSON = function () {
-  // Same guard syncScenarios got, for the same reason. A review found the
-  // round-4 try/catch sat BELOW the first MM.stripResidue call, so a missing
-  // engine still threw uncaught here: no file, no message, dead button --
-  // while engineSkew() could have named the cause. The guard belongs above
-  // every engine call in the function, not above most of them.
-  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('build an export', 'nothing-moved')); return; }
-
   // Measured: this carried residue with MGM.state fully clean, because the
   // scenario list is serialised separately. scenarioList() now strips, so this
   // is covered -- the explicit strip here is belt and braces for a future
@@ -3202,15 +3285,28 @@ MGM.exportJSON = function () {
   // from that click onward and the next reload re-read the residue. Exporting
   // is a read, so it should not be the thing that mutates the model -- but
   // since it does, the two must not be left out of step.
-  MGM.stripResidue(MGM.state);
-  if (MGM.stripResidue.removed) MGM.save();
-
-  // Serialise inside a try and SAY SO on failure. JSON.stringify is recursive
-  // and a saved scenario nested deeply enough makes it throw -- uncaught, so
-  // the button did nothing at all and the reader got no file and no message.
-  // Silence on a click is the failure class this whole PR has been clearing.
+  // EVERYTHING that can throw is inside the one try, including the strip and
+  // the save. They sat above it, and I argued to a reviewer that the
+  // binding-time engine guard made them unreachable with a broken engine. That
+  // was falsified by measurement: an engine passing the boot probe (three
+  // keys) but throwing on a large object loads normally, and then these
+  // statements threw uncaught -- no file, no message, dead button, the same
+  // failure class this PR has spent ten rounds clearing. The boot probe proves
+  // the strip WORKS on a small object; it cannot prove the strip never throws.
+  //
+  // Persist what the strip removed, for the same reason as before: a review
+  // measured live state going clean on export while localStorage stayed dirty,
+  // so memory and disk disagreed from that click onward and the next reload
+  // re-read the residue. Note the limit -- MGM.save swallows its own failure,
+  // so this is a best effort, not a guarantee the two stay in step. If the
+  // write fails the next load repairs it, which is why best effort is enough.
+  //
+  // JSON.stringify is recursive, so a sufficiently nested saved scenario makes
+  // it throw too. One try, one message, no silent click.
   let body;
   try {
+    MGM.stripResidue(MGM.state);
+    if (MGM.stripResidue.removed) MGM.save();
     body = JSON.stringify({
       state: MGM.state,
       scenarios: MGM.stripResidue(MGM.scenarioList()),
@@ -3222,6 +3318,23 @@ MGM.exportJSON = function () {
       ? 'Could not build the export: one of your saved scenarios is nested too '
       + 'deeply to serialise. Delete it from the Scenarios tab and export again.'
       : 'Could not build the export: ' + (e && e.message || 'unknown error'));
+    return;
+  }
+  // Verify the OUTBOUND BYTES, the way cloudSave verifies its row. A review
+  // measured this route carrying residue into a downloaded file with zero
+  // warning, under an engine whose strip silently did nothing -- cloudSave
+  // refused in the same fixture, because it checks its own payload rather than
+  // trusting that a strip ran upstream. An exported file is a disclosure
+  // surface exactly like the shared table; it gets the same treatment.
+  //
+  // Checks the serialised string, so it is testing what would actually leave
+  // the browser.
+  if (MM.residueVerdict(body) !== 'clean') {
+    console.error('[MGM] REFUSED to export: the payload still carries data from '
+                + 'the removed text-override feature.');
+    alert('The export was not created: it still carries stored text from a '
+        + 'removed feature, which may include a figure only administrators may '
+        + 'see.\n\nReload the page and try again — the reload cleans it.');
     return;
   }
   MGM.dl('membership-growth-model.json', body, 'application/json');
@@ -4584,9 +4697,6 @@ MGM.syncScenarios = async function () {
     alert('Sign in first to sync scenarios.');
     return;
   }
-  // Before anything, not after a failure: a stale engine made this function
-  // throw on its first cloudSave and return nothing at all to the reader.
-  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('sync scenarios', 'nothing-moved')); return; }
   const list = MGM.scenarioList();
   if (!list.length) {
     // Nothing to push is not a failure, and "0 pushed" with no explanation
@@ -4696,79 +4806,35 @@ MGM.reportableUnknown = function (merged) {
     !String(p).split('.').some(seg => SCEN_DROPPED_KEYS.indexOf(seg) >= 0));
 };
 
-// Residue of the removed copy-override feature. ONE definition, applied at
-// every point a state object enters or leaves this page, because the load-path
-// cleanup alone was not enough: the push to mgm_scenarios reads the LOCAL
-// SCENARIO STORE, not MGM.state, so a record saved while the feature was live
-// kept its `copy` key through unlimited reloads and went up verbatim on one
-// Sync. A review measured that; it is the gap removing the feature existed to
-// close.
+// Residue of the removed copy-override feature. ONE rule, in the engine, where
+// it is unit-tested; this wrapper only carries the counts the page's callers
+// read.
 //
-// Three chokepoints cover every route found:
-//   - the load path          (roadys_mgm_v2)        -- already done above
-//   - scenarioList()          read of the store      -- so cloudSave,
-//     exportJSON and scenarioLoad all receive clean records
-//   - scenarioWriteAll()      write to the store     -- so the store itself is
-//     cleaned durably rather than filtered on every read
-// Delegates to the engine, where the rule is unit-tested. The page keeps the
-// `.removed` surface its callers already read.
-// What this page needs the engine to provide, and the revision it was written
-// against. Checked, not assumed.
+// The load-path cleanup alone was not enough, which is why there are several
+// application points: the push to mgm_scenarios reads the LOCAL SCENARIO STORE,
+// not MGM.state, so a record saved while the feature was live kept its `copy`
+// key through unlimited reloads and went up verbatim on one Sync. A review
+// measured that.
 //
-// The cache-busting query string on the engine's script tag was forgotten
-// twice in three rounds of one fix. The second time, the page ran against the
-// previous engine, MM.residueVerdict did not exist, and Sync died with a
-// TypeError and ZERO feedback -- a reader clicked it and nothing happened, on
-// data that was perfectly clean. Failing closed was right; being silent was
-// not, and relying on a human to bump a string is not a mechanism.
+// Applied at:
+//   - the load path        (roadys_mgm_v2)
+//   - scenarioList()       on read, writing the cleaned list back
+//   - scenarioWriteAll()   on write, so a row pulled from the cloud cannot be
+//                          persisted locally and pushed back
+//   - importJSON()         a fourth place a state object enters the page
+//   - once at DOMContentLoaded, so the repair does not wait on the reader
+//     opening the Scenarios tab
 //
-// So: one list, checked at boot and again before any sync, reported in words.
-// MGM.ENGINE_NEEDS and MGM.ENGINE_REV_EXPECTED are declared at the top of this
-// script, above the first engine call, because the evaluation-time guard there
-// uses the same list. One definition.
+// An earlier version of this comment said "three chokepoints cover every route
+// found". It was wrong twice over -- the count, and the claim of completeness:
+// reviews then found importJSON and the boot repair. The list above is what the
+// code does, not a guarantee that nothing else exists.
 //
-// Returns null when the engine is fine, or a human-readable reason when it is
-// not. Deliberately does NOT throw: a diagnostic that crashes its caller is
-// how the thing it diagnoses stayed invisible.
-MGM.engineSkew = function () {
-  if (typeof MM !== 'object' || !MM) return 'the model script did not load at all';
-  const missing = MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function');
-  if (missing.length) {
-    return 'the model script is out of date — it is missing ' + missing.join(', ');
-  }
-  // Compared as NUMBERS. Strict inequality on the raw values made ENGINE_REV
-  // = '4' report "revision 4 but this page expects revision 4" -- a false skew
-  // that hard-blocks Sync while advising a reload that cannot fix it. A guard
-  // whose own message contradicts itself is worse than no guard.
-  const rev = Number(MM.ENGINE_REV);
-  if (MM.ENGINE_REV === undefined || MM.ENGINE_REV === null || !isFinite(rev)) {
-    return 'the model script does not say which revision it is, and this page '
-         + 'expects revision ' + MGM.ENGINE_REV_EXPECTED;
-  }
-  if (rev !== Number(MGM.ENGINE_REV_EXPECTED)) {
-    return 'the model script is revision ' + rev
-         + ' but this page expects revision ' + MGM.ENGINE_REV_EXPECTED;
-  }
-  return null;
-};
-
-// `settled` tells the two call sites apart, because the reassurance is only
-// true at one of them. A review measured the boot alert asserting "Nothing was
-// changed or uploaded" immediately AFTER the boot store repair had rewritten
-// both storage keys -- a false statement to the reader, which is precisely the
-// class of defect this whole PR has been clearing. Only syncScenarios can
-// honestly promise nothing moved.
-MGM.engineSkewMessage = function (what, settled) {
-  return 'Cannot ' + what + ': ' + MGM.engineSkew() + '.\n\n'
-       + 'Your browser is almost certainly serving a cached copy of an older '
-       + 'script. Reload the page (hold Shift while reloading, or empty the '
-       + 'cache) and try again.'
-       + (settled === 'nothing-moved'
-           ? ' Nothing was changed or uploaded.'
-           : ' Nothing was uploaded. This browser\'s own saved copy may already '
-             + 'have been tidied on load, which is safe and changes no figures.');
-};
-
+// NONE of it is what actually prevents disclosure. Two boundaries do that, by
+// checking their own outbound bytes rather than trusting a strip ran upstream:
+// cloudSave on every row and exportJSON on the serialised file. That split
+// matters -- a review disabled the strip entirely and both boundaries still
+// refused.
 MGM.stripResidue = function (obj) {
   const r = MM.stripResidue(obj);
   MGM.stripResidue.removed = r.removed;
@@ -5235,13 +5301,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // so every definition exists by now.
   try { MGM.scenarioList(); } catch (e) {}
 
-  // Say it once, up front. A reader who sees this knows why the page is
-  // behaving oddly instead of discovering it one dead button at a time.
-  const _skew = MGM.engineSkew();
-  if (_skew) {
-    try { console.error('[MGM] ' + _skew); } catch (e) {}
-    alert(MGM.engineSkewMessage('use this page safely'));   // no 'nothing-moved'
-  }
+  // No engine check here. It would be dead code: the guard inside the `const MM`
+  // initialiser throws when the engine is unusable, and that happens during
+  // script evaluation -- so if this handler is running at all, the engine
+  // already passed. A review confirmed the old check returned "fine" on every
+  // engine that reached this point, and its fallback arm returned "fine" on
+  // error too, which is the wrong direction for a guard to fail.
 
   MGM.renderTabs();
   MGM.switchTab('starting');
