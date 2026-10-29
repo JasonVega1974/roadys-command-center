@@ -1732,3 +1732,144 @@ test('stripResidue tolerates null, primitives and cycles', () => {
   const r = MembershipModel.stripResidue(o);     // but crashing on one would be worse than
   assert.equal(r.removed, 1);       // the problem it guards.
 });
+
+// ── The two findings the first version of these tests could not see ────────
+// A review observed that the seven tests above covered the rule but neither
+// medium finding: nothing asserted that stripResidue survives a deep graph,
+// and nothing asserted the publish boundary. Both are engine-testable; the
+// absence was the test design's fault, not the problem's.
+
+test('stripResidue survives a graph deeper than any recursive walk', () => {
+  // THE FIRST VERSION OF THIS FUNCTION WAS RECURSIVE AND THIS THREW.
+  // A review measured RangeError between 2 000 and 5 000 levels in Chrome,
+  // while JSON.parse builds 20 000 levels from a ~120 KB file -- so a saved
+  // scenario could carry a graph the strip could not walk. Because the whole
+  // scenario list is stripped in ONE call, a single pathological record
+  // disabled stripping for every record, and the page then published the lot.
+  let root = {}, cur = root;
+  for (let i = 0; i < 20000; i++) { cur.next = {}; cur = cur.next; }
+  cur.copy = { 'deep|1': RESIDUE_MARK };
+  const r = MembershipModel.stripResidue(root);
+  assert.equal(r.removed, 1);
+  assert.equal(r.failed, 0);
+  // Verified by walking ITERATIVELY. The first version of this assertion used
+  // JSON.stringify, which is itself recursive, so the test blew the stack
+  // while the function under test had already succeeded -- the verification
+  // failing in the same way the subject used to.
+  let cur2 = r.obj, depth = 0, found = false;
+  while (cur2 && typeof cur2 === 'object') {
+    if (cur2.copy !== undefined) found = true;
+    cur2 = cur2.next; depth++;
+  }
+  assert.equal(found, false, 'no copy key survives at any depth');
+  assert.equal(depth, 20001, 'and the whole chain is intact');
+});
+
+test('stripResidue reports a failed delete instead of throwing', () => {
+  // `delete` throws in strict mode on a non-configurable property. Reporting
+  // success while the key survived would be the wrong-object-reported-as-fixed
+  // shape this whole fix exists to close, so the count is separate.
+  const frozen = Object.freeze({ copy: { k: RESIDUE_MARK } });
+  const r = MembershipModel.stripResidue(frozen);
+  assert.equal(r.removed, 0);
+  assert.equal(r.failed, 1, 'the caller can fail closed on this');
+  assert.ok('copy' in r.obj, 'and it is honest that the key is still there');
+});
+
+test('stripResidue never throws, whatever it is handed', () => {
+  // The contract the page depends on. Every route that publishes runs
+  // downstream of this call, and the page's response to a throw was to hand
+  // the unstripped data onward.
+  const hostile = [
+    null, undefined, 42, 'string', true, [], {},
+    { copy: null }, { copy: 'not-an-object' }, { copy: [1, 2] },
+    Object.freeze({ copy: {} }),
+    Object.create(null),
+    { a: Object.freeze({ copy: { k: RESIDUE_MARK } }) }
+  ];
+  const cyclic = { copy: { k: RESIDUE_MARK } }; cyclic.self = cyclic;
+  hostile.push(cyclic);
+  // Label by INDEX. The first version built the message with JSON.stringify,
+  // which throws on the cyclic case -- so the test failed inside its own
+  // failure message while every subject case passed.
+  hostile.forEach((h, i) => {
+    assert.doesNotThrow(() => MembershipModel.stripResidue(h), 'threw on case ' + i);
+  });
+});
+
+test('payloadIsResidueFree refuses a payload carrying the key', () => {
+  // The publish boundary's own check. It tests a KEY NAME, which is why it
+  // works where three earlier guards failed: those matched gated VALUES
+  // against rendered text, and the page rounds and reformats figures, so a
+  // value stored at two decimals and displayed at one defeated all three. A
+  // key name is never rounded, reformatted or localised.
+  const F = MembershipModel.payloadIsResidueFree;
+  assert.equal(F({ id: 's1', state: { revenue: { duesPerLoc: 7 } } }), true);
+  assert.equal(F({ id: 's1', state: { copy: { 'a|1': RESIDUE_MARK } } }), false);
+  assert.equal(F({ id: 's1', state: { a: { b: { copy: {} } } } }), false,
+    'at any depth');
+  assert.equal(F({ id: 's1', state: { list: [{ copy: {} }] } }), false,
+    'inside an array');
+  assert.equal(F('{"state":{"copy":{}}}'), false, 'accepts pre-serialised JSON');
+  assert.equal(F('{"state":{}}'), true);
+});
+
+test('payloadIsResidueFree fails CLOSED on anything it cannot serialise', () => {
+  // A payload that cannot be serialised cannot be checked, and an unverifiable
+  // payload must not be published. Returning true here would make one
+  // unserialisable field a disclosure.
+  const cyc = { id: 's1' }; cyc.self = cyc;
+  assert.equal(MembershipModel.payloadIsResidueFree(cyc), false, 'unserialisable');
+  // JSON.stringify(undefined) returns undefined rather than throwing, so the
+  // catch does not fire. The first version of the guard then called .indexOf
+  // on it and THREW -- a guard beaten by its own structure, for the sixth time
+  // in this fix. Found by this test.
+  assert.equal(MembershipModel.payloadIsResidueFree(undefined), false, 'unverifiable');
+  // Not every odd input is unverifiable: a payload that serialises cleanly
+  // carries no residue, whatever else is wrong with it. Fail-closed is about
+  // what cannot be CHECKED, not about what looks unusual.
+  assert.equal(MembershipModel.payloadIsResidueFree(null), true);
+});
+
+test('payloadIsResidueFree does not reject a value that merely mentions copy', () => {
+  // It matches the quoted KEY, not the word, so a scenario legitimately named
+  // "Copy of Base" -- or a note containing the word -- still publishes.
+  const F = MembershipModel.payloadIsResidueFree;
+  assert.equal(F({ id: 's1', name: 'Copy of Base', state: {} }), true);
+  assert.equal(F({ id: 's1', state: { notes: 'copy this to the board' } }), true);
+  // A quoted occurrence inside a string VALUE is escaped by JSON.stringify, so
+  // it cannot be mistaken for a key.
+  assert.equal(F({ id: 's1', state: { notes: 'the "copy" button' } }), true);
+  // And a value equal to the bare word publishes fine. The first version
+  // matched `"copy"` rather than `"copy":` and refused this -- a legitimate
+  // scenario note blocked from syncing, found by this test.
+  assert.equal(F({ id: 's1', state: { notes: 'copy' } }), true);
+});
+
+test('residueVerdict tells a dirty payload from an uncheckable one', () => {
+  // Both refuse at the publish boundary, but the remedy differs: a reload
+  // strips, so it fixes 'residue'; it cannot change how deeply a record is
+  // nested, so it cannot fix 'unverifiable'. Collapsing the two told a reader
+  // to reload and retry for a record that was never dirty -- found by a probe,
+  // not by reasoning.
+  const V = MembershipModel.residueVerdict;
+  assert.equal(V({ id: 's1', state: { revenue: { duesPerLoc: 7 } } }), 'clean');
+  assert.equal(V({ id: 's1', state: { copy: { 'a|1': RESIDUE_MARK } } }), 'residue');
+  const cyc = { id: 's1' }; cyc.self = cyc;
+  assert.equal(V(cyc), 'unverifiable');
+  assert.equal(V(undefined), 'unverifiable');
+  // Anything JSON.stringify refuses is 'unverifiable', NOT 'clean': guessing
+  // 'clean' would be the publish boundary trusting what it could not check.
+  // BigInt makes stringify throw deterministically in every engine.
+  //
+  // Not asserted here: the depth at which stringify gives up. That is what
+  // motivated this split -- a clean but very deep record was refused in Chrome
+  // -- but the limit is engine-specific (Node serialises 20 000 levels where
+  // Chrome throws), so pinning a depth would pin a property of the test
+  // runner, not of this rule.
+  assert.equal(V({ id: 's1', big: 1n }), 'unverifiable');
+  // And the structural cases, which are engine-independent:
+  const nested = { id: 's1', state: { a: { b: { copy: {} } } } };
+  assert.equal(V(nested), 'residue');
+  assert.equal(V({ id: 's1', state: { l: [{ copy: {} }] } }), 'residue');
+});

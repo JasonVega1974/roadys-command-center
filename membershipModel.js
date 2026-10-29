@@ -254,26 +254,107 @@
   // Over-stripping would silently discard a user's data, so the rule is one
   // key name and nothing else.
   //
-  // Returns {obj, removed}: a caller that strips a store on read needs the
-  // count to decide whether to write the cleaned version back. Stripping
-  // without reporting left the on-disk store dirty forever while every
-  // consumer saw clean data -- true of the hand-off, false of the store.
+  // ITERATIVE, with an explicit stack, because a recursive version was
+  // DATA-TRIGGERABLE: a review measured RangeError between 2 000 and 5 000
+  // levels of nesting while JSON.parse builds 20 000 levels from a 120 KB
+  // file. The strip runs over the whole scenario list in one call, so a single
+  // pathological record disabled stripping for every record -- and the page's
+  // degradation then published the lot. An explicit stack has no depth limit.
+  //
+  // Returns {obj, removed, failed}:
+  //   removed -- a caller that strips a store on read needs the count to
+  //              decide whether to write the cleaned version back. Stripping
+  //              without reporting left the on-disk store dirty forever while
+  //              every consumer saw clean data: true of the hand-off, false of
+  //              the store.
+  //   failed  -- deletes that did NOT succeed, so a caller can fail closed
+  //              rather than trust a strip that silently did nothing. `delete`
+  //              throws in strict mode on a frozen or non-configurable
+  //              property; swallowing that and reporting success would be the
+  //              wrong-object-reported-as-fixed shape this whole fix exists to
+  //              close.
+  //
+  // This function MUST NOT THROW on any input. Every route that publishes runs
+  // downstream of it, and the page's response to a throw was to hand the
+  // unstripped data onward.
   function stripResidue(obj) {
-    var removed = 0;
-    // A `seen` set, not because saved state should ever cycle -- it comes from
-    // JSON.parse, which cannot produce one -- but because this also runs over
-    // the live in-memory state object, and a guard that crashes the page is
-    // worse than the residue it was removing. A test asserted the tolerance
-    // and the first version failed it with a stack overflow.
+    var removed = 0, failed = 0;
     var seen = (typeof WeakSet === 'function') ? new WeakSet() : null;
-    (function walk(v) {
-      if (!v || typeof v !== 'object') return;
-      if (seen) { if (seen.has(v)) return; seen.add(v); }
-      if (Array.isArray(v)) { v.forEach(walk); return; }
-      if (v.copy !== undefined) { delete v.copy; removed++; }
-      Object.keys(v).forEach(function (k) { walk(v[k]); });
-    })(obj);
-    return { obj: obj, removed: removed };
+    var stack = [obj], v, keys, i;
+
+    while (stack.length) {
+      v = stack.pop();
+      if (!v || typeof v !== 'object') continue;
+      // Guards cycles AND shared references. `seen.add` precedes the delete,
+      // so a second visit to a shared object always finds it already clean.
+      if (seen) { if (seen.has(v)) continue; seen.add(v); }
+
+      if (Array.isArray(v)) {
+        for (i = 0; i < v.length; i++) stack.push(v[i]);
+        continue;
+      }
+      if (v.copy !== undefined) {
+        try { delete v.copy; removed++; }
+        catch (e) { failed++; }
+      }
+      keys = Object.keys(v);
+      for (i = 0; i < keys.length; i++) stack.push(v[keys[i]]);
+    }
+    return { obj: obj, removed: removed, failed: failed };
+  }
+
+  // The sound half of the guard, and the reason this one works where three
+  // earlier versions did not: it tests for a KEY NAME, not for a value.
+  //
+  // The original leak could not be detected by matching values, because the
+  // page rounds and reformats figures on the way to the screen -- a margin
+  // stored at two decimals and displayed at one defeated three successive
+  // guards. A key name is not rounded, not reformatted and not localised. It
+  // is either in the serialised payload or it is not.
+  //
+  // So a publish boundary can verify its own outbound payload independently of
+  // whether the strip ran, succeeded, or was even present. Takes the already-
+  // serialised JSON where possible; `false` means refuse to publish.
+  // Three outcomes, not two, because a publish boundary that refuses needs to
+  // say WHICH refusal it is:
+  //
+  //   'clean'        -- verified to carry no residue; publish it.
+  //   'residue'      -- verified to carry residue; refuse, and a reload fixes
+  //                     it, because the reload strips.
+  //   'unverifiable' -- could not be serialised, so nothing can be concluded;
+  //                     refuse, and a reload does NOT fix it.
+  //
+  // The two refusals were one at first, and a probe caught the cost: a clean
+  // but pathologically deep record (JSON.stringify is recursive and gives up
+  // long before JSON.parse does) was refused as though it carried residue, and
+  // told the reader to reload and retry -- advice that cannot work, for a
+  // record that was never dirty. Failing closed is right; lying about why is
+  // not.
+  function residueVerdict(json) {
+    if (typeof json !== 'string') {
+      try { json = JSON.stringify(json); } catch (e) { return 'unverifiable'; }
+    }
+    if (typeof json !== 'string') return 'unverifiable';
+    return json.indexOf('"copy":') < 0 ? 'clean' : 'residue';
+  }
+
+  function payloadIsResidueFree(json) {
+    if (typeof json !== 'string') {
+      try { json = JSON.stringify(json); } catch (e) { return false; }
+    }
+    // FAILS CLOSED on anything that is not a string by this point. JSON.
+    // stringify(undefined) returns undefined rather than throwing, so the
+    // `catch` above does not fire and the next line threw TypeError on the
+    // guard itself -- a guard beaten by its own structure, which is the exact
+    // failure mode that defeated five earlier versions of this fix. An
+    // unverifiable payload must not be publishable.
+    if (typeof json !== 'string') return false;
+    // `"copy":` and not `"copy"`, because JSON puts a colon after a key and
+    // nothing else. Matching the bare quoted word also matched a string VALUE
+    // equal to "copy" -- a scenario note of exactly that word was refused
+    // publication. A value containing the word with its own quotes is escaped
+    // as \"copy\", so it cannot collide either way.
+    return json.indexOf('"copy":') < 0;
   }
 
   function mergeState(defaults, saved) {
@@ -768,6 +849,8 @@
       setPath: setPath,
       mergeState: mergeState,
       stripResidue: stripResidue,
+      payloadIsResidueFree: payloadIsResidueFree,
+      residueVerdict: residueVerdict,
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,
       partPct: partPct,
