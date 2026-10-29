@@ -368,10 +368,19 @@ const MM = (function () {
       // thing it reports on. It has now happened enough times in this work
       // that the rule is explicit -- assert the state afterwards, never the
       // return value alone.
-      const probe = { copy: {} };
+      // NESTED, and inside an array, because depth is the property this fix
+      // got wrong twice: once when the load path cleaned only `state.copy` and
+      // re-persisted two nested maps while logging a success, and once when
+      // the dropped-key filter was start-anchored against a depth-any strip.
+      // A flat probe admitted a depth-blind engine -- measured: it loaded with
+      // 50 buttons and left 3 of 4 sentinels in place, so the store never
+      // cleaned while both publish boundaries quietly refused everything.
+      const probe = { copy: {}, a: { b: { copy: {} } }, list: [{ copy: {} }] };
       const r = e.stripResidue(probe);
-      if (!r || r.removed !== 1) return 'is not working correctly';
+      if (!r || r.removed !== 3) return 'is not working correctly';
       if ('copy' in probe) return 'is not working correctly';
+      if ('copy' in probe.a.b) return 'is not working correctly';
+      if ('copy' in probe.list[0]) return 'is not working correctly';
       if (e.residueVerdict({ state: { copy: {} } }) !== 'residue') return 'is not working correctly';
       if (e.residueVerdict({ state: { a: 1 } }) !== 'clean') return 'is not working correctly';
     } catch (err) {
@@ -4737,33 +4746,35 @@ MGM.reportableUnknown = function (merged) {
     !String(p).split('.').some(seg => SCEN_DROPPED_KEYS.indexOf(seg) >= 0));
 };
 
-// Residue of the removed copy-override feature. ONE definition, applied at
-// every point a state object enters or leaves this page, because the load-path
-// cleanup alone was not enough: the push to mgm_scenarios reads the LOCAL
-// SCENARIO STORE, not MGM.state, so a record saved while the feature was live
-// kept its `copy` key through unlimited reloads and went up verbatim on one
-// Sync. A review measured that; it is the gap removing the feature existed to
-// close.
+// Residue of the removed copy-override feature. ONE rule, in the engine, where
+// it is unit-tested; this wrapper only carries the counts the page's callers
+// read.
 //
-// Three chokepoints cover every route found:
-//   - the load path          (roadys_mgm_v2)        -- already done above
-//   - scenarioList()          read of the store      -- so cloudSave,
-//     exportJSON and scenarioLoad all receive clean records
-//   - scenarioWriteAll()      write to the store     -- so the store itself is
-//     cleaned durably rather than filtered on every read
-// Delegates to the engine, where the rule is unit-tested. The page keeps the
-// `.removed` surface its callers already read.
-// What this page needs the engine to provide, and the revision it was written
-// against. Checked, not assumed.
+// The load-path cleanup alone was not enough, which is why there are several
+// application points: the push to mgm_scenarios reads the LOCAL SCENARIO STORE,
+// not MGM.state, so a record saved while the feature was live kept its `copy`
+// key through unlimited reloads and went up verbatim on one Sync. A review
+// measured that.
 //
-// The cache-busting query string on the engine's script tag was forgotten
-// twice in three rounds of one fix. The second time, the page ran against the
-// previous engine, MM.residueVerdict did not exist, and Sync died with a
-// TypeError and ZERO feedback -- a reader clicked it and nothing happened, on
-// data that was perfectly clean. Failing closed was right; being silent was
-// not, and relying on a human to bump a string is not a mechanism.
+// Applied at:
+//   - the load path        (roadys_mgm_v2)
+//   - scenarioList()       on read, writing the cleaned list back
+//   - scenarioWriteAll()   on write, so a row pulled from the cloud cannot be
+//                          persisted locally and pushed back
+//   - importJSON()         a fourth place a state object enters the page
+//   - once at DOMContentLoaded, so the repair does not wait on the reader
+//     opening the Scenarios tab
 //
-// So: one list, checked at boot and again before any sync, reported in words.
+// An earlier version of this comment said "three chokepoints cover every route
+// found". It was wrong twice over -- the count, and the claim of completeness:
+// reviews then found importJSON and the boot repair. The list above is what the
+// code does, not a guarantee that nothing else exists.
+//
+// NONE of it is what actually prevents disclosure. Two boundaries do that, by
+// checking their own outbound bytes rather than trusting a strip ran upstream:
+// cloudSave on every row and exportJSON on the serialised file. That split
+// matters -- a review disabled the strip entirely and both boundaries still
+// refused.
 MGM.stripResidue = function (obj) {
   const r = MM.stripResidue(obj);
   MGM.stripResidue.removed = r.removed;

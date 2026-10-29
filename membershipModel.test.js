@@ -1993,13 +1993,25 @@ test('nothing in the page reads the engine before the guard has passed', () => {
   const iScript = page.lastIndexOf('<script>', iBind);
   const region = page.slice(iScript + '<script>'.length, iBind);
 
-  // A line is code if it does not begin a comment. That is enough to separate
-  // statements from prose without parsing, and it is why the binding's own
-  // comment block -- which mentions MM.defaultState() while explaining the
-  // guard -- does not trip this. Comment-stripping was the losing move twice
-  // in this work and is not used.
-  const codeLines = region.split('\n')
-    .filter(l => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l));
+  // A line is code unless it is a comment. Tracking `/* */` state across lines
+  // is the whole of the parsing here -- a review found the previous one-line
+  // test both over- and under-firing: a block-comment interior line not
+  // starting with `*` counted as code, and a code line starting with `*`
+  // counted as a comment.
+  //
+  // This is not the comment-STRIPPING that was the losing move twice in this
+  // work; nothing is rewritten and no match is run against altered text. It
+  // only decides, per line, whether the line is a statement.
+  const codeLines = [];
+  let inBlock = false;
+  for (const line of region.split('\n')) {
+    const t = line.trim();
+    if (inBlock) { if (t.includes('*/')) inBlock = false; continue; }
+    if (!t) continue;
+    if (t.startsWith('//')) continue;
+    if (t.startsWith('/*')) { if (!t.includes('*/')) inBlock = true; continue; }
+    codeLines.push(line);
+  }
 
   // THE IDENTIFIER, not a call shape. Earlier versions matched
   // `MembershipModel.` and `MM.` in statement position, and a review got past
@@ -2010,7 +2022,11 @@ test('nothing in the page reads the engine before the guard has passed', () => {
   const touching = codeLines.filter(l => /\bMembershipModel\b/.test(l));
   assert.deepEqual(touching, [],
     'no code may reference MembershipModel before the binding that guards it ' +
-    '-- not by call, by bracket access, or by aliasing it to another name');
+    '-- not by call, by bracket access, or by aliasing it to another name.\n' +
+    'This matches the NAME, so a line that merely mentions it in a string or a ' +
+    'trailing comment also fails. That is deliberate: enumerating call ' +
+    'spellings was bypassed twice. If the line is genuinely harmless, move it ' +
+    'below the MM binding -- nothing needs to run before the engine guard.');
 
   const usingMM = codeLines.filter(l => /\bMM\b/.test(l));
   assert.deepEqual(usingMM, [],
