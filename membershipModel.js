@@ -330,16 +330,20 @@
   // told the reader to reload and retry -- advice that cannot work, for a
   // record that was never dirty. Failing closed is right; lying about why is
   // not.
-  // Bumped whenever this file changes in a way the page depends on. The page
-  // CHECKS it (see MGM.engineSkew) rather than assuming, because the cache-
-  // busting query string has now been forgotten twice in three rounds of one
-  // fix -- and the second time it left Sync completely dead, silently, for any
-  // reader holding the previous engine. A version string a human must remember
-  // to bump is not a mechanism; a runtime check that shouts is.
+  // There is deliberately NO revision constant here any more.
   //
-  // Not a date: rounds 2 and 3 of this fix shipped on the same calendar day,
-  // so a date could not have told them apart even if it had been bumped.
-  var ENGINE_REV = 4;
+  // One existed, and the page compared it against a constant of its own. Two
+  // reviews beat that pairing: first because nothing coupled the two numbers
+  // (the engine moved to 5 and the whole suite still passed), then because a
+  // second assignment to the page's constant shadowed it while the suite
+  // stayed green and every page load reported a false skew. Both are
+  // bookkeeping failures of a number standing in for behaviour.
+  //
+  // The page smoke-tests the behaviour instead -- a correct engine strips a
+  // `copy` key and refuses a payload carrying one -- so a stale engine is
+  // detected by what it DOES. See the comment on the MM binding in
+  // membership-growth-model/index.html, and the test that pins the same three
+  // assertions from this side.
 
   function residueVerdict(json) {
     if (typeof json !== 'string') {
@@ -849,7 +853,6 @@
       getPath: getPath,
       setPath: setPath,
       mergeState: mergeState,
-      ENGINE_REV: ENGINE_REV,
       stripResidue: stripResidue,
       residueVerdict: residueVerdict,
       attritionSplit: attritionSplit,

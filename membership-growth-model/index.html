@@ -13,7 +13,7 @@
 <script src="../busDevGallonsConfig.js"></script>
 <script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
-<script src="../membershipModel.js?v=r4"></script>
+<script src="../membershipModel.js?v=r5"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
      SDK tag has to come first. Never construct a second client here -- see
      MGM.sb() below. -->
@@ -316,56 +316,78 @@ function mkChart(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($(id),cfg
 
 /* ═══════════════ MGM STATE ═══════════════ */
 const MGM = {};
-// Bound defensively so a failed engine load is REPORTABLE rather than fatal.
-// This was `const MM = MembershipModel;`, which throws ReferenceError during
-// script evaluation if the engine 404s -- so nothing below it was ever
-// defined, MGM.engineSkew could not run, and the reader got a blank page with
-// no explanation. A review measured that: tabsRendered false, no alert at all.
-// Every MM use downstream either sits in a try or runs after MGM.engineSkew()
-// has had its say.
-const MM = (typeof MembershipModel === 'object' && MembershipModel)
-  ? MembershipModel : null;
+// THE GUARD IS PART OF BINDING THE ENGINE, not a step that happens to precede
+// its first use. That is deliberate and it is the third design of this check.
+//
+//   v1 tested `!MM` -- presence, not usability. A review set the global to an
+//      empty object: the guard did not fire and the page drew 15 buttons and
+//      12 live handlers over an empty MGM, so a click threw with no
+//      explanation.
+//   v2 tested usability but depended on SOURCE ORDER: the list had to be
+//      declared above the check, which had to sit above the first engine call.
+//      A review inserted one unrelated engine call above the check -- a
+//      plausible edit -- and the suite passed 110/110 while the page broke in
+//      exactly the v1 way. A test was then written to pin the order, and it
+//      pinned ONE named call rather than the property, so any other call
+//      reopened it silently.
+//   v3 (this) removes the window instead of guarding it. `MM` does not exist
+//      until the check has passed, so there is nothing to insert a call above:
+//      the temporal dead zone makes a pre-guard `MM.anything` a hard
+//      ReferenceError rather than a silently dead page. The invariant is
+//      enforced by the language, so no test has to describe it.
+//
+// The engine is also SMOKE-TESTED, not asked for its revision number. An
+// earlier version compared MM.ENGINE_REV against a constant declared here, and
+// two reviews beat that: once because nothing coupled the two numbers, and
+// once because a second assignment to the page's constant shadowed it while
+// the suite stayed green. Both are bookkeeping failures of a number that
+// stands in for behaviour. So check the behaviour: a correct engine strips a
+// `copy` key and refuses a payload carrying one. There is no constant left to
+// keep in step, and nothing to shadow.
+const MM = (function () {
+  const engine = (typeof MembershipModel === 'object' && MembershipModel)
+    ? MembershipModel : null;
+
+  // The functions this page cannot work without.
+  const NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
+
+  function problem(e) {
+    if (!e) return 'did not load';
+    if (NEEDS.filter(k => typeof e[k] !== 'function').length) {
+      return 'loaded but is incomplete or out of date';
+    }
+    // Behavioural, cheap, and the two properties everything downstream relies
+    // on. Wrapped because a broken engine may throw rather than answer wrongly.
+    try {
+      if (e.stripResidue({ copy: {} }).removed !== 1) return 'is not working correctly';
+      if (e.residueVerdict({ state: { copy: {} } }) !== 'residue') return 'is not working correctly';
+      if (e.residueVerdict({ state: { a: 1 } }) !== 'clean') return 'is not working correctly';
+    } catch (err) {
+      return 'is not working correctly';
+    }
+    return null;
+  }
+
+  const broken = problem(engine);
+  if (broken) {
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
+        + '<h3>This page could not load its model script</h3>'
+        + '<p class="note">membershipModel.js ' + broken + ', so nothing here '
+        + 'can be calculated. This is almost always a stale cache or a failed '
+        + 'download: reload the page (hold Shift while reloading, or empty the '
+        + 'cache). Nothing has been changed or uploaded.</p></div>';
+    });
+    // Stop here. Everything below needs the engine, and continuing would draw
+    // a page whose every control throws -- see the comment above.
+    throw new Error('[MGM] membershipModel.js ' + broken);
+  }
+
+  // Shared with the runtime check further down, so both use one definition.
+  MGM.engineProblem = function () { return problem(MM || engine); };
+  return engine;
+}());
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
-
-// What this page needs the engine to provide. Declared HERE, above the first
-// engine call, so the evaluation-time guard below and MGM.engineSkew() further
-// down are the same list -- one definition, two call sites.
-MGM.ENGINE_NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
-MGM.ENGINE_REV_EXPECTED = 4;
-
-// Before anything reads the engine. A missing or unusable engine is
-// unrecoverable -- this page is a model with a UI attached -- but it must SAY
-// so rather than fail blank or, worse, render a full page of dead buttons.
-//
-// Tests USABILITY, not presence. An earlier version tested `!MM` alone: a
-// review set the global to an empty object and the guard did not fire, so
-// MM.defaultState() threw during evaluation, the body was never replaced, and
-// the page drew its whole chrome with 12 live onclick handlers over an empty
-// MGM -- a click gave an uncaught TypeError and no feedback whatsoever. That
-// is worse than the blank page this guard was added to fix, since the 404 case
-// at least leaves nothing to click.
-//
-// The ReferenceError case is covered too: MM is bound defensively above,
-// because `const MM = MembershipModel;` throws during script evaluation when
-// the engine 404s, before any of this could run.
-const _engineBroken = !MM
-  ? 'did not load'
-  : (MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function').length
-      ? 'loaded but is incomplete or out of date'
-      : null);
-if (_engineBroken) {
-  document.addEventListener('DOMContentLoaded', function () {
-    document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
-      + '<h3>This page could not load its model script</h3>'
-      + '<p class="note">membershipModel.js ' + _engineBroken + ', so nothing here '
-      + 'can be calculated. This is almost always a stale cache or a failed '
-      + 'download: reload the page (hold Shift while reloading, or empty the '
-      + 'cache). Nothing has been changed or uploaded.</p></div>';
-  });
-  // Stop here. Everything below needs the engine, and continuing would draw a
-  // page whose controls all throw -- see the comment above.
-  throw new Error('[MGM] membershipModel.js ' + _engineBroken);
-}
 
 MGM.state = MM.defaultState(MGM_CONFIG);
 try {
@@ -4723,41 +4745,23 @@ MGM.reportableUnknown = function (merged) {
 // not, and relying on a human to bump a string is not a mechanism.
 //
 // So: one list, checked at boot and again before any sync, reported in words.
-// MGM.ENGINE_NEEDS and MGM.ENGINE_REV_EXPECTED are declared at the top of this
-// script, above the first engine call, because the evaluation-time guard there
-// uses the same list. One definition.
-//
 // Returns null when the engine is fine, or a human-readable reason when it is
-// not. Deliberately does NOT throw: a diagnostic that crashes its caller is
-// how the thing it diagnoses stayed invisible.
+// not. Delegates to MGM.engineProblem, defined with the binding at the top of
+// this script, so the boot check and this one are the same check -- there is no
+// second list and no revision constant to keep in step.
+//
+// Deliberately does NOT throw: a diagnostic that crashes its caller is how the
+// problem it diagnoses stayed invisible for two rounds.
 MGM.engineSkew = function () {
-  if (typeof MM !== 'object' || !MM) return 'the model script did not load at all';
-  const missing = MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function');
-  if (missing.length) {
-    return 'the model script is out of date — it is missing ' + missing.join(', ');
+  try {
+    const p = typeof MGM.engineProblem === 'function' ? MGM.engineProblem() : null;
+    if (!p) return null;
+    return 'the model script ' + p;
+  } catch (e) {
+    return 'the model script could not be checked';
   }
-  // Compared as NUMBERS. Strict inequality on the raw values made ENGINE_REV
-  // = '4' report "revision 4 but this page expects revision 4" -- a false skew
-  // that hard-blocks Sync while advising a reload that cannot fix it. A guard
-  // whose own message contradicts itself is worse than no guard.
-  const rev = Number(MM.ENGINE_REV);
-  if (MM.ENGINE_REV === undefined || MM.ENGINE_REV === null || !isFinite(rev)) {
-    return 'the model script does not say which revision it is, and this page '
-         + 'expects revision ' + MGM.ENGINE_REV_EXPECTED;
-  }
-  if (rev !== Number(MGM.ENGINE_REV_EXPECTED)) {
-    return 'the model script is revision ' + rev
-         + ' but this page expects revision ' + MGM.ENGINE_REV_EXPECTED;
-  }
-  return null;
 };
 
-// `settled` tells the two call sites apart, because the reassurance is only
-// true at one of them. A review measured the boot alert asserting "Nothing was
-// changed or uploaded" immediately AFTER the boot store repair had rewritten
-// both storage keys -- a false statement to the reader, which is precisely the
-// class of defect this whole PR has been clearing. Only syncScenarios can
-// honestly promise nothing moved.
 MGM.engineSkewMessage = function (what, settled) {
   return 'Cannot ' + what + ': ' + MGM.engineSkew() + '.\n\n'
        + 'Your browser is almost certainly serving a cached copy of an older '

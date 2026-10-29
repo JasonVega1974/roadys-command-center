@@ -1925,65 +1925,77 @@ function stripLineComments(src) {
 // a number a human must remember to keep in step, with no check. The page
 // reads its copy from HTML, so the coupling is asserted across the two files.
 
-test('ENGINE_REV matches the revision the page expects', () => {
-  const page = readPage();
-  const m = matchOnce(page, /^\s*MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/m,
-                      'MGM.ENGINE_REV_EXPECTED');
-  assert.equal(MembershipModel.ENGINE_REV, Number(m[1]),
-    'bump BOTH: membershipModel.js ENGINE_REV and index.html ENGINE_REV_EXPECTED');
+test("the engine satisfies the page's boot smoke check", () => {
+  // The page does not ask the engine for a revision number any more -- two
+  // reviews beat that, once because nothing coupled the two constants and once
+  // because a second assignment shadowed the page's copy while the suite
+  // stayed green. It smoke-tests BEHAVIOUR at binding time instead.
+  //
+  // These are the exact three assertions the page makes. They are pinned here
+  // so that a change to the engine which would make every page refuse to load
+  // fails in node first, where it is cheap to see.
+  assert.equal(MembershipModel.stripResidue({ copy: {} }).removed, 1);
+  assert.equal(MembershipModel.residueVerdict({ state: { copy: {} } }), 'residue');
+  assert.equal(MembershipModel.residueVerdict({ state: { a: 1 } }), 'clean');
 });
 
-test('ENGINE_REV is a number, not a string', () => {
-  // `'4'` made the page report "revision 4 but this page expects revision 4"
-  // -- a false skew that hard-blocked Sync with advice that could not fix it.
-  // The page coerces now, and this stops the shape arising in the first place.
-  assert.equal(typeof MembershipModel.ENGINE_REV, 'number');
-  assert.ok(isFinite(MembershipModel.ENGINE_REV));
-});
-
-test('the page requires every engine function it names, and all exist', () => {
-  // MGM.ENGINE_NEEDS is the page's own list. If someone adds a name to it
-  // without the engine exporting it, every load reports a false skew and the
-  // page refuses to work -- so the list is checked against reality here.
+test("every function the page's boot guard requires is exported", () => {
+  // The list lives inside the IIFE that binds MM, so it cannot be reassigned
+  // from outside -- which closes by construction the shadow-by-assignment
+  // route a review used against the old page-level constant. It is still read
+  // from source here, because a name added to it without a matching export
+  // would make every load show the error card.
   const page = readPage();
-  const m = matchOnce(page, /^\s*MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/m,
-                      'MGM.ENGINE_NEEDS');
+  const m = matchOnce(page, /^\s*const NEEDS = \[([^\]]*)\]/m, 'const NEEDS');
   const needs = stripLineComments(m[1])
-    .split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+    .split(',').map(x => x.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
   assert.ok(needs.length >= 2, 'expected a real list, got ' + JSON.stringify(needs));
   for (const n of needs) {
     assert.equal(typeof MembershipModel[n], 'function',
-      'the page requires MM.' + n + ' but the engine does not export it');
+      "the page's boot guard requires MM." + n + ' but the engine does not export it');
   }
 });
 
-test('the engine guard is declared before anything reads the engine', () => {
-  // THE ONLY THING RECORDING THIS WAS A COMMENT. A review moved the two
-  // declarations back below their first use: the suite still passed 109/109
-  // while the page broke on a HEALTHY engine -- TypeError reading 'filter' of
-  // undefined, no error card, 15 buttons and 12 live handlers over an empty
-  // MGM. That is the F1-r5 defect reproduced, except now on a good engine.
+test('nothing in the page reads the engine before the guard has passed', () => {
+  // Asserted structurally, not by position. The guard runs INSIDE the
+  // initialiser of `const MM`, so MM does not exist until it has passed: any
+  // `MM.anything` above it is a temporal-dead-zone ReferenceError, not a
+  // silently dead page.
   //
-  // So the ordering is asserted, not described. Three positions, one order:
-  // the list is declared, the guard computes from it, and only then does
-  // anything call the engine.
+  // This replaces a test that pinned the order of four literal needles. A
+  // review inserted one unrelated engine call above the guard -- a plausible
+  // edit -- and that test passed 110/110 while the page rendered 15 buttons
+  // and 12 live handlers over an empty model. Pinning one named call is not
+  // the property; having no window at all is.
   const page = readPage();
-  const iNeeds = page.indexOf('MGM.ENGINE_NEEDS =');
-  const iRev   = page.indexOf('MGM.ENGINE_REV_EXPECTED =');
-  const iGuard = page.indexOf('const _engineBroken');
-  const iFirst = page.indexOf('MGM.state = MM.defaultState(');
-  for (const [name, i] of [['MGM.ENGINE_NEEDS', iNeeds], ['MGM.ENGINE_REV_EXPECTED', iRev],
-                           ['const _engineBroken', iGuard],
-                           ['MGM.state = MM.defaultState(', iFirst]]) {
-    assert.ok(i >= 0, 'expected the page to contain ' + name);
-  }
-  assert.ok(iNeeds < iGuard,
-    'MGM.ENGINE_NEEDS must be declared before const _engineBroken reads it');
-  assert.ok(iRev < iGuard,
-    'MGM.ENGINE_REV_EXPECTED must be declared before const _engineBroken reads it');
-  assert.ok(iGuard < iFirst,
-    'the engine guard must run before the first engine call, or an unusable ' +
-    'engine renders a full page of dead controls instead of an error card');
+  const m = matchOnce(page, /^const MM = \(function \(\) \{/m, 'the MM binding IIFE');
+  const iBind = page.indexOf(m[0]);
+  const iThrow = page.indexOf("throw new Error('[MGM] membershipModel.js ' + broken)");
+  const iClose = page.indexOf('}());', iBind);
+  assert.ok(iThrow > iBind && iThrow < iClose,
+    'the guard must throw from INSIDE the MM initialiser, so no code can reach ' +
+    'MM before it has passed');
+  // And nothing may touch the engine before that point, under EITHER name.
+  // A control inserted `MM.mergeState(...)` above the binding and an earlier
+  // version of this assertion missed it, because it only looked for
+  // `MembershipModel.`. `MM.` above the binding is a temporal-dead-zone
+  // ReferenceError -- loud, and it leaves nothing clickable, so not the F1-r5
+  // shape -- but it still halts the script and gives a blank page, which is
+  // the F1-r4 shape. Both names, then.
+  // Anchored to STATEMENT POSITION (line start), not "anywhere in the text".
+  // Unanchored, this fired on the binding's own comment block, which mentions
+  // `MM.defaultState()` while explaining why the guard exists -- a test
+  // failing on prose that documents it. Comment-stripping is not the answer
+  // here either; it was the losing move twice already. A statement begins a
+  // line, a mention sits after `//` or inside `/* */`, so the anchor separates
+  // them without parsing anything.
+  const before = page.slice(0, iBind);
+  assert.ok(!/^\s*MembershipModel\s*\./m.test(before),
+    'nothing may call MembershipModel directly before the guard');
+  assert.ok(!/^\s*MM\s*\.\s*[A-Za-z_$]/m.test(before),
+    'nothing may use MM before the binding that guards it -- that is a ' +
+    'temporal-dead-zone ReferenceError, which halts the script and gives a ' +
+    'blank page with no error card');
 });
 
 test('the engine cache-bust is not a date, and the page requests it', () => {
