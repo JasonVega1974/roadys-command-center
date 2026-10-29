@@ -368,7 +368,7 @@ Create `membershipModelConfig.js`. The UMD wrapper copies `busDevGallonsConfig.j
       },
       groupBaselineOverride: {},
       applyRegionVariance: false,
-      caveat: 'Total site gallons. The P&L fuel settlement covers card-network transactions only (~630 gal/member/mo) — do not multiply these gallons by a settlement-derived margin.'
+      caveat: 'Total site gallons. The P&L fuel settlement covers card-network transactions only — a small fraction of total site volume — so do not multiply these gallons by any settlement-derived margin. The two measure different things.'
     },
 
     // Default 0 = explicitly unset. P&L-derived figures load from
@@ -6025,7 +6025,7 @@ The existing test asserts twelve tab labels. Update it to thirteen and say why i
 
 **The four judgement calls that materially move the output.**
 1. **Attrition** — 2024 and 2025 ran at 13.7% and 11.3%, but the workbook records those losses as locations sold to T/A and Pilot. The default is the blended 9.7%; "Use split basis" switches to a 3.6% steady rate with the structural residual shown separately.
-2. **Fuel** — settlement nets *negative* per member in the P&L, so `fuelProgramMargin` defaults to **$0.00**; any positive value is a forward assumption the user owns. These gallons are total site volume, while the P&L settlement covers card-network transactions only (~630 gal/member/mo), so the two must never be multiplied.
+2. **Fuel** — settlement nets *negative* per member in the P&L, so `fuelProgramMargin` defaults to **$0.00**; any positive value is a forward assumption the user owns. These gallons are total site volume, while the P&L settlement covers card-network transactions only -- a small fraction of it -- so the two must never be multiplied. Do not quote the implied per-member volume: divided into the committed settlementNetPerMember it recovers the gated settlement spread per gallon.
 3. **The $20,000 benchmark** — from the signups workbook, it reconciles to no P&L measure: above realized gross profit per member, below gross income per member. State it that way and do not quote either ratio — set beside the committed $20,000, a ratio back-solves a gated figure. Shown as a cross-check, never as a driver.
 4. **EBITDA** — the real margin is auth-gated and absent from this public repo. With costs unset the cash bridge reports EBITDA equal to revenue, so enter real opex before quoting a valuation.
 
@@ -6039,7 +6039,7 @@ End with `MGM.tabNotes('about')` so a reader can annotate it.
 
 1. Suite green with the tab count at thirteen; `node --check` clean.
 2. All thirteen tabs render and switch. The About tab needs no sign-in and no live data.
-3. **Every figure quoted in the prose matches the live model** — 375, the seven group counts, 181/391/$143,426, 9.7% and 3.6%, $0.00 fuel margin, $20,000, the 2,338-23,565 baseline range, ~630 gal/member/mo. Check each against `MGM_CONFIG` or the rendered tab, not against this plan.
+3. **Every figure quoted in the prose matches the live model** — 375, the seven group counts, 181/391/$143,426, 9.7% and 3.6%, $0.00 fuel margin, $20,000, and the live per-group baseline range. Check each against `MGM_CONFIG` or the rendered tab, not against this plan. Do NOT quote an implied per-member settlement volume -- it back-solves a gated figure against a committed driver. Note also that no group maps to a Large truck stop profile, so the band is 2,338-10,492, not the 23,565 an earlier draft of this item claimed.
 4. Read the walkthrough against each tab in turn and confirm no claim is stale. A tutorial that has drifted from the tool is worse than none.
 5. Print still produces only the report, not this tab.
 

@@ -132,7 +132,7 @@ counted, and nets **negative** across the nine months. (The per-program spreads
 and the net dollars are P&L actuals — auth-gated; see `mgm_pnl_actuals`.) The
 `$0.03/gal` assumption is unsupportable.
 
-Critically, settlement dollars imply only **~630 gal/member/month**, far below
+Critically, settlement dollars imply a per-member volume far below
 the BD engine's 2,338–23,565 baselines, because settlement captures only
 card-network transactions, not total site volume. **BD gallons and
 settlement margin measure different quantities and must never be multiplied
@@ -518,7 +518,7 @@ The §1.4(b) caveat is restated on this tab, because it is the one place
 somebody would be tempted to multiply the wrong two numbers:
 
 > These are total site gallons. The P&L's fuel settlement covers card-network
-> transactions only (~630 gal/member/mo). Do not multiply these gallons by a
+> transactions only, a small fraction of site volume. Do not multiply these gallons by a
 > settlement-derived margin.
 
 Dynamic baseline from `bdpgStats.js` remains out of scope.

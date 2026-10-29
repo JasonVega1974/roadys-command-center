@@ -167,7 +167,7 @@
       },
       groupBaselineOverride: {},
       applyRegionVariance: false,
-      caveat: 'Total site gallons. The P&L fuel settlement covers card-network transactions only (~630 gal/member/mo) — do not multiply these gallons by a settlement-derived margin.'
+      caveat: 'Total site gallons. The P&L fuel settlement covers card-network transactions only — a small fraction of total site volume — so do not multiply these gallons by any settlement-derived margin. The two measure different things.'
     },
 
     // Default 0 = explicitly unset. P&L-derived figures load from
