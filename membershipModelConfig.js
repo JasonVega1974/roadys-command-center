@@ -98,6 +98,13 @@
     // Blended 3-yr average by default, so opening the tool changes nothing.
     // `steadyAlt` is the 2022–23 pre-spike average the "Use split basis"
     // button switches to; `structural` is then entered per year.
+    // Per-tab overrides of static TEXT (card titles, headers, row labels,
+    // caveats), keyed by tab + a hash of the shipped wording. Ships empty:
+    // every string renders as written until someone edits it. Declared here so
+    // MM.mergeState treats it as a known key instead of reporting each
+    // override as a field this build no longer uses.
+    copy: {},
+
     attrition: {
       steady: 9.7,
       steadyAlt: 3.6,
