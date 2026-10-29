@@ -2029,6 +2029,14 @@ test('nothing in the page reads the engine before the guard has passed', () => {
     }
     if (!t) continue;
     if (t.startsWith('//')) continue;
+    // A line that opens a block and closes it ONCE at the very end carries no
+    // code: nothing can follow the close. `/* a */ x /* b */` is excluded by
+    // the position test, because its first `*/` is not the last two
+    // characters. This is a cost reduction only -- a review noted that round
+    // 10 began reporting single-line block comments, which are unambiguous.
+    if (t.startsWith('/*') && t.endsWith('*/') && t.indexOf('*/') === t.length - 2) {
+      continue;
+    }
     if (t.startsWith('/*')) {
       if (!t.includes('*/')) inBlock = true;
       codeLines.push(line);                   // may carry code after the close
@@ -2036,6 +2044,14 @@ test('nothing in the page reads the engine before the guard has passed', () => {
     }
     codeLines.push(line);
   }
+
+  // KNOWN GAP, left deliberately on a reviewer's recommendation: a template
+  // literal whose continuation line begins with `/*` exempts an interpolation
+  // below it. It is strictly narrower than the shape it replaced, no such
+  // construct exists in this region, and chasing it means writing the
+  // tokenizer that comment-stripping already proved to be the losing move
+  // twice in this work. Recorded rather than fixed, so the next reader knows
+  // the boundary instead of assuming there is none.
 
   // THE IDENTIFIER, not a call shape. Earlier versions matched
   // `MembershipModel.` and `MM.` in statement position, and a review got past

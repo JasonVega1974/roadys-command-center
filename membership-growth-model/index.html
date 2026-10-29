@@ -368,18 +368,40 @@ const MM = (function () {
       // thing it reports on. It has now happened enough times in this work
       // that the rule is explicit -- assert the state afterwards, never the
       // return value alone.
-      // NESTED, and inside an array, because depth is the property this fix
-      // got wrong twice: once when the load path cleaned only `state.copy` and
-      // re-persisted two nested maps while logging a success, and once when
-      // the dropped-key filter was start-anchored against a depth-any strip.
-      // A flat probe admitted a depth-blind engine -- measured: it loaded with
-      // 50 buttons and left 3 of 4 sentinels in place, so the store never
-      // cleaned while both publish boundaries quietly refused everything.
-      const probe = { copy: {}, a: { b: { copy: {} } }, list: [{ copy: {} }] };
+      // EVERY function in NEEDS is exercised, not merely type-checked. Two of
+      // them -- defaultState and mergeState -- were only type-checked, and
+      // they are exactly the two called with no catch behind them: the line
+      // below this IIFE is `MGM.state = MM.defaultState(MGM_CONFIG)`, bare. An
+      // engine whose defaultState threw passed this probe and gave the
+      // dead-buttons page on EVERY load. A review found that by re-checking a
+      // claim I had asked it to verify, and it is the same mistake as the
+      // round before: a type check proves a function EXISTS, not that calling
+      // it works. Existence and behaviour are different claims.
+      //
+      // defaultState is called here with the SAME argument the line below
+      // passes it, so this genuinely covers that call site rather than
+      // resembling it.
+      const d = e.defaultState(MGM_CONFIG);
+      if (!d || typeof d !== 'object') return 'is not working correctly';
+      const m = e.mergeState(e.defaultState(MGM_CONFIG), { revenue: { duesPerLoc: 1 } });
+      if (!m || !m.state || !Array.isArray(m.unknown) || !Array.isArray(m.added)) {
+        return 'is not working correctly';
+      }
+
+      // NESTED five deep and inside an array, because depth is the property
+      // this fix got wrong twice: once when the load path cleaned only
+      // `state.copy` and re-persisted two nested maps while logging a success,
+      // and once when the dropped-key filter was start-anchored against a
+      // depth-any strip. A flat probe then admitted a depth-blind engine, and
+      // a two-deep probe would admit one capped above two -- the real store
+      // reaches five. Folded in here on a reviewer's advice rather than spent
+      // as its own round, since this file has been edited eleven times and
+      // most of those edits introduced something.
+      const probe = { copy: {}, a: { b: { c: { d: { copy: {} } } } }, list: [{ copy: {} }] };
       const r = e.stripResidue(probe);
       if (!r || r.removed !== 3) return 'is not working correctly';
       if ('copy' in probe) return 'is not working correctly';
-      if ('copy' in probe.a.b) return 'is not working correctly';
+      if ('copy' in probe.a.b.c.d) return 'is not working correctly';
       if ('copy' in probe.list[0]) return 'is not working correctly';
       if (e.residueVerdict({ state: { copy: {} } }) !== 'residue') return 'is not working correctly';
       if (e.residueVerdict({ state: { a: 1 } }) !== 'clean') return 'is not working correctly';
@@ -3250,7 +3272,9 @@ MGM.exportJSON = function () {
   // Persist what the strip removed, for the same reason as before: a review
   // measured live state going clean on export while localStorage stayed dirty,
   // so memory and disk disagreed from that click onward and the next reload
-  // re-read the residue.
+  // re-read the residue. Note the limit -- MGM.save swallows its own failure,
+  // so this is a best effort, not a guarantee the two stay in step. If the
+  // write fails the next load repairs it, which is why best effort is enough.
   //
   // JSON.stringify is recursive, so a sufficiently nested saved scenario makes
   // it throw too. One try, one message, no silent click.
