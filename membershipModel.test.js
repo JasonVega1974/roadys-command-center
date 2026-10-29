@@ -1911,14 +1911,6 @@ function matchOnce(src, re, what) {
   return String(src).match(re);
 }
 
-// Strips `//` line comments before parsing a matched code fragment. A review
-// put an inline comment inside the ENGINE_NEEDS array and the test failed
-// claiming the page required a function named `// the strip 'residueVerdict'`
-// -- a false failure on a legitimate edit. Plain multi-line reformatting was
-// already safe; this makes commenting safe too.
-function stripLineComments(src) {
-  return String(src).replace(/\/\/[^\n]*/g, '');
-}
 
 // A review set ENGINE_REV to 5 and the whole suite still passed: nothing
 // referenced it. That is the same gap as the cache-busting query string --
@@ -2093,6 +2085,43 @@ test("the page's own boot probe rejects engines that are broken in each way it c
     stripResidue: o => { MembershipModel.stripResidue(o); return { obj: o, removed: 1, failed: 0 }; }
   })), 'is not working correctly', 'the count assertion is not load-bearing');
 
+  // WEAKENING, not just deletion. A reviewer showed "all nine are
+  // load-bearing" held under deleting an assertion but not under weakening
+  // one: `'copy' in x` relaxed to a truthiness test, and
+  // `zzzProbeKey !== 'kept'` relaxed to `== null`, both left every control
+  // green. Deletion-sensitivity is strictly weaker than the claim, which is
+  // the same substitution as the five instances before it -- this time in the
+  // controls that were meant to catch it.
+  //
+  // `copy = null` is the shape that matters: `'copy' in x` is false only when
+  // the key is ABSENT, so a truthiness check would accept an engine that
+  // nulls the key instead of deleting it -- leaving `"copy":` in the
+  // serialised payload, which makes every publish and every export refuse
+  // forever while blaming data that is fine.
+  // ONE STUB PER LOCATION. A single stub that nulled the top-level key was
+  // caught by the first `in` assertion, so the depth and array ones could
+  // still be weakened to truthiness undetected -- the same "caught by some
+  // other line" error as the deletion controls, one level down.
+  const nullOnly = where => o => {
+    MembershipModel.stripResidue(o);                 // a correct strip first
+    if (where === 'top' && o) o.copy = null;
+    if (where === 'deep' && o && o.a && o.a.b && o.a.b.c && o.a.b.c.d) o.a.b.c.d.copy = null;
+    if (where === 'array' && o && Array.isArray(o.list) && o.list[0]) o.list[0].copy = null;
+    return { obj: o, removed: 3, failed: 0 };        // and the right count
+  };
+  for (const where of ['top', 'deep', 'array']) {
+    assert.equal(probe(stub({ stripResidue: nullOnly(where) })), 'is not working correctly',
+      'the `in` form at ' + where + ' is not load-bearing: a truthiness check ' +
+      'would accept copy=null there');
+  }
+
+  // Sets the retained key to a WRONG value rather than removing it, so
+  // `!== 'kept'` catches it and `== null` would not.
+  assert.equal(probe(stub({
+    mergeState: (d, sv) => { const o = base(d, sv); o.state.zzzProbeKey = 'tampered'; return o; }
+  })), 'is not working correctly',
+    "the exact-value form is not load-bearing: an `== null` check would accept a wrong value");
+
   // Always says 'residue', which satisfies the dirty case and fails the clean
   // one. Not a disclosure -- it refuses everything -- but it would make every
   // publish and every export refuse forever, with a message blaming data that
@@ -2100,6 +2129,147 @@ test("the page's own boot probe rejects engines that are broken in each way it c
   assert.equal(probe(stub({ residueVerdict: () => 'residue' })),
                'is not working correctly',
                'the CLEAN-case verdict assertion is not load-bearing');
+});
+
+// RESTORED after being deleted by accident in round 14.
+//
+// That round removed four tests while describing two. Three were genuinely
+// subsumed by executing the page's probe; this one was not subsumed by
+// anything, because it asserts a property of the PAGE -- that no code reads
+// the engine before the guard runs -- and executing `problem()` says nothing
+// about where it is called from. With it gone, all four bypass shapes passed
+// at 108/0, including the two from round 8 that round 9 was written to fix.
+//
+// The mistake was mechanical and worth naming: I replaced a RANGE of the file
+// by its two endpoints without enumerating what sat between them. A reviewer
+// drew the rule out of it -- subtraction needs a subsumption check per deleted
+// item: WHICH SURVIVING TEST FAILS IF THIS PROPERTY BREAKS? Three of the four
+// had an answer. This one had none, and went out in the same commit.
+
+test('nothing in the page reads the engine before the guard has passed', () => {
+  // Asserted structurally, not by position. The guard runs INSIDE the
+  // initialiser of `const MM`, so MM does not exist until it has passed: any
+  // `MM.anything` above it is a temporal-dead-zone ReferenceError, not a
+  // silently dead page.
+  //
+  // This replaces a test that pinned the order of four literal needles. A
+  // review inserted one unrelated engine call above the guard -- a plausible
+  // edit -- and that test passed 110/110 while the page rendered 15 buttons
+  // and 12 live handlers over an empty model. Pinning one named call is not
+  // the property; having no window at all is.
+  const page = readPage();
+  const m = matchOnce(page, /^const MM = \(function \(\) \{/m, 'the MM binding IIFE');
+  const iBind = page.indexOf(m[0]);
+  const iThrow = page.indexOf("throw new Error('[MGM] membershipModel.js ' + broken)");
+  const iClose = page.indexOf('}());', iBind);
+  assert.ok(iThrow > iBind && iThrow < iClose,
+    'the guard must throw from INSIDE the MM initialiser, so no code can reach ' +
+    'MM before it has passed');
+  // And nothing may touch the engine before that point, under EITHER name.
+  // A control inserted `MM.mergeState(...)` above the binding and an earlier
+  // version of this assertion missed it, because it only looked for
+  // `MembershipModel.`. `MM.` above the binding is a temporal-dead-zone
+  // ReferenceError -- loud, and it leaves nothing clickable, so not the F1-r5
+  // shape -- but it still halts the script and gives a blank page, which is
+  // the F1-r4 shape. Both names, then.
+  // Scoped to THE SCRIPT BODY and judged per line, because `before` otherwise
+  // spans all the HTML and CSS above it.
+  const iScript = page.lastIndexOf('<script>', iBind);
+  const region = page.slice(iScript + '<script>'.length, iBind);
+
+  // A line is code unless it is a comment. Tracking `/* */` state across lines
+  // is the whole of the parsing here -- a review found the previous one-line
+  // test both over- and under-firing: a block-comment interior line not
+  // starting with `*` counted as code, and a code line starting with `*`
+  // counted as a comment.
+  //
+  // This is not the comment-STRIPPING that was the losing move twice in this
+  // work; nothing is rewritten and no match is run against altered text. It
+  // only decides, per line, whether the line is a statement.
+  // A line is EXEMPT only if it is unambiguously a whole-line comment: it
+  // starts with `//`, or we are inside a `/* */` block and the line does not
+  // close it. Every other line that mentions a watched name is reported.
+  //
+  // Deliberately conservative, because the previous version decided ambiguity
+  // and decided it wrongly in the dangerous direction: it discarded the entire
+  // line when leaving a block comment, so a review got
+  // `*/ MembershipModel.defaultState(cfg); /*` past it at 109/0, with the page
+  // showing 15 buttons and 12 live handlers over a broken engine.
+  //
+  // Writing a correct comment tokenizer is not the answer either -- string
+  // literals containing `/*` would defeat it, and the under-fire would be back
+  // in a subtler form. So: when a line mixes a block-comment delimiter with a
+  // watched name, this FAILS rather than guess. A false failure is loud and
+  // one line to resolve; a false pass is the dead-buttons page.
+  const codeLines = [];
+  let inBlock = false;
+  for (const line of region.split('\n')) {
+    const t = line.trim();
+    if (inBlock) {
+      if (!t.includes('*/')) continue;        // wholly inside the comment
+      inBlock = false;
+      codeLines.push(line);                   // closes it: may carry code too
+      continue;
+    }
+    if (!t) continue;
+    if (t.startsWith('//')) continue;
+    // A line that opens a block and closes it ONCE at the very end carries no
+    // code: nothing can follow the close. `/* a */ x /* b */` is excluded by
+    // the position test, because its first `*/` is not the last two
+    // characters. This is a cost reduction only -- a review noted that round
+    // 10 began reporting single-line block comments, which are unambiguous.
+    //
+    // Except that `${...}` is EVALUATED, so a line inside a template literal
+    // is not a comment however it is punctuated. A reviewer got
+    // `/* ${MembershipModel.defaultState(MGM_CONFIG)} */` past all three
+    // conditions above -- in one line, without `inBlock`, which is a different
+    // branch from the gap recorded below and wider than that note described.
+    if (t.startsWith('/*') && t.endsWith('*/') && t.indexOf('*/') === t.length - 2
+        && !t.includes('${')) {
+      continue;
+    }
+    if (t.startsWith('/*')) {
+      if (!t.includes('*/')) inBlock = true;
+      codeLines.push(line);                   // may carry code after the close
+      continue;
+    }
+    codeLines.push(line);
+  }
+
+  // KNOWN GAP, left deliberately on a reviewer's recommendation: a template
+  // literal whose continuation line begins with `/*` exempts an interpolation
+  // BELOW it, via the inBlock branch. Strictly narrower than the shape it
+  // replaced, no such construct exists in this region, and chasing it means
+  // writing the tokenizer that comment-stripping already proved to be the
+  // losing move twice in this work.
+  //
+  // The first version of this note said "an interpolation below it" and was
+  // then read as covering the whole family. It did not: a reviewer reached the
+  // same end through a different branch -- one line, no inBlock -- and that
+  // one IS fixed above, by excluding `${`. A recorded boundary is only useful
+  // if it states its extent, so: this note covers the multi-line inBlock
+  // branch and nothing else.
+
+  // THE IDENTIFIER, not a call shape. Earlier versions matched
+  // `MembershipModel.` and `MM.` in statement position, and a review got past
+  // both with `MembershipModel['defaultState'](…)` and with
+  // `const E = MembershipModel; E.defaultState(…)` -- 109/0 each, both
+  // reproducing the dead-buttons page. Enumerating call spellings is
+  // unwinnable; forbidding the NAME is not.
+  const touching = codeLines.filter(l => /\bMembershipModel\b/.test(l));
+  assert.deepEqual(touching, [],
+    'no code may reference MembershipModel before the binding that guards it ' +
+    '-- not by call, by bracket access, or by aliasing it to another name.\n' +
+    'This matches the NAME, so a line that merely mentions it in a string or a ' +
+    'trailing comment also fails. That is deliberate: enumerating call ' +
+    'spellings was bypassed twice. If the line is genuinely harmless, move it ' +
+    'below the MM binding -- nothing needs to run before the engine guard.');
+
+  const usingMM = codeLines.filter(l => /\bMM\b/.test(l));
+  assert.deepEqual(usingMM, [],
+    'nothing may use MM before the binding that guards it -- that is a ' +
+    'temporal-dead-zone ReferenceError, which halts the script and gives a ' +
+    'blank page with no error card');
 });
 
 test('the engine cache-bust is not a date, and the page requests it', () => {
