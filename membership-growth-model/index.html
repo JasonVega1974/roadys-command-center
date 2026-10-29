@@ -367,6 +367,18 @@ MGM.pnlActuals = null;
 // claiming "not an admin" before the server has answered is the one wrong
 // thing to say.
 MGM.pnlReason = 'anon';   // 'anon'|'not-admin'|'none-loaded'|'error'|'ok'|'ok-local'
+
+// Is mgm_admins empty? true | false | null = could not tell.
+//
+// Display only. It NEVER grants access -- mgm_is_admin() is the only thing
+// that does, server-side. This exists because "no administrators have been
+// configured yet" and "this account is not one of them" are different facts,
+// and a fresh deployment is always the first one. Reporting the second for
+// the first blames the reader for a setup step nobody has done, which cost a
+// real incident: the seed INSERT ships commented out in the migration, so an
+// empty roster is the expected state immediately after it runs, and the tool
+// said "this account is not on the admin list" about it.
+MGM.rosterEmpty = null;
 MGM.pnlError = '';
 
 // SESSION-ONLY, and deliberately NOT inside MGM.state.
@@ -400,6 +412,20 @@ MGM.loadedMarginBasisDetail = null;
 MGM.isAdmin = null;
 MGM.canEdit = () => MGM.isAdmin === true;
 
+// Sets MGM.rosterEmpty. Display only -- see the declaration. A failure here
+// leaves it null, so the bar falls back to the account-specific wording
+// rather than asserting something about a table it could not read.
+MGM.loadRosterState = async function () {
+  MGM.rosterEmpty = null;
+  const sb = MGM.sb();
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from('mgm_admins').select('email').limit(1);
+    if (error || !Array.isArray(data)) return;
+    MGM.rosterEmpty = (data.length === 0);
+  } catch (e) { /* leave null: no claim either way */ }
+};
+
 // One guard for every state mutation, applied at the FUNCTION, not the markup.
 // `body:not(.mgm-admin) .mgm-editonly{display:none}` hides the row tools, the
 // + Add buttons and the per-section Reset buttons, but three mutating controls
@@ -412,10 +438,28 @@ MGM.canEdit = () => MGM.isAdmin === true;
 // path by forgetting a CSS class.
 MGM.requireAdmin = function (what) {
   if (MGM.canEdit()) return true;
+  // The SAME four-way split as the auth bar, deliberately kept in step with
+  // it. An earlier version of this fix changed the bar to stop blaming the
+  // account when the check could not be confirmed, and left this alert with a
+  // two-way split that had no way to say so -- so the bar read "could not be
+  // confirmed" while the alert, one click later, still asserted the account
+  // was not on the roster. Two surfaces, one fact, two answers: the recurring
+  // defect of this build. If a branch is added here, add it there too.
   alert((what || 'This change') + ' is limited to administrators. ' +
-    (MGM.isAdmin === false
-      ? 'You are signed in, but this account is not on the admin list.'
-      : 'Sign in with an admin account to make changes.') +
+    (MGM.adminError
+      ? 'Your administrator access could not be confirmed, so editing is '
+        + 'withheld — this is not a statement that your account lacks it. '
+        + 'The check reported: ' + MGM.adminError
+      : MGM.isAdmin === false && MGM.rosterEmpty === true
+        // Names the actual remaining step. Anyone who sees this is the person
+        // who has to do it, or works with them.
+        ? 'No administrators have been configured yet: the admin roster '
+          + '(mgm_admins) is empty, so nobody can edit. Add an address with the '
+          + 'seed INSERT in the Supabase SQL editor — it ships commented out in '
+          + 'sql/2026-10-28-mgm-scenarios.sql, verification item 9.'
+        : MGM.isAdmin === false
+          ? 'You are signed in, but this account is not on the admin list.'
+          : 'Sign in with an admin account to make changes.') +
     ' Viewing, printing and exporting stay open.');
   return false;
 };
@@ -4189,6 +4233,11 @@ MGM.loadAdminStatus = async function () {
     // shape -- which is the truth, and is immediately actionable.
     if (typeof data === 'boolean') {
       MGM.isAdmin = data;
+      // Only when the answer is NO is the distinction worth a round trip, and
+      // only then can it change what we say. mgm_admins is readable by any
+      // signed-in user by design, which is exactly so the tool can explain
+      // why someone is read-only.
+      if (data === false) await MGM.loadRosterState();
     } else {
       MGM.isAdmin = false;
       MGM.adminError = 'mgm_is_admin() returned ' + (data === null ? 'null' : typeof data)
@@ -4249,6 +4298,11 @@ MGM.renderAuth = function () {
     // about the roster that this code has no evidence for; it is still
     // read-only, because the check fails closed.
     bar = '<span class="adminbar ro">Read-only — your access could not be confirmed</span>';
+  } else if (MGM.isAdmin === false && MGM.rosterEmpty === true) {
+    // The roster is empty, so NOBODY is an admin. Blaming the account would
+    // be true but useless, and it points at the wrong fix: the missing step
+    // is a seed INSERT nobody has run, not a different login.
+    bar = '<span class="adminbar ro">Read-only — no administrators configured yet</span>';
   } else if (MGM.isAdmin === false) {
     bar = '<span class="adminbar ro">Read-only — this account is not an admin</span>';
   } else {
