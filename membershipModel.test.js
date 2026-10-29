@@ -552,6 +552,105 @@ test('SR-11: no gated value from the local actuals appears in any committed file
     ' local literals excluded as already-public, a calendar year, or too few digits');
 });
 
+// ── findGatedLeak: the runtime guard for F1 ────────────────────────────────
+//
+// F1: the copy-override layer made prose contenteditable, and some of that
+// prose is interpolated from the auth-gated P&L figures. The blur handler
+// stored the WHOLE element text into MGM.state.copy -- so one copy edit
+// published the margin into mgm_scenarios, which any signed-in user may read.
+//
+// The SR-11 source guards could not see it. They look for
+// `MGM.state… = …margin…`; the leak was `MGM.state.copy[k] = now` (no
+// margin-named right-hand side) and `setPath(MGM.state, …)` (state is an
+// argument, not a target). A source rule only catches spellings someone
+// anticipated, so this one checks the DATA at the serialisation boundary.
+
+test('findGatedLeak catches a gated figure interpolated into stored prose', () => {
+  // The exact F1 shape, at the exact path it occurred.
+  const state = { copy: { 'cashflow|k1': 'the 41.7% margin loaded for the period' } };
+  const r = MembershipModel.findGatedLeak(state, [41.7]);
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].path, 'copy.cashflow|k1');
+  assert.equal(r.hits[0].via, 'interpolated');
+  // It must NOT hand the value back. A caller may log or display this, and
+  // echoing the secret in order to report it is the SR-11 mistake one level up.
+  assert.ok(!('value' in r.hits[0]), 'a finding must not carry the value');
+  assert.equal(JSON.stringify(r.hits).indexOf('41.7'), -1,
+    'the serialised finding must not contain the figure either');
+});
+
+test('findGatedLeak catches a numeric leaf and a comma-grouped string', () => {
+  const r = MembershipModel.findGatedLeak(
+    { a: { b: 909091 }, note: 'totalling 909,091 for the period' }, [909091]);
+  const vias = r.hits.map(h => h.via).sort();
+  assert.deepEqual(vias, ['interpolated', 'number']);
+  assert.ok(r.hits.some(h => h.path === 'a.b'));
+  assert.ok(r.hits.some(h => h.path === 'note'));
+});
+
+test('findGatedLeak respects digit boundaries, so a short decimal is usable', () => {
+  // 0.9 has one significant digit and would be unusable without boundaries.
+  // With them it is findable in prose and safe against longer numbers.
+  const hit = MembershipModel.findGatedLeak({ s: 'a 0.9% margin' }, [0.9]);
+  assert.equal(hit.hits.length, 1, 'found in prose');
+
+  ['a 10.9% margin', 'a 0.95% margin', 'a 20.91 figure'].forEach(s => {
+    const r = MembershipModel.findGatedLeak({ s }, [0.9]);
+    assert.equal(r.hits.length, 0, `must not match inside "${s}"`);
+  });
+});
+
+test('findGatedLeak catches a gated prose string, and skips a short one', () => {
+  const basis = 'fully-loaded whole-entity, no segment split';
+  const r = MembershipModel.findGatedLeak({ copy: { k: 'Basis: ' + basis } }, [basis]);
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].via, 'string');
+
+  // Too short to attribute: it would match ordinary label text.
+  const short = MembershipModel.findGatedLeak({ copy: { k: 'see note' } }, ['note']);
+  assert.equal(short.hits.length, 0);
+  assert.deepEqual(short.unscannable, [0], 'and it is REPORTED, not silently dropped');
+});
+
+test('findGatedLeak reports what it cannot scan rather than passing quietly', () => {
+  // A bare small integer matches dates, month indexes and step attributes, so
+  // it cannot be searched for. Saying so is the point: a thin scan must not
+  // look thorough. Same rule as SR-11 layer 2.
+  const r = MembershipModel.findGatedLeak({ x: 'covers 12 months' }, [12, 0, null, '']);
+  assert.equal(r.hits.length, 0);
+  assert.ok(r.unscannable.indexOf(0) >= 0, '12 is too generic to scan for');
+  assert.ok(r.unscannable.indexOf(1) >= 0, 'zero is never a probe');
+});
+
+test('findGatedLeak walks arrays and depth, and survives a degenerate input', () => {
+  const r = MembershipModel.findGatedLeak(
+    { list: [{ deep: { s: 'rate 41.7 pct' } }, null, 7] }, [41.7]);
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].path, 'list[0].deep.s');
+
+  [null, undefined, {}, [], 'plain', 42].forEach(v => {
+    assert.doesNotThrow(() => MembershipModel.findGatedLeak(v, [41.7]));
+  });
+  assert.equal(MembershipModel.findGatedLeak({ a: 1 }, []).hits.length, 0,
+    'no gated values means nothing to find');
+});
+
+test('CONTROL: a clean state yields no hits, so a pass means something', () => {
+  // Without this the tests above could all pass against a function that
+  // reported a hit for everything.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.copy = { 'starting|k1': 'Network Starting Point' };
+  const r = MembershipModel.findGatedLeak({ state: st, scenarios: [] }, [41.7, 909091]);
+  assert.deepEqual(r.hits, [], 'the shipped state carries no gated value');
+
+  // And the same object DOES report one once a gated figure is placed in it,
+  // which is what makes the empty result above evidence rather than a default.
+  st.copy['cashflow|k2'] = 'the 41.7% margin';
+  const after = MembershipModel.findGatedLeak({ state: st, scenarios: [] }, [41.7, 909091]);
+  assert.equal(after.hits.length, 1);
+  assert.equal(after.hits[0].path, 'state.copy.cashflow|k2');
+});
+
 test('labels cover all thirteen tabs', () => {
   // Twelve until Task 20 added `about`, the About & Tutorial tab. The count is
   // asserted rather than derived so that adding a tab is a deliberate act: a

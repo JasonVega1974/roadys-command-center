@@ -240,6 +240,124 @@
   //
   // Presence is tested with `in`, never truthiness, so an explicit 0 or null
   // in the saved state survives instead of being overwritten by the default.
+  // ── findGatedLeak ────────────────────────────────────────────────────────
+  //
+  // Does a serialisable object contain any of these gated values, anywhere in
+  // it, at any depth, inside a string or as a number?
+  //
+  // This is the RUNTIME counterpart to the SR-11 source guards, and it exists
+  // because those guards provably could not see the leak that mattered. They
+  // are regexes over source text looking for `MGM.state… = …margin…`. The real
+  // leak was `MGM.state.copy[k] = now`, where `now` is a string that happens
+  // to carry an interpolated figure -- no margin-named right-hand side -- and a
+  // second one went through `setPath(MGM.state, …)`, where state is an
+  // argument rather than an assignment target. Both are exactly the shape the
+  // guard was written for, spelled in ways it cannot match.
+  //
+  // A source rule can only ever catch spellings someone anticipated. So check
+  // the DATA instead: every path to persistence serialises an object, and one
+  // assertion at that boundary catches any future leak however it was written.
+  //
+  // Returns [{ path, gatedIndex, via }]. It deliberately does NOT return the
+  // value -- a caller may log or display this, and echoing the secret in order
+  // to report it is the SR-11 mistake one level up.
+  function findGatedLeak(obj, gated) {
+    var hits = [], unscannable = [];
+    if (!gated || !gated.length) return { hits: hits, unscannable: unscannable };
+
+    // Which gated values are distinctive enough to search for without matching
+    // ordinary numbers. A bare small integer is not: "12" occurs in dates,
+    // month indexes and step attributes. A decimal point makes a short value
+    // distinctive (0.9 is findable), and three digits does the same for an
+    // integer. Anything excluded is REPORTED, so a thin scan cannot look
+    // thorough -- the same rule SR-11 layer 2 uses.
+    var probes = [];
+    gated.forEach(function (g, i) {
+      if (g === null || g === undefined || g === '') return;
+      if (typeof g === 'number') {
+        if (!isFinite(g) || g === 0) { unscannable.push(i); return; }
+        var s = String(Math.abs(g));
+        var digits = s.replace(/[^0-9]/g, '').replace(/^0+/, '');
+        if (s.indexOf('.') < 0 && digits.length < 3) { unscannable.push(i); return; }
+        probes.push({ i: i, num: g, strs: numberForms(g) });
+      } else if (typeof g === 'string') {
+        var t = g.trim();
+        // A short string is not distinctive enough to attribute. 12 characters
+        // is well above any label this project uses and well below the basis
+        // prose the gated table actually holds.
+        if (t.length < 12) { unscannable.push(i); return; }
+        probes.push({ i: i, str: t });
+      } else { unscannable.push(i); }
+    });
+
+    function numberForms(x) {
+      var out = [], a = String(x);
+      out.push(a);
+      // The comma-grouped form a human (or toLocaleString) would write.
+      if (Math.abs(x) >= 1000) {
+        var neg = x < 0, parts = String(Math.abs(x)).split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        out.push((neg ? '-' : '') + parts.join('.'));
+      }
+      return out;
+    }
+
+    // Non-digit boundaries on both sides, so 0.9 matches in "the 0.9% margin"
+    // but not inside 10.9 or 0.95. This is what lets a short-but-decimal value
+    // be searched for at all.
+    function strHasNumber(hay, form) {
+      var at = 0;
+      while (true) {
+        var i = hay.indexOf(form, at);
+        if (i < 0) return false;
+        var before = i === 0 ? '' : hay.charAt(i - 1);
+        var after = hay.charAt(i + form.length);
+        if (!/[0-9.]/.test(before) && !/[0-9]/.test(after)) return true;
+        at = i + 1;
+      }
+    }
+
+    function walk(v, path) {
+      if (v === null || v === undefined) return;
+      if (typeof v === 'number') {
+        probes.forEach(function (p) {
+          if (p.num !== undefined && v === p.num) {
+            hits.push({ path: path, gatedIndex: p.i, via: 'number' });
+          }
+        });
+        return;
+      }
+      if (typeof v === 'string') {
+        probes.forEach(function (p) {
+          if (p.str !== undefined) {
+            if (v.indexOf(p.str) >= 0) {
+              hits.push({ path: path, gatedIndex: p.i, via: 'string' });
+            }
+            return;
+          }
+          for (var k = 0; k < p.strs.length; k++) {
+            if (strHasNumber(v, p.strs[k])) {
+              hits.push({ path: path, gatedIndex: p.i, via: 'interpolated' });
+              return;
+            }
+          }
+        });
+        return;
+      }
+      if (typeof v !== 'object') return;
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) walk(v[i], path + '[' + i + ']');
+        return;
+      }
+      Object.keys(v).forEach(function (k) {
+        walk(v[k], path ? path + '.' + k : k);
+      });
+    }
+
+    walk(obj, '');
+    return { hits: hits, unscannable: unscannable };
+  }
+
   function mergeState(defaults, saved) {
     var added = [], unknown = [];
 
@@ -730,6 +848,7 @@
       _n: n,
       getPath: getPath,
       setPath: setPath,
+      findGatedLeak: findGatedLeak,
       mergeState: mergeState,
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,

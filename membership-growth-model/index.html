@@ -347,6 +347,11 @@ try {
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
 
 MGM.save = function () {
+  // LAYER C. Every path to persistence passes through here, cloudSave, or
+  // exportJSON. Checking the DATA rather than the code is what makes this
+  // generalise: a future leak is caught whatever its spelling, which the
+  // SR-11 source regexes provably could not do for this one.
+  if (!MGM.guardGatedLeak(MGM.state, 'localStorage')) return;
   try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); }
   catch (e) { console.warn('[MGM] save failed', e); }
 };
@@ -3109,6 +3114,10 @@ MGM.exportCSV = function () {
 // Live CRM and P&L data are likewise not included: they are not ours to
 // redistribute in a file someone emails on.
 MGM.exportJSON = function () {
+  const payload = { state: MGM.state, scenarios: MGM.scenarioList() };
+  // The export is open to any signed-in viewer, so it is the most exposed of
+  // the three boundaries.
+  if (!MGM.guardGatedLeak(payload, 'JSON export')) return;
   MGM.dl('membership-growth-model.json', JSON.stringify({
     state: MGM.state,
     scenarios: MGM.scenarioList(),
@@ -3724,6 +3733,133 @@ MGM.renderers.about = function (D) {
 // data-k-text  prose — multi-line, stored as plain text
 // Every control writes to MGM.state and nothing else, so localStorage,
 // scenarios, Supabase sync and JSON export all follow for free.
+/* ═══════════ F1: THE GATED-VALUE BOUNDARY ═══════════
+   The copy-override layer makes prose editable, and some of that prose is
+   interpolated from the auth-gated P&L figures. Its blur handler stored the
+   WHOLE element text, so a single copy edit published the margin into
+   MGM.state.copy -- hence into localStorage, into mgm_scenarios (readable by
+   ANY signed-in user, not just admins), and into the JSON export. One edit
+   defeated the admin-only read policy on mgm_pnl_actuals.
+
+   Three layers, because one was not enough and the first two are specific to
+   the vector we found:
+
+     A. copyEligible refuses to make an element editable while its rendered
+        text carries a gated value. Computed from the live text rather than a
+        hand-kept list of paragraphs, so a NEW interpolation is covered the
+        day it is written, not the day someone remembers to list it.
+
+     B. the blur handler refuses to STORE text carrying a gated value, for
+        anything that slips A -- or for an admin who types a figure in by hand.
+
+     C. the serialisation boundary asserts it. This is the one that generalises:
+        MM.findGatedLeak checks the DATA, so any future leak is caught whatever
+        its spelling. The SR-11 source guards could not see this bug -- they
+        match `MGM.state… = …margin…`, and the leak was
+        `MGM.state.copy[k] = now` plus a setPath call where state is an
+        argument. A source rule only catches spellings someone anticipated.
+*/
+
+// Everything currently in memory that must never reach a serialised object.
+// Includes the P&L tab's own working draft, so the tab's containment claim is
+// enforced rather than merely asserted.
+MGM.gatedValues = function () {
+  var out = [];
+  var push = function (v) {
+    if (v === null || v === undefined || v === '') return;
+    out.push(typeof v === 'string' ? v : Number(v));
+  };
+  push(MGM.loadedMarginPct);
+  push(MGM.loadedNetMarginPct);
+  push(MGM.loadedMarginBasisDetail);
+  var a = MGM.pnlActuals;
+  if (a) {
+    push(a.totalPerMemberYr);
+    push(a.periodLabel);
+    Object.keys(a.streams || {}).forEach(function (k) { push(a.streams[k]); });
+  }
+  var d = MGM.pnlDraft;
+  if (d) {
+    Object.keys(d.totals || {}).forEach(function (k) { push(d.totals[k]); });
+    Object.keys(d.streams || {}).forEach(function (k) { push(d.streams[k]); });
+    push(d.period_label);
+  }
+  return out;
+};
+
+// True when `text` carries a gated value. Used by layers A and B.
+MGM.textHasGated = function (text) {
+  var g = MGM.gatedValues();
+  if (!g.length) return false;
+  return MM.findGatedLeak({ t: String(text == null ? '' : text) }, g).hits.length > 0;
+};
+
+MGM.gatedLeakNotice = null;   // {paths, scrubbed, at} for the UI to surface
+MGM._gatedAlerted = false;
+
+// Layer C. Returns true when the object is safe to serialise.
+//
+// A leak under `state.copy` is SCRUBBED rather than refused: that is the known
+// vector, the override is recoverable (the shipped wording returns), and
+// refusing every save forever would strand the user with no way out. A leak
+// anywhere else is refused outright and named, because we do not know what it
+// is and guessing is worse than stopping.
+MGM.guardGatedLeak = function (obj, what) {
+  var g = MGM.gatedValues();
+  if (!g.length) return true;
+  var r = MM.findGatedLeak(obj, g);
+  if (!r.hits.length) return true;
+
+  // Which path prefix, if any, names a copy override OF OUR OWN STATE -- the
+  // only thing deleting a key can actually repair. Decided by IDENTITY, not by
+  // path shape.
+  //
+  // The first version of this matched `/^(?:state\.)?copy\./` on the path and
+  // deleted from MGM.state.copy for any hit that matched. Handed a scenario
+  // payload -- whose `state` is a clone, not MGM.state -- it deleted from the
+  // wrong object, left the payload carrying the figure, and returned "safe".
+  // Scrubbing the wrong object and reporting success is the F1 shape exactly,
+  // reproduced inside the guard written to prevent it. Caught by testing the
+  // cloudSave path instead of only the save path.
+  var prefix = null;
+  if (obj === MGM.state) prefix = 'copy.';
+  else if (obj && obj.state === MGM.state) prefix = 'state.copy.';
+
+  var copyKeys = [], other = [];
+  r.hits.forEach(function (h) {
+    if (prefix && h.path.indexOf(prefix) === 0) {
+      var k = h.path.slice(prefix.length);
+      if (copyKeys.indexOf(k) < 0) copyKeys.push(k);
+    } else if (other.indexOf(h.path) < 0) {
+      // Not ours to repair: refuse rather than guess.
+      other.push(h.path);
+    }
+  });
+
+  copyKeys.forEach(function (k) { delete MGM.state.copy[k]; });
+  MGM.gatedLeakNotice = { paths: copyKeys.concat(other), scrubbed: copyKeys.length,
+                          refused: other.length, at: new Date().toISOString() };
+  // Never log the value, only where it was. Reporting a secret in order to
+  // warn about it is the mistake one level up.
+  console.warn('[MGM] gated value blocked at the ' + what + ' boundary:',
+               MGM.gatedLeakNotice.paths.join(', '));
+
+  if (!MGM._gatedAlerted) {
+    MGM._gatedAlerted = true;
+    alert('An auth-gated P&L figure was about to be written into data that is '
+        + 'not admin-only, and has been blocked.\n\n'
+        + (copyKeys.length ? copyKeys.length + ' edited text item(s) carrying the '
+            + 'figure were reverted to their shipped wording.\n\n' : '')
+        + (other.length ? 'REFUSED (not saved): ' + other.join(', ') + '\n\n' : '')
+        + 'Edited wording is stored in the model state, which is saved to this '
+        + 'browser, pushed to the shared scenario table that any signed-in user '
+        + 'can read, and included in the JSON export. A sentence containing a '
+        + 'loaded P&L figure therefore cannot be stored. Edit a sentence that '
+        + 'does not quote one.');
+  }
+  return other.length === 0;
+};
+
 /* ═══════════════════ UNIVERSAL COPY OVERRIDES ═══════════════════
    Every FIGURE was already editable through `data-k`. This makes every piece
    of static TEXT editable too -- card titles, subtitles, column headers, row
@@ -3792,7 +3928,15 @@ MGM.copyEligible = function (el) {
   // will visit separately would be edited twice.
   if (el.querySelector(MGM.COPY_SEL)) return false;
   var t = MGM.copyNorm(el.textContent);
-  return t.length >= 2 && /[A-Za-z]/.test(t);
+  if (t.length < 2 || !/[A-Za-z]/.test(t)) return false;
+  // LAYER A. This sentence currently quotes an auth-gated figure, so it must
+  // not be editable: the blur handler stores the whole text, and stored text
+  // goes to localStorage, to mgm_scenarios -- which any signed-in user may
+  // read -- and to the JSON export. Computed from the live text, so a NEW
+  // interpolation is covered the day it is written rather than the day someone
+  // remembers to add it to a list.
+  if (MGM.textHasGated(t)) return false;
+  return true;
 };
 
 // Applied after every render, from MGM.bindAll. Idempotent.
@@ -3843,6 +3987,18 @@ MGM.applyCopy = function (root) {
       var now = MGM.copyNorm(el.textContent).replace(/\s*✎$/, '');
       var base = el.dataset.copyDefault;
       var k = el.dataset.copyKey;
+      // LAYER B. Catches anything layer A missed, and the case layer A cannot
+      // see at all: an admin typing a gated figure in by hand. Refuse the
+      // store, put the original text back, and say why.
+      if (MGM.textHasGated(now)) {
+        alert('That wording cannot be saved: it contains an auth-gated P&L '
+            + 'figure.\n\nEdited wording is stored in the model state, which '
+            + 'is saved to this browser, pushed to the shared scenario table '
+            + 'that any signed-in user can read, and included in the JSON '
+            + 'export. Rephrase without quoting the figure.');
+        el.textContent = base;
+        return MGM.refresh();
+      }
       if (now === base) { if (MGM.state.copy[k] !== undefined) delete MGM.state.copy[k]; }
       else if (now.length) { MGM.state.copy[k] = now; }
       else { return MGM.refresh(); }   // refuse an empty label; put it back
@@ -4498,6 +4654,9 @@ MGM.pnlWhy = function () {
 // concurrent edit are indistinguishable at this call site. We re-ask the
 // server which one it was, with the same predicate the policy uses.
 MGM.cloudSave = async function (rec) {
+  // mgm_scenarios is readable by ANY signed-in user while mgm_pnl_actuals is
+  // admin-only, so this is the boundary the F1 leak actually crossed.
+  if (!MGM.guardGatedLeak(rec, 'shared scenario')) return { error: null, blocked: true };
   const sb = MGM.sb();
   if (!sb) return { ok: false, reason: 'no-client' };
 
