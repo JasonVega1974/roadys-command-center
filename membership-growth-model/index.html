@@ -122,15 +122,41 @@ input.cell{width:84px;text-align:right;padding:4px 6px}
 #reportSheet .rsign{display:inline-block;background:#1E6B3C;color:#fff;border:2px solid #fff;outline:1.5px solid #1E6B3C;border-radius:8px;padding:8px 16px;margin:4px 10px 4px 0}
 #reportSheet .rsign .v{font-family:'Barlow Condensed';font-size:26px;font-weight:700}
 #reportSheet .rsign .k{font-size:11px;letter-spacing:.05em}
+/* The headline sign's third line. MM.valuationHeadline returns a label AND a
+   caption, and the caption is the half that says whether the figure is a
+   two-method midpoint or a single method standing alone — so it needs its own
+   line rather than being dropped for want of a rule. */
+#reportSheet .rsign .c{font-size:10px;letter-spacing:.02em;opacity:.92;margin-top:1px}
+/* Section headings in the report are h3 (h1 is the title). The h2 rule above
+   predates the renderer and nothing emits an h2 inside the sheet; h3 gets the
+   same treatment so a section heading reads as one on paper. */
+#reportSheet h3{font-size:18px;border-bottom:1px solid #D9DCE1;padding-bottom:4px;margin:26px 0 10px}
+#reportSheet .small{font-size:11.5px;color:#4A4E58;margin:6px 0 0}
+#reportSheet ul{font-size:12.5px;margin:6px 0 0;padding-left:22px}
+#reportSheet li{margin-bottom:4px}
 #reportSheet .foot{margin-top:34px;padding-top:12px;border-top:1px solid #D9DCE1;font-size:11.5px;color:#4A4E58;display:flex;justify-content:space-between}
 @media print{
   body.mgm-print{background:#fff}
   body.mgm-print .brandbar,body.mgm-print .tabrail,
-  body.mgm-print .noprint,body.mgm-print .actions{display:none!important}
+  body.mgm-print #authBar,body.mgm-print .scenbar,
+  body.mgm-print .noprint,body.mgm-print .mgm-editonly,
+  body.mgm-print .actions{display:none!important}
   body.mgm-print main{padding:0;max-width:none}
   body.mgm-print .panel{display:none!important}
   body.mgm-print #panel-report{display:block!important}
   body.mgm-print #reportSheet{border:0;box-shadow:none;padding:24px 8px;max-width:none}
+  /* Re-point the colour tokens ON the print container. The sheet sets its own
+     background and ink, but the shared `th{background:var(--th)}` and
+     `td{border-bottom:1px solid var(--line-soft)}` rules still resolve against
+     whatever theme the reader had — so a dark-theme print came out with dark
+     table headers. Scoped to #reportSheet so nothing outside it changes. */
+  body.mgm-print #reportSheet{--ink:#000;--ink-soft:#555;--bg:#fff;
+    --surface:#fff;--line:#999;--line-soft:#ccc;--th:#F2F2F2;--chip:#EEE}
+  /* Let long tables flow across pages, but never split a row down the middle,
+     and never leave a section heading alone at the foot of a page. */
+  body.mgm-print #reportSheet table{page-break-inside:auto}
+  body.mgm-print #reportSheet tr{page-break-inside:avoid}
+  body.mgm-print #reportSheet h3{page-break-after:avoid}
 }
 @media(max-width:640px){
   .brandbar img{height:40px}
@@ -218,8 +244,9 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
       <button class="btn ghost" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
       <button class="btn ghost" onclick="MGM.scenarioSave()">Save scenario…</button>
-      <button class="btn ghost" onclick="openEmail()">✉ Email</button>
-      <button class="btn ghost" onclick="doPrint()">⎙ Print</button>
+      <button class="btn ghost" onclick="MGM.openEmail()"
+              title="Opens a draft in your own mail client. Nothing is sent from this page.">✉ Email draft</button>
+      <button class="btn ghost" onclick="MGM.doPrint()">⎙ Print</button>
       <button class="btn primary" onclick="MGM.switchTab('report')">Generate Report</button>
     </div>
   </div>
@@ -241,20 +268,29 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
   <section class="panel" id="panel-cashflow"></section>
   <section class="panel" id="panel-historical"></section>
   <section class="panel" id="panel-report"></section>
+  <section class="panel" id="panel-about"></section>
 </main>
 
 <!-- ════════ EMAIL MODAL ════════ -->
 <div class="overlay" id="emailOverlay" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal">
-    <h3>Send Report Summary</h3>
+    <h3>Email a report summary</h3>
     <div class="field"><label>To</label><input type="email" id="emTo" placeholder="recipient@roadyscorp.com"></div>
     <div class="field"><label>Subject</label><input type="text" id="emSubject"></div>
-    <div class="field"><label>Message preview</label>
+    <div class="field"><label>Message — edit freely before sending</label>
       <textarea id="emBody" rows="9" style="width:100%;font-family:'Barlow';font-size:13px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:8px"></textarea></div>
-    <p class="note">Opens your mail client with the summary pre-filled. For the full formatted report, use Print / PDF and attach it.</p>
+    <!-- "Send" would be a false label: this page has no mail transport and
+         deliberately gains none (mailto only — no fetch, no third-party email
+         service). The button hands the text to the reader's own mail client,
+         which opens a DRAFT; nothing is transmitted and no figure leaves the
+         browser until they press send there. -->
+    <p class="note"><b>Nothing is sent from this page.</b> This opens a draft in
+      your own mail client with the summary pre-filled, for you to review and
+      send yourself. No figure leaves this browser until you do. For the full
+      formatted report, use Print / PDF and attach it.</p>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button class="btn" onclick="document.getElementById('emailOverlay').classList.remove('open')">Cancel</button>
-      <button class="btn primary" onclick="sendEmail()">Open in Mail</button>
+      <button class="btn" onclick="MGM.closeEmail()">Cancel</button>
+      <button class="btn primary" onclick="MGM.sendEmail()">Open draft in Mail</button>
     </div>
   </div>
 </div>
@@ -518,8 +554,14 @@ MGM.runFor = function (st) {
 };
 
 /* ═══════════════ TABS ═══════════════ */
+// Thirteen tabs. `about` is LAST on purpose: the walkthrough it contains reads
+// the tabs in this order, so the tour and the rail agree, and the one tab that
+// explains the tool sits after everything it explains. The count is asserted in
+// membershipModel.test.js against MGM_CONFIG.labels.tabs -- a key here with no
+// label renders a button reading "undefined".
 const TAB_ORDER = ['starting', 'additions', 'losses', 'pipeline', 'participation',
-  'gallons', 'revpermember', 'cost', 'staffing', 'cashflow', 'historical', 'report'];
+  'gallons', 'revpermember', 'cost', 'staffing', 'cashflow', 'historical', 'report',
+  'about'];
 
 MGM.renderTabs = function () {
   const t = MGM.state.labels.tabs;
@@ -1628,16 +1670,27 @@ MGM.renderers.cashflow = function (D) {
       // and the paper cannot state different headline numbers. Reading
       // `v.mid` anywhere outside the two-lens case reintroduces exactly that
       // split.
+      //
+      // The VALUE, the LABEL and the no-basis/single-method caption now come
+      // from MM.valuationHeadline() rather than from branches written here, so
+      // this tile and the printed report cannot word the same state two ways.
+      // The two-lens arm keeps its own caption on purpose: the headline helper
+      // says "midpoint of two methods", which is true but less useful than
+      // naming WHICH basis the EBITDA lens is resting on, and that basis is a
+      // page-level fact (real costs vs a typed margin vs a loaded one) the
+      // engine has no way to know.
+      const vh = MM.valuationHeadline(v);
+
       if (v.lensCount === 0)
-        return sign('INDICATED VALUE', '—', 'no lens has a basis', 'dark');
+        return sign(vh.label, '—', vh.caption, 'dark');
 
       if (v.lensCount === 1)
         // Name the METHOD, because a single-method figure is a different kind
         // of claim from a midpoint and must not be read as one. Which lens is
-        // live is read off the engine's own lens values, never re-derived from
-        // the input state, so this caption cannot contradict `lensCount`.
-        return sign('INDICATED VALUE', fmM(v.indicated),
-          (v.rev ? 'revenue multiple' : 'EBITDA multiple') + ', single method', 'dark');
+        // live is decided inside valuationHeadline from the engine's own lens
+        // values, never re-derived from the input state, so this caption
+        // cannot contradict `lensCount`.
+        return sign(vh.label, fmM(vh.value), vh.caption, 'dark');
 
       // Two live lenses, so the midpoint is a real two-method midpoint. Branch
       // order matters: real costs win over a margin assumption, because the
@@ -1652,7 +1705,7 @@ MGM.renderers.cashflow = function (D) {
         !C.unset       ? 'EBITDA lens computed from real costs'
         : EM != null   ? `EBITDA lens from the ${pct1(EM)} ${marginSrc}`
         : 'EBITDA lens from add-backs only';
-      return sign('VALUATION MIDPOINT', fmM(v.indicated), liveBasis, 'dark');
+      return sign(vh.label, fmM(vh.value), liveBasis, 'dark');
     })()}
   </div>
 
@@ -2149,6 +2202,1427 @@ MGM.drawMonthlyHistory = function (st) {
     data: { labels, datasets: [{ label: 'New signups', data, backgroundColor: css('--gain') }] },
     options: baseOpts()
   });
+};
+
+/* ═══════════════ TAB RENDERER: Report, print, email, export (Task 17) ═══════════════ */
+
+// Paper is the one surface where a caption cannot be clicked away: a PDF
+// someone forwards carries whatever was printed and nothing else. Three rules
+// hold through every function below.
+//
+//  1. An em dash means "nothing was supplied". A "$0" means "a figure was
+//     supplied and it is zero". The on-screen tabs already draw that line
+//     (the cash bridge, the cost table, the pipeline tiles); the report
+//     follows the SAME gate each tab uses, never a looser one.
+//  2. A label claims only what its value supports. Nothing is called an
+//     actual, a midpoint or a measurement unless it is one.
+//  3. The headline figure AND the words beside it come from the engine --
+//     MM.valuationHeadline(), v.indicated, v.lensCount -- never from a second
+//     branch written here. Two independent derivations of one rule is how the
+//     screen and the paper end up stating different numbers, which is exactly
+//     what printing `v.mid` would have done: $3.03M on paper against $6.06M
+//     on screen, on the shipped defaults.
+
+// $/gal needs three decimals: fm$ rounds to whole dollars, so a 5c/gal
+// forward assumption would print as "$0/gal" -- indistinguishable from the
+// unset default, which is the one thing this row exists to distinguish.
+const fmGal = n => '$' + (Math.round(n * 1000) / 1000).toFixed(3);
+
+// Cents, where cents are the whole point. fm$ rounds to whole dollars, so the
+// billable dues figure prints as "$382" -- and the difference this project
+// spent a correction on is $382.47 (dues ÷ the 375 locations that bill) versus
+// $366.82 (dues ÷ all 391 billed records), four points of dues realization
+// apart. Rounding both to "$382" and "$367" keeps them distinguishable by luck,
+// not by design, and the report is the artifact where the figure gets quoted.
+const fmCents = n => (n < 0 ? '-$' : '$') +
+  Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// "Absent" for a figure that arrived from outside this page. MM.revPerMember
+// tests the loaded per-member total with isFinite(Number(x)) -- and
+// Number(null) is 0, which isFinite accepts, so a totals row carrying an
+// explicit JSON `null` becomes a REAL $0 actual: the reconciliation then
+// prints "P&L actual $0" and a variance equal to the whole derived total, a
+// fabricated financial fact about a real company, on paper. (A MISSING key
+// gives NaN and is correctly rejected, which is why the engine's own
+// 'carries no per-member total' wording exists at all.) The engine is out of
+// scope for this task, so the report refuses the value here instead, and the
+// defect is named in the task report. '' is rejected for the same reason:
+// Number('') is 0 too, and `'' == null` is false.
+MGM.reportActual = function (x) {
+  if (x === null || x === undefined || x === '') return null;
+  const n = Number(x);
+  return isFinite(n) ? n : null;
+};
+
+// crm_leads requires a session, so "0 open leads" and "the pipeline never
+// loaded" are different claims and at most one of them is true. A report is a
+// snapshot of whatever the browser held at that moment, so it has to say
+// which -- and in the past tense, because by the time anyone reads the paper
+// the session state is no longer inspectable. Returns null when the pipeline
+// genuinely loaded, so callers can treat null as "the figures below are real".
+MGM.REPORT_PIPELINE_WHY = {
+  ok:       null,     // loaded: the figures are real, so there is nothing to say
+  unsigned: 'not loaded — this report was generated with no signed-in session',
+  loading:  'still loading when this report was generated',
+  error:    'could not be loaded when this report was generated'
+};
+MGM.reportPipelineWhy = function () {
+  // hasOwnProperty, NOT `… || fallback`. The 'ok' entry is deliberately null,
+  // and `null || fallback` returns the fallback -- so the first version of this
+  // function reported "not loaded" for a pipeline that HAD loaded, suppressing
+  // every real figure in the pipeline, staffing and gallon-inbound sections and
+  // printing a caveat that contradicted the data. Found by rendering the report
+  // with pipelineState='ok'.
+  const t = MGM.REPORT_PIPELINE_WHY;
+  return Object.prototype.hasOwnProperty.call(t, MGM.pipelineState)
+    ? t[MGM.pipelineState]
+    : 'not loaded when this report was generated';
+};
+
+// Deliberately NOT MGM.PNL_REASON_TEXT. Those strings are on-screen advice
+// ("sign in as an admin to reconcile"), and advice is useless on paper: by the
+// time the sentence is read, the session that produced it is gone, and telling
+// a reader holding a PDF to sign in is an instruction they cannot act on in
+// the artifact they are holding. Same five reasons, stated as facts about how
+// the report was produced. A non-admin's report says the read is admin-only --
+// it does not show a zero and it does not tell them to sign in.
+MGM.PNL_PAPER_TEXT = {
+  anon:          'The P&L comparison is limited to administrators, and this report was generated without a confirmed administrator session.',
+  'not-admin':   'The P&L comparison is limited to administrators. This report was generated by an account that is not on the administrator list.',
+  'none-loaded': 'No P&L period had been loaded into the model when this report was generated — the table was empty.',
+  error:         'The P&L could not be read when this report was generated.',
+  ok:            'The loaded P&L period carries no per-member total, so there is nothing to compare the drivers against.'
+};
+MGM.reportPnlWhy = function () {
+  return MGM.PNL_PAPER_TEXT[MGM.pnlReason] ||
+    'The P&L comparison was not available when this report was generated.';
+};
+
+MGM.renderers.report = function (D) {
+  const { st, M, R, F, rpm, valuation: v, cost: C, capacity: K,
+          gallons: G, pipeline: p } = D;
+  const rp = st.report;
+  // HORIZON_YEARS is bounded at 1 by the input, but a scenario or an imported
+  // file can carry anything, and `M.years[0].start` on an empty array throws
+  // into MGM.refresh's catch -- which would blank the one tab whose whole job
+  // is to print something.
+  const first = M.years[0] || null;
+  const final = M.years.length ? M.years[M.years.length - 1] : null;
+  const last = R.length ? R[R.length - 1] : null;
+  const lastF = F.length ? F[F.length - 1] : null;
+  const today = new Date().toLocaleDateString('en-US',
+    { year: 'numeric', month: 'long', day: 'numeric' });
+  const prose = t => t ? `<p>${esc(t).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>')}</p>` : '';
+
+  // The headline, from the engine. `hasValue` is false only when NO lens has a
+  // basis, and then there is no number to print at all -- not a zero.
+  const vh = MM.valuationHeadline(v);
+
+  // Every piece of the meta line is user-editable and any of them can be
+  // blank. Joined after filtering, so a cleared disclosure does not print a
+  // dangling " · " that reads like a dropped sentence.
+  const metaBits = [
+    `Generated by <b>${rp.generatedBy ? esc(rp.generatedBy) : 'not stated'}</b>`,
+    today,
+    st.DATA_ASOF ? `Source data as of ${esc(st.DATA_ASOF)}` : 'Source data as-of date not stated',
+    rp.disclosure ? esc(rp.disclosure) : ''
+  ].filter(Boolean);
+
+  document.getElementById('panel-report').innerHTML = `
+  <div class="noprint card"><h3>Report fields</h3>
+    <table>
+      <tr><td>Company</td><td><input class="lbl-in" type="text" data-k="report.company" value="${esc(rp.company)}"></td></tr>
+      <tr><td>Title</td><td><input class="lbl-in" type="text" data-k="report.title" value="${esc(rp.title)}"></td></tr>
+      <tr><td>Subtitle</td><td><input class="lbl-in" type="text" data-k="report.subtitle" value="${esc(rp.subtitle)}"></td></tr>
+      <tr><td>Footer</td><td><input class="lbl-in" type="text" data-k="report.footer" value="${esc(rp.footer)}"></td></tr>
+      <tr><td>Generated by</td><td><input class="lbl-in" type="text" data-k="report.generatedBy" value="${esc(rp.generatedBy)}"></td></tr>
+      <tr><td>Contact</td><td><input class="lbl-in" type="text" data-k="report.contact" value="${esc(rp.contact)}"></td></tr>
+      <tr><td>Disclosure</td><td><input class="lbl-in" type="text" data-k="report.disclosure" value="${esc(rp.disclosure)}"></td></tr>
+    </table>
+    <h3 style="margin-top:14px">Narrative</h3>
+    <textarea class="prose" data-k-text="report.intro" placeholder="Opening commentary…"></textarea>
+    <textarea class="prose" data-k-text="report.methodology" placeholder="Methodology notes…"></textarea>
+    <textarea class="prose" data-k-text="report.closing" placeholder="Closing commentary…"></textarea>
+    <div style="margin-top:12px">
+      <button class="btn primary" onclick="MGM.doPrint()">🖨 Print / PDF</button>
+      <button class="btn" onclick="MGM.openEmail()" title="Opens a draft in your own mail client. Nothing is sent from this page.">✉ Email draft…</button>
+      <button class="btn" onclick="MGM.exportCSV()">⬇ CSV</button>
+      <button class="btn" onclick="MGM.exportJSON()">⬇ JSON</button>
+      <label class="btn" title="Replaces every value in this browser's model. Administrators only.">⬆ Import JSON
+        <input type="file" accept=".json" style="display:none"
+          onchange="if(this.files[0]){MGM.importJSON(this.files[0]);this.value='';}"></label>
+    </div>
+    <p class="note">Print, CSV and JSON export are open to everyone.
+      <b>Import</b> replaces every value in this browser's copy of the model, so
+      it is limited to administrators — the same rule as Reset all. The button stays
+      visible and explains itself on click rather than disappearing.
+      <b>Email</b> opens a draft in your own mail client; nothing is sent from
+      this page and no figure leaves the browser until you press send there.</p>
+  </div>
+
+  <div id="reportSheet" class="card">
+    <div class="lh">
+      <img src="${esc(document.getElementById('logoImg').src)}" alt="Roady's"
+           onerror="this.style.display='none'">
+      <div class="co"><b>${esc(rp.company)}</b><br>${esc(rp.title)}${rp.subtitle ? ' — ' + esc(rp.subtitle) : ''}<br>${esc(rp.footer)}</div>
+    </div>
+    <h1>${esc(rp.title)}</h1>
+    <div class="meta">${metaBits.join(' · ')}</div>
+    ${prose(rp.intro)}
+
+    <div>
+      ${first ? `<span class="rsign"><div class="v">${fmt(first.start)}</div>
+        <div class="k">ACTIVE TODAY</div></span>` : ''}
+      ${final ? `<span class="rsign"><div class="v">${fmt(final.end)}</div>
+        <div class="k">${final.year} ENDING</div></span>` : ''}
+      ${last ? `<span class="rsign" style="background:#C4111B;outline-color:#C4111B">
+        <div class="v">${fmM(last.total)}</div><div class="k">${last.year} REVENUE</div></span>` : ''}
+      ${/* indicated / lensCount via MM.valuationHeadline, NEVER v.mid. On the
+            shipped defaults only the revenue lens has a basis, and `mid`
+            averages it with an absent lens to produce exactly half the real
+            figure -- $3.03M on paper against $6.06M on the Profit & Cash Flow
+            tile. The headline helper exists so a single-method figure cannot be
+            labelled a midpoint by either surface. */''}
+      <span class="rsign" style="background:#14161B;outline-color:#14161B">
+        <div class="v">${vh.hasValue ? fmM(vh.value) : '—'}</div>
+        <div class="k">${esc(vh.label)}</div>
+        <div class="c">${esc(vh.caption)}</div></span>
+    </div>
+
+    <h3>Membership roll-forward</h3>
+    ${M.years.length ? `<table>
+      <tr><th>Year</th><th class="num">Start</th><th class="num">New (modeled)</th>
+          <th class="num">Lost</th><th class="num">End</th><th class="num">Net</th></tr>
+      ${/* Every column here is computed by the engine from the inputs, never
+            "supplied", so each one always carries a figure -- there is no
+            absent case to em-dash. newModeled, NOT newAdds: newAdds folds in
+            signings already inside the opening count, so it would print a
+            larger number than the New Additions tab shows for the same run. */''}
+      ${M.years.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.start)}</td>
+        <td class="num">${fmt1(r.newModeled)}</td><td class="num">${fmt1(r.lost)}</td>
+        <td class="num"><b>${fmt(r.end)}</b></td>
+        <td class="num">${r.net >= 0 ? '+' : ''}${fmt1(r.net)}</td></tr>`).join('')}
+    </table>
+    ${first && first.ytd ? `<p class="small">The ${fmt(first.start)} opening count already
+      includes ${fmt(first.ytd)} signings booked Jan–${esc(MONTH_NAMES[Math.min(11, Math.max(0, st.ASOF_MONTH - 1))])}
+      ${first.year}, so the New column shows only the months still being modeled.</p>` : ''}`
+    : '<p class="small">No projection years — the horizon is set to zero, so there is no roll-forward to print.</p>'}
+
+    <h3>Revenue by stream</h3>
+    ${R.length ? `<table>
+      <tr><th>Year</th><th class="num">Avg members</th>
+        ${STREAM_KEYS.map(k => `<th class="num">${esc(st.labels.streams[k])}</th>`).join('')}
+        <th class="num">Total</th></tr>
+      ${R.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.members)}</td>
+        ${STREAM_KEYS.map(k => `<td class="num">${fm$(r.streams[k])}</td>`).join('')}
+        <td class="num"><b>${fm$(r.total)}</b></td></tr>`).join('')}
+    </table>
+    <p class="small">Annualized run-rate per year on the average member count. Net
+      per-member streams only — this excludes the gross fuel settlement
+      pass-through, which is the large majority of the P&amp;L's Total Income and
+      is not revenue to Roady's.</p>` : '<p class="small">No revenue years to print.</p>'}
+
+    <h3>Profit &amp; cash flow</h3>
+    ${F.length ? `<table>
+      <tr><th>Year</th><th class="num">Revenue</th><th class="num">Cost to serve</th>
+          <th class="num">Acquisition</th><th class="num">Add-backs</th>
+          <th class="num">EBITDA</th><th class="num">Margin</th><th class="num">Cash</th></tr>
+      ${/* Same gate as the cash bridge on Profit & Cash Flow, not a looser one.
+            Cost to serve and acquisition are unsupplied only while C.unset --
+            once real costs exist, a year that genuinely costs nothing prints
+            $0. Add-backs have no unset flag of their own, so for them zero IS
+            unsupplied. Revenue, EBITDA, Margin and Cash are computed, never
+            supplied, so they always print a figure. */''}
+      ${F.map(r => `<tr><td>${r.year}</td><td class="num">${fm$(r.revenue)}</td>
+        <td class="num">${C.unset ? '—' : fm$(-r.costToServe)}</td>
+        <td class="num">${C.unset ? '—' : fm$(-r.acquisition)}</td>
+        <td class="num">${r.normalization ? fm$(r.normalization) : '—'}</td>
+        <td class="num"><b>${fm$(r.ebitda)}</b></td>
+        <td class="num">${pct1(r.margin)}</td>
+        <td class="num">${fm$(r.cash)}</td></tr>`).join('')}
+    </table>
+    <p class="small"><b>—</b> means no figure was supplied for that column, not a
+      figure of zero.${C.unset ? ` No acquisition or service cost is entered, so the
+      EBITDA column here is revenue less nothing — a 100% margin, which is correct
+      arithmetic for a cash roll-forward and is <b>not</b> a claim about
+      profitability. The valuation below declines this figure for exactly that
+      reason.` : ''}</p>` : '<p class="small">No cash-flow years to print.</p>'}
+
+    <h3>Valuation</h3>
+    <table>
+      <tr><th>Lens</th><th class="num">Basis</th><th class="num">Multiple</th><th class="num">Value</th></tr>
+      <tr><td>Recurring revenue${v.basis ? '' : ' (no basis — the model projects no revenue)'}</td>
+        <td class="num">${v.basis ? fm$(v.basis) : '—'}</td>
+        <td class="num">${st.valuation.revMultiple}×</td>
+        <td class="num"><b>${v.rev ? fmM(v.rev) : '—'}</b></td></tr>
+      ${/* The EBITDA lens's label is the one place on paper where a $0 could be
+            read as "this business earns nothing" rather than "no margin and no
+            costs were entered". The wording matches the Valuation card on
+            Profit & Cash Flow word for word, and reads EM (what the lens
+            actually used) rather than the state value -- a loaded P&L margin
+            gives the lens a real basis without ever being typed. */''}
+      <tr><td>EBITDA${C.unset
+        ? (D.effectiveMargin != null
+            ? ` (at ${pct1(D.effectiveMargin)} margin${D.marginFromPnl ? ', loaded from the P&L for this session' : ', entered assumption'})`
+            : (v.ebitdaBase
+                ? ' (add-backs only — costs unset and no margin set)'
+                : ' (no basis — costs unset and no margin set)'))
+        : ' (computed from real costs)'}</td>
+        <td class="num">${(!C.unset || v.ebitdaBase) ? fm$(v.ebitdaBase) : '—'}</td>
+        <td class="num">${st.valuation.ebitdaMultiple}×</td>
+        <td class="num"><b>${(!C.unset || v.ebitda) ? fmM(v.ebitda) : '—'}</b></td></tr>
+      ${/* Keyed on v.lensCount -- the same engine field the headline reads --
+            rather than re-deriving "which lenses are live" here. The one-lens
+            arm deliberately does NOT print "(midpoint $X)" beside the figure:
+            that is the number this whole arrangement exists to stop publishing,
+            and standing it next to the real one republishes it under the one
+            label that makes it look authoritative. */''}
+      ${v.lensCount === 2
+        ? `<tr class="total"><td colspan="3">Indicated range (midpoint of two methods)</td>
+             <td class="num">${fmM(v.low)} – ${fmM(v.high)} (${fmM(v.indicated)})</td></tr>`
+        : v.lensCount === 1
+          ? `<tr class="total"><td colspan="3">Indicated value — single method
+               (one live lens: ${v.rev ? 'revenue' : 'EBITDA'}). No range: a range
+               needs two methods.</td>
+             <td class="num">${fmM(v.indicated)}</td></tr>`
+          : `<tr class="total"><td colspan="3">No live lens — no indicated value.
+               This is an absent figure, not a valuation of zero.</td>
+             <td class="num">—</td></tr>`}
+    </table>
+    <p class="small"><b>Both lenses apply to the model's own revenue total</b> —
+      net per-member streams — never to the P&amp;L's Total Income, the large
+      majority of which is gross settlement pass-through. The margin basis is
+      <b>${esc(st.valuation.marginBasis)}</b>: ${esc(st.valuation.marginBasisNote)}</p>
+
+    ${prose(rp.methodology)}
+    ${MGM.reportAssumptions(D)}
+    ${MGM.reportReconciliation(D)}
+    ${MGM.reportWarnings(D)}
+    ${MGM.reportNotes(D)}
+    ${prose(rp.closing)}
+    <div class="foot">
+      <span>${esc(rp.footer)}</span>
+      <span>Questions: ${esc(rp.contact || 'info@kingdom-creatives.com')}</span>
+    </div>
+  </div>`;
+};
+
+// ── Assumptions and sources, on paper ─────────────────────────────────────
+// The report is the artifact that leaves the building, so every caveat the
+// tabs carry has to travel with it rather than living only in the UI.
+MGM.reportAssumptions = function (D) {
+  const { st, M, rpm, cost: C, capacity: K, pipeline: p,
+          effectiveMargin: EM, typedMargin: TM, marginFromPnl: MFP,
+          marginBasisDetail: MBD } = D;
+  const rv = st.revenue, at = st.attrition, bm = st.benchmark;
+  const struct = Object.values(at.structural || {}).some(v => +v);
+  const pipeWhy = MGM.reportPipelineWhy();
+  const period = (MGM.pnlActuals && MGM.pnlActuals.periodLabel) || null;
+  const lag = st.adds.activationLag;
+
+  const rows = [
+    ['Active locations (base)',
+      `${fmt(M.startTotal)} — excludes corporate payment records, demo rows and test companies`],
+
+    ['Steady attrition', `${pct1(at.steady)}/yr` +
+      (struct ? ', plus the structural overrides entered per projection year below'
+              : ' — no structural override is entered for any projection year') +
+      '. This is a hand-entered assumption, independent of the realized rates derived on the Historical Data tab.'],
+
+    // "Pipeline" basis with no pipeline loaded is the one assumption row that
+    // can print a confident zero for something that was simply never read.
+    ['Add basis', st.salesPipeline.basis === 'pipeline'
+      ? (pipeWhy
+          ? `Sales pipeline — but the pipeline was ${pipeWhy}, so the modeled add rate for this run is zero`
+          : `Sales pipeline — ${fmt1(p.expectedPerMonth)} locations/month, weighted from ${fmt(p.openLeads)} open leads over ${fmt(st.salesPipeline.horizonMonths)} months`)
+      // "the pipeline is loaded for reference" is only true when it actually
+      // loaded. On an unsigned run it is a claim about data that was never read.
+      : `Flat run rate — ${fmt1(st.adds.perMonth)} locations/month, growing ${pct1(st.adds.growthPct)}/yr. ` +
+        (pipeWhy
+          ? `The sales pipeline does not drive this run, and was ${pipeWhy} in any case.`
+          : 'The sales pipeline loaded but does not drive this run.')],
+
+    ['Activation lag', `${lag} ${lag === 1 ? 'month' : 'months'} before a new location produces revenue`],
+
+    ['Participation',
+      `fuel ${pct1(MM.partPct(st, 'fuel'))} · vendor ${pct1(MM.partPct(st, 'vendor'))} · rewards ${pct1(MM.partPct(st, 'rewards'))}`],
+
+    // fmCents, not fm$: $382.47 (dues ÷ the locations that bill) and $366.82
+    // (dues ÷ every billed record) are four points of dues realization apart,
+    // and whole-dollar rounding is not what keeps them apart.
+    //
+    // The provenance sentence is CONDITIONAL. duesPerLocBillable is a bound
+    // input, not a computed field, so the "divides X by Y" claim stops being
+    // true the moment anyone types over it -- and an assumptions table that
+    // describes arithmetic the figure no longer follows is worse than one that
+    // says where the figure came from honestly.
+    ['Dues', (() => {
+      const b = st.billing, derived = b.payingLocations
+        ? b.monthlyDuesTotal / b.payingLocations : null;
+      const matches = derived != null &&
+        Math.abs(Number(b.duesPerLocBillable) - derived) < 0.005;
+      return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillable)} billable per paying location · ` +
+        (rpm.duesRealization == null
+          ? 'realization not derivable — no billable figure is entered'
+          : `${pct1(rpm.duesRealization)} realization`) +
+        (matches
+          ? `. The billable figure is ${fm$(b.monthlyDuesTotal)} of monthly dues divided by the ${fmt(b.payingLocations)} locations that bill, not by all ${fmt(b.locations)} billed records — dividing by the larger figure understates what a billable location is worth and so overstates this realization.`
+          : `. The billable figure was entered by hand and is not ${fm$(b.monthlyDuesTotal)} ÷ ${fmt(b.payingLocations)} paying locations (${derived == null ? 'no paying-location count is entered' : fmCents(derived)}).`);
+    })()],
+
+    ['Fuel settlement', rv.settlementNetPerMember
+      ? `${fm$(rv.settlementNetPerMember)}/member/yr` +
+        (rv.settlementNetPerMember < 0
+          ? ' — settlement nets negative in the source P&amp;L. It is not a profit centre.'
+          : ' — entered as a net positive; the source P&amp;L nets negative, so confirm this.')
+      : 'not supplied — no net settlement figure is entered, so this stream contributes nothing'],
+
+    // NOT "not set". This is the one zero in the model that is a DELIBERATE
+    // zero rather than an absence: the source P&L shows fuel settlement netting
+    // negative, so nothing supports a positive per-gallon margin and $0.00 is
+    // the honest default. Calling it "not set" would under-claim it, and would
+    // also contradict the Revenue by stream table above, which correctly prints
+    // a real $0 for this stream rather than an em dash.
+    ['Fuel program margin', rv.fuelProgramMargin
+      ? `${fmGal(rv.fuelProgramMargin)}/gal × ${fmt(rv.avgGallons)} gal/mo × ${pct1(MM.partPct(st, 'fuel'))} participation — a FORWARD ASSUMPTION entered by the modeller, not a reported figure`
+      : `$0.00/gal — the shipped default, and a deliberate zero rather than a missing figure. The source P&amp;L shows fuel settlement netting negative, so nothing supports a positive per-gallon margin here; any positive value would be a forward assumption the modeller owns.`],
+
+    ['Rewards', `${fm$(rv.rewardsPM)}/mo program fees × ${pct1(MM.partPct(st, 'rewards'))} participation, plus ` +
+      (rv.rewardsBreakagePerMember
+        ? `${fm$(rv.rewardsBreakagePerMember)}/member/yr of breakage (expired points — real revenue, but non-durable, and a buyer discounts it)`
+        : 'no breakage figure entered')],
+
+    ['Revenue basis',
+      'Net per-member streams only. Excludes the gross fuel settlement pass-through, which is the large majority of the source P&amp;L\'s Total Income and is not revenue to Roady\'s.'],
+
+    ['Cost to acquire / serve', C.unset
+      ? 'Not set. Acquisition and service costs are both zero, so the cash bridge\'s EBITDA equals revenue — see the note under that table.'
+      : `${fm$(C.cac)} CAC · ${fm$(C.costToServePerMember)}/member/yr to serve · LTV ${C.ltv == null ? 'not derivable' : fm$(C.ltv)} over ${C.lifeYears == null ? 'an unknown' : fmt1(C.lifeYears) + ' years'} of average member life`],
+
+    ['Capacity', K.unset
+      ? `Not set. No per-rep monthly capacity is entered for the ${fmt(K.reps.length)} reps on the roster, so no capacity gap is computed — a gap against zero capacity would be meaningless.`
+      : `${fmt1(K.totalCapacity)} new locations/month across ${fmt(K.reps.length)} reps · modeled ${fmt1(K.modeledAddsPerMonth)}/month · gap ${K.gap == null ? 'not derivable' : (K.gap > 0 ? '+' + fmt1(K.gap) + ' short of plan' : fmt1(K.gap) + ' to spare')}`],
+
+    // THREE arms, and the distinction between them is the whole point.
+    // st.valuation.ebitdaMargin is an ASSUMPTION INPUT -- the Valuation card
+    // labels the very same field "EBITDA margin % (used only when costs are
+    // unset)". Calling it a "(P&L actual)", as an earlier draft of this row
+    // did, attributes provenance it does not have; on the shipped defaults it
+    // printed "0.0% margin assumption (P&L actual)", a fabricated financial
+    // fact about a real company, on paper. Round 3 of Task 12 fixed exactly
+    // that sentence on screen.
+    //
+    // The third arm exists because a loaded actual is a genuinely different
+    // claim from a typed one: it IS reported, it names its period, and it is
+    // session-only. EM/MFP come from MGM.runFor, not from the state -- the
+    // loaded figure never enters MGM.state, by design.
+    ['EBITDA', C.unset
+      ? (MFP
+          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          : (TM
+              ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
+              : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
+      : 'Computed from revenue less cost to serve and acquisition — the margin assumption is not in use.'],
+
+    ['EBITDA margin basis', `${esc(st.valuation.marginBasis)} — ${esc(st.valuation.marginBasisNote)}` +
+      (MFP && MBD ? ` Basis stated with the loaded figure: ${esc(MBD)}` : '')],
+
+    ['Add-backs', st.valuation.ebitdaNormalization
+      ? `${fm$(st.valuation.ebitdaNormalization)}/yr of explicit EBITDA normalization, entered by the modeller`
+      : 'None entered. Any normalization argument should be entered as an explicit add-back so a reader can see the adjustment rather than finding it baked into a margin.'],
+
+    [esc(bm.label), (bm.lostMemberValue
+        ? `${fm$(bm.lostMemberValue)} per lost member per year`
+        : 'not supplied') + ` — ${esc(bm.caveat)} Source: ${esc(bm.source)}`],
+
+    ['PTP', esc(st.ptpNote)],
+
+    ['Gallon production', MGM.reportGallonSummary(D)]
+  ];
+
+  return '<h3>Assumptions &amp; sources</h3><table>' +
+    rows.map(([k, val]) => `<tr><td>${k}</td><td>${val}</td></tr>`).join('') +
+    '</table><p class="small"><b>—</b> and the phrase <b>not supplied</b> both mean ' +
+    'no figure was entered. A stated <b>$0</b> means a figure of zero was entered ' +
+    'deliberately.</p>';
+};
+
+// Pulled out of the row list only because it is three sentences with its own
+// absence case: pipeline inbound gallons come from the same session-gated
+// crm_leads read as the add basis, so an unsigned run must not print "0 gal/mo
+// inbound" as though the pipeline were empty.
+MGM.reportGallonSummary = function (D) {
+  const { st, gallons: G, M } = D;
+  const pipeWhy = MGM.reportPipelineWhy();
+  const overridden = G.byGroup.filter(r => r.overridden).length;
+  // All-unmapped is an absence, not a network that burns no fuel. The screen
+  // flags it in red on the Fuel Gallon Production tab; paper has to carry the
+  // same distinction, because "0 gal/mo" is a business claim.
+  const head = G.mapped === 0
+    ? `Not computed — no group maps to an engine profile, so no production figure exists for this run.`
+    : `${fmt(G.existing)} gal/mo across the ${fmt(M.startTotal)} active locations ` +
+      `(${fmt(G.perMember)} gal/mo per location), from the Bus Dev gallons engine's ` +
+      `per-profile baselines.`;
+  return head + ` Pipeline inbound: ${pipeWhy ? pipeWhy : fmt(G.inbound) + ' gal/mo'}. ` +
+    (overridden ? `${fmt(overridden)} group baseline(s) are overridden and no longer match the engine. ` : '') +
+    `Group-to-profile assignment is an assumption, not a measurement. ` +
+    `${esc(st.gallons.caveat)}`;
+};
+
+// ── The P&L reconciliation, on paper ──────────────────────────────────────
+// The P&L read is ADMIN-ONLY on select, not just on write, so the most likely
+// reader of this section is someone whose report carries no comparison at all.
+// It must say so as a fact, show no zero, and give no advice the holder of a
+// printout cannot act on.
+MGM.reportReconciliation = function (D) {
+  const { st, rpm } = D;
+  const L = st.labels.streams;
+  const period = (MGM.pnlActuals && MGM.pnlActuals.periodLabel) || null;
+  // Not rpm.actual: see MGM.reportActual for why the engine's own test lets an
+  // explicit null through as a $0 actual.
+  const actual = MGM.reportActual(MGM.pnlActuals ? MGM.pnlActuals.totalPerMemberYr : null);
+
+  if (actual == null) {
+    return `<h3>Reconciliation against the P&amp;L</h3>
+      <p class="small"><b>Not reconciled.</b> ${esc(MGM.reportPnlWhy())}
+      The driver figures throughout this report are complete and unaffected —
+      only the comparison against the income statement is missing. The P&amp;L
+      figures live in <code>mgm_pnl_actuals</code>, which is readable by
+      administrators only; they are deliberately absent from the published
+      source of this tool.</p>`;
+  }
+
+  return `<h3>Reconciliation against the P&amp;L</h3>
+    <table>
+      <tr><th>Stream</th><th class="num">From drivers</th>
+          <th class="num">P&amp;L actual</th><th class="num">Variance</th></tr>
+      ${/* An absent stream actual prints an em dash in BOTH the actual and the
+            variance column. A $0 variance against a missing actual would read
+            as perfect agreement, which is the most misleading thing this table
+            could say. */''}
+      ${STREAM_KEYS.map(k => {
+        const a = MGM.reportActual(rpm.actualStreams ? rpm.actualStreams[k] : null);
+        return `<tr><td>${esc(L[k])}</td>
+          <td class="num">${fm$(rpm.derived[k])}</td>
+          <td class="num">${a == null ? '—' : fm$(a)}</td>
+          <td class="num">${a == null ? '—' : fm$(rpm.derived[k] - a)}</td></tr>`;
+      }).join('')}
+      <tr class="total"><td>Total $/member/yr</td>
+        <td class="num"><b>${fm$(rpm.derived.total)}</b></td>
+        <td class="num"><b>${fm$(actual)}</b></td>
+        <td class="num">${fm$(rpm.derived.total - actual)}</td></tr>
+    </table>
+    <p class="small">Reconciled against <b>${esc(period || 'the loaded P&L period')}</b>.
+      An em dash in the actual column means that period reports no figure for
+      that stream, not a figure of zero. No income-statement line is reproduced
+      here or in the published source of this tool.</p>`;
+};
+
+// ── Caveats on this run ───────────────────────────────────────────────────
+// Anything that makes a figure not what it appears must say so on paper.
+MGM.reportWarnings = function (D) {
+  const { st, gallons: G, cost: C, capacity: K, pipeline: p } = D;
+  const out = [];
+
+  const ov = (st.gallons || {}).groupBaselineOverride || {};
+  const ovKeys = Object.keys(ov).filter(k => ov[k] !== null && ov[k] !== '');
+  if (ovKeys.length) out.push(`Gallon baselines were overridden for ${ovKeys.length} group(s) ` +
+    `and no longer match the Bus Dev Potential Gallons engine.`);
+
+  if (G && G.mapped < G.byGroup.length) out.push(`${G.byGroup.length - G.mapped} ` +
+    `group(s) have no engine profile mapping and contribute zero gallons.`);
+
+  const srcSum = (st.sources || []).reduce((a, s) => a + (+s.pct || 0), 0);
+  if (srcSum !== 100) out.push(`The source mix totals ${srcSum}%, not 100%, so the ` +
+    `per-source split of modeled adds does not add back to the total.`);
+
+  // Keyed on MGM.pipelineState, not on pipeline.isEmpty. isEmpty is true both
+  // when nobody was signed in and when a real session returned no open leads,
+  // and those are opposite claims: one is "we could not look", the other is
+  // "we looked and the pipeline is empty".
+  if (st.salesPipeline.basis === 'pipeline') {
+    const why = MGM.reportPipelineWhy();
+    if (why) out.push(`The add rate is set to use the sales pipeline, but the ` +
+      `pipeline was ${why} — so modeled adds for this run are zero.`);
+    else if (p.isEmpty) out.push(`The add rate is set to use the sales pipeline, and ` +
+      `the pipeline loaded successfully but carries no open locations — so modeled ` +
+      `adds for this run are genuinely zero.`);
+  }
+
+  if (C.unset) out.push(`No acquisition or service cost is entered, so the cash ` +
+    `bridge reports EBITDA equal to revenue. That is correct arithmetic for a cash ` +
+    `roll-forward and is not a statement about profitability; enter real operating ` +
+    `costs before quoting any figure from that column.`);
+
+  if (K.unset) out.push(`No per-rep capacity is entered, so this run does not say ` +
+    `whether the modeled add rate is achievable at the modeled headcount.`);
+
+  if (D.valuation.lensCount === 1) out.push(`Only one valuation lens has a basis, so ` +
+    `the headline is a single-method figure and there is no range. It must not be ` +
+    `quoted as a midpoint.`);
+  if (D.valuation.lensCount === 0) out.push(`No valuation lens has a basis, so this ` +
+    `run produces no indicated value at all.`);
+
+  // The consequence of holding the loaded margin outside the saved state: two
+  // readers can legitimately see different headlines for the same scenario.
+  // Say so here rather than trying to reconcile them by persisting the figure.
+  if (D.marginFromPnl) out.push(`The EBITDA lens rests on a margin loaded from the ` +
+    `P&L for the session that produced this report. That figure is deliberately not ` +
+    `stored in the model, so the same inputs re-run without administrator access ` +
+    `value on the revenue lens alone and report a different headline. Both are ` +
+    `correct for what they had.`);
+
+  const badYears = Object.keys(st.monthlyHistory || {})
+    .filter(k => !Number.isFinite(Number(k)) ||
+      !Array.isArray(st.monthlyHistory[k]) || st.monthlyHistory[k].length !== 12);
+  if (badYears.length) out.push(`${badYears.length} monthly-history row(s) are not a ` +
+    `clean twelve-month series (${badYears.join(', ')}) — see the Historical Data tab.`);
+
+  return out.length
+    ? '<h3>Caveats on this run</h3><ul>' +
+      out.map(t => `<li>${esc(t)}</li>`).join('') + '</ul>'
+    : '<h3>Caveats on this run</h3><p class="small">None. No gallon baseline is ' +
+      'overridden, every group maps to an engine profile, the source mix totals ' +
+      '100%, real costs and capacity are entered, and both valuation lenses have ' +
+      'a basis.</p>';
+};
+
+// ── Per-tab notes ─────────────────────────────────────────────────────────
+// Every tab's notes textarea is placeholdered "printed with the report". That
+// is a claim about this function; without it the placeholder was false on all
+// eleven tabs that carry one.
+MGM.reportNotes = function (D) {
+  const notes = D.st.labels.notes || {};
+  const rows = TAB_ORDER
+    .filter(k => notes[k] && String(notes[k]).trim())
+    .map(k => `<tr><td>${esc(D.st.labels.tabs[k] || k)}</td>
+      <td>${esc(String(notes[k])).replace(/\n/g, '<br>')}</td></tr>`);
+  return rows.length
+    ? '<h3>Notes &amp; assumptions recorded by tab</h3><table>' + rows.join('') + '</table>'
+    : '';
+};
+
+/* ── Print ──────────────────────────────────────────────────────────────── */
+// Body-class scoped, following BDPG (bus-dev-potential-gallons/index.html:408).
+// Every print rule hangs off body.mgm-print, so a plain File ▸ Print on some
+// other tab prints that tab untouched rather than silently substituting the
+// report for whatever the reader was looking at.
+//
+// The beforeprint hook is what makes a bare Ctrl+P on the Report tab do the
+// right thing without a second mechanism: if the reader is already on the
+// report, that IS the thing they are asking to print. On any other tab it does
+// nothing, which is the whole reason the rules are scoped.
+MGM.doPrint = function () {
+  MGM.switchTab('report');
+  document.body.classList.add('mgm-print');
+  window.print();
+};
+window.addEventListener('beforeprint', () => {
+  if (MGM.tab === 'report') document.body.classList.add('mgm-print');
+});
+window.addEventListener('afterprint', () => document.body.classList.remove('mgm-print'));
+
+/* ── Exports ────────────────────────────────────────────────────────────── */
+MGM.dl = function (name, text, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+
+// A CSV loses every caption, so absence has to be IN the cell. `NS` is the one
+// spelling of it, used wherever a tab shows an em dash: an empty cell would be
+// read as zero by every spreadsheet, and a bare 0 is the defect this whole
+// convention exists to prevent.
+const CSV_NS = 'not supplied';
+// A separate marker for "the live read never happened", because that is a
+// different fact from "no figure was entered" and a reader filtering a
+// spreadsheet needs to tell them apart. Short, because it lands in every cell
+// of the pipeline and staffing sections; the full reason gets one row of its
+// own next to each section.
+const CSV_NL = 'not loaded';
+
+MGM.exportCSV = function () {
+  const D = MGM.model();
+  const { st, M, R, F, pipeline: p, gallons: G, cost: C, capacity: K, rpm } = D;
+  const q = s => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+  const L = [];
+  const pipeWhy = MGM.reportPipelineWhy();
+  const pipeCell = v => pipeWhy ? CSV_NL : v;
+
+  L.push(['Membership Growth Model'],
+    ['Generated', new Date().toISOString()],
+    ['Generated by', st.report.generatedBy || CSV_NS],
+    ['Data as of', st.DATA_ASOF || CSV_NS],
+    ['Add basis', st.salesPipeline.basis],
+    ['Live pipeline data', pipeWhy ? pipeWhy : 'loaded from crm_leads'],
+    ['Legend', '"' + CSV_NS + '" means no figure was entered; "' + CSV_NL +
+      '" means the live read never happened. A 0 means a figure of zero.'],
+    []);
+
+  L.push(['Groups'], ['Group', 'Active']);
+  st.groups.forEach(g => L.push([g.label, g.count == null ? CSV_NS : g.count]));
+  L.push(['Total', M.startTotal], []);
+
+  L.push(['Annual roll-forward'],
+    ['Year', 'Start', 'New (modeled)', 'YTD already in base', 'Lost',
+     'Steady lost', 'Structural lost', 'End', 'Net']);
+  // newModeled is the column the UI and the report show; newAdds is NOT
+  // exported in its place, because it folds the current year's YTD signings --
+  // already inside the opening count -- into the growth figure. `ytd` is
+  // carried as its own column so an analyst can see that component explicitly
+  // instead of having to infer it.
+  M.years.forEach(r => L.push([r.year, r.start, r.newModeled, r.ytd, r.lost,
+    r.steadyLost, r.structuralLost, r.end, r.net]));
+  L.push([]);
+
+  L.push(['Monthly roll-forward'],
+    ['Year', 'Month', 'Start', 'New', 'Steady lost', 'Structural lost', 'End', 'Producing']);
+  M.months.forEach(m => L.push([m.year, m.month, m.start, m.adds,
+    m.steadyLost, m.structuralLost, m.end, m.producing]));
+  L.push([]);
+
+  L.push(['Revenue by stream'], ['Year', 'Avg members']
+    .concat(STREAM_KEYS.map(k => st.labels.streams[k])).concat(['Total']));
+  R.forEach(r => L.push([r.year, r.members]
+    .concat(STREAM_KEYS.map(k => r.streams[k])).concat([r.total])));
+  L.push([]);
+
+  L.push(['Revenue per member per year'], ['Stream', 'From drivers', 'P&L actual', 'Variance']);
+  // MGM.reportActual, not the engine's own rpm.actual -- an explicit JSON null
+  // in the loaded totals passes isFinite(Number(null)) and would export a real
+  // $0 actual with a full-size variance beside it.
+  const csvActual = MGM.reportActual(MGM.pnlActuals ? MGM.pnlActuals.totalPerMemberYr : null);
+  STREAM_KEYS.forEach(k => {
+    const a = MGM.reportActual(rpm.actualStreams ? rpm.actualStreams[k] : null);
+    L.push([st.labels.streams[k], rpm.derived[k],
+      a == null ? CSV_NS : a, a == null ? CSV_NS : rpm.derived[k] - a]);
+  });
+  L.push(['Total', rpm.derived.total,
+    csvActual == null ? CSV_NS : csvActual,
+    csvActual == null ? CSV_NS : rpm.derived.total - csvActual]);
+  if (csvActual == null) L.push(['Reconciliation', MGM.reportPnlWhy()]);
+  L.push(['Dues realization %', rpm.duesRealization == null ? CSV_NS : rpm.duesRealization], []);
+
+  L.push(['Profit and cash flow']);
+  // The note goes BEFORE the rows, not after: in a spreadsheet the reader sees
+  // the Margin column read 100 and has to know why on the way in, not three
+  // rows later.
+  if (C.unset) L.push(['Note', 'No acquisition or service cost is entered, so EBITDA equals revenue and the Margin column reads 100 — correct arithmetic for a cash roll-forward, not a profitability claim.']);
+  L.push(['Year', 'Revenue', 'Cost to serve', 'Acquisition', 'Add-backs', 'EBITDA', 'Margin %', 'Capex', 'Cash']);
+  // Same gate as the cash bridge and the printed table: unsupplied is a word,
+  // not a zero, and only the columns that HAVE an unset state get it.
+  F.forEach(r => L.push([r.year, r.revenue,
+    C.unset ? CSV_NS : r.costToServe,
+    C.unset ? CSV_NS : r.acquisition,
+    r.normalization ? r.normalization : CSV_NS,
+    r.ebitda, r.margin,
+    r.capex ? r.capex : CSV_NS,
+    r.cash]));
+  L.push([]);
+
+  L.push(['Valuation'], ['Lens', 'Basis', 'Multiple', 'Value']);
+  L.push(['Recurring revenue', D.valuation.basis || CSV_NS, st.valuation.revMultiple,
+    D.valuation.rev || CSV_NS]);
+  L.push(['EBITDA', (!C.unset || D.valuation.ebitdaBase) ? D.valuation.ebitdaBase : CSV_NS,
+    st.valuation.ebitdaMultiple,
+    (!C.unset || D.valuation.ebitda) ? D.valuation.ebitda : CSV_NS]);
+  // The headline and its words come from the engine, so the CSV cannot label a
+  // single-method figure a midpoint either.
+  const vhc = MM.valuationHeadline(D.valuation);
+  L.push(['Lenses with a basis', D.valuation.lensCount]);
+  L.push([vhc.label, vhc.hasValue ? vhc.value : CSV_NS, '', vhc.caption]);
+  if (D.valuation.lensCount === 2) L.push(['Indicated range', D.valuation.low, D.valuation.high]);
+  L.push([]);
+
+  L.push(['Sales pipeline by stage']);
+  if (pipeWhy) L.push(['Pipeline status', pipeWhy +
+    '. The lead, location, gallon and deal-value cells below read "' + CSV_NL +
+    '" rather than 0 — a zero there would assert an empty pipeline.']);
+  L.push(['Stage', 'Leads', 'Locations', 'Weight %', 'Gallons', 'Deal value']);
+  MM.CRM_STAGES.forEach(s => {
+    const row = p.byStage[s] || {};
+    L.push([s, pipeCell(row.count || 0), pipeCell(row.locations || 0),
+      st.salesPipeline.stageWeights[s], pipeCell(row.gallons || 0),
+      pipeCell(row.dealValue || 0)]);
+  });
+  L.push(['Open weighted locations', pipeCell(p.weightedLocations)],
+    ['Expected per month', pipeCell(p.expectedPerMonth)],
+    ['Win rate %', pipeWhy ? pipeWhy : (p.winRate == null ? 'no closed deals yet' : p.winRate)],
+    []);
+
+  L.push(['Staffing and capacity']);
+  if (pipeWhy) L.push(['Open-lead columns', pipeWhy +
+    ' — the per-rep open-lead and open-location cells read "' + CSV_NL + '", not 0.']);
+  L.push(['Rep', 'Capacity (new locs/mo)', 'Cost per year', 'Open leads', 'Open locations']);
+  st.staffing.reps.forEach(r => {
+    const o = K.byOwner[r.name] || {};
+    L.push([r.name, r.capacityLeads, r.costPerYear,
+      pipeCell(o.openLeads || 0), pipeCell(o.openLocations || 0)]);
+  });
+  L.push(['Total capacity', K.unset ? CSV_NS : K.totalCapacity],
+    ['Total cost', K.totalCost ? K.totalCost : CSV_NS],
+    ['Modeled adds per month', K.modeledAddsPerMonth],
+    ['Capacity gap', K.gap == null ? CSV_NS : K.gap], []);
+
+  L.push(['Gallon production by group'],
+    ['Group', 'Locations', 'Profile', 'Roadway', 'Engine baseline', 'Baseline used', 'Overridden', 'Gallons/mo']);
+  G.byGroup.forEach(r => L.push([r.label, r.count, r.profile, r.roadway,
+    r.engineBaseline, r.baseline, r.overridden ? 'YES' : '', r.gallons]));
+  L.push(['Existing network', G.existing],
+    ['Pipeline inbound', pipeCell(G.inbound)],
+    // The network total is existing + inbound, so with inbound unknown the
+    // total is unknown too -- not equal to the existing network.
+    ['Total (existing + inbound)', pipeWhy ? CSV_NL : G.total],
+    ['Per location', G.perMember], []);
+
+  L.push(['Monthly signup history'], ['Year'].concat(MONTH_NAMES).concat(['Total']));
+  Object.keys(st.monthlyHistory).sort().forEach(y => {
+    const row = MGM.monthlyRow(st.monthlyHistory[y]);
+    // A blank month is a month with no record, which is not a month with no
+    // signups; the row total excludes it and the cell says so.
+    L.push([y].concat(row.cells.map(v => v == null ? CSV_NS : v))
+      .concat([row.cells.some(v => v != null)
+        ? row.cells.reduce((a, v) => a + (+v || 0), 0) : CSV_NS]));
+  });
+  L.push([]);
+
+  L.push(['Notes and assumptions by tab']);
+  TAB_ORDER.forEach(k => {
+    const t = (st.labels.notes || {})[k];
+    if (t && String(t).trim()) L.push([st.labels.tabs[k] || k, String(t)]);
+  });
+  L.push([]);
+
+  const warn = MGM.reportWarnings(D);
+  L.push(['Caveats on this run']);
+  warn.replace(/<\/?(h3|ul|li|p|b|code)[^>]*>/g, '\n').split('\n')
+    .map(s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+               .replace(/&quot;/g, '"').trim())
+    .filter(s => s && s !== 'Caveats on this run')
+    .forEach(s => L.push([s]));
+
+  MGM.dl('membership-growth-model.csv',
+    L.map(r => r.map(q).join(',')).join('\r\n'), 'text/csv');
+};
+
+// JSON: MGM.state plus the scenario list, so an export reopens identically --
+// labels, prose, scenarios and overrides included.
+//
+// MGM.state, and NEVER a MGM.model() / MGM.runFor() result. A runFor return
+// carries `effectiveMargin` and `marginBasisDetail`, and those hold the
+// auth-gated P&L margin by design: it is applied to a throwaway copy of the
+// state inside runFor precisely so it never reaches anything that persists.
+// mgm_scenarios is readable by ANY signed-in user while mgm_pnl_actuals is
+// admin-only, so serialising a model result here would hand the gated figure
+// to every reader of an exported file. A test enforces the shape.
+//
+// Live CRM and P&L data are likewise not included: they are not ours to
+// redistribute in a file someone emails on.
+MGM.exportJSON = function () {
+  MGM.dl('membership-growth-model.json', JSON.stringify({
+    state: MGM.state,
+    scenarios: MGM.scenarioList(),
+    exportedAt: new Date().toISOString()
+  }, null, 2), 'application/json');
+};
+
+MGM.importJSON = function (file) {
+  // An import replaces every value in this browser's model -- a bigger change
+  // than Reset all, which is already admin-gated. Viewing, printing and
+  // exporting stay open to everyone; writing the model does not. Gating here
+  // also keeps a non-admin out of the state where the model has been replaced
+  // and every input is disabled, leaving no way to put it back.
+  if (!MGM.requireAdmin('Importing a model file')) return;
+  const r = new FileReader();
+  r.onerror = () => alert('Could not read this file.');
+  r.onload = () => {
+    try {
+      const o = JSON.parse(r.result);
+      if (!o || !o.state) throw new Error('No "state" key in this file.');
+      // MM.mergeState, NOT Object.assign -- the same reason as MGM.scenarioLoad
+      // and the localStorage restore. Object.assign is shallow and 17 of the 25
+      // top-level state keys are nested objects, so each would be replaced
+      // wholesale: a file exported before a nested field existed reimports with
+      // that field undefined, and MM._n(undefined) is 0 -- a silent zero, not
+      // an error. Measured at $198,467/yr of revenue lost on two dropped
+      // fields, with nothing on screen saying so. mergeState mutates its first
+      // argument, so it gets a FRESH defaultState every call.
+      const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), o.state);
+      MGM.state = merged.state;
+      if (Array.isArray(o.scenarios)) MGM.scenarioWriteAll(o.scenarios);
+      // Say what the file did not carry, and say it somewhere a redraw cannot
+      // wipe -- which rules out alert() alone. A silent default-fill beats a
+      // silent zero, but it is still a substituted number the reader did not
+      // enter, and an import is exactly when they need to know. Same notice
+      // machinery as a scenario load, named after the file.
+      MGM.scenarioNotice = MGM.scenarioNoticeFor(
+        { name: file.name || 'the imported file' }, merged);
+      MGM.save(); MGM.refresh();
+      const unknown = (merged.unknown || [])
+        .filter(path => SCEN_META_KEYS.indexOf(path) < 0);
+      const parts = ['Model imported from ' + (file.name || 'the file') + '.'];
+      if (merged.added.length) parts.push(merged.added.length +
+        ' field(s) were not in the file and are now at this build\'s defaults, ' +
+        'not at anything the file recorded. They are listed in the notice above the tabs.');
+      if (unknown.length) parts.push(unknown.length +
+        ' field(s) in the file are not used by this build. They were kept but do nothing.');
+      if (!merged.added.length && !unknown.length)
+        parts.push('Every field this build uses was present in the file.');
+      alert(parts.join('\n\n'));
+    } catch (e) {
+      // The state is replaced only on the success path, so a malformed file
+      // leaves the current model exactly as it was.
+      alert('Could not import this file: ' + e.message +
+        '\n\nThe model on screen is unchanged.');
+    }
+  };
+  r.readAsText(file);
+};
+
+/* ── Email: a mailto draft, nothing sent from this page ─────────────────── */
+MGM.summaryText = function () {
+  const D = MGM.model();
+  const { st, M, R, F, valuation: v, cost: C } = D;
+  const first = M.years[0] || null;
+  const final = M.years.length ? M.years[M.years.length - 1] : null;
+  const last = R.length ? R[R.length - 1] : null;
+  const lastF = F.length ? F[F.length - 1] : null;
+  const vh = MM.valuationHeadline(v);
+  const lines = [
+    `${st.report.title} — ${st.report.subtitle}`,
+    `Data as of ${st.DATA_ASOF || 'an unstated date'}. Generated by ${st.report.generatedBy || 'an unnamed author'}.`,
+    ''
+  ];
+  if (first) lines.push(`Active today: ${fmt(first.start)} locations`);
+  if (first && final) lines.push(
+    `${final.year} ending: ${fmt(final.end)} (${final.end - first.start >= 0 ? '+' : ''}${fmt1(final.end - first.start)})`);
+  lines.push(`Steady attrition: ${pct1(st.attrition.steady)}/yr (entered assumption)`);
+  if (last) lines.push(`${last.year} revenue: ${fmM(last.total)}` +
+    (last.members ? ` (${fm$(last.total / last.members)}/member/yr)` : ''));
+  // NOT a bare EBITDA figure. With no costs entered the cash bridge's EBITDA is
+  // revenue minus nothing -- a 100% margin -- and a one-line email is the last
+  // place that could carry the caption explaining it. The screen's tile and the
+  // scenario comparison both refuse to print it unqualified; so does this.
+  lines.push(`${lastF ? lastF.year + ' ' : ''}EBITDA: ` + (!lastF
+    ? 'not computed'
+    : C.unset
+      ? 'not computed — no acquisition or service cost is entered, so the cash bridge shows EBITDA equal to revenue'
+      : `${fmM(lastF.ebitda)} (${pct1(lastF.margin)} margin)`));
+  lines.push(v.lensCount === 2
+    ? `Valuation range: ${fmM(v.low)} – ${fmM(v.high)} (midpoint ${fmM(v.indicated)})`
+    : v.lensCount === 1
+      ? `Indicated value: ${fmM(v.indicated)} — ${vh.caption}. Not a midpoint: only one lens has a basis, so there is no range.`
+      : 'Indicated value: not available — no valuation lens has a basis. That is an absent figure, not a value of zero.');
+  if (D.marginFromPnl) lines.push(
+    'The EBITDA lens rests on a margin loaded from the P&L for this session only. ' +
+    'It is not stored in the model, so the same inputs without administrator ' +
+    'access value on the revenue lens alone.');
+  lines.push('',
+    st.report.disclosure,
+    `Full model: print the Report tab or export CSV. Questions: ${st.report.contact}`);
+  return lines.join('\n');
+};
+
+MGM.openEmail = function () {
+  $('#emTo').value = '';
+  // Not an unconditional "title — asOf": a cleared as-of date left the subject
+  // ending in a dangling em dash, which reads as a truncated subject line.
+  $('#emSubject').value = MGM.state.report.title +
+    (MGM.state.DATA_ASOF ? ' — ' + MGM.state.DATA_ASOF : '');
+  $('#emBody').value = MGM.summaryText();
+  $('#emailOverlay').classList.add('open');
+};
+
+MGM.closeEmail = function () { $('#emailOverlay').classList.remove('open'); };
+
+// mailto only, deliberately. Nothing is sent from this page: the browser hands
+// the text to the user's own mail client, which composes a DRAFT, and no figure
+// leaves the browser until the user presses send there. Moving to the Command
+// Center's notification pathway is an open item in the spec -- no fetch, no
+// third-party email service, no new dependency here.
+MGM.MAILTO_CAP = 1800;
+MGM.sendEmail = function () {
+  const body = $('#emBody').value;
+  // Most clients silently truncate a mailto body past roughly 2,000
+  // characters, and a truncated summary looks complete.
+  if (body.length > MGM.MAILTO_CAP &&
+      !confirm('This body is ' + body.length + ' characters. Most mail clients ' +
+               'silently truncate a mailto draft past about 2,000, and a truncated ' +
+               'summary looks complete.\n\nOpen the draft anyway?\n\n' +
+               'Use Print / PDF or Export CSV for the full model.')) return;
+  location.href = 'mailto:' + encodeURIComponent($('#emTo').value.trim()) +
+    '?subject=' + encodeURIComponent($('#emSubject').value) +
+    '&body=' + encodeURIComponent(body);
+  MGM.closeEmail();
+};
+
+/* ═══════════════ TAB RENDERER: About & Tutorial (Task 20) ═══════════════ */
+
+// Documentation, read by someone opening this tool cold. Two rules govern it.
+//
+//  1. EVERY SENTENCE HERE IS A CLAIM ABOUT THE TOOL. A tutorial that has
+//     drifted from the thing it describes is worse than no tutorial, because a
+//     reader cannot tell which half is stale. So no sentence asserts a coupling
+//     the renderers do not actually have -- including the four inputs named in
+//     the limitations card, which accept a value and move nothing, and are
+//     disclosed rather than quietly described as drivers.
+//  2. Every FIGURE is read live out of MGM_CONFIG or computed by the engine,
+//     never typed into the prose. A hardcoded 375 in a paragraph goes stale the
+//     first time the refresh script runs; `cfg.groups` cannot. Where a figure
+//     is quoted as PROVENANCE ("this came from that export") it is read from
+//     MGM_CONFIG -- the shipped value -- not from MGM.state, because a reader's
+//     own edit does not change where the shipped number came from. The card
+//     says so when the two differ.
+//
+// This repo is PUBLIC. Not one gated P&L figure appears here: the P&L is named
+// as a source and as a reconciliation administrators alone can read, and no
+// value, ratio or multiple of it is stated. A multiple quoted beside a
+// committed revenue total back-solves the gated figure it is a multiple of,
+// which is why the benchmark paragraph below names no multiple at all -- the
+// brief for this task offered two, and both were dropped for that reason.
+
+MGM.renderers.about = function (D) {
+  const { st } = D;
+  const cfg = MGM_CONFIG;                 // shipped values — provenance
+  const b = cfg.billing;
+  const shippedTotal = cfg.groups.reduce((a, g) => a + (+g.count || 0), 0);
+  const liveTotal = D.M.startTotal;
+  const edited = liveTotal !== shippedTotal;
+  const ptpShipped = cfg.groups.filter(g => g.key === 'ptp')
+    .reduce((a, g) => a + (+g.count || 0), 0);
+
+  // Derived live, so this card cannot contradict the Fuel Gallon Production tab.
+  const G = D.gallons;
+  const baselines = (() => {
+    try {
+      const rows = [];
+      BusDevGallonsCalc.getProfiles().forEach(pr =>
+        (BusDevGallonsCalc.getValidRoadways(pr) || []).forEach(rd => {
+          const row = BusDevGallonsCalc.getBaselineRow(pr, rd);
+          if (row && isFinite(Number(row.baseline)))
+            rows.push({ k: pr + ' / ' + rd, v: Number(row.baseline) });
+        }));
+      return rows.sort((x, y) => x.v - y.v);
+    } catch (e) { return []; }
+  })();
+  // The range the ENGINE TABLE spans, and separately the range this tool
+  // actually reaches. They are not the same -- no group here maps to the Large
+  // truck stop profiles -- so quoting the table's top as "our range" would
+  // claim a baseline nothing in this model uses. The plan's verification list
+  // asserts both ends match the engine; only the bottom one is in play.
+  const used = G.byGroup.filter(r => !r.unmapped)
+    .map(r => r.engineBaseline).filter(v => isFinite(v) && v > 0)
+    .sort((x, y) => x - y);
+
+  // The derived attrition the shipped steady rate was seeded from.
+  const da = MM.derivedAttrition(cfg.history);
+  const derivedRows = da.rows.slice(-3);
+  const vh = MM.valuationHeadline(D.valuation);
+
+  // Every walkthrough entry names a tab by its CURRENT label, so renaming a tab
+  // renames it here too rather than leaving the tour pointing at a name that is
+  // no longer on the rail.
+  const T = k => esc(st.labels.tabs[k] || k);
+  const card = (title, body) => `<div class="card"><h3>${title}</h3>${body}</div>`;
+
+  document.getElementById('panel-about').innerHTML = `
+  <h2>${esc(st.labels.tabs.about)}</h2>
+  <p class="sub">What this tool is, where its numbers come from, how to use each
+     tab, and which figures to trust. Every figure on this page is read live from
+     the model or the gallon engine rather than transcribed, so this tab cannot
+     drift away from the tabs it describes.</p>
+
+  ${card('What this is', `
+    <p>A <b>three-year membership growth and valuation model</b> for the Roady's
+      network. It projects active locations forward from a verified base, attaches
+      per-member revenue streams to the projected member count, subtracts whatever
+      costs you enter, and produces a valuation from two independent lenses.</p>
+    <p>It is an <b>internal planning tool, not an audited financial statement</b>
+      and not a valuation opinion. Several of its most important inputs are
+      assumptions, each badged as one on the tab that owns it. Nothing here was
+      prepared or reviewed by an accountant.</p>
+    <p class="note">The horizon is <b>${fmt(st.HORIZON_YEARS)}
+      year${st.HORIZON_YEARS === 1 ? '' : 's'}</b> from
+      ${esc(String(st.CURRENT_YEAR))}, and the source data is current through
+      <b>${esc(st.DATA_ASOF)}</b>.</p>`)}
+
+  ${card('Where the numbers come from', `
+    <p>Six sources. Everything else in the tool is an assumption you can change.</p>
+    <table>
+      <tr><th>Source</th><th>What it supplies</th></tr>
+      <tr><td><code>location-list-2026-10-28.csv</code></td>
+        <td>The active base — <b>${fmt(shippedTotal)}</b> locations across
+          ${fmt(cfg.groups.length)} groups
+          (${cfg.groups.map(g => esc(g.label) + ' ' + fmt(g.count)).join(', ')}).
+          These counts are now reproducible from the raw export by the refresh
+          script below rather than hand-transcribed, which is how an off-by-one
+          between two groups was found — an error that had survived review
+          precisely because the total was right either way.</td></tr>
+      <tr><td><code>company_membership_report_2026-10-28.csv</code></td>
+        <td><b>${fmt(b.companies)}</b> companies and <b>${fmt(b.locations)}</b>
+          billed locations carrying <b>${fm$(b.monthlyDuesTotal)}</b> of dues a
+          month. <b>${fmt(b.zeroBillCompanies)}</b> companies bill nothing, so
+          <b>${fmt(b.payingLocations)}</b> locations actually pay — and that is the
+          denominator behind <b>${fmCents(b.duesPerLocBillable)}</b> per billable
+          location. Dividing by all ${fmt(b.locations)} instead gives
+          ${fmCents(b.monthlyDuesTotal / b.locations)} and overstates dues
+          realization by about four points, which is a mistake this project
+          actually made and corrected.</td></tr>
+      <tr><td><code>Historical member signups.xlsx</code></td>
+        <td>Annual signups and losses
+          (${esc(MGM.yearSpan(cfg.history.map(h => h.year)))}), the monthly series
+          behind them
+          (${esc(MGM.yearSpan(Object.keys(cfg.monthlyHistory).map(Number)
+                 .filter(Number.isFinite).sort((x, y) => x - y)))}),
+          the loss figures the attrition rates are derived from, and the
+          ${fm$(cfg.benchmark.lostMemberValue)} lost-member benchmark.</td></tr>
+      <tr><td>The Jan–Sep 2026 P&amp;L</td>
+        <td>Calibration of the per-member revenue streams, and the reconciliation
+          on ${T('revpermember')}. <b>No figure from it is published in this
+          tool's source.</b> It lives in the <code>mgm_pnl_actuals</code> table,
+          readable by administrators only — see the permissions card below.</td></tr>
+      <tr><td><code>busDevGallonsConfig.js</code></td>
+        <td>The per-profile gallon baselines, read live; this tool never writes
+          them back. ${baselines.length
+            ? `The engine table spans <b>${fmt(baselines[0].v)}</b>
+               (${esc(baselines[0].k)}) to
+               <b>${fmt(baselines[baselines.length - 1].v)}</b>
+               (${esc(baselines[baselines.length - 1].k)}) gal/mo.`
+            : 'The engine could not be read in this browser, so no range is shown.'}
+          ${used.length
+            ? `The baselines this model actually reaches are a narrower band —
+               <b>${fmt(used[0])}</b> to <b>${fmt(used[used.length - 1])}</b>
+               gal/mo — because no group here maps to the largest profiles.`
+            : ''}</td></tr>
+      <tr><td><code>crm_leads</code> (live)</td>
+        <td>The sales pipeline on ${T('pipeline')}, the per-owner open-lead counts
+          on ${T('staffing')}, and the inbound gallons on ${T('gallons')}. This
+          read <b>requires a signed-in session</b>; without one those figures show
+          an em dash, never a zero.</td></tr>
+    </table>
+    <p class="note"><b>Two exclusions run through everything.</b> PTP conversions
+      and Change of Ownership are excluded from <i>every</i> growth count — they
+      are not new members. And the active base excludes the corporate payment
+      records (Fuelman / RCheck rows, which are payment arrangements rather than
+      locations), the demo company, and the test companies. That same exclusion is
+      why onboarding reads <b>${fmt(cfg.statusCounts.onboarding)}</b> rather than
+      the raw export's larger figure, and why the base is ${fmt(shippedTotal)}
+      rather than the 380 an earlier version of this model used. Offboarding is
+      <b>${fmt(cfg.statusCounts.offboarding)}</b>.</p>
+    <p class="note">The <b>${fmt(shippedTotal)}</b> active count and the
+      <b>${fmt(b.locations)}</b> billed locations come from two different exports
+      and are not expected to agree: billing covers onboarding and offboarding
+      sites the active list excludes. The projection runs from the active
+      count.</p>
+    ${edited ? `<p class="note"><span class="ovr">edited</span> The live model's
+      base is <b>${fmt(liveTotal)}</b>, not the shipped ${fmt(shippedTotal)} —
+      someone has changed a group count. The figures in the table above are the
+      shipped ones, because an edit does not change where the shipped number came
+      from.</p>` : ''}`)}
+
+  ${card('How to use it — a walk through the tabs', `
+    <p>In rail order. For each one: what it shows, what you can change, and what
+      that change moves <i>downstream</i>.</p>
+    <table>
+      <tr><th>Tab</th><th>What it does</th></tr>
+
+      <tr><td><b>${T('starting')}</b></td><td>The verified base: locations by
+        group, the billing aggregates, and the model's own date and horizon
+        settings. Change a group count and you move the opening balance of the
+        whole projection <i>and</i> that group's share of network gallons. The PTP
+        row deliberately holds the entire <code>Group=PTP</code> set, so the Truck
+        Stop row excludes PTP truck stops and the two never double-count.</td></tr>
+
+      <tr><td><b>${T('additions')}</b></td><td>How many locations join each month,
+        and the roll-forward that follows. The <b>basis selector here is the only
+        place the sales pipeline becomes a driver</b> — until you switch it,
+        ${T('pipeline')} is reference data and nothing more. The <b>New</b> column
+        is modeled adds only: the opening count on ${T('starting')} already contains
+        this year's signings to date, so they are not counted twice.</td></tr>
+
+      <tr><td><b>${T('losses')}</b></td><td>The <b>Steady annual attrition</b>
+        field is the single rate the projection runs on
+        (${pct1(st.attrition.steady)} as shipped), plus any structural losses you
+        enter per projection year — those are added <i>on top of</i> steady loss,
+        never instead of it. The historical decomposition below is a cross-check,
+        not an input.</td></tr>
+
+      <tr><td><b>${T('pipeline')}</b></td><td>Live <code>crm_leads</code>, counted
+        in <b>locations</b> rather than leads, because one lead can carry many. The
+        stage-weight ladder is editable and is an <i>assumption</i>, not a
+        measurement; the tab shows the derived actual win rate beside it whenever a
+        session is available. It reaches the projection only via
+        ${T('additions')}.</td></tr>
+
+      <tr><td><b>${T('participation')}</b></td><td>Owns the three participation
+        percentages, which ${T('revpermember')} then consumes — one source, two
+        views. Rewards participation drives the <i>program fee</i> only; breakage
+        from expired points is a flat per-member line that deliberately does not
+        scale with it.</td></tr>
+
+      <tr><td><b>${T('gallons')}</b></td><td>Network gallon production from the Bus
+        Dev engine's baselines — <b>${G.mapped === 0
+          ? 'not computed, because no group is currently mapped to a profile'
+          : fmt(G.existing) + ' gal/mo today, ' + fmt(G.perMember) + ' per location'}</b>.
+        The group-to-profile mapping is an assumption and every row is editable.
+        This tab does <b>not</b> feed ${T('revpermember')} on its own: the button
+        <i>Use N gal as the model average</i> is what writes
+        <code>revenue.avgGallons</code>, and until someone presses it the revenue
+        model keeps whatever is stored there — <b>${fmt(st.revenue.avgGallons)}
+        gal/mo</b> at the moment, against this tab's
+        <b>${fmt(G.perMember)}</b>${st.revenue.avgGallons === Math.round(G.perMember)
+          ? ' (the two are in step)' : ' (the two differ, which is normal until the button is pressed)'}.
+        Region variance is shown for reference and is <b>not</b> applied to these
+        aggregates.</td></tr>
+
+      <tr><td><b>${T('revpermember')}</b></td><td>Seven net per-member streams,
+        totalling <b>${fm$(D.rpm.derived.total)}</b> per member per year as
+        shipped; the reconciliation against the P&amp;L (administrators only); and
+        the ${fm$(st.benchmark.lostMemberValue)} benchmark as a cross-check. These
+        are <i>net</i> streams: the gross fuel settlement pass-through, which is
+        the large majority of the P&amp;L's Total Income, is excluded because it is
+        not revenue to Roady's.</td></tr>
+
+      <tr><td><b>${T('cost')}</b></td><td>Acquisition and service economics, all
+        shipped as an explicit <b>zero</b> — nothing here is guessed. Entering real
+        costs is what switches the valuation's EBITDA lens from a margin assumption
+        to a computed figure, so this tab changes <i>which</i> EBITDA the valuation
+        uses, not merely its size. LTV reuses the same attrition rate as ${T('losses')}
+        rather than a second churn assumption.</td></tr>
+
+      <tr><td><b>${T('staffing')}</b></td><td>Whether the modeled add rate is
+        achievable at the modeled headcount. Per-rep capacity is unset by default,
+        so no gap is computed — a gap against zero capacity would mean nothing. A
+        rep's name must match the CRM owner name <i>exactly</i> to pair up with
+        their open leads; names that do not match are listed separately rather
+        than silently dropped.</td></tr>
+
+      <tr><td><b>${T('cashflow')}</b></td><td>The cash bridge and the valuation.
+        Read the two EBITDA figures here as different things — see judgement call
+        4 below, which is the thing most often misread in this tool. Add-backs are
+        entered explicitly so a reader can see an adjustment rather than find it
+        baked into a margin.</td></tr>
+
+      <tr><td><b>${T('historical')}</b></td><td>The source series: annual signups
+        and losses, the derived attrition cross-check, the monthly grid, and a live
+        reconciliation of the two. Editing history moves this tab's derived table
+        and the decomposition on ${T('losses')} <b>immediately — and does not move the
+        rate the model runs on.</b> See the limitations below; this one catches
+        people.</td></tr>
+
+      <tr><td><b>${T('report')}</b></td><td>The letterhead packet: editable
+        company, title, author, contact and disclosure, three free-text narrative
+        blocks, and every figure assembled with its caveats attached.
+        <b>Print / PDF</b> prints the report alone, not the tab you were on.
+        <b>CSV</b> and <b>JSON</b> export everything, and the JSON reopens the
+        model identically. <b>Email</b> opens a draft in your own mail client —
+        nothing is sent from the page. Print, CSV and JSON are open to everyone;
+        import replaces the whole model and so is admin-only.</td></tr>
+
+      <tr><td><b>${T('about')}</b></td><td>This tab. Needs no sign-in and no live
+        data.</td></tr>
+    </table>
+    <p class="note">Every tab except ${T('report')} carries a <b>Notes &amp;
+      assumptions</b> box. Those notes are stored with the model and are
+      <b>printed in the report</b>, under <i>Notes &amp; assumptions recorded by
+      tab</i>, so they travel with the packet instead of staying on screen.</p>`)}
+
+  ${card('Who can edit, and who can see the P&amp;L', `
+    <p>The read side is not uniform, and assuming it is will mislead you.</p>
+    <table>
+      <tr><th>Action</th><th>Who</th></tr>
+      <tr><td>Viewing every tab, chart and table</td>
+        <td><b>Anyone with the link</b>, signed in or not.</td></tr>
+      <tr><td>Printing, CSV export, JSON export</td>
+        <td><b>Anyone with the link.</b></td></tr>
+      <tr><td>Editing any number or any label</td>
+        <td><b>Administrators only</b>, enforced <i>in the database</i> — the write
+          policies call <code>mgm_is_admin()</code>. A non-admin who flips a flag
+          in the browser console still cannot write a shared row.</td></tr>
+      <tr><td>Reading saved scenarios</td><td>Any <b>signed-in</b> user.</td></tr>
+      <tr><td>Saving or syncing a scenario</td><td><b>Administrators only.</b></td></tr>
+      <tr><td>Importing a model file</td>
+        <td><b>Administrators only</b> — it replaces every value in this browser's
+          copy of the model.</td></tr>
+      <tr><td>The P&amp;L reconciliation</td>
+        <td><b>Administrators only — on read as well as write.</b> The reason, in
+          one sentence: this repository is public, so the anonymous database key is
+          published along with it, which means "signed in" is not by itself a
+          trusted set — and that table holds the income statement.</td></tr>
+    </table>
+    <p class="note">A signed-in non-admin sees the <b>whole model and every
+      driver</b>. What they do not see is the comparison against the income
+      statement, and the reconciliation tile says exactly that in words — it does
+      not show a zero, and it does not tell them to sign in, which they already
+      have. A printed report says the same thing in the same place.</p>
+    <p class="note">The header bar names your own state at all times: read-only,
+      admin, "your access could not be confirmed" (the check failed, and it fails
+      closed), or "checking your access…" before the server has answered. Editing
+      is additionally behind the <b>✎ Edit</b> button, which reveals the row tools
+      and the per-section resets. Any value differing from the shipped default
+      carries an <span class="edited">edited</span> badge, so sourced data and
+      hand-typed data stay distinguishable.</p>
+    <p class="note"><b>One consequence worth knowing.</b> When an administrator's
+      session has loaded the real margin, it drives that session's EBITDA lens but
+      is deliberately <i>never stored</i> in the model — so it reaches no saved
+      scenario and no export. An administrator and a non-admin therefore see
+      genuinely <b>different valuation headlines for the same saved scenario</b>.
+      That is not a bug and not a disagreement: each is correct for the inputs it
+      had, and both are captioned.</p>`)}
+
+  ${card('The four judgement calls that materially move the output', `
+    <p><b>1. Attrition.</b> The derived rates for
+      ${derivedRows.map(r => esc(String(r.year)) + ' (' + pct1(r.rate) + ')').join(', ')}
+      are not all one phenomenon. The workbook records the recent spikes as
+      locations <i>sold</i> to T/A, Pilot and similar — consolidation, not members
+      choosing to leave. The default is the blended
+      ${pct1(cfg.attrition.steady)}; <i>Use split basis</i> on ${T('losses')}
+      switches to a ${pct1(cfg.attrition.steadyAlt)} recurring rate and shows the
+      structural residual separately. Which you choose changes the ending member
+      count, and so every revenue and valuation figure downstream.</p>
+
+    <p><b>2. Fuel.</b> Fuel settlement nets <i>negative</i> per member in the
+      P&amp;L, which is why <code>fuelProgramMargin</code> ships at
+      <b>$0.00/gal</b>. Any positive value you enter there is a forward assumption
+      you own, not something the P&amp;L supports. Separately, and just as
+      important: the gallons on ${T('gallons')} are <b>total site volume</b>, while
+      the P&amp;L's settlement covers card-network transactions only — a far
+      smaller per-member volume, stated in the caveat on that tab.
+      <b>The two must never be multiplied together.</b> Doing so applies a
+      settlement-derived margin to volume the settlement never touched.</p>
+
+    <p><b>3. The ${fm$(cfg.benchmark.lostMemberValue)} lost-member benchmark.</b>
+      It comes from the signups workbook and <b>reconciles to no measure in the
+      P&amp;L</b>. It is shown as a cross-check against the modeled per-member
+      revenue and is never a driver — nothing downstream reads it.
+      ${esc(cfg.benchmark.caveat)}</p>
+
+    <p><b>4. EBITDA — and there are two of them.</b> This is the single most
+      misread thing in the tool, so read it twice.</p>
+    <ul>
+      <li>The <b>cash bridge</b> on ${T('cashflow')} computes EBITDA as revenue
+        less whatever costs you entered. With costs unset that is revenue less
+        nothing — a 100% margin. <b>That is correct arithmetic for a cash
+        roll-forward and meaningless as a valuation basis</b>, and the bridge says
+        so itself.</li>
+      <li>The <b>valuation</b> therefore <i>declines</i> that figure while costs
+        are unset, and falls back to the margin assumption instead. It used to
+        accept it, which produced a headline roughly three times too high. A bridge
+        describes arithmetic; a lens asserts something about the business.</li>
+      <li>When only <b>one</b> lens has a basis, the headline shows <b>that lens,
+        labelled as a single-method figure</b>, rather than averaging it with an
+        absent one. A lens at zero is an absent method, not a valuation of zero, so
+        averaging would report half of the only real answer. On the shipped
+        defaults exactly ${fmt(D.valuation.lensCount)} lens has a basis and the
+        headline reads <b>${vh.hasValue ? fmM(vh.value) : '—'}</b> —
+        ${esc(vh.caption)}.</li>
+      <li>The real margin is <b>auth-gated and absent from this repository
+        entirely</b>. And the margin that does load is a <b>fully-loaded
+        whole-entity</b> figure — after all corporate overhead, with no segment or
+        departmental split available to allocate from — so the membership
+        program's own contribution margin would be materially higher and is
+        <b>not derivable</b> from that source. The tool states the caveat rather
+        than inventing an allocation. <b>Anyone quoting a valuation out of this
+        tool must quote that basis with it.</b> Enter real operating costs before
+        quoting anything at all.</li>
+    </ul>`)}
+
+  ${card('Refreshing the data', `
+    <p><code>tools/refresh-membership-config.py</code> regenerates the data block
+      in <code>membershipModelConfig.js</code> from fresh Interstate CSV exports.
+      It filters the corporate payment records, the demo company and the test
+      companies; it refuses to write when the active total has moved more than
+      5% without <code>--force</code>; and it refuses outright — with no
+      <code>--force</code> path at all — to write a member business name into this
+      public repository.</p>
+    <p>The <b>assumption</b> blocks are never touched by the script: attrition,
+      participation, costs, multiples, every label and all the report prose
+      survive a refresh, so new data cannot overwrite a judgement call. The signup
+      history comes from a spreadsheet rather than a CSV and is carried through
+      verbatim.</p>
+    <p class="note">The gallon baselines are not copied at all. They are read live
+      from <code>busDevGallonsConfig.js</code> every time this page loads, so the
+      Bus Dev engine stays the single source for them.</p>`)}
+
+  ${card('Known limitations', `
+    <p>Read these before quoting a figure out of this tool.</p>
+    <ul>
+      <li><b>The group-to-gallon-profile mapping is an assumption, not a
+        measurement.</b> The Bus Dev engine assigns a profile per <i>location</i>
+        from its diesel-lane count and roadway class; this tool has neither per
+        group, so each group is mapped to one profile by hand. Reading
+        <code>network-locations.json</code> for real per-location profiles is a
+        future refinement.</li>
+
+      <li><b>Pipeline stage weights are an unsourced ladder.</b> No source file
+        contains them. They look authoritative and are not; the derived actual win
+        rate shown beside them is the real evidence.</li>
+
+      <li><b>PTP is held flat at ${fmt(ptpShipped)}</b> against a workbook figure
+        of 190 as of Jan 1 2024. That gap is unexplained and is an open question
+        for Interstate. It is held flat (<code>adds.ptpNet</code> at zero) so it
+        cannot distort a projection in either direction while it is
+        unresolved.</li>
+
+      <li><b>Monthly signup history is lumpy from batch deals and must not be read
+        as seasonality.</b> The large months in the shipped series are individual
+        multi-location group signings, not a peak that repeats.</li>
+
+      <li><b>The page layer has no automated tests.</b>
+        <code>membershipModel.test.js</code> covers the calculation engine
+        thoroughly. The renderers, the input bindings, <code>MGM.model()</code>,
+        the cloud sync and the report are held by review and hand-checking only.
+        Several defects found during the build lived in exactly that layer, and
+        the engine suite passed throughout. If you are deciding how much to trust
+        a figure, this is which half of the tool it came from.</li>
+
+      <li><b><code>attrition.steady</code> does not track the history you
+        edit.</b> It is an independent, hand-entered input, seeded once from the
+        three-year derived average, which is ${(Math.round(da.avg * 100) / 100).toFixed(2)}%
+        against the ${pct1(cfg.attrition.steady)} the model carries). Editing a <i>Total count</i> or <i>Lost</i>
+        figure on ${T('historical')} moves the displayed derived rate and the
+        decomposition on ${T('losses')} <b>but not the rate the model runs on</b>,
+        and nothing on screen flags the divergence. Check both.</li>
+
+      ${/* "Verified in a browser" was the wording this card inherited. It is a
+            claim about the author's own testing, and this renderer's author did
+            not run it -- so it is stated as the fact it is, with the library
+            version that was measured, and the tooltip half is attributed to the
+            charting library's default behaviour rather than to a test. Same
+            rule as everywhere else on this tab: a sentence may not claim more
+            than its evidence. */''}
+      <li><b>No chart in this tool can distinguish "no data" from "zero".</b>
+        On Chart.js 4.4.1 a <code>null</code> and a <code>0</code> draw as
+        identical zero-height bars at the baseline, and neither is skipped. The
+        data model does keep them apart, and the library's default tooltip omits
+        a null while printing <code>0</code> for a real zero — but the bars
+        themselves cannot.
+        <b>Read the tables, not the charts, when you need to know whether a figure
+        is absent or genuinely zero.</b> The tables carry an em dash for absence;
+        the charts have no way to.</li>
+
+      <li><b>Four inputs accept a value and change nothing.</b> Named here rather
+        than left to be discovered: the three per-program <i>Ramp (months)</i>
+        fields on ${T('participation')}, the <i>Average cycle (days)</i> field on
+        ${T('pipeline')} — which nothing derives either, despite its label — and
+        <i>Working capital days</i> on ${T('cashflow')}. An edit to any of them is
+        saved, exported and synced, and moves no figure in the model.</li>
+    </ul>
+    <p class="note">Two conventions run through every tab and are the fastest way
+      to read this tool correctly. An <b>em dash</b> always means <i>no figure was
+      supplied</i>, while a <b>$0</b> means <i>a figure of zero was supplied
+      deliberately</i>. And an <b>assumption</b> or <b>override</b> badge marks a
+      value that is not sourced data. Both conventions travel into the printed
+      report and the CSV.</p>`)}
+
+  ${card('Questions', `
+    <p>Reach the maintainer at
+      <a href="mailto:${esc(st.report.contact)}">${esc(st.report.contact)}</a>.</p>
+    <p class="note">Found a figure on a tab that disagrees with this page? That is
+      a defect in one of the two — please say which tab and which figure.</p>`)}
+
+  ${MGM.tabNotes('about')}`;
 };
 
 /* ═══════════════ BINDING (Task 8) ═══════════════ */

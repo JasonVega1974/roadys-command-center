@@ -355,8 +355,15 @@
     }, 0);
 
     var bench = n((state.benchmark || {}).lostMemberValue);
-    var actual = actuals && isFinite(Number(actuals.totalPerMemberYr))
-      ? Number(actuals.totalPerMemberYr) : null;
+    // null and '' must NOT coerce. Number(null) is 0 and isFinite(0) is true,
+    // so a loaded P&L period that carries no per-member total produced
+    // `actual: 0` and a full-size variance against it -- the Revenue per
+    // Member tab printed "P&L actual $0" and a $5,941 shortfall against a
+    // figure nobody had supplied. A loaded period legitimately omits this
+    // line, so this is a reachable state, not a malformed one.
+    var raw = actuals ? actuals.totalPerMemberYr : null;
+    var actual = (raw !== null && raw !== undefined && raw !== ''
+                  && isFinite(Number(raw))) ? Number(raw) : null;
     var billable = n((state.billing || {}).duesPerLocBillable);
 
     return {

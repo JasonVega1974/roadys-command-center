@@ -552,8 +552,24 @@ test('SR-11: no gated value from the local actuals appears in any committed file
     ' local literals excluded as already-public, a calendar year, or too few digits');
 });
 
-test('labels cover all twelve tabs', () => {
-  assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 12);
+test('labels cover all thirteen tabs', () => {
+  // Twelve until Task 20 added `about`, the About & Tutorial tab. The count is
+  // asserted rather than derived so that adding a tab is a deliberate act: a
+  // tab present in TAB_ORDER but missing from labels.tabs renders a button
+  // labelled "undefined", and a label with no tab is dead config nobody sees.
+  assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 13,
+    'thirteen tabs: the original twelve plus `about` (Task 20). If this fails ' +
+    'after a tab was added or removed, update BOTH labels.tabs and the page ' +
+    'TAB_ORDER array, then this number.');
+  // Every tab also needs a notes slot: MGM.tabNotes binds a textarea to
+  // labels.notes.<tab>, and a missing key makes mergeState report the first
+  // typed note as a field "this build no longer uses" on every later scenario
+  // load. `report` is the one tab with no notes card of its own -- the report
+  // PRINTS the others' notes rather than carrying one.
+  const tabs = Object.keys(MGM_CONFIG.labels.tabs).filter(k => k !== 'report');
+  const missing = tabs.filter(k => !(k in MGM_CONFIG.labels.notes));
+  assert.deepEqual(missing, [],
+    'these tabs have a label but no labels.notes slot: ' + missing.join(', '));
 });
 
 const { MembershipModel } = require('./membershipModel.js');
@@ -823,6 +839,32 @@ test('revPerMember derives $5,941 from the committed drivers', () => {
   assert.equal(rpm.actual, null, 'unsigned: no actual');
   assert.equal(rpm.benchmark, 20000);
   near(rpm.varianceVsBenchmark, 5941 - 20000, 'benchmark variance');
+});
+
+test('a loaded P&L with no per-member total gives no actual, not a zero', () => {
+  // Number(null) is 0 and isFinite(0) is true, so the previous guard turned a
+  // loaded period that omits this line into `actual: 0` -- and the Revenue per
+  // Member tab then printed "P&L actual $0" with a full-size variance against
+  // a figure nobody supplied. A period legitimately omits the line, so this is
+  // a reachable state. The report layer guarded it on paper; this fixes the
+  // screen and the engine, which is where it belonged.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(st);
+
+  [null, undefined, ''].forEach(v => {
+    const r = MembershipModel.revPerMember(st, M, { totalPerMemberYr: v });
+    assert.equal(r.actual, null, JSON.stringify(v) + ' must not coerce to 0');
+    assert.equal(r.varianceVsActual, null,
+      'no actual means no variance, never a variance against zero');
+  });
+
+  // Controls: a real number still works, and a real ZERO is still honoured --
+  // the guard must reject absence, not reject the number zero.
+  const real = MembershipModel.revPerMember(st, M, { totalPerMemberYr: 7000 });
+  assert.equal(real.actual, 7000);
+  const zero = MembershipModel.revPerMember(st, M, { totalPerMemberYr: 0 });
+  assert.equal(zero.actual, 0, 'an explicitly reported 0 is a figure, not an absence');
+  assert.ok(zero.varianceVsActual > 0, 'and it yields a real variance');
 });
 
 test('revPerMember reports the variance against a loaded actual', () => {

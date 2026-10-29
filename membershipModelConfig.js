@@ -224,7 +224,10 @@
       participation: 'Program Participation', gallons: 'Fuel Gallon Production',
       revpermember: 'Revenue per Member', cost: 'Cost to Acquire & Serve',
       staffing: 'Staffing & Capacity', cashflow: 'Profit & Cash Flow',
-      historical: 'Historical Data', report: 'Report'
+      historical: 'Historical Data', report: 'Report',
+      // Thirteenth tab (Task 20): the tool's own documentation. Last in
+      // TAB_ORDER so the walkthrough it contains reads in tab order.
+      about: 'About & Tutorial'
     },
     streams: {
       dues: 'Membership dues', duesAncillary: 'Renewal, set-up & ad fees',
@@ -241,7 +244,7 @@
     notes: {
       starting: '', additions: '', losses: '', pipeline: '', participation: '',
       gallons: '', revpermember: '', cost: '', staffing: '', cashflow: '',
-      historical: ''
+      historical: '', about: ''
     }
   };
 

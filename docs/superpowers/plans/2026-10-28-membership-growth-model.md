@@ -196,7 +196,7 @@ test('no P&L actual leaks into the committed config', () => {
   banned.forEach(k => assert.ok(!json.includes(k), `${k} must not appear in the public config`));
 });
 
-test('labels cover all twelve tabs', () => {
+test('labels cover all thirteen tabs', () => {   // 13 after Task 20 added About
   assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 12);
 });
 ```
