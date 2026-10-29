@@ -245,6 +245,48 @@ MGM.leads = [];
 MGM.profiles = [];
 MGM.pnlActuals = null;
 
+// crm_leads requires a session (sql/2026-10-05-crm-leads-require-auth.sql),
+// so an unsigned page gets an empty pipeline and says so. Never substitute
+// invented leads for missing ones.
+MGM.pipelineState = 'unsigned';   // 'unsigned' | 'loading' | 'ok' | 'error'
+MGM.pipelineError = '';
+
+MGM.loadPipeline = async function () {
+  const sb = MGM.sb && MGM.sb();
+  if (!sb || !(window.RoadysBD && RoadysBD.auth.email())) {
+    MGM.pipelineState = 'unsigned';
+    MGM.leads = []; MGM.profiles = [];
+    MGM.refresh();          // every other branch refreshes; this one must too,
+    return;                 // or a sign-out leaves the last signed-in data on screen
+  }
+  // Clear BEFORE announcing 'loading'. Without this, a reload after a previous
+  // success leaves the old leads in place, so the gated tiles blank to '—'
+  // while the table and chart still show stale real figures — two opposite
+  // lies on one screen.
+  MGM.leads = []; MGM.profiles = [];
+  MGM.pipelineState = 'loading';
+  MGM.refresh();
+  try {
+    const [L, P] = await Promise.all([
+      sb.from('crm_leads').select(
+        'id,company,stage,owner,source,locations,est_gallons,deal_value,follow_up,updated_at'
+      ).is('deleted_at', null),
+      sb.from('bd_value_profiles').select('id,lead_id,final_gallons,status')
+        .is('deleted_at', null).eq('status', 'final')
+    ]);
+    if (L.error) throw L.error;
+    if (P.error) throw P.error;
+    MGM.leads = L.data || [];
+    MGM.profiles = P.data || [];
+    MGM.pipelineState = 'ok';
+  } catch (e) {
+    MGM.pipelineState = 'error';
+    MGM.pipelineError = e.message || String(e);
+    MGM.leads = []; MGM.profiles = [];
+  }
+  MGM.refresh();
+};
+
 // The injected baseline lookup that keeps the engine pure.
 MGM.baselineFor = function (profile, roadway) {
   try { return BusDevGallonsCalc.getBaselineRow(profile, roadway) || null; }
@@ -605,6 +647,169 @@ MGM.renderers.losses = function (D) {
   ${MGM.tabNotes('losses')}`;
 };
 
+/* ═══════════════ TAB RENDERER: Sales Pipeline (Task 10) ═══════════════ */
+MGM.renderers.pipeline = function (D) {
+  const { st, pipeline: p } = D;
+  const sp = st.salesPipeline;
+  // Single source of truth for "is there real pipeline data on screen", plus
+  // one state-specific explanation used by both the tiles and the chart
+  // caption. "sign in" is wrong advice for a signed-in user mid-load or in
+  // error, so the wording is keyed to the actual state.
+  const loadedP = MGM.pipelineState === 'ok';
+  const whyNot = { unsigned: 'not loaded — sign in',
+                   loading:  'loading…',
+                   error:    'could not load' }[MGM.pipelineState] || 'not loaded';
+  const banner = {
+    unsigned: `<p class="note"><span class="ovr">Not signed in</span>
+      The pipeline lives in <code>crm_leads</code>, which requires a session.
+      <button class="btn" onclick="MGM.signIn && MGM.signIn()">Sign in to load</button></p>`,
+    loading: '<p class="note">Loading the pipeline…</p>',
+    error: `<p class="note neg"><span class="ovr">Could not load</span>
+      ${esc(MGM.pipelineError)}</p>`,
+    ok: `<p class="note">${MGM.leads.length} leads loaded from
+      <code>crm_leads</code>; ${MGM.profiles.length} final value profiles.</p>`
+  }[MGM.pipelineState];
+
+  document.getElementById('panel-pipeline').innerHTML = `
+  <h2>${esc(st.labels.tabs.pipeline)}</h2>
+  <p class="sub">Live from the Business Development CRM. The model's unit is
+     <b>locations</b>, not leads — one lead can carry many.</p>
+  ${(() => {
+    // When the pipeline has not loaded, these tiles must NOT read 0 — a zero is
+    // a business fact ("no open pipeline") and the truth here is "not loaded".
+    // Same convention the win rate already uses, and the same one costModel and
+    // capacityModel use for unset inputs: show an em dash, never a false zero.
+    // A reader screenshotting the tiles, or a future Report pull, would
+    // otherwise carry the wrong claim away from the banner that explains it.
+    const loaded = loadedP;
+    const v = (val, fmtFn) => loaded ? fmtFn(val) : '—';
+    const d = (desc) => loaded ? desc : whyNot;
+    return `<div class="signrow">
+    ${sign('OPEN LOCATIONS', v(p.openLocations, fmt), d(`${p.openLeads} open leads`))}
+    ${sign('WEIGHTED', v(p.weightedLocations, fmt1), d('by stage ladder'), 'dark')}
+    ${sign('EXPECTED / MONTH', v(p.expectedPerMonth, fmt1),
+           d(`over ${sp.horizonMonths} months`), 'red')}
+    ${sign('WIN RATE', (!loaded || p.winRate == null) ? '—' : pct1(p.winRate),
+           !loaded ? whyNot
+             : (p.winRate == null ? 'no closed deals yet'
+                : `${p.wonCount} won / ${p.lostCount} lost`), 'dark')}
+  </div>`; })()}
+  ${banner}
+
+  <div class="card"><h3>Funnel by stage</h3>
+    <table>
+      <tr><th>Stage</th><th class="num">Leads</th><th class="num">Locations</th>
+          <th class="num">Weight</th><th class="num">Weighted locs</th>
+          <th class="num">Gallons</th><th class="num">Deal value</th></tr>
+      ${MM.CRM_STAGES.map(s => {
+        const row = p.byStage[s] || { count: 0, locations: 0, gallons: 0, dealValue: 0 };
+        const closed = MM.isClosedStage(s);
+        const w = sp.stageWeights[s];
+        // Same gate as the tiles: a bare 0 here asserts "no leads at this
+        // stage", which is a business fact, not "we could not load". The stage
+        // weight input stays live either way — editing the ladder is useful
+        // before any data exists.
+        const g = n => loadedP ? n : '—';
+        return `<tr${closed ? ' class="note"' : ''}>
+          <td>${esc(s)}${closed ? ' <span class="note">(closed)</span>' : ''}</td>
+          <td class="num">${g(fmt(row.count))}</td>
+          <td class="num">${g(fmt(row.locations))}</td>
+          <td class="num"><input class="cell" type="number" min="0" max="100"
+              data-k="salesPipeline.stageWeights.${s}" value="${w}"></td>
+          <td class="num">${closed ? '—' : g(fmt1(row.locations * w / 100))}</td>
+          <td class="num">${g(fmt(row.gallons))}</td>
+          <td class="num">${g(fm$(row.dealValue))}</td></tr>`;
+      }).join('')}
+      <tr class="total"><td>Open total</td><td class="num">${loadedP ? fmt(p.openLeads) : '—'}</td>
+        <td class="num">${loadedP ? fmt(p.openLocations) : '—'}</td><td class="num">—</td>
+        <td class="num"><b>${loadedP ? fmt1(p.weightedLocations) : '—'}</b></td>
+        <td class="num">${loadedP ? fmt(p.gallons) : '—'}</td>
+        <td class="num">${loadedP ? fm$(p.dealValue) : '—'}</td></tr>
+    </table>
+    <p class="note"><span class="assume">assumption</span> ${esc(sp.assumptionNote)}
+      ${p.winRate != null
+        ? ` Derived actual win rate from <code>crm_leads</code>: <b>${pct1(p.winRate)}</b>.`
+        : ''}</p>
+    <p class="note">Win rate is Won / (Won + Lost); <code>Not Qualified</code> is
+      excluded because it never became a real opportunity — matching the CRM's
+      own convention.</p>
+    <div class="mgm-editonly"><button class="btn"
+      onclick="MGM.resetSection('salesPipeline.stageWeights')">Reset stage weights</button></div>
+  </div>
+
+  <div class="card"><h3>Horizon</h3>
+    <table>
+      <tr><td>Spread weighted locations over (months)</td><td class="num">
+        <input class="cell" type="number" min="1" data-k="salesPipeline.horizonMonths"
+          value="${sp.horizonMonths}"></td></tr>
+      <tr><td>Average cycle (days, 0 = unset)</td><td class="num">
+        <input class="cell" type="number" min="0" data-k="salesPipeline.avgCycleDays"
+          value="${sp.avgCycleDays}"></td></tr>
+    </table>
+    <p class="note">The New Additions tab decides whether this drives the model.
+      Currently: <b>${sp.basis === 'pipeline' ? 'driving the projection' : 'not driving the projection'}</b>.
+      ${sp.basis === 'pipeline' && !loadedP
+        ? `<span class="ovr">driving with no data</span> The basis is set to the
+           pipeline but none is loaded (${esc(whyNot)}), so the projection is
+           adding zero members per month. Switch back to the flat rate${
+             MGM.pipelineState === 'unsigned' ? ', or sign in' : ''}.`
+        : ''}</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Load by owner</h3>
+      <table><tr><th>Owner</th><th class="num">Open leads</th><th class="num">Open locations</th></tr>
+      ${Object.keys(p.byOwner).length
+        ? Object.entries(p.byOwner).map(([k, v]) =>
+            `<tr><td>${esc(k)}</td><td class="num">${fmt(v.openLeads)}</td>
+             <td class="num">${fmt(v.openLocations)}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="note">No leads loaded.</td></tr>'}
+      </table>
+      <p class="note">Feeds the Staffing &amp; Capacity tab.</p>
+    </div>
+    <div class="card"><h3>By source</h3>
+      <table><tr><th>Source</th><th class="num">Leads</th><th class="num">Locations</th></tr>
+      ${Object.keys(p.bySource).length
+        ? Object.entries(p.bySource).map(([k, v]) =>
+            `<tr><td>${esc(k)}</td><td class="num">${fmt(v.leads)}</td>
+             <td class="num">${fmt(v.locations)}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="note">No leads loaded.</td></tr>'}
+      </table>
+      <p class="note">Compare against the model's own source mix on New Additions.</p>
+    </div>
+  </div>
+
+  <div class="card flush"><div style="padding:18px 20px 0">${MGM.chartTitle('funnel')}</div>
+    ${loadedP
+      ? '<div style="height:260px;padding:10px 20px 20px"><canvas id="chFunnel"></canvas></div>'
+      : `<p class="note" style="padding:0 20px 20px">No pipeline data to chart —
+         ${esc(whyNot)}. An all-zero chart is the single most screenshot-able
+         artifact on this tab, so none is drawn rather than one that reads as
+         "the pipeline is empty".</p>`}</div>
+
+  ${MGM.tabNotes('pipeline')}`;
+
+  if (loadedP) MGM.drawFunnel(p, sp);
+};
+
+MGM.drawFunnel = function (p, sp) {
+  const open = MM.CRM_STAGES.filter(s => !MM.isClosedStage(s));
+  mkChart('#chFunnel', {
+    type: 'bar',
+    data: {
+      labels: open,
+      datasets: [
+        { label: 'Open locations', data: open.map(s => (p.byStage[s] || {}).locations || 0),
+          backgroundColor: css('--chip') },
+        { label: 'Weighted', data: open.map(s =>
+            ((p.byStage[s] || {}).locations || 0) * (sp.stageWeights[s] || 0) / 100),
+          backgroundColor: css('--red') }
+      ]
+    },
+    options: baseOpts()
+  });
+};
+
 // The group `key` is NOT cosmetic: Task 11 interpolates it into state paths
 // (`gallons.groupProfile.<key>`, `gallons.groupBaselineOverride.<key>`). The
 // first draft of this plan created groups with `key: ''` and gave no way to
@@ -881,6 +1086,10 @@ document.getElementById('themeBtn').onclick = () => {
 document.addEventListener('DOMContentLoaded', () => {
   MGM.renderTabs();
   MGM.switchTab('starting');
+  // Unsigned today (MGM.sb/RoadysBD land in Task 16); the guard inside
+  // loadPipeline makes this a no-op until then, leaving pipelineState
+  // at its 'unsigned' default.
+  MGM.loadPipeline();
 });
 </script>
 </body>
