@@ -217,6 +217,21 @@ test('monthly rows sum to the annual rows for every year', () => {
   }
 });
 
+test('each month row carries its own start, and start + adds - lost === end', () => {
+  // The monthly table consumes `start` directly instead of inverting this
+  // loop's update expression, so the engine must supply it and the identity
+  // must hold for every month in every year.
+  const M = MembershipModel.runModel(MembershipModel.LEGACY_STATE);
+  assert.ok(M.months.length > 0);
+  M.months.forEach(m => {
+    assert.equal(typeof m.start, 'number', `${m.year}-${m.month} start is a number`);
+    near(m.start + m.adds - m.lost, m.end, `${m.year}-${m.month} roll-forward identity`);
+  });
+  // And the first modeled month must start from the opening Roady's-side count.
+  const first = M.months[0];
+  near(first.start, M.startTotal - M.ptp, 'first month starts at the opening count');
+});
+
 test('a bad numeric field degrades to 0 rather than poisoning the model', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   st.groups[0].count = '';          // user cleared the input

@@ -322,6 +322,331 @@ TAB_ORDER.forEach(k => {
   });
 });
 
+/* ═══════════════ TAB RENDERERS: Starting / Additions / Losses (Task 9) ═══════════════ */
+const fmt  = n => Math.round(n).toLocaleString('en-US');
+const fmt1 = n => (Math.round(n * 10) / 10).toLocaleString('en-US');
+const fm$  = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+const fmM  = n => (n < 0 ? '-$' : '$') + (Math.abs(n) / 1e6).toFixed(2) + 'M';
+const pct1 = n => (n == null ? '—' : (Math.round(n * 10) / 10).toFixed(1) + '%');
+const sign = (k, v, d, cls = '') =>
+  `<div class="sign ${cls}"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="d">${esc(d)}</div></div>`;
+
+MGM.renderers.starting = function (D) {
+  const { st, M } = D;
+  const tot = M.startTotal;
+  const groups = st.groups;
+
+  document.getElementById('panel-starting').innerHTML = `
+  <h2>${esc(st.labels.tabs.starting)}</h2>
+  <p class="sub">Verified active locations as of ${esc(st.DATA_ASOF)}. Excludes
+     corporate payment records and demo rows.</p>
+  <div class="signrow">
+    ${sign('ACTIVE LOCATIONS', fmt(tot), 'verified base')}
+    ${sign("ROADY'S SIDE", fmt(tot - M.ptp), 'excl. PTP group', 'dark')}
+    ${sign('MONTHLY DUES', fm$(st.billing.monthlyDuesTotal),
+           `${st.billing.companies} companies · ${st.billing.locations} billed`, 'red')}
+    ${sign('PAYING LOCATIONS', fmt(st.billing.payingLocations),
+           `${st.billing.zeroBillCompanies} companies bill $0`, 'dark')}
+  </div>
+
+  <div class="card"><h3>Locations by group</h3>
+    <table>
+      <tr><th>Group</th><th class="num">Active</th><th class="num">Mix</th></tr>
+      ${groups.map((g, i) => `<tr>
+        <td><input class="lbl-in" type="text" data-k="groups.${i}.label" value="${esc(g.label)}">
+            ${MGM.rowTools('groups', i, groups.length)}</td>
+        <td class="num"><input class="cell" type="number" data-k="groups.${i}.count"
+            value="${g.count == null ? '' : g.count}">${MGM.editedMark(`groups.${i}.count`)}</td>
+        <td class="num">${pct1(tot ? 100 * g.count / tot : 0)}</td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="num">${fmt(tot)}</td><td class="num">100%</td></tr>
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.addGroup()">+ Add group</button>
+      <button class="btn" onclick="MGM.resetSection('groups')">Reset groups</button>
+    </div>
+    <p class="note">PTP counts the whole <code>Group=PTP</code> set regardless of
+       type — 35 truck stops, 24 service centers, 30 PPOs — so the Truck Stop row
+       deliberately excludes PTP truck stops.</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Pipeline status</h3>
+      <table>
+        <tr><td>Onboarding</td><td class="num"><input class="cell" type="number"
+            data-k="statusCounts.onboarding" value="${st.statusCounts.onboarding}"></td></tr>
+        <tr><td>Offboarding</td><td class="num"><input class="cell" type="number"
+            data-k="statusCounts.offboarding" value="${st.statusCounts.offboarding}"></td></tr>
+      </table>
+    </div>
+    <div class="card"><h3>Billing</h3>
+      <table>
+        <tr><td>Companies</td><td class="num"><input class="cell" type="number"
+            data-k="billing.companies" value="${st.billing.companies}"></td></tr>
+        <tr><td>Billed locations</td><td class="num"><input class="cell" type="number"
+            data-k="billing.locations" value="${st.billing.locations}"></td></tr>
+        <tr><td>Monthly dues total</td><td class="num"><input class="cell" type="number"
+            data-k="billing.monthlyDuesTotal" value="${st.billing.monthlyDuesTotal}"></td></tr>
+        <tr><td>Billable $/location</td><td class="num"><input class="cell" type="number" step="0.01"
+            data-k="billing.duesPerLocBillable" value="${st.billing.duesPerLocBillable}"></td></tr>
+        <tr><td>Paying locations</td><td class="num"><input class="cell" type="number"
+            data-k="billing.payingLocations" value="${st.billing.payingLocations}"></td></tr>
+      </table>
+      <p class="note">The <b>${fmt(tot)}</b> active count and the
+         <b>${fmt(st.billing.locations)}</b> billed locations come from two
+         different Interstate exports and need not agree: billing covers
+         onboarding and offboarding sites the active list excludes, and
+         ${st.billing.zeroBillCompanies} companies bill nothing. The projection
+         runs from the active count.</p>
+    </div>
+  </div>
+
+  <div class="card"><h3>Model settings</h3>
+    <table>
+      <tr><td>Data as of</td><td><input class="cell" type="text" data-k="DATA_ASOF" value="${esc(st.DATA_ASOF)}"></td></tr>
+      <tr><td>Current year</td><td><input class="cell" type="number" data-k="CURRENT_YEAR" value="${st.CURRENT_YEAR}"></td></tr>
+      <tr><td>As-of month (1–12)</td><td><input class="cell" type="number" min="1" max="12" data-k="ASOF_MONTH" value="${st.ASOF_MONTH}"></td></tr>
+      <tr><td>Projection years</td><td><input class="cell" type="number" min="1" max="10" data-k="HORIZON_YEARS" value="${st.HORIZON_YEARS}"></td></tr>
+    </table>
+  </div>
+
+  <div class="card"><h3>PTP — unresolved</h3>
+    <p class="note">${esc(st.ptpNote)}</p>
+    <p class="note">Held flat at <code>ptpNet: 0</code> so it cannot distort a projection.</p>
+  </div>
+
+  ${MGM.tabRenameCard()}
+  ${MGM.tabNotes('starting')}`;
+};
+
+MGM.renderers.additions = function (D) {
+  const { st, M, pipeline } = D;
+  const usingPipeline = st.salesPipeline.basis === 'pipeline';
+  const totalNew = M.years.reduce((a, r) => a + r.newModeled, 0);
+  const srcs = st.sources;
+
+  document.getElementById('panel-additions').innerHTML = `
+  <h2>${esc(st.labels.tabs.additions)}</h2>
+  <p class="sub">PTP conversions and Change of Ownership are excluded from every count.</p>
+  <div class="signrow">
+    ${sign('MODELED NEW', fmt(totalNew), 'excl. signings already in the base')}
+    ${sign('ADDS / MONTH', fmt1(usingPipeline ? pipeline.expectedPerMonth : st.adds.perMonth),
+           usingPipeline ? 'from the pipeline' : 'flat run rate', 'dark')}
+    ${sign('ACTIVATION LAG', st.adds.activationLag + ' mo', 'before revenue counts', 'dark')}
+    ${sign('ANNUAL GROWTH', pct1(st.adds.growthPct), 'applied to the add rate', 'red')}
+  </div>
+
+  <div class="card"><h3>Basis</h3>
+    <table>
+      <tr><td>Add rate basis</td><td>
+        <select class="cell" data-k="salesPipeline.basis">
+          <option value="flat"${!usingPipeline ? ' selected' : ''}>Flat run rate</option>
+          <option value="pipeline"${usingPipeline ? ' selected' : ''}>From Sales Pipeline</option>
+        </select></td></tr>
+      <tr><td>New members / month (flat)</td><td class="num"><input class="cell" type="number"
+          step="0.1" data-k="adds.perMonth" value="${st.adds.perMonth}">
+          ${MGM.editedMark('adds.perMonth')}</td></tr>
+      <tr><td>Annual growth in the add rate</td><td class="num"><input class="cell" type="number"
+          step="0.5" data-k="adds.growthPct" value="${st.adds.growthPct}"></td></tr>
+      <tr><td>Activation lag (months)</td><td class="num"><input class="cell" type="number"
+          min="0" data-k="adds.activationLag" value="${st.adds.activationLag}"></td></tr>
+      <tr><td>PTP net change / yr</td><td class="num"><input class="cell" type="number"
+          data-k="adds.ptpNet" value="${st.adds.ptpNet}"></td></tr>
+    </table>
+    <p class="note">${usingPipeline
+      ? `<b>Live basis: Sales Pipeline</b> — ${fmt1(pipeline.expectedPerMonth)} locations/month weighted from ${pipeline.openLeads} open leads.`
+      : `<b>Live basis: flat run rate</b> — ${fmt1(st.adds.perMonth)}/month. Switch above to drive this from the pipeline.`}</p>
+    ${usingPipeline && pipeline.isEmpty
+      ? '<p class="note"><span class="ovr">No pipeline data loaded</span> Sign in on the Sales Pipeline tab, or the add rate is zero.</p>' : ''}
+  </div>
+
+  <div class="card"><h3>Roll-forward</h3>
+    ${(() => { const y0 = M.years[0];
+      return y0.ytd ? `<p class="note">The ${fmt(y0.start)} opening count already
+        includes <b>${fmt(y0.ytd)}</b> signings booked Jan–${MONTH_NAMES[st.ASOF_MONTH - 1]}
+        ${y0.year}. The New column therefore shows only the months still being
+        modeled, so each row foots against its own monthly detail.</p>` : ''; })()}
+    <table>
+      <tr><th>Year</th><th class="num">Start</th><th class="num">New</th>
+          <th class="num">Lost</th><th class="num">End</th><th class="num">Net</th>
+          <th class="num">Growth</th><th></th></tr>
+      ${M.years.map(r => `
+        <tr><td>${r.year}${r.year === st.CURRENT_YEAR ? ' <span class="note">proj.</span>' : ''}</td>
+        <td class="num">${fmt(r.start)}</td>
+        <td class="num">${fmt1(r.newModeled)}</td>
+        <td class="num">${fmt1(r.lost)}</td>
+        <td class="num"><b>${fmt(r.end)}</b></td>
+        <td class="num ${r.net >= 0 ? 'pos' : 'neg'}">${r.net >= 0 ? '+' : ''}${fmt1(r.net)}</td>
+        <td class="num ${r.net >= 0 ? 'pos' : 'neg'}">${pct1(r.pct)}</td>
+        <td><button class="btn" onclick="MGM.toggleMonthly(${r.year})">▸ months</button></td></tr>
+        <tr id="mo-${r.year}" style="display:none"><td colspan="8">
+          <table>${MGM.renderMonthly(M, r.year)}</table></td></tr>`).join('')}
+    </table>
+  </div>
+
+  <div class="card"><h3>Source mix</h3>
+    <table>
+      <tr><th>Source</th><th class="num">Mix</th>${M.years.map(r => `<th class="num">${r.year}</th>`).join('')}</tr>
+      ${srcs.map((s, i) => `<tr>
+        <td><input class="lbl-in" type="text" data-k="sources.${i}.label" value="${esc(s.label)}">
+            ${MGM.rowTools('sources', i, srcs.length)}</td>
+        <td class="num"><input class="cell" type="number" data-k="sources.${i}.pct" value="${s.pct}">${MGM.editedMark(`sources.${i}.pct`)}</td>
+        ${M.years.map(r => `<td class="num">${fmt1(r.newModeled * s.pct / 100)}</td>`).join('')}</tr>`).join('')}
+      <tr class="total"><td>Total new</td>
+        <td class="num">${srcs.reduce((a, s) => a + (+s.pct || 0), 0)}%</td>
+        ${M.years.map(r => `<td class="num">${fmt1(r.newModeled)}</td>`).join('')}</tr>
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.addRow('sources',{key:'',label:'New source',pct:0})">+ Add source</button>
+      <button class="btn" onclick="MGM.resetSection('sources')">Reset sources</button>
+    </div>
+    ${(() => { const s = srcs.reduce((a, x) => a + (+x.pct || 0), 0);
+      return s === 100 ? '<p class="note">Mix totals 100%.</p>'
+        : `<p class="note neg">Mix totals ${s}% — adjust to 100%.</p>`; })()}
+    <p class="note">Per-group signup mix is not yet available from Interstate; this
+       is a whole-network split.</p>
+  </div>
+
+  ${MGM.tabNotes('additions')}`;
+};
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+MGM.renderMonthly = function (M, year) {
+  const mm = M.months.filter(m => m.year === year);
+  if (!mm.length) return '<tr><td class="note">No modeled months in this year.</td></tr>';
+  return '<tr><th>Month</th><th class="num">Start</th><th class="num">New</th>' +
+    '<th class="num">Steady loss</th><th class="num">Structural</th>' +
+    '<th class="num">End</th><th class="num">Producing</th></tr>' +
+    mm.map(m => {
+      // Supplied by the engine (Task 2) rather than re-derived here by
+      // inverting runModel's update expression.
+      const start = m.start;
+      return `<tr><td>${MONTH_NAMES[(m.month - 1) % 12]} ${year}</td>
+        <td class="num">${fmt1(start)}</td><td class="num">${fmt1(m.adds)}</td>
+        <td class="num">${fmt1(m.steadyLost)}</td><td class="num">${fmt1(m.structuralLost)}</td>
+        <td class="num"><b>${fmt1(m.end)}</b></td><td class="num">${fmt1(m.producing)}</td></tr>`;
+    }).join('') +
+    `<tr class="total"><td>Year total</td><td class="num">—</td>
+     <td class="num">${fmt1(mm.reduce((a, m) => a + m.adds, 0))}</td>
+     <td class="num">${fmt1(mm.reduce((a, m) => a + m.steadyLost, 0))}</td>
+     <td class="num">${fmt1(mm.reduce((a, m) => a + m.structuralLost, 0))}</td>
+     <td class="num">—</td><td class="num">—</td></tr>`;
+};
+
+MGM.toggleMonthly = function (year) {
+  const el = document.getElementById('mo-' + year);
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : '';
+  el.previousElementSibling.querySelector('button').textContent =
+    open ? '▸ months' : '▾ months';
+};
+
+MGM.renderers.losses = function (D) {
+  const { st, M } = D;
+  const d = MM.derivedAttrition(st.history);
+  const split = MM.attritionSplit(st.history, st.attrition.steadyAlt);
+  const totalLost = M.years.reduce((a, r) => a + r.lost, 0);
+  const years = M.years.map(r => r.year).filter(y => y > st.CURRENT_YEAR);
+
+  document.getElementById('panel-losses').innerHTML = `
+  <h2>${esc(st.labels.tabs.losses)}</h2>
+  <p class="sub">Steady-state churn plus explicit structural consolidation.</p>
+  <div class="signrow">
+    ${sign('PROJECTED LOSSES', fmt(totalLost), 'over the projection', 'red')}
+    ${sign('STEADY RATE', pct1(st.attrition.steady), 'annual, recurring')}
+    ${sign('3-YR DERIVED', pct1(d.avg), 'lost / prior count', 'dark')}
+    ${sign('STRUCTURAL', fmt(M.years.reduce((a, r) => a + r.structuralLost, 0)),
+           'one-off consolidation', 'dark')}
+  </div>
+
+  <div class="card"><h3>Assumption</h3>
+    <table>
+      <tr><td>Steady annual attrition</td><td class="num"><input class="cell" type="number"
+          step="0.1" data-k="attrition.steady" value="${st.attrition.steady}">
+          ${MGM.editedMark('attrition.steady')}</td></tr>
+      <tr><td>Pre-spike steady baseline</td><td class="num"><input class="cell" type="number"
+          step="0.1" data-k="attrition.steadyAlt" value="${st.attrition.steadyAlt}"></td></tr>
+    </table>
+    <div style="margin-top:10px">
+      <button class="btn primary" onclick="MGM.useSplitBasis()">Use split basis
+        (${pct1(st.attrition.steadyAlt)} steady)</button>
+      <button class="btn" onclick="MGM.resetSection('attrition')">Reset attrition</button>
+    </div>
+    <p class="note">${esc(st.attrition.note)}</p>
+  </div>
+
+  <div class="card"><h3>Historical decomposition at ${pct1(st.attrition.steadyAlt)} steady</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Prior count</th><th class="num">Lost</th>
+          <th class="num">Total rate</th><th class="num">Steady</th>
+          <th class="num">Structural</th></tr>
+      ${split.rows.map(r => `<tr><td>${r.year}</td>
+        <td class="num">${fmt(r.base)}</td><td class="num">${fmt(r.totalLost)}</td>
+        <td class="num">${pct1(r.totalRate)}</td>
+        <td class="num">${pct1(r.steadyRate)} (${fmt1(r.steadyLost)})</td>
+        <td class="num ${r.structuralRate > 0 ? 'neg' : ''}">${pct1(r.structuralRate)} (${fmt1(r.structuralLost)})</td></tr>`).join('')}
+    </table>
+    <p class="note">Structural is clamped at zero — a year quieter than the steady
+       assumption has no structural loss, not negative structural loss. The two
+       components always sum back to the realized total.</p>
+  </div>
+
+  <div class="card"><h3>Structural overrides by projection year</h3>
+    <table>
+      <tr><th>Year</th><th class="num">Structural locations lost</th></tr>
+      ${years.map(y => `<tr><td>${y}</td><td class="num"><input class="cell" type="number"
+        data-k="attrition.structural.${y}"
+        value="${st.attrition.structural[y] == null ? 0 : st.attrition.structural[y]}"></td></tr>`).join('')}
+    </table>
+    <p class="note">Added <b>on top of</b> steady loss, never replacing it. Spread
+       evenly across that year's months.</p>
+  </div>
+
+  ${MGM.tabNotes('losses')}`;
+};
+
+// The group `key` is NOT cosmetic: Task 11 interpolates it into state paths
+// (`gallons.groupProfile.<key>`, `gallons.groupBaselineOverride.<key>`). The
+// first draft of this plan created groups with `key: ''` and gave no way to
+// edit it, which meant (a) an added group could never be mapped to a gallon
+// profile, and (b) two added groups collided on the same empty override slot.
+// So the key is derived from the label, kept unique, and validated here —
+// at the point of creation, with a visible message — rather than relying on
+// `setPath`'s reserved-segment guard, which refuses silently by design.
+MGM.RESERVED_KEYS = ['__proto__', 'constructor', 'prototype'];
+
+MGM.makeGroupKey = function (label, taken) {
+  const base = String(label || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'group';
+  if (MGM.RESERVED_KEYS.indexOf(base) !== -1) return null;
+  let key = base, i = 2;
+  while (taken.indexOf(key) !== -1) { key = base + '-' + i; i++; }
+  return key;
+};
+
+MGM.addGroup = function () {
+  const label = (prompt('Group name:', 'New group') || '').trim();
+  if (!label) return;
+  const taken = MGM.state.groups.map(g => g.key);
+  const key = MGM.makeGroupKey(label, taken);
+  if (!key) {
+    alert('"' + label + '" is a reserved word and cannot be used as a group name. Pick a different name.');
+    return;
+  }
+  MGM.addRow('groups', { key: key, label: label, count: 0 });
+};
+
+// NOTE: there is deliberately no renameGroup(). The label is edited in place
+// through a plain `data-k="groups.N.label"` input, and the KEY is never bound
+// to any control — so a rename cannot orphan the gallon mapping that Task 11
+// addresses by key. An earlier draft had a prompt() wrapper warning about key
+// stability; it was dead code, because the risk it warned about cannot occur.
+
+MGM.useSplitBasis = function () {
+  MGM.state.attrition.steady = MGM.state.attrition.steadyAlt;
+  MGM.save(); MGM.refresh();
+};
+
 /* ═══════════════ BINDING (Task 8) ═══════════════ */
 // data-k       scalar — number | text | date | select, dotted state path
 // data-k-list  repeating rows — add / remove / reorder

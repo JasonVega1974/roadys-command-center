@@ -95,6 +95,7 @@
       var newModeled = 0, lostTotal = 0, steadyTotal = 0, structTotal = 0;
 
       for (var m = 0; m < monthCount; m++) {
+        var monthStart = roadys;
         var add = addsRate;
         var steadyLose = roadys * steadyM;
         var structLose = structPerMonth;
@@ -112,6 +113,11 @@
 
         months.push({
           year: y, month: m + 1 + (y === CURRENT_YEAR ? asOfMonth : 0),
+          // `start` is emitted rather than left for the UI to re-derive. The
+          // monthly table previously computed it as `end - adds + lost`, which
+          // inverts this loop's own update expression — correct, but it would
+          // silently go stale if the arithmetic here ever changed.
+          start: monthStart,
           adds: add, lost: lose, steadyLost: steadyLose, structuralLost: structLose,
           end: roadys, producing: producing
         });
