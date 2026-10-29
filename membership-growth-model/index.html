@@ -331,7 +331,32 @@ try {
   // This is the most load-bearing of the four merge sites because it runs on
   // EVERY page load. mergeState mutates its first argument, so it gets a
   // fresh defaultState, never a shared object.
-  if (saved) MGM.state = MM.mergeState(MM.defaultState(MGM_CONFIG), saved).state;
+  if (saved) {
+    var merged = MM.mergeState(MM.defaultState(MGM_CONFIG), saved);
+    MGM.state = merged.state;
+
+    // Removing the copy-override feature has to remove its DATA, not just its
+    // code. mergeState keeps keys it does not recognise -- deliberately, so an
+    // unknown field is preserved rather than destroyed -- and `copy` is now
+    // unrecognised, so a stored override survives verbatim and silently.
+    //
+    // It renders nowhere, but it is live data: re-saved to localStorage on the
+    // next save, copied into any scenario saved afterwards, serialised into
+    // the JSON export, and pushed to mgm_scenarios on one Sync click. Since
+    // some of those overrides captured an interpolated auth-gated P&L figure,
+    // and mgm_scenarios is readable by ANY signed-in user, leaving the residue
+    // keeps republishing exactly what removing the feature was meant to stop.
+    //
+    // So drop it. Nothing can read it any more, so nothing is lost but the
+    // wording, which reverts to the shipped text -- the correct fallback now
+    // that overrides do not exist.
+    if (merged.state.copy !== undefined) {
+      try { console.warn('[MGM] dropped ' + Object.keys(merged.state.copy || {}).length
+            + ' stored text override(s) from a removed feature'); } catch (e2) {}
+      delete merged.state.copy;
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e3) {}
+    }
+  }
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
 
 MGM.save = function () {
@@ -2684,7 +2709,7 @@ MGM.reportAssumptions = function (D) {
     // loaded figure never enters MGM.state, by design.
     ['EBITDA', C.unset
       ? (MFP
-          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state by this tool, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
@@ -4649,7 +4674,9 @@ MGM.renderScenarioBar = function () {
     ${show(n.added)}. Review ${n.added.length === 1 ? 'it' : 'them'} before quoting a figure from it.`;
   if (n && n.unknown.length) msg += ` <span class="warn">It carries ${n.unknown.length}
     field${n.unknown.length === 1 ? '' : 's'} this build no longer uses</span>
-    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept but unused.`;
+    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept, and
+    still travel with this model into saves, scenarios and exports even though
+    nothing reads them.`;
   if (n && n.overrides.length) msg += ` <span class="warn">It carries overridden gallon
     baselines</span> that differ from the Bus Dev engine (${show(n.overrides)}) —
     see Fuel Gallon Production.`;
