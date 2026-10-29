@@ -13,7 +13,7 @@
 <script src="../busDevGallonsConfig.js"></script>
 <script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
-<script src="../membershipModel.js?v=2026-10-28"></script>
+<script src="../membershipModel.js?v=r4"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
      SDK tag has to come first. Never construct a second client here -- see
      MGM.sb() below. -->
@@ -316,8 +316,56 @@ function mkChart(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($(id),cfg
 
 /* ═══════════════ MGM STATE ═══════════════ */
 const MGM = {};
-const MM = MembershipModel;
+// Bound defensively so a failed engine load is REPORTABLE rather than fatal.
+// This was `const MM = MembershipModel;`, which throws ReferenceError during
+// script evaluation if the engine 404s -- so nothing below it was ever
+// defined, MGM.engineSkew could not run, and the reader got a blank page with
+// no explanation. A review measured that: tabsRendered false, no alert at all.
+// Every MM use downstream either sits in a try or runs after MGM.engineSkew()
+// has had its say.
+const MM = (typeof MembershipModel === 'object' && MembershipModel)
+  ? MembershipModel : null;
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
+
+// What this page needs the engine to provide. Declared HERE, above the first
+// engine call, so the evaluation-time guard below and MGM.engineSkew() further
+// down are the same list -- one definition, two call sites.
+MGM.ENGINE_NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
+MGM.ENGINE_REV_EXPECTED = 4;
+
+// Before anything reads the engine. A missing or unusable engine is
+// unrecoverable -- this page is a model with a UI attached -- but it must SAY
+// so rather than fail blank or, worse, render a full page of dead buttons.
+//
+// Tests USABILITY, not presence. An earlier version tested `!MM` alone: a
+// review set the global to an empty object and the guard did not fire, so
+// MM.defaultState() threw during evaluation, the body was never replaced, and
+// the page drew its whole chrome with 12 live onclick handlers over an empty
+// MGM -- a click gave an uncaught TypeError and no feedback whatsoever. That
+// is worse than the blank page this guard was added to fix, since the 404 case
+// at least leaves nothing to click.
+//
+// The ReferenceError case is covered too: MM is bound defensively above,
+// because `const MM = MembershipModel;` throws during script evaluation when
+// the engine 404s, before any of this could run.
+const _engineBroken = !MM
+  ? 'did not load'
+  : (MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function').length
+      ? 'loaded but is incomplete or out of date'
+      : null);
+if (_engineBroken) {
+  document.addEventListener('DOMContentLoaded', function () {
+    document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
+      + '<h3>This page could not load its model script</h3>'
+      + '<p class="note">membershipModel.js ' + _engineBroken + ', so nothing here '
+      + 'can be calculated. This is almost always a stale cache or a failed '
+      + 'download: reload the page (hold Shift while reloading, or empty the '
+      + 'cache). Nothing has been changed or uploaded.</p></div>';
+  });
+  // Stop here. Everything below needs the engine, and continuing would draw a
+  // page whose controls all throw -- see the comment above.
+  throw new Error('[MGM] membershipModel.js ' + _engineBroken);
+}
 
 MGM.state = MM.defaultState(MGM_CONFIG);
 try {
@@ -331,7 +379,47 @@ try {
   // This is the most load-bearing of the four merge sites because it runs on
   // EVERY page load. mergeState mutates its first argument, so it gets a
   // fresh defaultState, never a shared object.
-  if (saved) MGM.state = MM.mergeState(MM.defaultState(MGM_CONFIG), saved).state;
+  if (saved) {
+    var merged = MM.mergeState(MM.defaultState(MGM_CONFIG), saved);
+    MGM.state = merged.state;
+
+    // Removing the copy-override feature has to remove its DATA, not just its
+    // code. mergeState keeps keys it does not recognise -- deliberately, so an
+    // unknown field is preserved rather than destroyed -- and `copy` is now
+    // unrecognised, so a stored override survives verbatim and silently.
+    //
+    // It renders nowhere, but it is live data: re-saved to localStorage on the
+    // next save, copied into any scenario saved afterwards, serialised into
+    // the JSON export, and pushed to mgm_scenarios on one Sync click. Since
+    // some of those overrides captured an interpolated auth-gated P&L figure,
+    // and mgm_scenarios is readable by ANY signed-in user, leaving the residue
+    // keeps republishing exactly what removing the feature was meant to stop.
+    //
+    // So drop it. Nothing can read it any more, so nothing is lost but the
+    // wording, which reverts to the shipped text -- the correct fallback now
+    // that overrides do not exist.
+    // Via the engine's walk, which reaches ANY depth. This was a hand-rolled
+    // `delete merged.state.copy` and a review measured it clearing one of
+    // three seeded maps -- the two nested ones were re-persisted by the very
+    // setItem below and survived every reload, while the console line said a
+    // drop had happened. The engine rule and this path now agree, which is the
+    // whole point of there being one definition.
+    //
+    // MM is the engine, loaded by a script tag above this one, so it exists by
+    // the time any of this runs. The fallback covers a stale cached engine
+    // (which has happened on this page): a depth-0 delete is what shipped
+    // before, so degrading to it is no loss.
+    var _res = null;
+    try { _res = MM.stripResidue(merged.state); }
+    catch (e2) {
+      if (merged.state.copy !== undefined) { delete merged.state.copy; _res = { removed: 1 }; }
+    }
+    if (_res && _res.removed) {
+      try { console.warn('[MGM] dropped ' + _res.removed + ' stored text '
+            + 'override map(s) from a removed feature'); } catch (e3) {}
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e4) {}
+    }
+  }
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
 
 MGM.save = function () {
@@ -1853,9 +1941,9 @@ MGM.renderers.cashflow = function (D) {
                 ? ` The <b>${pct1(entered)}</b> on the Valuation card was entered by hand
                     and overrides ${names.length > 1 ? 'the EBITDA figure' : 'it'}.`
                 : (reportedE != null
-                    ? ` The EBITDA figure is driving the lens for this session only — it is
-                        not stored in this page's state, so it cannot reach a saved scenario
-                        or an export.`
+                    ? ` The EBITDA figure is driving the lens for this session only — this
+                        tool never writes it into the page's state, so nothing it saves,
+                        syncs or exports carries it.`
                     : ` A net margin is not an EBITDA margin, so it is reported here and
                         applied to nothing.`))
           : !a
@@ -2684,7 +2772,7 @@ MGM.reportAssumptions = function (D) {
     // loaded figure never enters MGM.state, by design.
     ['EBITDA', C.unset
       ? (MFP
-          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. It is not stored in the model's state, so it reaches no saved scenario and no export — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. This tool never writes it into the model's state, so nothing it saves, syncs or exports carries it — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
@@ -3097,11 +3185,46 @@ MGM.exportCSV = function () {
 // Live CRM and P&L data are likewise not included: they are not ours to
 // redistribute in a file someone emails on.
 MGM.exportJSON = function () {
-  MGM.dl('membership-growth-model.json', JSON.stringify({
-    state: MGM.state,
-    scenarios: MGM.scenarioList(),
-    exportedAt: new Date().toISOString()
-  }, null, 2), 'application/json');
+  // Same guard syncScenarios got, for the same reason. A review found the
+  // round-4 try/catch sat BELOW the first MM.stripResidue call, so a missing
+  // engine still threw uncaught here: no file, no message, dead button --
+  // while engineSkew() could have named the cause. The guard belongs above
+  // every engine call in the function, not above most of them.
+  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('build an export', 'nothing-moved')); return; }
+
+  // Measured: this carried residue with MGM.state fully clean, because the
+  // scenario list is serialised separately. scenarioList() now strips, so this
+  // is covered -- the explicit strip here is belt and braces for a future
+  // caller that builds the payload some other way.
+  //
+  // Persist what the strip removed. A review measured live state going clean
+  // on export while localStorage stayed dirty, so memory and disk disagreed
+  // from that click onward and the next reload re-read the residue. Exporting
+  // is a read, so it should not be the thing that mutates the model -- but
+  // since it does, the two must not be left out of step.
+  MGM.stripResidue(MGM.state);
+  if (MGM.stripResidue.removed) MGM.save();
+
+  // Serialise inside a try and SAY SO on failure. JSON.stringify is recursive
+  // and a saved scenario nested deeply enough makes it throw -- uncaught, so
+  // the button did nothing at all and the reader got no file and no message.
+  // Silence on a click is the failure class this whole PR has been clearing.
+  let body;
+  try {
+    body = JSON.stringify({
+      state: MGM.state,
+      scenarios: MGM.stripResidue(MGM.scenarioList()),
+      exportedAt: new Date().toISOString()
+    }, null, 2);
+  } catch (e) {
+    console.error('[MGM] export failed', e);
+    alert(/call stack|recursion/i.test(e && e.message || '')
+      ? 'Could not build the export: one of your saved scenarios is nested too '
+      + 'deeply to serialise. Delete it from the Scenarios tab and export again.'
+      : 'Could not build the export: ' + (e && e.message || 'unknown error'));
+    return;
+  }
+  MGM.dl('membership-growth-model.json', body, 'application/json');
 };
 
 MGM.importJSON = function (file) {
@@ -3130,6 +3253,12 @@ MGM.importJSON = function (file) {
       // argument, so it gets a FRESH defaultState every call.
       const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), o.state);
       MGM.state = merged.state;
+      // A state object entering the page, so a chokepoint belongs here. The
+      // commit claimed three chokepoints covered every entry; a review found
+      // this fourth one, and measured an imported file putting the residue
+      // back into live state and into localStorage. mergeState retains `copy`
+      // by design -- that retention is the whole reason this residue exists.
+      try { MGM.stripResidue(MGM.state); } catch (e2) {}
       if (Array.isArray(o.scenarios)) MGM.scenarioWriteAll(o.scenarios);
       // Say what the file did not carry, and say it somewhere a redraw cannot
       // wipe -- which rules out alert() alone. A silent default-fill beats a
@@ -3139,14 +3268,15 @@ MGM.importJSON = function (file) {
       MGM.scenarioNotice = MGM.scenarioNoticeFor(
         { name: file.name || 'the imported file' }, merged);
       MGM.save(); MGM.refresh();
-      const unknown = (merged.unknown || [])
-        .filter(path => SCEN_META_KEYS.indexOf(path) < 0);
+      const unknown = MGM.reportableUnknown(merged);
       const parts = ['Model imported from ' + (file.name || 'the file') + '.'];
       if (merged.added.length) parts.push(merged.added.length +
         ' field(s) were not in the file and are now at this build\'s defaults, ' +
         'not at anything the file recorded. They are listed in the notice above the tabs.');
       if (unknown.length) parts.push(unknown.length +
-        ' field(s) in the file are not used by this build. They were kept but do nothing.');
+        ' field(s) in the file are not used by this build. Their values are kept '
+      + 'and still travel with this model into saves, scenarios and exports, even '
+      + 'though nothing reads them.');
       if (!merged.added.length && !unknown.length)
         parts.push('Every field this build uses was present in the file.');
       alert(parts.join('\n\n'));
@@ -3196,7 +3326,7 @@ MGM.summaryText = function () {
       : 'Indicated value: not available — no valuation lens has a basis. That is an absent figure, not a value of zero.');
   if (D.marginFromPnl) lines.push(
     'The EBITDA lens rests on a margin loaded from the P&L for this session only. ' +
-    'It is not stored in the model, so the same inputs without administrator ' +
+    'It is not stored in the model by this tool, so the same inputs without administrator ' +
     'access value on the revenue lens alone.');
   lines.push('',
     st.report.disclosure,
@@ -3546,8 +3676,8 @@ MGM.renderers.about = function (D) {
       hand-typed data stay distinguishable.</p>
     <p class="note"><b>One consequence worth knowing.</b> When an administrator's
       session has loaded the real margin, it drives that session's EBITDA lens but
-      is deliberately <i>never stored</i> in the model — so it reaches no saved
-      scenario and no export. An administrator and a non-admin therefore see
+      is deliberately <i>never written</i> to the model by this tool — so nothing
+      it saves, syncs or exports carries it. An administrator and a non-admin therefore see
       genuinely <b>different valuation headlines for the same saved scenario</b>.
       That is not a bug and not a disagreement: each is correct for the inputs it
       had, and both are captioned.</p>`)}
@@ -4343,6 +4473,38 @@ MGM.cloudSave = async function (rec) {
     state: rec.state
   };
 
+  // THE PUBLISH BOUNDARY FAILS CLOSED. This is the only place this page writes
+  // to mgm_scenarios, which any signed-in user can read while mgm_pnl_actuals
+  // is admin-only -- so this is the line a gated figure must not cross.
+  //
+  // It verifies the OUTBOUND PAYLOAD ITSELF, not that a strip ran somewhere
+  // upstream. A review measured the previous design publishing residue through
+  // two independent triggers, because scenarioList() deliberately degraded to
+  // handing back unstripped data and cloudSave trusted its caller. Trusting
+  // the caller is what turned a one-line failure anywhere upstream into a
+  // disclosure.
+  //
+  // It tests a KEY NAME, and that is why this guard works where three earlier
+  // ones failed. Those matched gated VALUES against rendered text, which
+  // cannot work: the page rounds and reformats figures, so a margin stored at
+  // two decimals and shown at one walked through all three. A key name is
+  // never rounded, reformatted or localised -- it is in the serialised JSON or
+  // it is not.
+  // Both verdicts refuse. They are told apart because the remedy differs: a
+  // reload fixes 'residue' (the reload strips), and cannot fix 'unverifiable'.
+  const verdict = MM.residueVerdict(row);
+  if (verdict !== 'clean') {
+    console.error('[MGM] REFUSED to push scenario ' + rec.id + ': ' + verdict);
+    return verdict === 'residue'
+      ? { ok: false, reason: 'residue',
+          detail: 'This scenario still carries stored text from a removed '
+                + 'feature, which may include an auth-gated P&L figure. It was '
+                + 'not uploaded.' }
+      : { ok: false, reason: 'unverifiable',
+          detail: 'This scenario could not be checked before uploading (it is '
+                + 'nested too deeply to serialise), so it was not uploaded.' };
+  }
+
   if (!existing) {
     const { error } = await sb.from('mgm_scenarios').insert(row);
     // An INSERT refused by WITH CHECK does raise an error (42501), unlike the
@@ -4422,6 +4584,9 @@ MGM.syncScenarios = async function () {
     alert('Sign in first to sync scenarios.');
     return;
   }
+  // Before anything, not after a failure: a stale engine made this function
+  // throw on its first cloudSave and return nothing at all to the reader.
+  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('sync scenarios', 'nothing-moved')); return; }
   const list = MGM.scenarioList();
   if (!list.length) {
     // Nothing to push is not a failure, and "0 pushed" with no explanation
@@ -4436,17 +4601,32 @@ MGM.syncScenarios = async function () {
   }
 
   let pushed = 0;
-  const conflicts = [], refused = [], errors = [];
+  const conflicts = [], refused = [], errors = [], residue = [], unverifiable = [];
   for (const rec of list) {
     const r = await MGM.cloudSave(rec);
     if (r.ok) pushed++;
     else if (r.reason === 'conflict') conflicts.push(rec.name);
     else if (r.reason === 'refused') refused.push(rec.name);
+    // Its own bucket, not `errors`. A refusal here is not a failure to reach
+    // the server, it is this page declining to publish -- and it needs its own
+    // sentence, because the fix is to reload the page rather than to retry.
+    else if (r.reason === 'residue') residue.push(rec.name);
+    else if (r.reason === 'unverifiable') unverifiable.push(rec.name);
     else errors.push(rec.name + ': ' + (r.detail || r.reason));
   }
 
   const pull = await MGM.pullScenarios({ quiet: true });
-  if (!pull.ok) { alert('Pushed ' + pushed + ', but reading the cloud back failed: ' + (pull.detail || pull.reason)); return; }
+  if (!pull.ok) {
+    // Name the refusals here too. On the path a review measured, pullScenarios
+    // failed first, so this return fired instead of the summary below and the
+    // reader was told nothing about the scenarios that were declined.
+    alert('Pushed ' + pushed + ', but reading the cloud back failed: '
+        + (pull.detail || pull.reason)
+        + (residue.length ? '\n\nSeparately, these were NOT uploaded because '
+            + 'they still carry stored text from a removed feature: '
+            + residue.join(', ') + '. Reload the page and sync again.' : ''));
+    return;
+  }
 
   const parts = [`Pushed ${pushed} of ${list.length}; ${pull.cloudCount} shared scenario(s) in the cloud.`];
   if (refused.length) parts.push(
@@ -4455,6 +4635,15 @@ MGM.syncScenarios = async function () {
   if (conflicts.length) parts.push(
     `Someone else changed these first, so they were NOT overwritten: ${conflicts.join(', ')}. ` +
     `Reload to see their version before saving again.`);
+  if (residue.length) parts.push(
+    `These were NOT uploaded: they still carry stored text from a removed ` +
+    `feature, which may include a figure only administrators may see — ` +
+    `${residue.join(', ')}. Reload the page and sync again; the reload cleans ` +
+    `them. Retrying without reloading will refuse them again, by design.`);
+  if (unverifiable.length) parts.push(
+    `These could NOT be checked before uploading, so they were not uploaded — ` +
+    `${unverifiable.join(', ')}. They are nested too deeply to serialise, which ` +
+    `a reload will not change: re-save them from the current model, or delete them.`);
   if (errors.length) parts.push(`Failed: ${errors.join('; ')}.`);
   if (pull.skipped) parts.push(
     `${pull.skipped} cloud scenario(s) you deleted locally were left in place and not pulled back — ` +
@@ -4480,16 +4669,228 @@ const SCEN_DELETED_KEY = 'roadys_mgm_scenarios_deleted_v1';
 // of the notice, not out of the state.
 const SCEN_META_KEYS = ['activeScenario'];
 
+// Paths that mergeState reports as unrecognised but which this build then
+// REMOVES rather than keeps. Reporting them among the "kept, and still travel
+// with this model" fields is a straight contradiction: a review measured the
+// import notice announcing 3 kept fields while the residue count on disk was
+// 0, because mergeState sees the raw file before the strip runs.
+//
+// `copy` and anything beneath it: the residue of the reverted text-override
+// feature. See MGM.stripResidue.
+const SCEN_DROPPED_KEYS = ['copy'];
+
+MGM.reportableUnknown = function (merged) {
+  // Matches any PATH SEGMENT, because the strip is depth-any and this has to
+  // agree with it. Start-anchored was wrong in one direction: an imported
+  // `state.report.copy` was stripped from disk and memory while the notice
+  // still announced it among the fields "kept, and still travel with this
+  // model". Unreachable with real data -- the reverted feature only ever wrote
+  // a top-level `state.copy` -- but a filter that disagrees with the strip it
+  // describes is the kind of near-miss this PR keeps finding.
+  //
+  // Segment equality, NOT a prefix test: `copyright`, `copies`, `copyOf` and
+  // `report.copyright` are legitimate unknown fields and must still report. A
+  // bare startsWith would have swallowed four of them.
+  return (merged && merged.unknown || []).filter(p =>
+    SCEN_META_KEYS.indexOf(p) < 0 &&
+    !String(p).split('.').some(seg => SCEN_DROPPED_KEYS.indexOf(seg) >= 0));
+};
+
+// Residue of the removed copy-override feature. ONE definition, applied at
+// every point a state object enters or leaves this page, because the load-path
+// cleanup alone was not enough: the push to mgm_scenarios reads the LOCAL
+// SCENARIO STORE, not MGM.state, so a record saved while the feature was live
+// kept its `copy` key through unlimited reloads and went up verbatim on one
+// Sync. A review measured that; it is the gap removing the feature existed to
+// close.
+//
+// Three chokepoints cover every route found:
+//   - the load path          (roadys_mgm_v2)        -- already done above
+//   - scenarioList()          read of the store      -- so cloudSave,
+//     exportJSON and scenarioLoad all receive clean records
+//   - scenarioWriteAll()      write to the store     -- so the store itself is
+//     cleaned durably rather than filtered on every read
+// Delegates to the engine, where the rule is unit-tested. The page keeps the
+// `.removed` surface its callers already read.
+// What this page needs the engine to provide, and the revision it was written
+// against. Checked, not assumed.
+//
+// The cache-busting query string on the engine's script tag was forgotten
+// twice in three rounds of one fix. The second time, the page ran against the
+// previous engine, MM.residueVerdict did not exist, and Sync died with a
+// TypeError and ZERO feedback -- a reader clicked it and nothing happened, on
+// data that was perfectly clean. Failing closed was right; being silent was
+// not, and relying on a human to bump a string is not a mechanism.
+//
+// So: one list, checked at boot and again before any sync, reported in words.
+// MGM.ENGINE_NEEDS and MGM.ENGINE_REV_EXPECTED are declared at the top of this
+// script, above the first engine call, because the evaluation-time guard there
+// uses the same list. One definition.
+//
+// Returns null when the engine is fine, or a human-readable reason when it is
+// not. Deliberately does NOT throw: a diagnostic that crashes its caller is
+// how the thing it diagnoses stayed invisible.
+MGM.engineSkew = function () {
+  if (typeof MM !== 'object' || !MM) return 'the model script did not load at all';
+  const missing = MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function');
+  if (missing.length) {
+    return 'the model script is out of date — it is missing ' + missing.join(', ');
+  }
+  // Compared as NUMBERS. Strict inequality on the raw values made ENGINE_REV
+  // = '4' report "revision 4 but this page expects revision 4" -- a false skew
+  // that hard-blocks Sync while advising a reload that cannot fix it. A guard
+  // whose own message contradicts itself is worse than no guard.
+  const rev = Number(MM.ENGINE_REV);
+  if (MM.ENGINE_REV === undefined || MM.ENGINE_REV === null || !isFinite(rev)) {
+    return 'the model script does not say which revision it is, and this page '
+         + 'expects revision ' + MGM.ENGINE_REV_EXPECTED;
+  }
+  if (rev !== Number(MGM.ENGINE_REV_EXPECTED)) {
+    return 'the model script is revision ' + rev
+         + ' but this page expects revision ' + MGM.ENGINE_REV_EXPECTED;
+  }
+  return null;
+};
+
+// `settled` tells the two call sites apart, because the reassurance is only
+// true at one of them. A review measured the boot alert asserting "Nothing was
+// changed or uploaded" immediately AFTER the boot store repair had rewritten
+// both storage keys -- a false statement to the reader, which is precisely the
+// class of defect this whole PR has been clearing. Only syncScenarios can
+// honestly promise nothing moved.
+MGM.engineSkewMessage = function (what, settled) {
+  return 'Cannot ' + what + ': ' + MGM.engineSkew() + '.\n\n'
+       + 'Your browser is almost certainly serving a cached copy of an older '
+       + 'script. Reload the page (hold Shift while reloading, or empty the '
+       + 'cache) and try again.'
+       + (settled === 'nothing-moved'
+           ? ' Nothing was changed or uploaded.'
+           : ' Nothing was uploaded. This browser\'s own saved copy may already '
+             + 'have been tidied on load, which is safe and changes no figures.');
+};
+
+MGM.stripResidue = function (obj) {
+  const r = MM.stripResidue(obj);
+  MGM.stripResidue.removed = r.removed;
+  // Carried through, not discarded. The engine reports deletes that did NOT
+  // succeed precisely so a caller can act on them; dropping the number here
+  // would make a partial strip indistinguishable from a complete one, which is
+  // the reported-as-fixed shape this whole fix exists to close.
+  MGM.stripResidue.failed = r.failed;
+  if (r.failed) {
+    try { console.error('[MGM] ' + r.failed + ' stored text override map(s) could '
+                      + 'not be removed (the property is not writable). Uploads '
+                      + 'are checked separately and will refuse to publish them.'); } catch (e) {}
+  }
+  return obj;
+};
+
 MGM.scenarioList = function () {
+  var v;
   try {
-    const v = JSON.parse(localStorage.getItem(SCEN_KEY));
-    return Array.isArray(v) ? v : [];
+    v = JSON.parse(localStorage.getItem(SCEN_KEY));
   } catch (e) { return []; }
+  if (!Array.isArray(v)) return [];
+
+  // The strip gets its OWN try, outside the parse's. It used to sit inside it,
+  // and when the call failed the shared `catch` returned [] -- so every saved
+  // scenario silently vanished from the UI and the store stayed dirty, while
+  // the page looked like it had simply lost the user's work. Found by a probe
+  // run against a stale cached engine, which is exactly how a version skew
+  // reaches a real user.
+  //
+  // An earlier version of this comment justified the degradation as "no worse
+  // than before this fix existed". A review measured that sentence false, and
+  // it was the load-bearing sentence of the design: this degraded read is
+  // syncScenarios' only input, so handing back unstripped data did not leave
+  // the residue sitting in a local store -- it PUBLISHED it to a table every
+  // signed-in user can read, with no warning at all.
+  //
+  // Two changes make the degradation safe rather than merely documented:
+  //
+  //   - MM.stripResidue cannot throw on data any more. It was recursive, and a
+  //     review triggered RangeError with a deeply nested record while
+  //     JSON.parse accepts far deeper graphs -- so ONE pathological record
+  //     disabled stripping for EVERY record, because the whole list is
+  //     stripped in a single call. It is iterative now, with no depth limit,
+  //     and reports a failed-delete count instead of throwing on a frozen
+  //     property.
+  //   - cloudSave verifies its own outbound payload, so a strip that does not
+  //     run for any reason -- including a version skew, which no change to the
+  //     engine can fix -- still cannot publish.
+  //
+  // So: log loudly, hand back the real list for DISPLAY, and let the publish
+  // boundary refuse. Display degrades; disclosure does not.
+  try {
+    MGM.stripResidue(v);
+    if (MGM.stripResidue.removed) {
+      // Log what actually happened, separately for memory and for disk. This
+      // logged the removal unconditionally and swallowed the write-back
+      // failure into an empty catch -- so with one pathologically deep record
+      // present, the disk was never repaired, the same line printed on EVERY
+      // read, and the symptom read exactly like success. A review measured it
+      // five times in one probe against an unchanged 48 KB store.
+      let persisted = false, writeErr = null;
+      try { localStorage.setItem(SCEN_KEY, JSON.stringify(v)); persisted = true; }
+      catch (e2) { writeErr = e2; }
+      try {
+        if (persisted) {
+          console.warn('[MGM] removed ' + MGM.stripResidue.removed + ' stored text '
+                     + 'override map(s) from a removed feature, across ' + v.length
+                     + ' saved scenario(s), and saved the cleaned list.');
+        } else {
+          console.error('[MGM] cleaned ' + MGM.stripResidue.removed + ' stored text '
+                      + 'override map(s) IN MEMORY ONLY — the cleaned list could not '
+                      + 'be written back, so this repeats on every read and the '
+                      + 'stored copy stays as it was. Uploads are checked separately '
+                      + 'and will refuse to publish it.', writeErr);
+        }
+      } catch (e3) {}
+    }
+  } catch (e3) {
+    try {
+      console.error('[MGM] could not clean saved scenarios (model script out of '
+                  + 'date or failed to load?). Showing them as stored:', e3);
+    } catch (e4) {}
+  }
+  return v;
 };
 
 MGM.scenarioWriteAll = function (list) {
+  // Strip on write too, so the store is cleaned durably instead of being
+  // filtered on every read -- and so a poisoned row pulled down from the cloud
+  // cannot be persisted locally and then pushed back up.
+  //
+  // In its OWN try. Before this fix existed this function could not throw at
+  // all, and adding an unguarded call here handed a throw to four callers
+  // written on the assumption that it could not: a review measured
+  // scenarioSave and scenarioDelete becoming silent no-ops (a delete
+  // confirmed, nothing deleted, no message), the awaited boot pull rejecting
+  // and taking MGM.refresh() down with it, and importJSON's "the model on
+  // screen is unchanged" becoming false. A LOCAL write is not the disclosure
+  // boundary -- cloudSave is, and it verifies its own payload now -- so the
+  // right behaviour here is to write the data and log, never to lose a write.
+  try { MGM.stripResidue(list); }
+  catch (e) {
+    try { console.error('[MGM] could not clean saved scenarios before storing '
+                      + 'them locally; storing as-is. The upload path checks '
+                      + 'separately and will refuse to publish them.', e); } catch (e2) {}
+  }
   try { localStorage.setItem(SCEN_KEY, JSON.stringify(list)); }
-  catch (e) { alert('Could not save the scenario — browser storage is full.'); }
+  catch (e) {
+    // Name the actual cause. This said "browser storage is full" for every
+    // failure, and a probe hit the other one: JSON.stringify is recursive and
+    // gives up on a deeply nested record long before the quota is reached, so
+    // a reader was told to free up space for a problem space had nothing to do
+    // with -- and because the whole list is serialised at once, ONE such
+    // record blocks saving ANY scenario. The message has to say which it is,
+    // because the two have nothing in common to do about them.
+    alert(/call stack|recursion/i.test(e && e.message || '')
+      ? 'Could not save: one of your saved scenarios is nested too deeply to '
+      + 'store. Delete it from the Scenarios tab and try again — until then no '
+      + 'scenario can be saved.'
+      : 'Could not save the scenario — browser storage is full.');
+  }
 };
 
 MGM.scenarioTombstones = function () {
@@ -4570,7 +4971,7 @@ MGM.scenarioLoad = function (id) {
 MGM.scenarioNotice = null;
 MGM.scenarioNoticeFor = function (rec, merged) {
   const added = (merged.added || []).slice();
-  const unknown = (merged.unknown || []).filter(p => SCEN_META_KEYS.indexOf(p) < 0);
+  const unknown = MGM.reportableUnknown(merged);
   const ov = MGM.state.gallons && MGM.state.gallons.groupBaselineOverride;
   const overrides = ov ? Object.keys(ov).filter(k => ov[k] !== null && ov[k] !== '') : [];
   if (!added.length && !unknown.length && !overrides.length) return null;
@@ -4648,8 +5049,10 @@ MGM.renderScenarioBar = function () {
     ${n.added.length === 1 ? 'its' : 'their'} current default${n.added.length === 1 ? '' : 's'}:
     ${show(n.added)}. Review ${n.added.length === 1 ? 'it' : 'them'} before quoting a figure from it.`;
   if (n && n.unknown.length) msg += ` <span class="warn">It carries ${n.unknown.length}
-    field${n.unknown.length === 1 ? '' : 's'} this build no longer uses</span>
-    (${show(n.unknown)}); the value${n.unknown.length === 1 ? ' is' : 's are'} kept but unused.`;
+    field${n.unknown.length === 1 ? '' : 's'} this build does not read</span>
+    (${show(n.unknown)}); ${n.unknown.length === 1
+      ? 'the value is kept, and still travels with this model into saves, scenarios and exports even though nothing reads it'
+      : 'the values are kept, and still travel with this model into saves, scenarios and exports even though nothing reads them'}.`;
   if (n && n.overrides.length) msg += ` <span class="warn">It carries overridden gallon
     baselines</span> that differ from the Bus Dev engine (${show(n.overrides)}) —
     see Fuel Gallon Production.`;
@@ -4670,7 +5073,7 @@ MGM.renderCompare = function () {
       return {
         name: s.name, id: s.id, state: merged.state,
         stale: merged.added.length,
-        extra: merged.unknown.filter(p => SCEN_META_KEYS.indexOf(p) < 0).length
+        extra: MGM.reportableUnknown(merged).length
       };
     }));
 
@@ -4734,7 +5137,7 @@ MGM.renderCompare = function () {
   // like-for-like when that scenario predates fields the current one has.
   const head = r => esc(r.name) + (r.live ? ' <span class="note">(live)</span>' : '')
     + (r.stale ? ` <span class="ovr" title="Fields this scenario did not carry, shown at today's defaults">${r.stale} defaulted</span>` : '')
-    + (r.extra ? ` <span class="ovr" title="Fields this build no longer uses">${r.extra} unused</span>` : '');
+    + (r.extra ? ` <span class="ovr" title="Fields this build does not read. Their values are kept, and still travel with this model into saves, scenarios and exports.">${r.extra} kept, unread</span>` : '');
 
   const anyStale = runs.some(r => r.stale || r.extra);
 
@@ -4757,16 +5160,18 @@ MGM.renderCompare = function () {
       ? `<p class="note"><span class="ovr">not fully like-for-like</span> A column marked
          <b>defaulted</b> was saved before some of today's inputs existed, so those cells
          carry current defaults rather than anything that scenario recorded. One marked
-         <b>unused</b> carries inputs this build dropped. Load it to see which fields.</p>`
+         <b>kept, unread</b> carries inputs this build does not read — their values are
+         kept, and still travel with this model into saves, scenarios and exports. Load it
+         to see which fields.</p>`
       : ''}
     <p class="note">Every column is a complete independent re-run of the model on
       that scenario's own inputs — not a re-scaled version of the live figures.</p>
     ${runs.some(r => r.D.marginFromPnl)
       ? `<p class="note"><span class="assume">session-only basis</span> The valuation
          columns rest on an EBITDA margin loaded from the P&amp;L for this session. It
-         is deliberately not stored in any scenario, so a reader without
-         administrator access sees the same scenarios valued on the revenue lens
-         alone. That is a different figure, not a disagreement — and no direction
+         is one this tool deliberately never writes into a scenario, so a reader
+         without administrator access sees the same scenarios valued on the revenue
+         lens alone. That is a different figure, not a disagreement — and no direction
          is claimed for it here, because a margin-derived EBITDA lens can land
          either side of the revenue lens depending on the margin and the
          multiple.</p>`
@@ -4818,6 +5223,26 @@ document.getElementById('themeBtn').onclick = () => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Repair the saved-scenario store once, up front, so the guarantee does not
+  // depend on the reader happening to open the Scenarios tab. scenarioList()
+  // strips and writes back; calling it here is the whole repair.
+  //
+  // It runs HERE, not in MGM.load, on purpose. MGM.load is called hundreds of
+  // lines above scenarioList's definition, and an earlier fix on this very bug
+  // put a remediation call there: it threw TypeError on every load, the
+  // adjacent catch swallowed it, and the remediation never once ran while
+  // appearing to. DOMContentLoaded fires after the whole script is evaluated,
+  // so every definition exists by now.
+  try { MGM.scenarioList(); } catch (e) {}
+
+  // Say it once, up front. A reader who sees this knows why the page is
+  // behaving oddly instead of discovering it one dead button at a time.
+  const _skew = MGM.engineSkew();
+  if (_skew) {
+    try { console.error('[MGM] ' + _skew); } catch (e) {}
+    alert(MGM.engineSkewMessage('use this page safely'));   // no 'nothing-moved'
+  }
+
   MGM.renderTabs();
   MGM.switchTab('starting');
 

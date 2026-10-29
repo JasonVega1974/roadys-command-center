@@ -1669,3 +1669,332 @@ test('valuationHeadline has no value when no lens has a basis', () => {
   assert.equal(h.value, null, 'null, never 0 — absence is not a $0 valuation');
   assert.match(h.caption, /no lens has a basis/);
 });
+
+// ── stripResidue: the removed text-override layer's leftovers ──────────────
+// A placeholder stands in for the sensitive value everywhere below, per SR-11:
+// a test describing a banned value must not contain it.
+const RESIDUE_MARK = 'PLACEHOLDER-NOT-A-REAL-VALUE';
+
+test('stripResidue removes a top-level copy map and counts it', () => {
+  const r = MembershipModel.stripResidue({ copy: { 'a|1': RESIDUE_MARK }, keep: 1 });
+  assert.equal('copy' in r.obj, false);
+  assert.equal(r.obj.keep, 1);
+  assert.equal(r.removed, 1);
+});
+
+test('stripResidue reaches copy nested at any depth', () => {
+  const r = MembershipModel.stripResidue({ a: { b: { c: { copy: { 'x|9': RESIDUE_MARK } } } } });
+  assert.equal('copy' in r.obj.a.b.c, false);
+  assert.equal(r.removed, 1);
+});
+
+test('stripResidue walks arrays, which is how the scenario store is shaped', () => {
+  const store = [
+    { id: 's1', name: 'One', copy: { 'r|0': RESIDUE_MARK },
+      state: { copy: { 'b|2': RESIDUE_MARK }, revenue: { duesPerLoc: 7 } } },
+    { id: 's2', name: 'Two', state: { nested: { copy: { 'c|3': RESIDUE_MARK } } } }
+  ];
+  const r = MembershipModel.stripResidue(store);
+  assert.equal(JSON.stringify(r.obj).includes(RESIDUE_MARK), false);
+  assert.equal(r.removed, 3, 'record-level, state-level and deep-nested all counted');
+  // Everything that is not the residue survives.
+  assert.equal(r.obj.length, 2);
+  assert.deepEqual(r.obj.map(x => x.name), ['One', 'Two']);
+  assert.equal(r.obj[0].state.revenue.duesPerLoc, 7);
+  assert.ok(r.obj[1].state.nested, 'the container of a stripped copy is kept');
+});
+
+test('stripResidue keeps unknown keys -- over-stripping would lose user data', () => {
+  // mergeState deliberately retains keys this build does not know, and that
+  // retention is what let the residue survive. The fix must target one key
+  // name, not "anything unfamiliar".
+  const r = MembershipModel.stripResidue({ zzzUnknownFutureField: 'KEEP-ME', copy: {} });
+  assert.equal(r.obj.zzzUnknownFutureField, 'KEEP-ME');
+  assert.equal('copy' in r.obj, false);
+});
+
+test('stripResidue reports zero on already-clean input, so no needless rewrite', () => {
+  const r = MembershipModel.stripResidue({ revenue: { duesPerLoc: 7 }, list: [{ a: 1 }] });
+  assert.equal(r.removed, 0);
+});
+
+test('stripResidue removes an empty copy map too', () => {
+  // `copy: {}` carries no value but is still a field of a feature that no
+  // longer exists; leaving it would keep reporting an unknown field forever.
+  assert.equal(MembershipModel.stripResidue({ copy: {} }).removed, 1);
+});
+
+test('stripResidue tolerates null, primitives and cycles', () => {
+  assert.equal(MembershipModel.stripResidue(null).removed, 0);
+  assert.equal(MembershipModel.stripResidue(42).removed, 0);
+  const o = { copy: { k: RESIDUE_MARK } };
+  o.self = o;                       // a saved object graph should never cycle,
+  const r = MembershipModel.stripResidue(o);     // but crashing on one would be worse than
+  assert.equal(r.removed, 1);       // the problem it guards.
+});
+
+// ── The two findings the first version of these tests could not see ────────
+// A review observed that the seven tests above covered the rule but neither
+// medium finding: nothing asserted that stripResidue survives a deep graph,
+// and nothing asserted the publish boundary. Both are engine-testable; the
+// absence was the test design's fault, not the problem's.
+
+test('stripResidue survives a graph deeper than any recursive walk', () => {
+  // THE FIRST VERSION OF THIS FUNCTION WAS RECURSIVE AND THIS THREW.
+  // A review measured RangeError between 2 000 and 5 000 levels in Chrome,
+  // while JSON.parse builds 20 000 levels from a ~120 KB file -- so a saved
+  // scenario could carry a graph the strip could not walk. Because the whole
+  // scenario list is stripped in ONE call, a single pathological record
+  // disabled stripping for every record, and the page then published the lot.
+  let root = {}, cur = root;
+  for (let i = 0; i < 20000; i++) { cur.next = {}; cur = cur.next; }
+  cur.copy = { 'deep|1': RESIDUE_MARK };
+  const r = MembershipModel.stripResidue(root);
+  assert.equal(r.removed, 1);
+  assert.equal(r.failed, 0);
+  // Verified by walking ITERATIVELY. The first version of this assertion used
+  // JSON.stringify, which is itself recursive, so the test blew the stack
+  // while the function under test had already succeeded -- the verification
+  // failing in the same way the subject used to.
+  let cur2 = r.obj, depth = 0, found = false;
+  while (cur2 && typeof cur2 === 'object') {
+    if (cur2.copy !== undefined) found = true;
+    cur2 = cur2.next; depth++;
+  }
+  assert.equal(found, false, 'no copy key survives at any depth');
+  assert.equal(depth, 20001, 'and the whole chain is intact');
+});
+
+test('stripResidue reports a failed delete instead of throwing', () => {
+  // `delete` throws in strict mode on a non-configurable property. Reporting
+  // success while the key survived would be the wrong-object-reported-as-fixed
+  // shape this whole fix exists to close, so the count is separate.
+  const frozen = Object.freeze({ copy: { k: RESIDUE_MARK } });
+  const r = MembershipModel.stripResidue(frozen);
+  assert.equal(r.removed, 0);
+  assert.equal(r.failed, 1, 'the caller can fail closed on this');
+  assert.ok('copy' in r.obj, 'and it is honest that the key is still there');
+});
+
+test('stripResidue never throws, whatever it is handed', () => {
+  // The contract the page depends on. Every route that publishes runs
+  // downstream of this call, and the page's response to a throw was to hand
+  // the unstripped data onward.
+  const hostile = [
+    null, undefined, 42, 'string', true, [], {},
+    { copy: null }, { copy: 'not-an-object' }, { copy: [1, 2] },
+    Object.freeze({ copy: {} }),
+    Object.create(null),
+    { a: Object.freeze({ copy: { k: RESIDUE_MARK } }) }
+  ];
+  const cyclic = { copy: { k: RESIDUE_MARK } }; cyclic.self = cyclic;
+  hostile.push(cyclic);
+  // Label by INDEX. The first version built the message with JSON.stringify,
+  // which throws on the cyclic case -- so the test failed inside its own
+  // failure message while every subject case passed.
+  hostile.forEach((h, i) => {
+    assert.doesNotThrow(() => MembershipModel.stripResidue(h), 'threw on case ' + i);
+  });
+});
+
+test('residueVerdict refuses a payload carrying the key', () => {
+  // The publish boundary's own check. It tests a KEY NAME, which is why it
+  // works where three earlier guards failed: those matched gated VALUES
+  // against rendered text, and the page rounds and reformats figures, so a
+  // value stored at two decimals and displayed at one defeated all three. A
+  // key name is never rounded, reformatted or localised.
+  // Tests the function cloudSave ACTUALLY RUNS. An earlier round shipped two
+  // exported definitions of this one rule and these tests pointed at the one
+  // production did not use -- so the live rule had no coverage at all while the
+  // suite read as green. The duplicate is deleted.
+  const clean = p => MembershipModel.residueVerdict(p) === 'clean';
+  assert.equal(clean({ id: 's1', state: { revenue: { duesPerLoc: 7 } } }), true);
+  assert.equal(clean({ id: 's1', state: { copy: { 'a|1': RESIDUE_MARK } } }), false);
+  assert.equal(clean({ id: 's1', state: { a: { b: { copy: {} } } } }), false,
+    'at any depth');
+  assert.equal(clean({ id: 's1', state: { list: [{ copy: {} }] } }), false,
+    'inside an array');
+  assert.equal(clean('{"state":{"copy":{}}}'), false, 'accepts pre-serialised JSON');
+  assert.equal(clean('{"state":{}}'), true);
+});
+
+test('residueVerdict fails CLOSED on anything it cannot serialise', () => {
+  // A payload that cannot be serialised cannot be checked, and an unverifiable
+  // payload must not be published. Returning true here would make one
+  // unserialisable field a disclosure.
+  const cyc = { id: 's1' }; cyc.self = cyc;
+  const clean = p => MembershipModel.residueVerdict(p) === 'clean';
+  assert.equal(clean(cyc), false, 'unserialisable');
+  // JSON.stringify(undefined) returns undefined rather than throwing, so the
+  // catch does not fire. The first version of the guard then called .indexOf
+  // on it and THREW -- a guard beaten by its own structure, for the sixth time
+  // in this fix. Found by this test.
+  assert.equal(clean(undefined), false, 'unverifiable');
+  // Not every odd input is unverifiable: a payload that serialises cleanly
+  // carries no residue, whatever else is wrong with it. Fail-closed is about
+  // what cannot be CHECKED, not about what looks unusual.
+  assert.equal(clean(null), true);
+});
+
+test('residueVerdict does not reject a value that merely mentions copy', () => {
+  // It matches the quoted KEY, not the word, so a scenario legitimately named
+  // "Copy of Base" -- or a note containing the word -- still publishes.
+  const F = p => MembershipModel.residueVerdict(p) === 'clean';
+  assert.equal(F({ id: 's1', name: 'Copy of Base', state: {} }), true);
+  assert.equal(F({ id: 's1', state: { notes: 'copy this to the board' } }), true);
+  // A quoted occurrence inside a string VALUE is escaped by JSON.stringify, so
+  // it cannot be mistaken for a key.
+  assert.equal(F({ id: 's1', state: { notes: 'the "copy" button' } }), true);
+  // And a value equal to the bare word publishes fine. The first version
+  // matched `"copy"` rather than `"copy":` and refused this -- a legitimate
+  // scenario note blocked from syncing, found by this test.
+  assert.equal(F({ id: 's1', state: { notes: 'copy' } }), true);
+});
+
+test('residueVerdict tells a dirty payload from an uncheckable one', () => {
+  // Both refuse at the publish boundary, but the remedy differs: a reload
+  // strips, so it fixes 'residue'; it cannot change how deeply a record is
+  // nested, so it cannot fix 'unverifiable'. Collapsing the two told a reader
+  // to reload and retry for a record that was never dirty -- found by a probe,
+  // not by reasoning.
+  const V = MembershipModel.residueVerdict;
+  assert.equal(V({ id: 's1', state: { revenue: { duesPerLoc: 7 } } }), 'clean');
+  assert.equal(V({ id: 's1', state: { copy: { 'a|1': RESIDUE_MARK } } }), 'residue');
+  const cyc = { id: 's1' }; cyc.self = cyc;
+  assert.equal(V(cyc), 'unverifiable');
+  assert.equal(V(undefined), 'unverifiable');
+  // Anything JSON.stringify refuses is 'unverifiable', NOT 'clean': guessing
+  // 'clean' would be the publish boundary trusting what it could not check.
+  // BigInt makes stringify throw deterministically in every engine.
+  //
+  // Not asserted here: the depth at which stringify gives up. That is what
+  // motivated this split -- a clean but very deep record was refused in Chrome
+  // -- but the limit is engine-specific (Node serialises 20 000 levels where
+  // Chrome throws), so pinning a depth would pin a property of the test
+  // runner, not of this rule.
+  assert.equal(V({ id: 's1', big: 1n }), 'unverifiable');
+  // And the structural cases, which are engine-independent:
+  const nested = { id: 's1', state: { a: { b: { copy: {} } } } };
+  assert.equal(V(nested), 'residue');
+  assert.equal(V({ id: 's1', state: { l: [{ copy: {} }] } }), 'residue');
+});
+
+// ── The engine revision must stay coupled to what the page expects ─────────
+// Reads the page via __dirname, matching this file's existing convention (see
+// the SR-11 scans above). The first version used './membership-growth-model/
+// index.html', which ENOENTs when the suite is run from the parent directory:
+// a review measured 106 pass / 3 fail that way. Loud rather than vacuous, but
+// still three tests that pass or fail based on the caller's cwd.
+function readPage() {
+  const fs = require('node:fs'), path = require('node:path');
+  return fs.readFileSync(path.join(__dirname, 'membership-growth-model', 'index.html'), 'utf8');
+}
+
+// Requires EXACTLY ONE match in the page, and returns it.
+//
+// First-match semantics were shadowable: a review block-commented a copy of a
+// declaration above a real one, and the test read the commented value -- 109/0
+// against a genuine engine skew. `^\s*` anchoring stops `//` comments but not
+// the interior lines of a `/* */` block, and this file uses those idiomatically.
+//
+// Chasing that with a better comment-stripper is the losing move; it was tried
+// twice. The invariant that actually matters is that exactly one declaration
+// exists, so any second copy -- commented, indented, or live -- fails loudly
+// instead of silently winning.
+function matchOnce(src, re, what) {
+  const all = String(src).match(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'));
+  assert.ok(all, 'the page must declare ' + what);
+  assert.equal(all.length, 1,
+    'expected exactly one ' + what + ' in the page, found ' + all.length +
+    ' -- a second copy (including one inside a /* */ comment) would shadow this check: ' +
+    JSON.stringify(all));
+  return String(src).match(re);
+}
+
+// Strips `//` line comments before parsing a matched code fragment. A review
+// put an inline comment inside the ENGINE_NEEDS array and the test failed
+// claiming the page required a function named `// the strip 'residueVerdict'`
+// -- a false failure on a legitimate edit. Plain multi-line reformatting was
+// already safe; this makes commenting safe too.
+function stripLineComments(src) {
+  return String(src).replace(/\/\/[^\n]*/g, '');
+}
+
+// A review set ENGINE_REV to 5 and the whole suite still passed: nothing
+// referenced it. That is the same gap as the cache-busting query string --
+// a number a human must remember to keep in step, with no check. The page
+// reads its copy from HTML, so the coupling is asserted across the two files.
+
+test('ENGINE_REV matches the revision the page expects', () => {
+  const page = readPage();
+  const m = matchOnce(page, /^\s*MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/m,
+                      'MGM.ENGINE_REV_EXPECTED');
+  assert.equal(MembershipModel.ENGINE_REV, Number(m[1]),
+    'bump BOTH: membershipModel.js ENGINE_REV and index.html ENGINE_REV_EXPECTED');
+});
+
+test('ENGINE_REV is a number, not a string', () => {
+  // `'4'` made the page report "revision 4 but this page expects revision 4"
+  // -- a false skew that hard-blocked Sync with advice that could not fix it.
+  // The page coerces now, and this stops the shape arising in the first place.
+  assert.equal(typeof MembershipModel.ENGINE_REV, 'number');
+  assert.ok(isFinite(MembershipModel.ENGINE_REV));
+});
+
+test('the page requires every engine function it names, and all exist', () => {
+  // MGM.ENGINE_NEEDS is the page's own list. If someone adds a name to it
+  // without the engine exporting it, every load reports a false skew and the
+  // page refuses to work -- so the list is checked against reality here.
+  const page = readPage();
+  const m = matchOnce(page, /^\s*MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/m,
+                      'MGM.ENGINE_NEEDS');
+  const needs = stripLineComments(m[1])
+    .split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  assert.ok(needs.length >= 2, 'expected a real list, got ' + JSON.stringify(needs));
+  for (const n of needs) {
+    assert.equal(typeof MembershipModel[n], 'function',
+      'the page requires MM.' + n + ' but the engine does not export it');
+  }
+});
+
+test('the engine guard is declared before anything reads the engine', () => {
+  // THE ONLY THING RECORDING THIS WAS A COMMENT. A review moved the two
+  // declarations back below their first use: the suite still passed 109/109
+  // while the page broke on a HEALTHY engine -- TypeError reading 'filter' of
+  // undefined, no error card, 15 buttons and 12 live handlers over an empty
+  // MGM. That is the F1-r5 defect reproduced, except now on a good engine.
+  //
+  // So the ordering is asserted, not described. Three positions, one order:
+  // the list is declared, the guard computes from it, and only then does
+  // anything call the engine.
+  const page = readPage();
+  const iNeeds = page.indexOf('MGM.ENGINE_NEEDS =');
+  const iRev   = page.indexOf('MGM.ENGINE_REV_EXPECTED =');
+  const iGuard = page.indexOf('const _engineBroken');
+  const iFirst = page.indexOf('MGM.state = MM.defaultState(');
+  for (const [name, i] of [['MGM.ENGINE_NEEDS', iNeeds], ['MGM.ENGINE_REV_EXPECTED', iRev],
+                           ['const _engineBroken', iGuard],
+                           ['MGM.state = MM.defaultState(', iFirst]]) {
+    assert.ok(i >= 0, 'expected the page to contain ' + name);
+  }
+  assert.ok(iNeeds < iGuard,
+    'MGM.ENGINE_NEEDS must be declared before const _engineBroken reads it');
+  assert.ok(iRev < iGuard,
+    'MGM.ENGINE_REV_EXPECTED must be declared before const _engineBroken reads it');
+  assert.ok(iGuard < iFirst,
+    'the engine guard must run before the first engine call, or an unusable ' +
+    'engine renders a full page of dead controls instead of an error card');
+});
+
+test('the engine cache-bust is not a date, and the page requests it', () => {
+  // Rounds 2 and 3 of this fix shipped on the same calendar day, so a date
+  // key could not have separated them even if it had been bumped -- and it
+  // was not, leaving Sync dead and silent for anyone holding the old engine.
+  // Unique too, closing the review's note that this one was still unanchored:
+  // a second <script> tag with a different ?v= would make the check meaningless.
+  const page = readPage();
+  const m = matchOnce(page, /membershipModel\.js\?v=([^"']+)/,
+                      'cache-busted membershipModel.js script tag');
+  assert.ok(!/^\d{4}-\d{2}-\d{2}$/.test(m[1]),
+    'a bare date cannot separate two revisions shipped the same day: ' + m[1]);
+});
