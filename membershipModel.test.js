@@ -10,8 +10,8 @@ test('group counts sum to the 375 verified active base', () => {
 test('group split matches the verified location-list breakdown', () => {
   const byLabel = Object.fromEntries(MGM_CONFIG.groups.map(g => [g.label, g.count]));
   assert.deepEqual(byLabel, {
-    'Truck Stop': 154, 'Truck Stop-Service Center': 6, 'C-Stores': 22,
-    'PPO': 88, "Roady's Lite": 7, 'Fuel Stops': 9, 'PTP': 89
+    'Truck Stop': 155, 'Truck Stop-Service Center': 6, 'C-Stores': 22,
+    'PPO': 87, "Roady's Lite": 7, 'Fuel Stops': 9, 'PTP': 89
   });
 });
 
@@ -25,6 +25,59 @@ test('billing aggregates match company_membership_report_2026-10-28.csv', () => 
   assert.equal(b.locations, 391);
   assert.equal(b.monthlyDuesTotal, 143426);
   assert.equal(b.payingLocations, 375);
+});
+
+test('duesPerLocBillable divides by paying locations, not all locations', () => {
+  // Shipped as 143426/391 = 366.82, which published a 98.7% dues realization
+  // against a denominator that included 16 locations billing $0. The honest
+  // figure is 143426/375 = 382.47 and 94.6%. This pins the denominator so the
+  // name and the arithmetic cannot drift apart again.
+  const b = MGM_CONFIG.billing;
+  assert.equal(b.locations, 391);
+  assert.equal(b.payingLocations, 375);
+  assert.ok(b.payingLocations < b.locations, 'some locations bill nothing');
+  assert.equal(b.duesPerLocBillable,
+    Math.round((b.monthlyDuesTotal / b.payingLocations) * 100) / 100);
+  assert.notEqual(b.duesPerLocBillable,
+    Math.round((b.monthlyDuesTotal / b.locations) * 100) / 100);
+});
+
+test('a zero prior count yields no rate, not Infinity', () => {
+  // prev.count != null passes for 0, and 100 * lost / 0 is Infinity -- which
+  // avg then averaged, so the Historical tab's three-year average and the
+  // Member Losses 3-YR DERIVED tile both read "Infinity%" while
+  // attritionSplit's decomposition read "NaN%". Every count is user-editable,
+  // so clearing one is reachable from the UI.
+  const h = [
+    { year: 2023, newR: 10, lost: 5, count: 0 },     // zero prior count
+    { year: 2024, newR: 10, lost: 5, count: 100 },
+    { year: 2025, newR: 10, lost: 10, count: 100 }
+  ];
+  const d = MembershipModel.derivedAttrition(h);
+
+  assert.equal(d.rows.length, 1, 'only 2025 is derivable; 2024 had a zero base');
+  assert.equal(d.rows[0].year, 2025);
+  assert.ok(Number.isFinite(d.avg), 'the average must be finite');
+  assert.equal(d.avg, 10);
+
+  // attritionSplit reads the same rows, so it is fixed by the same guard.
+  const sp = MembershipModel.attritionSplit(h, 3.6);
+  sp.rows.forEach(r => {
+    assert.ok(Number.isFinite(r.totalRate), `${r.year} totalRate finite`);
+    assert.ok(Number.isFinite(r.steadyLost), `${r.year} steadyLost finite`);
+    assert.ok(Number.isFinite(r.structuralLost), `${r.year} structuralLost finite`);
+  });
+
+  // CONTROL: a zero count must not simply be dropped from the input -- the
+  // guard is on the DENOMINATOR, so a zero count still serves as a numerator
+  // year's own count when it is the later of the pair.
+  const h2 = [
+    { year: 2024, newR: 10, lost: 5, count: 200 },
+    { year: 2025, newR: 10, lost: 20, count: 0 }
+  ];
+  const d2 = MembershipModel.derivedAttrition(h2);
+  assert.equal(d2.rows.length, 1, '2025 is still derivable: its BASE is 200');
+  assert.equal(d2.rows[0].rate, 10);
 });
 
 test('annual history carries the verified new/lost/count series', () => {
@@ -124,10 +177,23 @@ test('no P&L actual, margin %, or back-solvable multiple appears in the raw sour
     assert.ok(!re.test(SRC), `"${term}" must not appear anywhere in the committed source file`);
   });
 
-  // (c) the gated margin percentage, as a value and as prose
-  assert.equal(MGM_CONFIG.valuation.ebitdaMargin, 0);
-  assert.ok(!/\b0?\.9\s*%/.test(SRC),
-    'the gated 0.9% EBITDA margin must not appear in the committed source file, even as prose');
+  // (c) the margin ships explicitly unset.
+  //
+  // There used to be a second assertion here: a regex banning the gated
+  // percentage as prose. It was removed because it SPELLED THE FIGURE OUT in
+  // order to ban it -- the pattern literal sat in this committed public file,
+  // under a message naming it as the gated EBITDA margin, so anyone reading
+  // the guard recovered exactly what the guard existed to protect. A test
+  // cannot blocklist a secret by quoting it.
+  //
+  // What replaces it: this equality (the config must ship the placeholder, so
+  // nobody can "helpfully" fill the real figure in), the word-ban in (b), the
+  // structural rule in (d), and the discipline that a test FIXTURE must be an
+  // obviously synthetic number too -- a fixture is as recoverable as a default.
+  // See the 7.5 fixture in the ebitdaMargin test below, which is arbitrary on
+  // purpose.
+  assert.equal(MGM_CONFIG.valuation.ebitdaMargin, 0,
+    'the committed config must ship the margin unset; the real figure is auth-gated');
 
   // (d) no back-solvable multiple: a number next to × / x / * is how
   // "3.4× realized gross profit per member" recovered a gated figure from a
@@ -155,6 +221,85 @@ test('no P&L actual, margin %, or back-solvable multiple appears in the raw sour
     'a multiplier token must not sit within 40 chars of gross/profit/income/margin (multiplier-first order) — that shape back-solves a gated figure from a committed denominator');
   assert.ok(!termThenMultiplier.test(SRC),
     'a multiplier token must not sit within 40 chars of gross/profit/income/margin (term-first order) — that shape back-solves a gated figure from a committed denominator');
+});
+
+test('no P&L identifier leaks into the engine or the page', () => {
+  // The test above guards membershipModelConfig.js with a word-ban. That ban
+  // cannot be pointed at the engine or the page, because both legitimately
+  // contain the PROSE forms: the page's UI copy says "net margin" to the user,
+  // and both carry comments explaining why the real figures are gated. Banning
+  // the prose there would forbid the explanation along with the leak.
+  //
+  // So this guards the distinction that actually matters, which is not
+  // identifier-vs-prose either. The page MUST name these fields to display
+  // what it loaded -- `MGM.pnlActuals.netMarginPct` is the whole point of the
+  // gated loader, and an earlier draft of this guard banned the mention and
+  // failed instantly on legitimate code. A reference reads a value that
+  // arrived at runtime; a LITERAL ASSIGNMENT bakes one into the repo. Only
+  // the second is a leak, so only the second is banned.
+  //
+  // membershipModel.test.js is deliberately NOT scanned: it necessarily
+  // contains the ban list itself, so scanning it would always fail on its own
+  // source. Its compensating control is that it holds no data at all, only
+  // fixtures, and a fixture must be an obviously synthetic number -- see the
+  // 7.5 in the ebitdaMargin test.
+  const fs = require('node:fs'), path = require('node:path');
+  const files = {
+    'membershipModel.js': require.resolve('./membershipModel.js'),
+    'membership-growth-model/index.html':
+      path.join(__dirname, 'membership-growth-model', 'index.html')
+  };
+
+  // Field names for P&L actuals, camelCase and snake_case. Matched only where
+  // a NUMBER is assigned to them.
+  const pnlFields = ['grossProfit', 'gross_profit', 'netIncome', 'net_income',
+    'netMargin', 'net_margin', 'settlementSpread', 'settlement_spread',
+    'payrollTotal', 'payroll_total', 'opexTotal', 'opex_total'];
+
+  Object.entries(files).forEach(([label, abs]) => {
+    assert.ok(fs.existsSync(abs), `${label} must exist for this guard to mean anything`);
+    const src = fs.readFileSync(abs, 'utf8');
+
+    pnlFields.forEach(field => {
+      // Matches a figure written into the repo — `netMargin: 12.3`,
+      // `netMargin = 12.3`, `netMarginPct: 12.3`. Does NOT match a reference
+      // like `obj.netMarginPct` or a string `'netMarginPct'`, which the page
+      // legitimately needs in order to display what the gated loader fetched.
+      //
+      // The 12.3 above is deliberately arbitrary. An earlier version of this
+      // comment illustrated the pattern with the REAL gated figure — the third
+      // time on this branch that a guard against committing a value committed
+      // that value in order to describe itself. Never use the real number as
+      // an example, not in a regex, not in a fixture, not in a comment.
+      const assigned = new RegExp(field + '\\w*\\s*[:=]\\s*-?\\d', 'i');
+      assert.ok(!assigned.test(src),
+        `${label} assigns a numeric literal to "${field}" — a P&L actual must never be committed; it loads at runtime from the auth-gated table`);
+    });
+
+    // The legal entity whose statement this is: never named in the engine or
+    // the page. Unlike the field names, there is no legitimate use for it in
+    // either file.
+    //
+    // This test file necessarily names it in order to ban it, which is the
+    // same self-reference problem that forced the removal of a regex spelling
+    // out the gated percentage. It is kept here, and the two cases are NOT
+    // equivalent: a percentage is a value that can be combined with committed
+    // figures to recover more, whereas an entity name pairs with nothing and
+    // reveals only itself. What made the entity name sensitive in the spec was
+    // that the spec printed it ALONGSIDE its financials; here it stands alone.
+    // Do not remove this as an oversight, and do not add the figures back on
+    // the same reasoning.
+    assert.ok(!/SKR3L/i.test(src),
+      `${label} names the reporting entity — keep it out of committed files`);
+  });
+
+  // The page must not ship a nonzero margin baked in either: MGM.pnlActuals
+  // is the only route a real figure may take, and it loads at runtime from the
+  // auth-gated table. A literal assignment in the page source is a leak.
+  const page = fs.readFileSync(files['membership-growth-model/index.html'], 'utf8');
+  const bakedMargin = /ebitdaMargin\s*[:=]\s*(?!0\b)\d/;
+  assert.ok(!bakedMargin.test(page),
+    'the page must not assign a nonzero ebitdaMargin literal — the real figure is auth-gated and arrives at runtime');
 });
 
 test('labels cover all twelve tabs', () => {
@@ -412,34 +557,49 @@ test('revPerMember derives $5,941 from the committed drivers', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
   // 362*12 + 119 - 148 + 0 + 110*12*0.70 + 29*12*0.50 + 528 = 5941.
-  // NOT 5946 — that is the measured P&L gross-profit-per-member figure, and
-  // the committed drivers fall $5 short of it by design:
-  //   dues        +1  (362 rounded up from 361.95)
-  //   vendor      -4  (110 rounded down from 110.48)
-  //   rewards fee +1  (29 rounded up from 28.83)
-  //   Rewards Points line  -3  (a real P&L line the model deliberately
-  //                             does not carry as a driver)
-  // Keeping the rounded drivers is an explicit decision; the gap is surfaced
-  // on the reconciliation tile rather than hidden by un-rounding.
+  //
+  // This is the DRIVER SUM, computed from the seven committed drivers. It is
+  // deliberately close to, but not equal to, the measured per-member figure:
+  // the drivers are rounded to whole dollars, and the model leaves one real
+  // P&L line out as a driver on purpose. The measured figure, the per-driver
+  // unrounded values and the size of the gap are all auth-gated and live in
+  // mgm_pnl_actuals — quoting any of them here would commit a P&L actual to a
+  // public repo, and quoting the GAP would let the figure be back-solved from
+  // the committed drivers.
+  //
+  // Keeping the rounded drivers is an explicit owner decision; the gap is
+  // surfaced on the reconciliation tile for a signed-in admin, not hidden.
   near(rpm.derived.total, 5941, 'derived $/member/yr');
   assert.equal(rpm.actual, null, 'unsigned: no actual');
   assert.equal(rpm.benchmark, 20000);
   near(rpm.varianceVsBenchmark, 5941 - 20000, 'benchmark variance');
 });
 
-test('revPerMember reports the real -$5 variance against the P&L actual', () => {
+test('revPerMember reports the variance against a loaded actual', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
+  // 7000 is an ARBITRARY stand-in, not the measured figure. The real one is
+  // auth-gated, and a fixture is as recoverable as a config default -- so the
+  // test pins the subtraction and its SIGN, which is what can regress, using
+  // a value that discloses nothing. An actual above the driver sum must give a
+  // negative variance; the direction is the part a reader relies on.
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st),
-    { totalPerMemberYr: 5946 });
-  // The whole point of this function is to expose the gap, so assert the
-  // real one rather than contriving an equal value that only tests subtraction.
-  near(rpm.varianceVsActual, -5, 'drivers are $5/member/yr below the P&L actual');
+    { totalPerMemberYr: 7000 });
+  near(rpm.varianceVsActual, rpm.derived.total - 7000, 'variance is derived minus actual');
+  assert.ok(rpm.varianceVsActual < 0,
+    'an actual above the driver sum reads as a shortfall, not a surplus');
 });
 
 test('dues realization is reported from the billable vs realized rates', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
-  near(rpm.duesRealization, 100 * 362 / 366.82, 'realization %');
+  // 382.47 is 143426 / 375 PAYING locations. The denominators are spelled out
+  // rather than read back off the config, so this stays an independent check
+  // of the published figure rather than restating the implementation: against
+  // the old 366.82 (dues / all 391 locations) this reads 98.7%, against the
+  // correct rate it reads 94.6%.
+  near(rpm.duesRealization, 100 * 362 / 382.47, 'realization %');
+  assert.ok(rpm.duesRealization > 94.6 && rpm.duesRealization < 94.7,
+    `realization must land at 94.6%, not the 98.7% the all-locations denominator published; got ${rpm.duesRealization}`);
 });
 
 test('GOLDEN: valuation under legacy settings reproduces the v1 exactly', () => {
@@ -462,11 +622,15 @@ test('ebitdaMargin ships unset, and the margin lens honours whatever is set', ()
   assert.equal(MembershipModel.valuation(st, last).ebitdaBase, 0,
     'unset margin yields a zero EBITDA lens, not a guess');
 
-  // Set it the way a signed-in session or a hand entry would.
-  st.valuation.ebitdaMargin = 0.9;
+  // Set it the way a signed-in session or a hand entry would. 7.5 is an
+  // ARBITRARY value chosen to be obviously not the real figure: the actual
+  // P&L margin is auth-gated and must never appear in this public repo, not
+  // even as a test fixture, because a fixture is as recoverable as a config
+  // default. Any number that exercises the branch is equally valid here.
+  st.valuation.ebitdaMargin = 7.5;
   const v = MembershipModel.valuation(st, last);
-  near(v.ebitdaBase, last.total * 0.009, 'ebitda base');
-  near(v.ebitda, last.total * 0.009 * 5, 'ebitda lens');
+  near(v.ebitdaBase, last.total * 0.075, 'ebitda base');
+  near(v.ebitda, last.total * 0.075 * 5, 'ebitda lens');
 });
 
 test('normalization add-backs raise EBITDA explicitly and nothing else', () => {
@@ -523,6 +687,41 @@ test('an EBITDA override must NOT re-apply the normalization add-back', () => {
     'multiplied through exactly once');
 });
 
+test('valuation declines to a revenue-only lens when given no EBITDA basis', () => {
+  // With costs unset, cashflowModel's EBITDA is revenue minus zero costs, i.e.
+  // a 100% margin. The page must NOT pass that to valuation as the override:
+  // doing so produced a $9.09M headline midpoint against $3.03M on the margin
+  // branch -- a 3x overstatement on shipped defaults, against a real net margin
+  // that is a small fraction of 100% -- and made ebitdaMargin dead code because
+  // the override always won. This test pins the arithmetic that decision rests
+  // on.
+  //
+  // SCOPE: this covers the ENGINE only. MGM.model() lives in an inline script
+  // with no test seam, so nothing here fails if a future edit re-passes the
+  // zero-cost cash bridge from the page -- verified by reverting MGM.model()
+  // and watching this file still report all green. The page-level behaviour is
+  // currently protected by the comment at the MGM.model() call site and by
+  // review, not by a test.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(st);
+  const R = MembershipModel.revenueModel(st, M);
+  const F = MembershipModel.cashflowModel(st, M, R);
+  const cost = MembershipModel.costModel(st, M, R);
+  const last = R[R.length - 1], lastF = F[F.length - 1];
+
+  assert.equal(cost.unset, true, 'costs ship unset');
+  near(lastF.ebitda, last.total, 'a zero-cost bridge EBITDA equals revenue');
+
+  const withBridge = MembershipModel.valuation(st, last, lastF.ebitda);
+  const declined = MembershipModel.valuation(st, last, null);
+  assert.ok(withBridge.mid > declined.mid * 2.5,
+    'handing over the zero-cost bridge inflates the midpoint roughly threefold');
+  near(declined.ebitdaBase, 0,
+    'the margin branch yields no EBITDA basis at the shipped 0% margin');
+  near(declined.mid, declined.rev / 2,
+    'so the midpoint is exactly half the revenue lens');
+});
+
 test('low and high track which lens is actually lower, in both orderings', () => {
   // The first draft of this test asserted `mid === (rev + ebitda) / 2` using
   // the output's own fields — the same expression the implementation uses —
@@ -552,6 +751,105 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   near(b.low, 6061409.516516, 'low is now the revenue lens');
   near(b.high, 9698255.226426, 'high is now the EBITDA lens');
   near(b.mid, 7879832.371471, 'midpoint follows the inversion');
+});
+
+test('indicated is the single lens when only one has a basis, never half of it', () => {
+  // On shipped defaults only the revenue lens has a basis: the margin is
+  // auth-gated to 0 and no costs are entered, so the EBITDA lens is $0. `mid`
+  // then reads 3030704.76 -- exactly half the only method that exists -- and
+  // that figure was the page's headline. `indicated` is the field consumers
+  // must read instead. `mid` is deliberately still asserted here: it keeps its
+  // meaning as the two-method midpoint, and a future edit must not quietly
+  // redefine it into `indicated`.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+
+  const defaults = MembershipModel.valuation(st, last);
+  assert.equal(defaults.lensCount, 1, 'only the revenue lens has a basis');
+  near(defaults.indicated, 6061409.516516, 'indicated is the whole revenue lens');
+  near(defaults.mid, 3030704.758258, 'mid still reports the two-method midpoint');
+  assert.notEqual(defaults.indicated, defaults.mid,
+    'the headline figure must not be half of the only live lens');
+
+  // The mirror case: a revenue lens with no basis and a live EBITDA lens.
+  // Zeroing the multiple rather than the revenue keeps the model's own revenue
+  // total intact, so the EBITDA margin still has something to apply to.
+  const ebitdaOnly = MembershipModel.defaultState(MGM_CONFIG);
+  ebitdaOnly.valuation.revMultiple = 0;
+  ebitdaOnly.valuation.ebitdaMargin = 7.5;
+  const eo = MembershipModel.valuation(ebitdaOnly, last);
+  assert.equal(eo.rev, 0, 'revenue lens has no basis at a zero multiple');
+  assert.equal(eo.lensCount, 1, 'only the EBITDA lens has a basis');
+  near(eo.indicated, last.total * 0.075 * 5, 'indicated is the whole EBITDA lens');
+});
+
+test('indicated equals the midpoint when both lenses have a basis', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+
+  // Via a margin assumption. 7.5 is arbitrary and obviously not the gated
+  // figure; any value that makes the lens live is equally valid here.
+  st.valuation.ebitdaMargin = 7.5;
+  const viaMargin = MembershipModel.valuation(st, last);
+  assert.equal(viaMargin.lensCount, 2);
+  near(viaMargin.indicated, (viaMargin.rev + viaMargin.ebitda) / 2, 'midpoint');
+  near(viaMargin.indicated, viaMargin.mid, 'indicated and mid agree at two lenses');
+
+  // Via a real computed EBITDA handed in as the override, which is the path
+  // Profit & Cash Flow uses once actual costs are entered.
+  const viaCosts = MembershipModel.defaultState(MGM_CONFIG);
+  viaCosts.costs.costToServePerMember = 1200;
+  viaCosts.costs.salesSpendPerMonth = 40000;
+  const M2 = MembershipModel.runModel(viaCosts);
+  const R2 = MembershipModel.revenueModel(viaCosts, M2);
+  const F2 = MembershipModel.cashflowModel(viaCosts, M2, R2);
+  const lastF = F2[F2.length - 1];
+  assert.equal(MembershipModel.costModel(viaCosts, M2, R2).unset, false,
+    'real costs are entered');
+  const vc = MembershipModel.valuation(viaCosts, R2[R2.length - 1], lastF.ebitda);
+  assert.equal(vc.lensCount, 2, 'a computed EBITDA is a basis');
+  near(vc.indicated, (vc.rev + vc.ebitda) / 2, 'midpoint of two real lenses');
+});
+
+test('a NEGATIVE lens is a basis; only an exact zero is absent', () => {
+  // The decision this pins: zero means "nothing was supplied" because every
+  // unsupplied input in this model defaults to an explicit 0, but a negative
+  // EBITDA can only come from real entered costs exceeding revenue. That is a
+  // measured result and the most decision-relevant thing the model can say,
+  // so it counts as a method and drags the midpoint down. Treating it as
+  // absent would hide a loss and promote the revenue lens to a lone headline.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+
+  const neg = MembershipModel.valuation(st, last, -500000);
+  assert.equal(neg.lensCount, 2, 'a negative EBITDA lens is present, not absent');
+  near(neg.ebitda, -500000 * 5, 'negative lens multiplied through');
+  near(neg.indicated, (neg.rev + neg.ebitda) / 2,
+    'the midpoint carries the loss rather than ignoring it');
+  assert.ok(neg.indicated < neg.rev / 2 + 1,
+    'a negative lens must pull the indicated value BELOW half the revenue lens');
+  near(neg.low, -2500000, 'low is the negative lens');
+});
+
+test('indicated is null, not zero, when no lens has a basis', () => {
+  // A null forces every consumer to render an em dash rather than printing
+  // "$0.00M", which would read as a company valued at nothing instead of a
+  // model with no method supplied.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const last = R[R.length - 1];
+  st.valuation.revMultiple = 0;        // revenue lens has no basis
+  assert.equal(st.valuation.ebitdaMargin, 0, 'margin ships unset');
+
+  const none = MembershipModel.valuation(st, last);
+  assert.equal(none.rev, 0);
+  assert.equal(none.ebitda, 0);
+  assert.equal(none.lensCount, 0);
+  assert.equal(none.indicated, null, 'null, never 0 — absent is not a valuation');
+  assert.equal(none.mid, 0, 'mid is unchanged and still arithmetically 0 here');
 });
 
 // ── fixtures ─────────────────────────────────────────────────────────────
@@ -665,7 +963,7 @@ test('gallon production multiplies group counts by mapped baselines', () => {
   const p = MembershipModel.pipelineModel(st, LEADS, PROFILES);
   const g = MembershipModel.gallonProduction(st, baselineFor, p);
   const expected =
-    154 * 10492 + 6 * 5250 + 22 * 2338 + 88 * 5630 +
+    155 * 10492 + 6 * 5250 + 22 * 2338 + 87 * 5630 +
     7 * 6174 + 9 * 5630 + 89 * 2338;
   near(g.existing, expected, 'existing network gal/mo');
   assert.equal(g.inbound, p.gallons);
@@ -898,7 +1196,8 @@ test('the valuation panel consumes the computed EBITDA, not the margin assumptio
   // DIRECTION IS DELIBERATELY NOT ASSERTED. With these modest cost inputs
   // ($20k/mo spend, $400/member/yr) the computed EBITDA lands ~3.3x ABOVE a 25%
   // margin, implying an 83% margin on ~$2.42M of revenue. Only with the P&L's
-  // real opex (~$2.21M annualised, giving 0.9%) would it fall below. Which side
+  // real operating costs -- auth-gated, never committed to this public repo, and
+  // far larger than these placeholder inputs -- would it fall below. Which side
   // it lands on is a property of the INPUTS, not of the code -- an earlier
   // draft of this test asserted "below" and was simply wrong.
   assert.notEqual(viaComputed.ebitdaBase, viaMargin.ebitdaBase,
@@ -942,4 +1241,139 @@ test('adding a group flows through every dependent layer', () => {
   assert.equal(M.startTotal, 400, 'roll-forward sees it');
   const R = MembershipModel.revenueModel(st, M);
   assert.ok(R[0].streams.dues > 0, 'revenue sees it');
+});
+
+// ── Task 14a: MM.mergeState — the engine's state merge ─────────────────────
+test('mergeState restores a nested field the saved state predates', () => {
+  const base = () => MembershipModel.defaultState(MGM_CONFIG);
+  const old = JSON.parse(JSON.stringify(base()));
+  delete old.valuation.ebitdaNormalization;
+  delete old.revenue.rewardsBreakagePerMember;
+
+  const r = MembershipModel.mergeState(base(), old);
+  const want = base();
+  assert.equal(r.state.valuation.ebitdaNormalization, want.valuation.ebitdaNormalization);
+  assert.equal(r.state.revenue.rewardsBreakagePerMember, want.revenue.rewardsBreakagePerMember);
+  assert.ok(r.added.includes('valuation.ebitdaNormalization'));
+  assert.ok(r.added.includes('revenue.rewardsBreakagePerMember'));
+
+  const got = MembershipModel.revenueModel(r.state, MembershipModel.runModel(r.state))[0].total;
+  const exp = MembershipModel.revenueModel(want, MembershipModel.runModel(want))[0].total;
+  near(got, exp, 'revenue is no longer understated');
+});
+
+test('CONTROL: the shallow merge mergeState replaces really did lose the field', () => {
+  // Without this, the test above passes trivially and proves nothing about
+  // why mergeState exists.
+  const base = () => MembershipModel.defaultState(MGM_CONFIG);
+  const old = JSON.parse(JSON.stringify(base()));
+  delete old.revenue.rewardsBreakagePerMember;
+  const shallow = Object.assign(base(), old);
+  assert.equal(shallow.revenue.rewardsBreakagePerMember, undefined,
+    'Object.assign drops it, which is the bug');
+  const lost = MembershipModel.revenueModel(base(), MembershipModel.runModel(base()))[0].total
+             - MembershipModel.revenueModel(shallow, MembershipModel.runModel(shallow))[0].total;
+  assert.ok(lost > 150000, `shallow merge understates revenue by $${lost.toFixed(0)}`);
+});
+
+test('mergeState lets a saved value override the default, nested included', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const saved = JSON.parse(JSON.stringify(st));
+  saved.revenue.duesPerLoc = 999;
+  saved.attrition.steady = 42;
+  const r = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG), saved);
+  assert.equal(r.state.revenue.duesPerLoc, 999);
+  assert.equal(r.state.attrition.steady, 42);
+  assert.equal(r.added.length, 0, 'a current-shape state reports nothing missing');
+});
+
+test('mergeState replaces arrays wholesale, never element-wise', () => {
+  // groups / history / sources are user-editable lists. A saved list is an
+  // intentional whole: merging it element-wise against a longer default would
+  // resurrect rows the user deleted.
+  const saved = JSON.parse(JSON.stringify(MembershipModel.defaultState(MGM_CONFIG)));
+  saved.history = [{ year: 2030, newR: 1, lost: 1, count: 1 }];
+  saved.groups = [{ key: 'ts', label: 'Truck Stop', count: 5 }];
+  const r = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG), saved);
+  assert.equal(r.state.history.length, 1);
+  assert.equal(r.state.history[0].year, 2030);
+  assert.equal(r.state.groups.length, 1);
+});
+
+test('mergeState keeps and reports a field the current build no longer has', () => {
+  const saved = JSON.parse(JSON.stringify(MembershipModel.defaultState(MGM_CONFIG)));
+  saved.revenue.somethingRemoved = 7;
+  saved.anObsoleteTopLevel = { a: 1 };
+  const r = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG), saved);
+  assert.ok(r.unknown.includes('revenue.somethingRemoved'));
+  assert.ok(r.unknown.includes('anObsoleteTopLevel'));
+  assert.equal(r.state.revenue.somethingRemoved, 7, 'the value is kept, not dropped');
+});
+
+test('mergeState respects an explicit 0 and an explicit null', () => {
+  // Presence must be tested with `in`, never truthiness: a user who sets a
+  // driver to 0 means 0, and replacing it with the default would silently
+  // undo their edit.
+  const saved = JSON.parse(JSON.stringify(MembershipModel.defaultState(MGM_CONFIG)));
+  saved.revenue.duesPerLoc = 0;
+  saved.history[0].count = null;
+  const r = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG), saved);
+  assert.equal(r.state.revenue.duesPerLoc, 0);
+  assert.equal(r.state.history[0].count, null);
+  assert.ok(!r.added.includes('revenue.duesPerLoc'), 'an explicit 0 is not "missing"');
+});
+
+test('mergeState with an empty object yields pure defaults', () => {
+  const r = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG), {});
+  assert.deepEqual(r.state, MembershipModel.defaultState(MGM_CONFIG));
+  assert.ok(r.added.length > 20, 'every key reported missing');
+});
+
+test('a merged state still works with setPath, getPath and runModel', () => {
+  const r = MembershipModel.mergeState(MembershipModel.defaultState(MGM_CONFIG),
+    JSON.parse(JSON.stringify(MembershipModel.defaultState(MGM_CONFIG))));
+  MembershipModel.setPath(r.state, 'revenue.duesPerLoc', 123);
+  assert.equal(MembershipModel.getPath(r.state, 'revenue.duesPerLoc'), 123);
+  assert.ok(MembershipModel.runModel(r.state).years.length > 0);
+});
+
+// ── Task 14a: MM.valuationHeadline — the figure and its words, once ────────
+test('valuationHeadline names a single-method figure correctly', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const v = MembershipModel.valuation(st, R[R.length - 1], null);
+  const h = MembershipModel.valuationHeadline(v);
+
+  assert.equal(v.lensCount, 1, 'defaults have only the revenue lens');
+  assert.equal(h.value, v.rev, 'the headline IS the live lens, not half of it');
+  assert.equal(h.isMidpoint, false);
+  assert.equal(h.label, 'INDICATED VALUE');
+  assert.match(h.caption, /revenue multiple, single method/);
+  // The whole point: it must never be called a midpoint when it is not one.
+  assert.notEqual(h.label, 'VALUATION MIDPOINT');
+});
+
+test('valuationHeadline reports a real midpoint when two lenses exist', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.valuation.ebitdaMargin = 7.5;        // arbitrary; never the gated figure
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const v = MembershipModel.valuation(st, R[R.length - 1], null);
+  const h = MembershipModel.valuationHeadline(v);
+  assert.equal(v.lensCount, 2);
+  assert.equal(h.isMidpoint, true);
+  assert.equal(h.label, 'VALUATION MIDPOINT');
+  assert.equal(h.value, v.mid, 'with two lenses the headline is the midpoint');
+});
+
+test('valuationHeadline has no value when no lens has a basis', () => {
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.valuation.revMultiple = 0;
+  st.valuation.ebitdaMargin = 0;
+  st.valuation.ebitdaNormalization = 0;
+  const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
+  const v = MembershipModel.valuation(st, R[R.length - 1], null);
+  const h = MembershipModel.valuationHeadline(v);
+  assert.equal(h.hasValue, false);
+  assert.equal(h.value, null, 'null, never 0 — absence is not a $0 valuation');
+  assert.match(h.caption, /no lens has a basis/);
 });

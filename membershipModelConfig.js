@@ -23,10 +23,10 @@
     HORIZON_YEARS: 3,
 
     groups: [
-      { key: 'ts',     label: 'Truck Stop',                count: 154 },
+      { key: 'ts',     label: 'Truck Stop',                count: 155 },
       { key: 'tssc',   label: 'Truck Stop-Service Center', count: 6 },
       { key: 'cstore', label: 'C-Stores',                  count: 22 },
-      { key: 'ppo',    label: 'PPO',                       count: 88 },
+      { key: 'ppo',    label: 'PPO',                       count: 87 },
       { key: 'lite',   label: "Roady's Lite",              count: 7 },
       { key: 'fuel',   label: 'Fuel Stops',                count: 9 },
       { key: 'ptp',    label: 'PTP',                       count: 89 }
@@ -36,12 +36,24 @@
       companies: 181,
       locations: 391,          // locations the billing report covers
       monthlyDuesTotal: 143426,
-      duesPerLocBillable: 366.82,
+      // 143426 / 375 PAYING locations, NOT / 391. The 16 locations that bill
+      // $0.00 are deliberately excluded from the denominator: a realization
+      // ratio answers "of what we COULD bill, how much do we model
+      // collecting", so a location that cannot be billed belongs in neither
+      // half of it. Dividing by all 391 gave 366.82 and published a 98.7%
+      // dues realization — 4.0 points better than the honest 94.6% — in a
+      // valuation deliverable. A test pins this to monthlyDuesTotal /
+      // payingLocations so the name and the arithmetic cannot drift apart.
+      duesPerLocBillable: 382.47,
       payingLocations: 375,    // 5 companies / 16 locations bill $0.00
       zeroBillCompanies: 5
     },
 
-    statusCounts: { onboarding: 7, offboarding: 16 },
+    // Onboarding excludes the non-location rows the active count also
+    // excludes: 7 raw onboarding rows minus Test Company #1, Test
+    // Company #2 and a demo row leaves 4 real sites. Counting demo and
+    // test companies as onboarding locations overstated the pipeline.
+    statusCounts: { onboarding: 4, offboarding: 16 },
 
     ptpNote: 'Workbook states 190 PTP locations as of Jan 1 2024 (27 shops + 163 truck stops) vs 89 active today. Unconfirmed — ask Interstate.',
 
@@ -59,7 +71,7 @@
     // Roady's + Roady's Lite only; PTPC and COO excluded. Jan..Dec.
     // Every year's sum equals that year's `newR` above (asserted in tests).
     // Lumpy from batch deals, NOT seasonal: 2013-05 = 61, 2017-09 = 18,
-    // 2024-09 = 22, 2026-06 = 19 (Duck Through's 18 locations alone).
+    // 2024-09 = 22, 2026-06 = 19 (18 of those one multi-site deal).
     monthlyHistory: {
       2010: [3, 0, 1, 3, 7, 0, 0, 3, 8, 1, 1, 5],
       2011: [3, 6, 4, 2, 5, 3, 4, 1, 0, 1, 1, 2],

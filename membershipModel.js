@@ -35,7 +35,18 @@
     var h = history || [], rows = [];
     for (var i = 1; i < h.length; i++) {
       var prev = h[i - 1], cur = h[i];
-      if (cur.lost != null && prev.count != null) {
+      // `prev.count > 0`, not `!= null`. A prior count of zero is not a
+      // derivable rate -- it divided to Infinity, and `avg` then averaged
+      // Infinity, so the Historical tab's three-year average and the Member
+      // Losses `3-YR DERIVED` tile both read "Infinity%" while
+      // attritionSplit's decomposition read "NaN%". Every count is
+      // user-editable, so clearing one to 0 is reachable.
+      //
+      // Excluding the row rather than emitting `rate: null` is deliberate:
+      // `rows` already means "the years a rate can be derived for", and
+      // `rows.length === 0` is the signal every renderer already checks for
+      // "nothing derivable". A null-rate row would need a new guard in each.
+      if (cur.lost != null && prev.count != null && prev.count > 0) {
         rows.push({
           year: cur.year, lost: cur.lost, base: prev.count,
           rate: 100 * cur.lost / prev.count
@@ -216,6 +227,43 @@
     return obj;
   }
 
+  // Deep-overlay a saved state onto the current defaults, reporting what the
+  // saved copy did not carry and what it carried that this build no longer
+  // knows. Object.assign would not do: 17 of the 25 top-level keys are nested
+  // objects, so a shallow merge replaces each wholesale and a state saved
+  // before a nested field existed reloads with that field undefined -- and
+  // n(undefined) is 0, so it becomes a silent zero, not an error.
+  //
+  // Arrays replace wholesale on purpose: groups / history / sources are
+  // user-editable lists, so a saved list is an intentional whole and must
+  // never be merged element-wise against a longer or shorter default.
+  //
+  // Presence is tested with `in`, never truthiness, so an explicit 0 or null
+  // in the saved state survives instead of being overwritten by the default.
+  function mergeState(defaults, saved) {
+    var added = [], unknown = [];
+
+    function walk(dst, src, path) {
+      Object.keys(dst).forEach(function (k) {
+        var p = path ? path + '.' + k : k;
+        if (!(k in src)) { added.push(p); return; }
+        var dv = dst[k], sv = src[k];
+        var bothPlain = dv && sv
+          && typeof dv === 'object' && typeof sv === 'object'
+          && !Array.isArray(dv) && !Array.isArray(sv);
+        if (bothPlain) walk(dv, sv, p);
+        else dst[k] = sv === undefined ? dv : sv;
+      });
+      Object.keys(src).forEach(function (k) {
+        var p = path ? path + '.' + k : k;
+        if (!(k in dst)) { unknown.push(p); dst[k] = src[k]; }
+      });
+    }
+
+    walk(defaults, saved || {}, '');
+    return { state: defaults, added: added, unknown: unknown };
+  }
+
   // Decompose each historical year's realized attrition into the assumed
   // recurring rate plus whatever is left over. The residual is the
   // ownership-consolidation story from the workbook's col O note; it is
@@ -324,7 +372,10 @@
 
   // Both lenses apply to the model's own revenue total, built from net
   // per-member streams — never to the P&L's `Total Income`, which is ~95%
-  // gross settlement pass-through and would overstate by roughly 6x.
+  // gross settlement pass-through, and using it as the basis would
+  // overstate it substantially -- see mgm_pnl_actuals for the figures.
+  // (A multiple is deliberately not quoted here: this repo is public,
+  // and a multiple next to a committed total back-solves a gated one.)
   // ebitdaOverride lets Profit & Cash Flow supply a real computed EBITDA.
   function valuation(state, lastYear, ebitdaOverride) {
     var val = state.valuation || {};
@@ -335,12 +386,75 @@
       ? n(ebitdaOverride)
       : basis * (n(val.ebitdaMargin) / 100) + n(val.ebitdaNormalization);
     var ebitda = ebitdaBase * n(val.ebitdaMultiple);
+
+    // How many lenses actually have a basis. A lens at zero is not a $0
+    // valuation, it is an absent method -- and averaging a real method with an
+    // absent one returns half the real answer. `indicated` is therefore the
+    // figure to display: the midpoint when two methods exist, the single
+    // method when one does, and null when none does. Every consumer -- tile,
+    // Valuation card, printed report, CSV, scenario comparison -- must read
+    // `indicated` and `lensCount`, never `mid`, so the screen and the paper
+    // cannot disagree. `mid` is kept because it is still the correct
+    // two-method midpoint and the tests pin it.
+    //
+    // A NEGATIVE lens COUNTS as a basis; only an exact zero is "absent".
+    // That split is deliberate, not incidental: every unsupplied input in
+    // this model defaults to an explicit 0 (no margin, no costs, no
+    // add-backs), so a zero lens means "nothing was supplied". A negative
+    // EBITDA lens is the opposite -- it can only arise from real entered
+    // costs exceeding revenue, which is a measured result and the most
+    // decision-relevant thing this model can say. Treating it as absent would
+    // hide a loss and leave the revenue lens standing alone as the headline.
+    // Truthiness gives exactly that split (0 falsy, -1 truthy), so do not
+    // "tidy" these conditions into `> 0`.
+    var lenses = [];
+    if (rev) lenses.push(rev);
+    if (ebitda) lenses.push(ebitda);
+
     return {
       basis: basis, rev: rev,
       ebitdaBase: ebitdaBase, ebitda: ebitda,
       normalization: n(val.ebitdaNormalization),
       mid: (rev + ebitda) / 2,
-      low: Math.min(rev, ebitda), high: Math.max(rev, ebitda)
+      low: Math.min(rev, ebitda), high: Math.max(rev, ebitda),
+      lensCount: lenses.length,
+      indicated: lenses.length === 2 ? (rev + ebitda) / 2
+               : lenses.length === 1 ? lenses[0]
+               : null
+    };
+  }
+
+  // The headline figure AND the words that go with it, decided once. Two
+  // surfaces already branch on lensCount independently (the tile and the
+  // Valuation card), and the printed report and the About tab are still to
+  // come -- four copies of one rule is exactly how the newAdds/newModeled
+  // divergence survived three tasks. A caller that reads this cannot label a
+  // single-method figure as a midpoint.
+  //
+  // Note which states are which:
+  //   2 lenses -> a real midpoint of two methods
+  //   1 lens   -> that method alone; calling it a midpoint would be false
+  //   0 lenses -> no value at all, NOT zero
+  //
+  // A NEGATIVE lens counts as a lens: every unsupplied input in this model
+  // defaults to an explicit 0, so zero means "nothing supplied", while a
+  // negative EBITDA can only come from entered costs exceeding revenue -- a
+  // measured result. Do not tidy the truthiness checks in valuation() into
+  // `> 0`; a test fails if you do.
+  function valuationHeadline(v) {
+    v = v || {};
+    var n2 = v.lensCount === 2, n1 = v.lensCount === 1;
+    var which = v.rev && !v.ebitda ? 'revenue multiple'
+              : v.ebitda && !v.rev ? 'EBITDA multiple'
+              : null;
+    return {
+      value: n2 || n1 ? v.indicated : null,
+      label: n2 ? 'VALUATION MIDPOINT' : n1 ? 'INDICATED VALUE' : 'INDICATED VALUE',
+      caption: n2 ? 'midpoint of two methods'
+             : n1 ? (which ? which + ', single method' : 'single method')
+             : 'no lens has a basis',
+      isMidpoint: n2,
+      hasValue: n2 || n1
     };
   }
 
@@ -609,6 +723,7 @@
       _n: n,
       getPath: getPath,
       setPath: setPath,
+      mergeState: mergeState,
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,
       partPct: partPct,
@@ -616,6 +731,7 @@
       revenueModel: revenueModel,
       revPerMember: revPerMember,
       valuation: valuation,
+      valuationHeadline: valuationHeadline,
       CRM_STAGES: CRM_STAGES,
       CRM_CLOSED_STAGES: CRM_CLOSED_STAGES,
       isClosedStage: isClosedStage,
