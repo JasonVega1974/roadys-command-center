@@ -3238,15 +3238,26 @@ MGM.exportJSON = function () {
   // from that click onward and the next reload re-read the residue. Exporting
   // is a read, so it should not be the thing that mutates the model -- but
   // since it does, the two must not be left out of step.
-  MGM.stripResidue(MGM.state);
-  if (MGM.stripResidue.removed) MGM.save();
-
-  // Serialise inside a try and SAY SO on failure. JSON.stringify is recursive
-  // and a saved scenario nested deeply enough makes it throw -- uncaught, so
-  // the button did nothing at all and the reader got no file and no message.
-  // Silence on a click is the failure class this whole PR has been clearing.
+  // EVERYTHING that can throw is inside the one try, including the strip and
+  // the save. They sat above it, and I argued to a reviewer that the
+  // binding-time engine guard made them unreachable with a broken engine. That
+  // was falsified by measurement: an engine passing the boot probe (three
+  // keys) but throwing on a large object loads normally, and then these
+  // statements threw uncaught -- no file, no message, dead button, the same
+  // failure class this PR has spent ten rounds clearing. The boot probe proves
+  // the strip WORKS on a small object; it cannot prove the strip never throws.
+  //
+  // Persist what the strip removed, for the same reason as before: a review
+  // measured live state going clean on export while localStorage stayed dirty,
+  // so memory and disk disagreed from that click onward and the next reload
+  // re-read the residue.
+  //
+  // JSON.stringify is recursive, so a sufficiently nested saved scenario makes
+  // it throw too. One try, one message, no silent click.
   let body;
   try {
+    MGM.stripResidue(MGM.state);
+    if (MGM.stripResidue.removed) MGM.save();
     body = JSON.stringify({
       state: MGM.state,
       scenarios: MGM.stripResidue(MGM.scenarioList()),

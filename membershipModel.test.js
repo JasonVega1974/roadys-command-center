@@ -2002,14 +2002,38 @@ test('nothing in the page reads the engine before the guard has passed', () => {
   // This is not the comment-STRIPPING that was the losing move twice in this
   // work; nothing is rewritten and no match is run against altered text. It
   // only decides, per line, whether the line is a statement.
+  // A line is EXEMPT only if it is unambiguously a whole-line comment: it
+  // starts with `//`, or we are inside a `/* */` block and the line does not
+  // close it. Every other line that mentions a watched name is reported.
+  //
+  // Deliberately conservative, because the previous version decided ambiguity
+  // and decided it wrongly in the dangerous direction: it discarded the entire
+  // line when leaving a block comment, so a review got
+  // `*/ MembershipModel.defaultState(cfg); /*` past it at 109/0, with the page
+  // showing 15 buttons and 12 live handlers over a broken engine.
+  //
+  // Writing a correct comment tokenizer is not the answer either -- string
+  // literals containing `/*` would defeat it, and the under-fire would be back
+  // in a subtler form. So: when a line mixes a block-comment delimiter with a
+  // watched name, this FAILS rather than guess. A false failure is loud and
+  // one line to resolve; a false pass is the dead-buttons page.
   const codeLines = [];
   let inBlock = false;
   for (const line of region.split('\n')) {
     const t = line.trim();
-    if (inBlock) { if (t.includes('*/')) inBlock = false; continue; }
+    if (inBlock) {
+      if (!t.includes('*/')) continue;        // wholly inside the comment
+      inBlock = false;
+      codeLines.push(line);                   // closes it: may carry code too
+      continue;
+    }
     if (!t) continue;
     if (t.startsWith('//')) continue;
-    if (t.startsWith('/*')) { if (!t.includes('*/')) inBlock = true; continue; }
+    if (t.startsWith('/*')) {
+      if (!t.includes('*/')) inBlock = true;
+      codeLines.push(line);                   // may carry code after the close
+      continue;
+    }
     codeLines.push(line);
   }
 
