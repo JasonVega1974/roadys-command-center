@@ -1878,3 +1878,54 @@ test('residueVerdict tells a dirty payload from an uncheckable one', () => {
   assert.equal(V(nested), 'residue');
   assert.equal(V({ id: 's1', state: { l: [{ copy: {} }] } }), 'residue');
 });
+
+// ── The engine revision must stay coupled to what the page expects ─────────
+// A review set ENGINE_REV to 5 and the whole suite still passed: nothing
+// referenced it. That is the same gap as the cache-busting query string --
+// a number a human must remember to keep in step, with no check. The page
+// reads its copy from HTML, so the coupling is asserted across the two files.
+
+test('ENGINE_REV matches the revision the page expects', () => {
+  const fs = require('node:fs');
+  const page = fs.readFileSync('./membership-growth-model/index.html', 'utf8');
+  const m = page.match(/MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/);
+  assert.ok(m, 'the page must declare MGM.ENGINE_REV_EXPECTED');
+  assert.equal(MembershipModel.ENGINE_REV, Number(m[1]),
+    'bump BOTH: membershipModel.js ENGINE_REV and index.html ENGINE_REV_EXPECTED');
+});
+
+test('ENGINE_REV is a number, not a string', () => {
+  // `'4'` made the page report "revision 4 but this page expects revision 4"
+  // -- a false skew that hard-blocked Sync with advice that could not fix it.
+  // The page coerces now, and this stops the shape arising in the first place.
+  assert.equal(typeof MembershipModel.ENGINE_REV, 'number');
+  assert.ok(isFinite(MembershipModel.ENGINE_REV));
+});
+
+test('the page requires every engine function it names, and all exist', () => {
+  // MGM.ENGINE_NEEDS is the page's own list. If someone adds a name to it
+  // without the engine exporting it, every load reports a false skew and the
+  // page refuses to work -- so the list is checked against reality here.
+  const fs = require('node:fs');
+  const page = fs.readFileSync('./membership-growth-model/index.html', 'utf8');
+  const m = page.match(/MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/);
+  assert.ok(m, 'the page must declare MGM.ENGINE_NEEDS');
+  const needs = m[1].split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  assert.ok(needs.length >= 2, 'expected a real list, got ' + JSON.stringify(needs));
+  for (const n of needs) {
+    assert.equal(typeof MembershipModel[n], 'function',
+      'the page requires MM.' + n + ' but the engine does not export it');
+  }
+});
+
+test('the engine cache-bust is not a date, and the page requests it', () => {
+  // Rounds 2 and 3 of this fix shipped on the same calendar day, so a date
+  // key could not have separated them even if it had been bumped -- and it
+  // was not, leaving Sync dead and silent for anyone holding the old engine.
+  const fs = require('node:fs');
+  const page = fs.readFileSync('./membership-growth-model/index.html', 'utf8');
+  const m = page.match(/membershipModel\.js\?v=([^"']+)/);
+  assert.ok(m, 'the page must cache-bust membershipModel.js');
+  assert.ok(!/^\d{4}-\d{2}-\d{2}$/.test(m[1]),
+    'a bare date cannot separate two revisions shipped the same day: ' + m[1]);
+});

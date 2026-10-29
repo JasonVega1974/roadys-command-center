@@ -316,8 +316,33 @@ function mkChart(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($(id),cfg
 
 /* ═══════════════ MGM STATE ═══════════════ */
 const MGM = {};
-const MM = MembershipModel;
+// Bound defensively so a failed engine load is REPORTABLE rather than fatal.
+// This was `const MM = MembershipModel;`, which throws ReferenceError during
+// script evaluation if the engine 404s -- so nothing below it was ever
+// defined, MGM.engineSkew could not run, and the reader got a blank page with
+// no explanation. A review measured that: tabsRendered false, no alert at all.
+// Every MM use downstream either sits in a try or runs after MGM.engineSkew()
+// has had its say.
+const MM = (typeof MembershipModel === 'object' && MembershipModel)
+  ? MembershipModel : null;
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
+
+// Before anything reads the engine. A missing engine is unrecoverable -- this
+// page is a model with a UI attached -- but it must SAY so rather than fail
+// blank. A review measured the old binding throwing ReferenceError during
+// script evaluation, so nothing below was defined and the reader got a blank
+// page and no message.
+if (!MM) {
+  document.addEventListener('DOMContentLoaded', function () {
+    document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
+      + '<h3>This page could not load its model script</h3>'
+      + '<p class="note">membershipModel.js did not load, so nothing here can be '
+      + 'calculated. This is almost always a stale cache or a failed download: '
+      + 'reload the page (hold Shift while reloading, or empty the cache). '
+      + 'Nothing has been changed or uploaded.</p></div>';
+  });
+  throw new Error('[MGM] membershipModel.js did not load');
+}
 
 MGM.state = MM.defaultState(MGM_CONFIG);
 try {
@@ -3137,6 +3162,13 @@ MGM.exportCSV = function () {
 // Live CRM and P&L data are likewise not included: they are not ours to
 // redistribute in a file someone emails on.
 MGM.exportJSON = function () {
+  // Same guard syncScenarios got, for the same reason. A review found the
+  // round-4 try/catch sat BELOW the first MM.stripResidue call, so a missing
+  // engine still threw uncaught here: no file, no message, dead button --
+  // while engineSkew() could have named the cause. The guard belongs above
+  // every engine call in the function, not above most of them.
+  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('build an export', 'nothing-moved')); return; }
+
   // Measured: this carried residue with MGM.state fully clean, because the
   // scenario list is serialised separately. scenarioList() now strips, so this
   // is covered -- the explicit strip here is belt and braces for a future
@@ -4531,7 +4563,7 @@ MGM.syncScenarios = async function () {
   }
   // Before anything, not after a failure: a stale engine made this function
   // throw on its first cloudSave and return nothing at all to the reader.
-  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('sync scenarios')); return; }
+  if (MGM.engineSkew()) { alert(MGM.engineSkewMessage('sync scenarios', 'nothing-moved')); return; }
   const list = MGM.scenarioList();
   if (!list.length) {
     // Nothing to push is not a failure, and "0 pushed" with no explanation
@@ -4625,9 +4657,20 @@ const SCEN_META_KEYS = ['activeScenario'];
 const SCEN_DROPPED_KEYS = ['copy'];
 
 MGM.reportableUnknown = function (merged) {
+  // Matches any PATH SEGMENT, because the strip is depth-any and this has to
+  // agree with it. Start-anchored was wrong in one direction: an imported
+  // `state.report.copy` was stripped from disk and memory while the notice
+  // still announced it among the fields "kept, and still travel with this
+  // model". Unreachable with real data -- the reverted feature only ever wrote
+  // a top-level `state.copy` -- but a filter that disagrees with the strip it
+  // describes is the kind of near-miss this PR keeps finding.
+  //
+  // Segment equality, NOT a prefix test: `copyright`, `copies`, `copyOf` and
+  // `report.copyright` are legitimate unknown fields and must still report. A
+  // bare startsWith would have swallowed four of them.
   return (merged && merged.unknown || []).filter(p =>
     SCEN_META_KEYS.indexOf(p) < 0 &&
-    !SCEN_DROPPED_KEYS.some(d => p === d || p.indexOf(d + '.') === 0));
+    !String(p).split('.').some(seg => SCEN_DROPPED_KEYS.indexOf(seg) >= 0));
 };
 
 // Residue of the removed copy-override feature. ONE definition, applied at
@@ -4669,18 +4712,37 @@ MGM.engineSkew = function () {
   if (missing.length) {
     return 'the model script is out of date — it is missing ' + missing.join(', ');
   }
-  if (MM.ENGINE_REV !== MGM.ENGINE_REV_EXPECTED) {
-    return 'the model script is revision ' + (MM.ENGINE_REV === undefined ? 'unknown' : MM.ENGINE_REV)
+  // Compared as NUMBERS. Strict inequality on the raw values made ENGINE_REV
+  // = '4' report "revision 4 but this page expects revision 4" -- a false skew
+  // that hard-blocks Sync while advising a reload that cannot fix it. A guard
+  // whose own message contradicts itself is worse than no guard.
+  const rev = Number(MM.ENGINE_REV);
+  if (MM.ENGINE_REV === undefined || MM.ENGINE_REV === null || !isFinite(rev)) {
+    return 'the model script does not say which revision it is, and this page '
+         + 'expects revision ' + MGM.ENGINE_REV_EXPECTED;
+  }
+  if (rev !== Number(MGM.ENGINE_REV_EXPECTED)) {
+    return 'the model script is revision ' + rev
          + ' but this page expects revision ' + MGM.ENGINE_REV_EXPECTED;
   }
   return null;
 };
 
-MGM.engineSkewMessage = function (what) {
+// `settled` tells the two call sites apart, because the reassurance is only
+// true at one of them. A review measured the boot alert asserting "Nothing was
+// changed or uploaded" immediately AFTER the boot store repair had rewritten
+// both storage keys -- a false statement to the reader, which is precisely the
+// class of defect this whole PR has been clearing. Only syncScenarios can
+// honestly promise nothing moved.
+MGM.engineSkewMessage = function (what, settled) {
   return 'Cannot ' + what + ': ' + MGM.engineSkew() + '.\n\n'
        + 'Your browser is almost certainly serving a cached copy of an older '
        + 'script. Reload the page (hold Shift while reloading, or empty the '
-       + 'cache) and try again. Nothing was changed or uploaded.';
+       + 'cache) and try again.'
+       + (settled === 'nothing-moved'
+           ? ' Nothing was changed or uploaded.'
+           : ' Nothing was uploaded. This browser\'s own saved copy may already '
+             + 'have been tidied on load, which is safe and changes no figures.');
 };
 
 MGM.stripResidue = function (obj) {
@@ -5154,7 +5216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const _skew = MGM.engineSkew();
   if (_skew) {
     try { console.error('[MGM] ' + _skew); } catch (e) {}
-    alert(MGM.engineSkewMessage('use this page safely'));
+    alert(MGM.engineSkewMessage('use this page safely'));   // no 'nothing-moved'
   }
 
   MGM.renderTabs();
