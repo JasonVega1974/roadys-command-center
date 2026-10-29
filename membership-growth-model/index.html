@@ -344,13 +344,17 @@ try {
   // EVERY page load. mergeState mutates its first argument, so it gets a
   // fresh defaultState, never a shared object.
   if (saved) MGM.state = MM.mergeState(MM.defaultState(MGM_CONFIG), saved).state;
+  // Remediate data F1 already created on this device before the rule existed.
+  MGM.scrubUnsafeCopy('page load');
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
 
 MGM.save = function () {
-  // LAYER C. Every path to persistence passes through here, cloudSave, or
-  // exportJSON. Checking the DATA rather than the code is what makes this
-  // generalise: a future leak is caught whatever its spelling, which the
-  // SR-11 source regexes provably could not do for this one.
+  // LAYER C. One of five boundaries: this, cloudSave, exportJSON, exportCSV
+  // and scenarioWriteAll. An earlier comment claimed there were three and that
+  // they covered everything -- scenarioWriteAll and exportCSV did not pass
+  // through any of them. Checking the DATA rather than the code is what makes
+  // this generalise: a leak is caught whatever its spelling, which the SR-11
+  // source regexes provably could not do for this one.
   if (!MGM.guardGatedLeak(MGM.state, 'localStorage')) return;
   try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); }
   catch (e) { console.warn('[MGM] save failed', e); }
@@ -2926,6 +2930,8 @@ const CSV_NS = 'not supplied';
 const CSV_NL = 'not loaded';
 
 MGM.exportCSV = function () {
+  // R3: the CSV was not covered by any boundary check.
+  if (!MGM.guardGatedLeak({ state: MGM.state }, 'CSV export')) return;
   // Admin-only, unlike print and JSON export.
   //
   // The CSV carries the valuation `basis` and `ebitdaBase` as separate
@@ -3788,13 +3794,77 @@ MGM.gatedValues = function () {
 };
 
 // True when `text` carries a gated value. Used by layers A and B.
+// SOUND, not a pattern match. Every display form of a number contains at
+// least one digit, so text carrying no digit provably carries no numeric gated
+// value -- whatever rounding, currency symbol, thousands separator or
+// parenthesised negative a renderer applied on the way to the page.
+//
+// That is precisely what the previous version got wrong. It searched for the
+// value's exact stored string, so a margin stored at two decimals and
+// displayed at one slipped all three layers; and the "0 of 54" measurement
+// that cleared it was an artifact of a test value whose display form happened
+// to equal its stored form. Three successive guards failed that way. A rule
+// that cannot be defeated by reformatting is worth 16% of editability.
+//
+// Gated STRINGS are still matched exactly, which is reliable precisely because
+// strings are not reformatted. Any length is excluded here -- over-exclusion
+// is the safe direction for eligibility, unlike for reporting.
+MGM.copyTextSafe = function (text) {
+  var t = MGM.copyNorm(text);
+  if (/[0-9]/.test(t)) return false;
+  var g = MGM.gatedValues();
+  for (var i = 0; i < g.length; i++) {
+    if (typeof g[i] === 'string' && g[i].trim() && t.indexOf(g[i].trim()) >= 0) return false;
+  }
+  return true;
+};
+
+// Kept only for the boundary layer's reporting, which still wants to name a
+// specific gated value. NOT used for eligibility any more -- see copyTextSafe.
 MGM.textHasGated = function (text) {
   var g = MGM.gatedValues();
   if (!g.length) return false;
   return MM.findGatedLeak({ t: String(text == null ? '' : text) }, g).hits.length > 0;
 };
 
-MGM.gatedLeakNotice = null;   // {paths, scrubbed, at} for the UI to surface
+MGM.gatedLeakNotice = null;   // {paths, scrubbed, at}; surfaced by MGM.renderAuth
+
+// One-time remediation for data this bug already created.
+//
+// F1 shipped on main, so stored overrides containing a gated figure already
+// exist in users' localStorage and in mgm_scenarios rows. Under the rule above
+// no such override can be CREATED any more, which makes the cleanup sound
+// rather than a guess: an override containing a digit could not legitimately
+// exist, so any that does is either poisoned or was stored before the rule and
+// is unrepresentable now. Dropping it restores the shipped wording, which is
+// the correct fallback either way.
+//
+// Runs on every load and after every pull, because a poisoned row can arrive
+// from the cloud long after this page was opened.
+MGM.scrubUnsafeCopy = function (why) {
+  var copy = (MGM.state && MGM.state.copy) || null;
+  if (!copy) return 0;
+  var dropped = [];
+  Object.keys(copy).forEach(function (k) {
+    var v = copy[k];
+    if (typeof v !== 'string' || /[0-9]/.test(v)) { dropped.push(k); delete copy[k]; }
+  });
+  if (dropped.length) {
+    // Names the keys, never the values. Reporting a secret in order to warn
+    // about it is the same mistake one level up.
+    console.warn('[MGM] dropped ' + dropped.length + ' unsafe copy override(s) ('
+                 + why + '):', dropped.join(', '));
+    MGM.gatedLeakNotice = { paths: dropped, scrubbed: dropped.length, refused: 0,
+                            at: new Date().toISOString(), remediation: true };
+    // Surface it immediately. Setting the notice is not the same as showing it:
+    // the load path happens to render the bar shortly afterwards, but the pull
+    // path (scenarioWriteAll, five call sites) does not, so a poisoned row
+    // arriving from the cloud would have been scrubbed silently. Guarded
+    // because this also runs at module scope, before renderAuth is defined.
+    if (typeof MGM.renderAuth === 'function') MGM.renderAuth();
+  }
+  return dropped.length;
+};
 MGM._gatedAlerted = false;
 
 // Layer C. Returns true when the object is safe to serialise.
@@ -3805,57 +3875,102 @@ MGM._gatedAlerted = false;
 // anywhere else is refused outright and named, because we do not know what it
 // is and guessing is worse than stopping.
 MGM.guardGatedLeak = function (obj, what) {
-  var g = MGM.gatedValues();
-  if (!g.length) return true;
-  var r = MM.findGatedLeak(obj, g);
-  if (!r.hits.length) return true;
-
-  // Which path prefix, if any, names a copy override OF OUR OWN STATE -- the
-  // only thing deleting a key can actually repair. Decided by IDENTITY, not by
-  // path shape.
+  // TWO INDEPENDENT CHECKS, both always run. The order and the absence of
+  // early returns are the point.
   //
-  // The first version of this matched `/^(?:state\.)?copy\./` on the path and
-  // deleted from MGM.state.copy for any hit that matched. Handed a scenario
-  // payload -- whose `state` is a clone, not MGM.state -- it deleted from the
-  // wrong object, left the payload carrying the figure, and returned "safe".
-  // Scrubbing the wrong object and reporting success is the F1 shape exactly,
-  // reproduced inside the guard written to prevent it. Caught by testing the
-  // cloudSave path instead of only the save path.
-  var prefix = null;
-  if (obj === MGM.state) prefix = 'copy.';
-  else if (obj && obj.state === MGM.state) prefix = 'state.copy.';
+  //   1. THE DIGIT RULE over every `copy` map in the object. Absolute: no
+  //      legitimate copy override may contain a digit, so one that does is
+  //      invalid whatever object it sits in, whatever figure it encodes, and
+  //      whether or not any gated value is currently loaded.
+  //
+  //   2. VALUE MATCHING over the whole object, for exact forms of the gated
+  //      values currently in memory. Catches figures outside `copy`.
+  //
+  // An earlier version ran (2) first and returned early on no hits -- so (1)
+  // never executed, and a payload carrying the ROUNDED form of the margin
+  // (41.7 against a stored 41.73) was reported safe. That is the fourth time
+  // on this fix that a guard was defeated by its own control flow rather than
+  // by its matching: `!g.length` short-circuited everything when no period was
+  // loaded, a path-slice deleted from the wrong object while reporting
+  // success, a latched alert turned refusals into silent no-ops, and this.
+  //
+  // Hence: no early returns, both checks accumulate into the same two lists,
+  // and the verdict is computed once at the end.
 
+  var g = MGM.gatedValues();
   var copyKeys = [], other = [];
-  r.hits.forEach(function (h) {
-    if (prefix && h.path.indexOf(prefix) === 0) {
-      var k = h.path.slice(prefix.length);
-      if (copyKeys.indexOf(k) < 0) copyKeys.push(k);
-    } else if (other.indexOf(h.path) < 0) {
-      // Not ours to repair: refuse rather than guess.
-      other.push(h.path);
-    }
-  });
 
-  copyKeys.forEach(function (k) { delete MGM.state.copy[k]; });
+  // Repair is only possible on OUR OWN state, decided by identity.
+  var ours = (obj === MGM.state) || (obj && obj.state === MGM.state);
+  if (ours && MGM.state.copy) {
+    Object.keys(MGM.state.copy).forEach(function (k) {
+      var v = MGM.state.copy[k];
+      var bad = (typeof v !== 'string') || /[0-9]/.test(v)
+                || (g.length && MM.findGatedLeak({ v: v }, g).hits.length > 0);
+      if (bad) { copyKeys.push(k); delete MGM.state.copy[k]; }
+    });
+  }
+
+  // CHECK 1 -- the digit rule, over any `copy` map anywhere in the object.
+  (function walkCopies(v, path) {
+    if (!v || typeof v !== 'object') return;
+    if (Array.isArray(v)) {
+      v.forEach(function (x, i) { walkCopies(x, path + '[' + i + ']'); });
+      return;
+    }
+    Object.keys(v).forEach(function (k) {
+      var child = v[k], p = path ? path + '.' + k : k;
+      if (k === 'copy' && child && typeof child === 'object' && !Array.isArray(child)) {
+        Object.keys(child).forEach(function (ck) {
+          var cv = child[ck];
+          if (typeof cv !== 'string' || /[0-9]/.test(cv)) {
+            var full = p + '.' + ck;
+            if (other.indexOf(full) < 0 && copyKeys.indexOf(ck) < 0) other.push(full);
+          }
+        });
+      }
+      walkCopies(child, p);
+    });
+  })(obj, '');
+
+  // CHECK 2 -- value matching, for anything outside `copy`.
+  if (g.length) {
+    MM.findGatedLeak(obj, g).hits.forEach(function (h) {
+      if (other.indexOf(h.path) < 0) other.push(h.path);
+    });
+  }
+
+  if (!copyKeys.length && !other.length) return true;
+
   MGM.gatedLeakNotice = { paths: copyKeys.concat(other), scrubbed: copyKeys.length,
                           refused: other.length, at: new Date().toISOString() };
-  // Never log the value, only where it was. Reporting a secret in order to
-  // warn about it is the mistake one level up.
-  console.warn('[MGM] gated value blocked at the ' + what + ' boundary:',
+  // Never log a value, only where it was. Reporting a secret in order to warn
+  // about it is the same mistake one level up.
+  console.warn('[MGM] blocked at the ' + what + ' boundary:',
                MGM.gatedLeakNotice.paths.join(', '));
+
+  // A refusal is reported EVERY time. An earlier version latched the alert and
+  // then returned false forever, so after one refusal every later save quietly
+  // did nothing -- total persistence failure from a documented workflow.
+  if (other.length) {
+    console.error('[MGM] REFUSED, unrepairable at ' + what + ':', other.join(', '));
+  }
+  if (typeof MGM.renderAuth === 'function') MGM.renderAuth();
 
   if (!MGM._gatedAlerted) {
     MGM._gatedAlerted = true;
-    alert('An auth-gated P&L figure was about to be written into data that is '
-        + 'not admin-only, and has been blocked.\n\n'
-        + (copyKeys.length ? copyKeys.length + ' edited text item(s) carrying the '
-            + 'figure were reverted to their shipped wording.\n\n' : '')
-        + (other.length ? 'REFUSED (not saved): ' + other.join(', ') + '\n\n' : '')
+    alert('An auth-gated P&L figure, or stored text containing digits, was '
+        + 'about to be written into data that is not admin-only, and has been '
+        + 'blocked.\n\n'
+        + (copyKeys.length ? copyKeys.length + ' edited text item(s) were reverted '
+            + 'to their shipped wording.\n\n' : '')
+        + (other.length ? 'REFUSED (not written): ' + other.join(', ') + '\n\n' : '')
         + 'Edited wording is stored in the model state, which is saved to this '
         + 'browser, pushed to the shared scenario table that any signed-in user '
-        + 'can read, and included in the JSON export. A sentence containing a '
-        + 'loaded P&L figure therefore cannot be stored. Edit a sentence that '
-        + 'does not quote one.');
+        + 'can read, and included in exports. Because the page rounds and '
+        + 'formats figures for display, stored text may not contain digits at '
+        + 'all -- there is no reliable way to tell a harmless number from a '
+        + 'rounded P&L figure.');
   }
   return other.length === 0;
 };
@@ -3935,7 +4050,11 @@ MGM.copyEligible = function (el) {
   // read -- and to the JSON export. Computed from the live text, so a NEW
   // interpolation is covered the day it is written rather than the day someone
   // remembers to add it to a list.
-  if (MGM.textHasGated(t)) return false;
+  // LAYER A. Sound rule: no digits means no numeric gated figure can be in
+  // here, so storing this text cannot publish one. Also excludes text built
+  // from live data, where an override would have frozen a stale figure --
+  // a latent correctness bug independent of disclosure.
+  if (!MGM.copyTextSafe(t)) return false;
   return true;
 };
 
@@ -3987,15 +4106,22 @@ MGM.applyCopy = function (root) {
       var now = MGM.copyNorm(el.textContent).replace(/\s*✎$/, '');
       var base = el.dataset.copyDefault;
       var k = el.dataset.copyKey;
-      // LAYER B. Catches anything layer A missed, and the case layer A cannot
-      // see at all: an admin typing a gated figure in by hand. Refuse the
-      // store, put the original text back, and say why.
-      if (MGM.textHasGated(now)) {
-        alert('That wording cannot be saved: it contains an auth-gated P&L '
-            + 'figure.\n\nEdited wording is stored in the model state, which '
-            + 'is saved to this browser, pushed to the shared scenario table '
-            + 'that any signed-in user can read, and included in the JSON '
-            + 'export. Rephrase without quoting the figure.');
+      // LAYER B. Catches what layer A cannot anticipate: an admin typing a
+      // figure in by hand into a sentence that was clean when A decided.
+      //
+      // Also re-checks admin. The element was made editable for an admin; a
+      // sign-out in another tab between focus and blur would otherwise store
+      // an edit for someone who may no longer make one.
+      if (!MGM.canEdit()) { el.textContent = base; return MGM.refresh(); }
+      if (!MGM.copyTextSafe(now)) {
+        alert('That wording cannot be saved: editable text may not contain '
+            + 'digits.\n\nEdited wording is stored in the model state, which is '
+            + 'saved to this browser, pushed to the shared scenario table that '
+            + 'any signed-in user can read, and included in the JSON export. A '
+            + 'number in stored text could be an auth-gated P&L figure -- and '
+            + 'because the page rounds and formats figures for display, there '
+            + 'is no reliable way to tell one apart from a harmless number. So '
+            + 'none are allowed. Rephrase without digits.');
         el.textContent = base;
         return MGM.refresh();
       }
@@ -4444,6 +4570,21 @@ MGM.renderAuth = function () {
     if (eb) eb.textContent = '✎ Edit';
   }
 
+  // R5: the notice was commented "for the UI to surface" and nothing read it.
+  // A blocked disclosure is not a console-only event.
+  var warn = '';
+  if (MGM.gatedLeakNotice) {
+    var n = MGM.gatedLeakNotice;
+    warn = '<span class="adminbar ro" title="' + esc(n.paths.join(', ')) + '">'
+         + (n.remediation ? '⚠ ' + n.scrubbed + ' edited text item(s) restored to '
+              + 'their shipped wording: they contained digits, which stored text '
+              + 'may not, because a number could be an auth-gated P&L figure'
+            : '⚠ a gated figure was blocked'
+              + (n.scrubbed ? ' — ' + n.scrubbed + ' text item(s) reverted' : '')
+              + (n.refused ? ' — ' + n.refused + ' write refused' : ''))
+         + '</span> ';
+  }
+
   let bar;
   if (!email) {
     bar = '<span class="adminbar ro">Read-only — sign in as an admin to edit</span>';
@@ -4477,10 +4618,10 @@ MGM.renderAuth = function () {
     ? '<button class="btn ghost" onclick="MGM.syncScenarios()" title="Push local scenarios to the shared set, then merge the shared set back down">☁️ Sync scenarios</button>'
     : '<button class="btn ghost" onclick="MGM.pullScenarios()" title="Refresh the shared scenario list. Saving and opening a scenario are both limited to administrators, so this only updates the list you can see.">☁️ Refresh shared list</button>';
 
-  document.getElementById('authBar').innerHTML = email
+  document.getElementById('authBar').innerHTML = warn + (email
     ? `<span class="who">${esc(email)}</span>${bar}${cloudBtn}
        <button class="btn ghost" onclick="RoadysBD.auth.signOut().then(function(){location.reload();})">Sign out</button>`
-    : `${bar}<button class="btn ghost" onclick="MGM.signIn()">Sign in to sync</button>`;
+    : `${bar}<button class="btn ghost" onclick="MGM.signIn()">Sign in to sync</button>`);
 
   if (MGM.adminError) {
     document.getElementById('authBar').innerHTML +=
@@ -4656,7 +4797,13 @@ MGM.pnlWhy = function () {
 MGM.cloudSave = async function (rec) {
   // mgm_scenarios is readable by ANY signed-in user while mgm_pnl_actuals is
   // admin-only, so this is the boundary the F1 leak actually crossed.
-  if (!MGM.guardGatedLeak(rec, 'shared scenario')) return { error: null, blocked: true };
+  // R6: match the shape every caller already handles -- syncScenarios printed
+  // "Failed: Leaky: undefined" against the old return. An error object is what
+  // a refusal IS here, so say so in the field callers read.
+  if (!MGM.guardGatedLeak(rec, 'shared scenario')) {
+    return { error: { message: 'Blocked: this scenario carries an auth-gated '
+                             + 'P&L figure and was not pushed.' }, blocked: true };
+  }
   const sb = MGM.sb();
   if (!sb) return { ok: false, reason: 'no-client' };
 
@@ -4815,6 +4962,13 @@ MGM.scenarioList = function () {
 };
 
 MGM.scenarioWriteAll = function (list) {
+  // A poisoned row can arrive from the cloud long after this page opened, so
+  // remediate here too rather than only at load.
+  MGM.scrubUnsafeCopy('scenario write');
+  // R3. The Layer C comment used to claim every path to persistence went
+  // through save/cloudSave/exportJSON. It did not: this function has four
+  // callers, including importJSON, and exportCSV bypassed it too.
+  if (!MGM.guardGatedLeak({ list: list }, 'scenario list')) return;
   try { localStorage.setItem(SCEN_KEY, JSON.stringify(list)); }
   catch (e) { alert('Could not save the scenario — browser storage is full.'); }
 };
