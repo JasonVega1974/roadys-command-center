@@ -1880,15 +1880,33 @@ test('residueVerdict tells a dirty payload from an uncheckable one', () => {
 });
 
 // ── The engine revision must stay coupled to what the page expects ─────────
+// Reads the page via __dirname, matching this file's existing convention (see
+// the SR-11 scans above). The first version used './membership-growth-model/
+// index.html', which ENOENTs when the suite is run from the parent directory:
+// a review measured 106 pass / 3 fail that way. Loud rather than vacuous, but
+// still three tests that pass or fail based on the caller's cwd.
+function readPage() {
+  const fs = require('node:fs'), path = require('node:path');
+  return fs.readFileSync(path.join(__dirname, 'membership-growth-model', 'index.html'), 'utf8');
+}
+
+// Strips `//` line comments before parsing a matched code fragment. A review
+// put an inline comment inside the ENGINE_NEEDS array and the test failed
+// claiming the page required a function named `// the strip 'residueVerdict'`
+// -- a false failure on a legitimate edit. Plain multi-line reformatting was
+// already safe; this makes commenting safe too.
+function stripLineComments(src) {
+  return String(src).replace(/\/\/[^\n]*/g, '');
+}
+
 // A review set ENGINE_REV to 5 and the whole suite still passed: nothing
 // referenced it. That is the same gap as the cache-busting query string --
 // a number a human must remember to keep in step, with no check. The page
 // reads its copy from HTML, so the coupling is asserted across the two files.
 
 test('ENGINE_REV matches the revision the page expects', () => {
-  const fs = require('node:fs');
-  const page = fs.readFileSync('./membership-growth-model/index.html', 'utf8');
-  const m = page.match(/MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/);
+  const page = readPage();
+  const m = page.match(/^\s*MGM\.ENGINE_REV_EXPECTED\s*=\s*(\d+)/m);
   assert.ok(m, 'the page must declare MGM.ENGINE_REV_EXPECTED');
   assert.equal(MembershipModel.ENGINE_REV, Number(m[1]),
     'bump BOTH: membershipModel.js ENGINE_REV and index.html ENGINE_REV_EXPECTED');
@@ -1906,11 +1924,11 @@ test('the page requires every engine function it names, and all exist', () => {
   // MGM.ENGINE_NEEDS is the page's own list. If someone adds a name to it
   // without the engine exporting it, every load reports a false skew and the
   // page refuses to work -- so the list is checked against reality here.
-  const fs = require('node:fs');
-  const page = fs.readFileSync('./membership-growth-model/index.html', 'utf8');
-  const m = page.match(/MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/);
+  const page = readPage();
+  const m = page.match(/^\s*MGM\.ENGINE_NEEDS\s*=\s*\[([^\]]*)\]/m);
   assert.ok(m, 'the page must declare MGM.ENGINE_NEEDS');
-  const needs = m[1].split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  const needs = stripLineComments(m[1])
+    .split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
   assert.ok(needs.length >= 2, 'expected a real list, got ' + JSON.stringify(needs));
   for (const n of needs) {
     assert.equal(typeof MembershipModel[n], 'function',
@@ -1922,8 +1940,7 @@ test('the engine cache-bust is not a date, and the page requests it', () => {
   // Rounds 2 and 3 of this fix shipped on the same calendar day, so a date
   // key could not have separated them even if it had been bumped -- and it
   // was not, leaving Sync dead and silent for anyone holding the old engine.
-  const fs = require('node:fs');
-  const page = fs.readFileSync('./membership-growth-model/index.html', 'utf8');
+  const page = readPage();
   const m = page.match(/membershipModel\.js\?v=([^"']+)/);
   assert.ok(m, 'the page must cache-bust membershipModel.js');
   assert.ok(!/^\d{4}-\d{2}-\d{2}$/.test(m[1]),

@@ -327,21 +327,44 @@ const MM = (typeof MembershipModel === 'object' && MembershipModel)
   ? MembershipModel : null;
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
 
-// Before anything reads the engine. A missing engine is unrecoverable -- this
-// page is a model with a UI attached -- but it must SAY so rather than fail
-// blank. A review measured the old binding throwing ReferenceError during
-// script evaluation, so nothing below was defined and the reader got a blank
-// page and no message.
-if (!MM) {
+// What this page needs the engine to provide. Declared HERE, above the first
+// engine call, so the evaluation-time guard below and MGM.engineSkew() further
+// down are the same list -- one definition, two call sites.
+MGM.ENGINE_NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
+MGM.ENGINE_REV_EXPECTED = 4;
+
+// Before anything reads the engine. A missing or unusable engine is
+// unrecoverable -- this page is a model with a UI attached -- but it must SAY
+// so rather than fail blank or, worse, render a full page of dead buttons.
+//
+// Tests USABILITY, not presence. An earlier version tested `!MM` alone: a
+// review set the global to an empty object and the guard did not fire, so
+// MM.defaultState() threw during evaluation, the body was never replaced, and
+// the page drew its whole chrome with 12 live onclick handlers over an empty
+// MGM -- a click gave an uncaught TypeError and no feedback whatsoever. That
+// is worse than the blank page this guard was added to fix, since the 404 case
+// at least leaves nothing to click.
+//
+// The ReferenceError case is covered too: MM is bound defensively above,
+// because `const MM = MembershipModel;` throws during script evaluation when
+// the engine 404s, before any of this could run.
+const _engineBroken = !MM
+  ? 'did not load'
+  : (MGM.ENGINE_NEEDS.filter(k => typeof MM[k] !== 'function').length
+      ? 'loaded but is incomplete or out of date'
+      : null);
+if (_engineBroken) {
   document.addEventListener('DOMContentLoaded', function () {
     document.body.innerHTML = '<div class="card" style="margin:40px auto;max-width:620px">'
       + '<h3>This page could not load its model script</h3>'
-      + '<p class="note">membershipModel.js did not load, so nothing here can be '
-      + 'calculated. This is almost always a stale cache or a failed download: '
-      + 'reload the page (hold Shift while reloading, or empty the cache). '
-      + 'Nothing has been changed or uploaded.</p></div>';
+      + '<p class="note">membershipModel.js ' + _engineBroken + ', so nothing here '
+      + 'can be calculated. This is almost always a stale cache or a failed '
+      + 'download: reload the page (hold Shift while reloading, or empty the '
+      + 'cache). Nothing has been changed or uploaded.</p></div>';
   });
-  throw new Error('[MGM] membershipModel.js did not load');
+  // Stop here. Everything below needs the engine, and continuing would draw a
+  // page whose controls all throw -- see the comment above.
+  throw new Error('[MGM] membershipModel.js ' + _engineBroken);
 }
 
 MGM.state = MM.defaultState(MGM_CONFIG);
@@ -4700,9 +4723,10 @@ MGM.reportableUnknown = function (merged) {
 // not, and relying on a human to bump a string is not a mechanism.
 //
 // So: one list, checked at boot and again before any sync, reported in words.
-MGM.ENGINE_NEEDS = ['stripResidue', 'residueVerdict', 'mergeState', 'defaultState'];
-MGM.ENGINE_REV_EXPECTED = 4;
-
+// MGM.ENGINE_NEEDS and MGM.ENGINE_REV_EXPECTED are declared at the top of this
+// script, above the first engine call, because the evaluation-time guard there
+// uses the same list. One definition.
+//
 // Returns null when the engine is fine, or a human-readable reason when it is
 // not. Deliberately does NOT throw: a diagnostic that crashes its caller is
 // how the thing it diagnoses stayed invisible.
