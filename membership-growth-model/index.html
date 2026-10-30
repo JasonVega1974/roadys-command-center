@@ -5488,7 +5488,22 @@ MGM.staleHiddenColumns = function (columnIds) {
       for (let r = 1; r < table.rows.length; r++) {  // r=0 is the header row itself
         const cell = table.rows[r].cells[idx];
         if (!cell) continue;
-        const t = cell.textContent.trim();
+        // An input/select/textarea cell's .textContent is ALWAYS empty -- a
+        // form control is a void or leaf element with no text-node children,
+        // regardless of its value -- so a review caught this reading an
+        // input-backed column (roughly a fifth of the 106) as permanently
+        // "no data" no matter what was typed into it. Worse in the other
+        // direction too: MGM.editedMark appends an "edited" badge as a
+        // SIBLING inside the same <td>, so textContent on a TOUCHED-but-
+        // still-blank input cell read as non-empty and would have flagged
+        // stale on nothing but an edit history, never on the figure itself.
+        // Reading the control's live .value (the DOM property, which
+        // reflects the reader's own typing even before anything is saved,
+        // not the value ATTRIBUTE frozen at render time) sidesteps both: it
+        // is the actual figure, and it is never contaminated by sibling UI
+        // chrome the way textContent is.
+        const ctrl = cell.querySelector('input,select,textarea');
+        const t = ctrl ? String(ctrl.value).trim() : cell.textContent.trim();
         if (t && t !== '—' && t !== '-') { stale.add(id); break; }
       }
     });
