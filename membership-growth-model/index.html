@@ -273,7 +273,7 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
       <button class="btn ghost" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
-      <button class="btn ghost" onclick="MGM.scenarioSave()">Save scenario…</button>
+      <button class="btn ghost" id="scenarioSaveBtn" onclick="MGM.scenarioSave()" style="display:none">Save scenario…</button>
       <button class="btn ghost" onclick="MGM.openEmail()"
               title="Opens a draft in your own mail client. Nothing is sent from this page.">✉ Email draft</button>
       <button class="btn ghost" onclick="MGM.doPrint()">⎙ Print</button>
@@ -487,6 +487,13 @@ const MM = (function () {
   return engine;
 }());
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
+
+// Scenario-based sharing is being replaced by Publish (one shared live-state
+// row, see MGM.publishState below). This flag hides the whole scenario UI --
+// Save, the cloud sync/refresh button, the "Scenario: X" bar, and the
+// comparison card -- for every viewer, admin included, without deleting any
+// of the underlying code or cloud-sync plumbing. One line to bring it back.
+const SCENARIOS_UI_ENABLED = false;
 
 MGM.state = MM.defaultState(MGM_CONFIG);
 try {
@@ -4950,7 +4957,7 @@ MGM.renderAuth = function () {
   // refuse -- and reading mgm_scenarios IS open to any signed-in user, so
   // there is a genuinely useful action to offer them instead. The label says
   // which half they get.
-  const cloudBtn = admin
+  const cloudBtn = !SCENARIOS_UI_ENABLED ? '' : admin
     ? '<button class="btn ghost" onclick="MGM.syncScenarios()" title="Push local scenarios to the shared set, then merge the shared set back down">☁️ Sync scenarios</button>'
     : '<button class="btn ghost" onclick="MGM.pullScenarios()" title="Refresh the shared scenario list. Saving and opening a scenario are both limited to administrators, so this only updates the list you can see.">☁️ Refresh shared list</button>';
 
@@ -6100,6 +6107,7 @@ MGM.applyPreset = function (name) {
 MGM.renderScenarioBar = function () {
   const el = document.getElementById('scenarioBar');
   if (!el) return;
+  if (!SCENARIOS_UI_ENABLED) { el.style.display = 'none'; el.innerHTML = ''; return; }
   const n = MGM.scenarioNotice;
   // A scenario saved before any preset was applied carries no activeScenario,
   // so fall back to the loaded record's name rather than printing an unnamed
@@ -6130,6 +6138,11 @@ MGM.renderScenarioBar = function () {
 // the Current column is computed by exactly the code the rest of the page
 // uses.
 MGM.renderCompare = function () {
+  // Returns '' rather than nothing rendered at all: the additions tab's
+  // template is `${MGM.renderCompare ? MGM.renderCompare() : ''}`, so an
+  // early empty string here (not a card) is what keeps the comparison card
+  // off the page entirely while SCENARIOS_UI_ENABLED is false.
+  if (!SCENARIOS_UI_ENABLED) return '';
   const cols = [{ name: 'Current', state: MGM.state, live: true }]
     .concat(MGM.scenarioList().map(s => {
       // Deep merge here too: a comparison against a scenario that predates a
@@ -6302,6 +6315,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // appearing to. DOMContentLoaded fires after the whole script is evaluated,
   // so every definition exists by now.
   try { MGM.scenarioList(); } catch (e) {}
+
+  // The only piece of the scenario UI that is STATIC markup rather than
+  // something MGM.refresh() regenerates -- renderScenarioBar, renderCompare
+  // and the authBar's cloudBtn all gate on SCENARIOS_UI_ENABLED themselves,
+  // every time they run, but this button's `display:none` is baked into the
+  // HTML once and never touched again unless this line un-hides it.
+  if (SCENARIOS_UI_ENABLED) {
+    const saveBtn = document.getElementById('scenarioSaveBtn');
+    if (saveBtn) saveBtn.style.display = '';
+  }
 
   // No engine check here. It would be dead code: the guard inside the `const MM`
   // initialiser throws when the engine is unusable, and that happens during
