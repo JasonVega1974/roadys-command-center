@@ -485,11 +485,34 @@
   // here -- the one stream that legitimately is, fuel settlement, has its own
   // field -- so a negative belongs in the unusable bucket rather than quietly
   // inverting a stream.
+  // A STRING IS ACCEPTED ON PURPOSE, and this is load-bearing: an imported
+  // JSON scenario carries whatever the file held, and a hand-edited or
+  // third-party export legitimately stores a number as a string. The UI path
+  // never needs it -- the bound input writes a number or null -- so anyone
+  // reading only the UI path would reasonably "tighten" this to number-only
+  // and silently break every imported scenario. It stays.
+  //
+  // Whitespace is NOT a figure, though. Number(' ') is 0, so ' ', '	' and a
+  // non-breaking space all arrived as a usable rate of zero and printed the
+  // deliberate-$0 reading instead of "not supplied" -- the
+  // absence-rendered-as-a-business-fact defect this model has corrected about
+  // thirty times. Trimming first makes them empty, and empty is absent.
+  //
+  // MAGNITUDE IS BOUNDED, because validating the input is not the same as
+  // validating what the model does with it. 1e308 passed every check here and
+  // then `members x rate x 12` overflowed to Infinity, which propagated into
+  // the revenue streams. A per-member MONTHLY rate has a real-world bound; a
+  // billion dollars is already absurd by six orders of magnitude, so anything
+  // beyond it is corrupt data rather than a figure, and saying so here keeps
+  // one predicate instead of spreading finiteness checks over every product.
+  var RATE_CEILING = 1e9;
+
   function usableRate(v) {
     if (typeof v !== 'number' && typeof v !== 'string') return null;
-    if (v === '') return null;
-    var x = Number(v);
-    return (isFinite(x) && x >= 0) ? x : null;
+    var t = (typeof v === 'string') ? v.trim() : v;
+    if (t === '') return null;
+    var x = Number(t);
+    return (isFinite(x) && x >= 0 && x <= RATE_CEILING) ? x : null;
   }
 
   // WHICH SHAPE the state is in, and WHETHER ITS VALUE IS USABLE, are separate

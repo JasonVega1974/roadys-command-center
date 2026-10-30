@@ -2718,3 +2718,60 @@ test('an unusable blended rate is an ERROR STATE, never a silent legacy read', (
   assert.equal(MembershipModel.rewardsRate(z).unset, false, '0 is a real figure');
   assert.equal(MembershipModel.rewardsRate(z).rate, 0);
 });
+
+test('usableRate validates the PRODUCT, not just the input', () => {
+  // A review's 464-case fuzz found 1e308 passing every check here and then
+  // `members x rate x 12` overflowing to Infinity, which propagated into the
+  // revenue streams. Validating an input is not the same as validating what
+  // the model does with it.
+  const streamOf = v => {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.revenue.rewardsBlendedPM = v;
+    const m = MembershipModel.runModel(st);
+    return MembershipModel.revenueModel(st, m)[0].streams.rewards;
+  };
+  for (const v of [1e308, 1e300, Number.MAX_VALUE, 1e9 + 1]) {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.revenue.rewardsBlendedPM = v;
+    assert.equal(MembershipModel.rewardsRate(st).rate, null, v + ' must be rejected');
+    assert.equal(MembershipModel.rewardsRate(st).unset, true, v + ' must be flagged');
+    assert.ok(isFinite(streamOf(v)), v + ' must not produce a non-finite stream');
+  }
+  // The ceiling is generous on purpose: a plausible figure must survive it.
+  const ok = MembershipModel.defaultState(MGM_CONFIG);
+  ok.revenue.rewardsBlendedPM = 1e9;
+  assert.equal(MembershipModel.rewardsRate(ok).rate, 1e9, 'the ceiling itself is usable');
+  assert.ok(isFinite(streamOf(1e9)));
+});
+
+test('whitespace is an absence, not a deliberate zero', () => {
+  // Number(' ') is 0, so whitespace arrived as a usable rate of ZERO and
+  // printed the deliberate-$0 reading rather than "not supplied" -- the
+  // absence-rendered-as-a-business-fact defect this model has corrected
+  // repeatedly. Reachable through an import or hand-edited state; the bound
+  // input writes null.
+  const WS = [' ',                       // space
+              String.fromCharCode(9),    // tab
+              String.fromCharCode(10),   // newline
+              String.fromCharCode(160),  // non-breaking space
+              ' ' + String.fromCharCode(9) + ' '];
+  for (const v of WS) {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.revenue.rewardsBlendedPM = v;
+    const rr = MembershipModel.rewardsRate(st);
+    assert.equal(rr.rate, null, JSON.stringify(v) + ' must not be a rate of 0');
+    assert.equal(rr.unset, true, JSON.stringify(v) + ' must read as absent');
+  }
+  // A numeric string with padding is still a figure -- trimming must not
+  // reject it, which is the whole reason strings are accepted (imports).
+  const padded = MembershipModel.defaultState(MGM_CONFIG);
+  padded.revenue.rewardsBlendedPM = ' 14 ';
+  assert.equal(MembershipModel.rewardsRate(padded).rate, 14);
+  assert.equal(MembershipModel.rewardsRate(padded).unset, false);
+
+  // And a real zero stays a real zero.
+  const z = MembershipModel.defaultState(MGM_CONFIG);
+  z.revenue.rewardsBlendedPM = '0';
+  assert.equal(MembershipModel.rewardsRate(z).rate, 0);
+  assert.equal(MembershipModel.rewardsRate(z).unset, false, '"0" is a deliberate zero');
+});
