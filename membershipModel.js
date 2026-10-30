@@ -25,9 +25,19 @@
     return (state.groups || []).reduce(function (a, g) { return a + n(g.count); }, 0);
   }
 
+  // Independent of state.groups (2026-10-30): PTP was never a real location
+  // type, just a sales-channel tag, and its locations were dissolved out of
+  // the groups array into the real types they belong to (gallons production
+  // redesign). But PTP's HELD-FLAT treatment here -- excluded from steady/
+  // structural attrition, growing only by adds.ptpNet -- is a separate,
+  // deliberate modeling decision with its own history (see ptpNote) that has
+  // nothing to do with gallons grouping. Coupling it to a group lookup would
+  // have silently zeroed it the moment the group was dissolved, moving every
+  // former-PTP location onto the normal attrition/growth curve as a side
+  // effect of an unrelated fix. state.ptpHeldCount is its own field so this
+  // stays correct regardless of what state.groups contains.
   function ptpCount(state) {
-    var g = (state.groups || []).filter(function (x) { return x.key === 'ptp'; })[0];
-    return g ? n(g.count) : 0;
+    return n(state.ptpHeldCount);
   }
 
   // lost / prior-year count, for every year where both are known.
@@ -173,6 +183,14 @@
       { key: 'fuel', label: 'Fuel Stops', count: 9 },
       { key: 'ptp', label: 'PTP', count: 89 }
     ],
+    // ptpCount() stopped reading state.groups for 'ptp' on 2026-10-30 (see
+    // its own comment) and reads this field instead. Added here, with the
+    // SAME 89 the groups row above already carried, purely so this fixture
+    // keeps producing the exact behaviour it pinned before that refactor --
+    // not a config change the "do NOT update" rule above is about. The
+    // `ptp` groups row stays, unused by ptpCount now, because the fixture
+    // is verbatim.
+    ptpHeldCount: 89,
     attrition: { steady: 9.7, structural: {} },
     adds: { perMonth: 3.2, growthPct: 5, activationLag: 0, ptpNet: 0 },
     history: [{ year: 2026, newR: 32, lost: null, count: null }],
@@ -879,33 +897,64 @@
   }
 
   // ── Fuel Gallon Production ──────────────────────────────────────────────
-  // baselineFor(profile, roadway) is injected: the page wraps
-  // BusDevGallonsCalc.getBaselineRow, node tests pass a stub. Keeping it an
-  // argument is what lets this stay a pure function.
-  function gallonProduction(state, baselineFor, pipeline) {
+  // Baselines live in state.gallons.baselines -- this tool's own independent
+  // copy of the Bus Dev Potential Gallons tool's 8 profile/roadway
+  // baselines, never a live sync (membershipModelConfig.js's comment on
+  // `gallons` has the full reasoning). Unlike the pre-2026-10-30 version,
+  // which took an injected baselineFor(profile, roadway) so the page could
+  // wrap a live read of a DIFFERENT tool's config, nothing needs injecting
+  // now: the data this function needs is already inside `state`.
+  function baselineLookup(state) {
+    var rows = (state.gallons || {}).baselines || [];
+    var map = {};
+    rows.forEach(function (r) { map[r.profile + '|' + r.roadway] = n(r.baseline); });
+    return map;
+  }
+
+  // A group's locations split across multiple profile/roadway combinations
+  // (2026-10-30 redesign): a group is real estate, not a single engine
+  // profile, so gallons.groupSplits.<key> is an array of rows, each with its
+  // own location count and optional per-row baseline override, summing to
+  // the group's gallons. `mapped`/a group's own `unmapped` stay GROUP-level
+  // (not row-level): the UI's "N group(s) are unmapped and contribute zero
+  // gallons" warning cares whether a group contributes anything at all, not
+  // whether every one of its rows individually resolved -- a group with one
+  // mapped row and one unmapped row still produces real gallons and is not
+  // the failure case that warning exists for.
+  function gallonProduction(state, pipeline) {
     var gcfg = state.gallons || {};
-    var map = gcfg.groupProfile || {};
-    var overrides = gcfg.groupBaselineOverride || {};
-    var mapped = 0;
+    var splits = gcfg.groupSplits || {};
+    var base = baselineLookup(state);
+    var mapped = 0, totalRows = 0;
 
     var byGroup = (state.groups || []).map(function (g) {
-      var pair = map[g.key];
-      var row = null;
-      if (pair && typeof baselineFor === 'function') {
-        row = baselineFor(pair[0], pair[1]);
-      }
-      var engineBaseline = row ? n(row.baseline) : 0;
-      var hasOverride = overrides[g.key] !== undefined
-        && overrides[g.key] !== null && overrides[g.key] !== '';
-      var baseline = hasOverride ? n(overrides[g.key]) : engineBaseline;
-      var unmapped = !pair || !row;
+      var rows = splits[g.key] || [];
+      var groupGallons = 0, groupLocations = 0;
+      var detailRows = rows.map(function (row) {
+        totalRows++;
+        var key = row.profile + '|' + row.roadway;
+        var hasBase = Object.prototype.hasOwnProperty.call(base, key);
+        var engineBaseline = hasBase ? base[key] : 0;
+        var hasOverride = row.baselineOverride !== undefined
+          && row.baselineOverride !== null && row.baselineOverride !== '';
+        var baseline = hasOverride ? n(row.baselineOverride) : engineBaseline;
+        var locations = n(row.locations);
+        var gallons = locations * baseline;
+        groupGallons += gallons;
+        groupLocations += locations;
+        return {
+          profile: row.profile, roadway: row.roadway, locations: locations,
+          engineBaseline: engineBaseline, baseline: baseline,
+          overridden: !!hasOverride, unmapped: !hasBase, gallons: gallons
+        };
+      });
+      var unmapped = rows.length === 0
+        || detailRows.every(function (r) { return r.unmapped; });
       if (!unmapped) mapped++;
       return {
         key: g.key, label: g.label, count: n(g.count),
-        profile: pair ? pair[0] : '', roadway: pair ? pair[1] : '',
-        engineBaseline: engineBaseline, baseline: baseline,
-        overridden: !!hasOverride, unmapped: unmapped,
-        gallons: n(g.count) * baseline
+        rows: detailRows, locations: groupLocations,
+        unmapped: unmapped, gallons: groupGallons
       };
     });
 
@@ -914,7 +963,7 @@
     var total = groupTotal(state);
 
     return {
-      byGroup: byGroup, mapped: mapped,
+      byGroup: byGroup, mapped: mapped, totalRows: totalRows,
       existing: existing, inbound: inbound, total: existing + inbound,
       perMember: total ? existing / total : 0
     };

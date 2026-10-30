@@ -58,7 +58,12 @@ EXCLUDE_COMPANY_RE = re.compile(r"^test company\s*#", re.I)
 # Carried verbatim out of the old config, in file order, because they come from
 # `Historical member signups.xlsx` and not from either CSV.
 HISTORY_SOURCE = "Historical member signups.xlsx"
-CARRIED = ("ptpNote", "history", "monthlyHistory")
+# ptpHeldCount (2026-10-30): PTP's held-flat headcount for the growth engine
+# (membershipModelConfig.js has the full reasoning) is a standing fact about
+# the PTP channel, not a CSV aggregate this script computes -- same category
+# as ptpNote, must stay immediately before it in this tuple and in the file
+# (carried_span() requires the carried fields to be one contiguous block).
+CARRIED = ("ptpHeldCount", "ptpNote", "history", "monthlyHistory")
 
 GROUPS = [
     ("ts", "Truck Stop"),
@@ -67,18 +72,24 @@ GROUPS = [
     ("ppo", "PPO"),
     ("lite", "Roady's Lite"),
     ("fuel", "Fuel Stops"),
-    ("ptp", "PTP"),
+    ("svc", "Service Centers"),
 ]
-# Type -> group key, used only when Group is neither PTP nor Roady's Lite.
-# PTP is keyed on Group alone, so a PTP service centre counts as PTP and
-# never as a truck stop.
+# Type -> group key. PTP was removed as a group (2026-10-30): it was never a
+# real location type, only a sales-channel tag on the Group column, and
+# classifying by it discarded the location's real Type -- a PTP-tagged truck
+# stop, PPO and service center all landed in one bucket, modeled with one
+# engine profile. Every location now classifies by its real Type alone,
+# the same as a Roady's-tagged one; a PTP tag no longer changes the bucket.
+# (Roady's Lite is still its own deliberate sub-brand distinction, keyed on
+# Group below in classify() -- that one is a real grouping choice, not a
+# sales-channel label hiding the real type.)
 TYPE_TO_KEY = {
     "truck stop": "ts",
     "truck stop / service center": "tssc",
     "c-store": "cstore",
     "ppo": "ppo",
     "fuel stop": "fuel",
-    "service center": "ptp",
+    "service center": "svc",
 }
 
 # Column spellings seen across exports. The first present alias wins; a missing
@@ -146,8 +157,6 @@ def is_junk(company):
 
 
 def classify(group, rtype):
-    if group == "PTP":
-        return "ptp"
     if group == "Roady's Lite":
         return "lite"
     return TYPE_TO_KEY.get(rtype.lower())
