@@ -462,21 +462,72 @@
   // With one field there is nothing to separate. A pre-commit scenario has no
   // `rewardsBlendedPM`, so mergeState adds it at the shipped calibration and
   // REPORTS it in `added`; the saved `rewardsPM` survives as a retained
-  // unknown that nothing reads. The stream moves by the difference between two
-  // calibrations, not by a factor of two, and the notice says a field was
-  // filled from defaults.
+  // unknown. The stream moves by the difference between two calibrations, not
+  // by a factor of two, and the notice says a field was filled from defaults.
+  //
+  // `rewardsPM` IS STILL READ, and an earlier version of this comment said
+  // "that nothing reads" -- which the legacy branch below contradicts four
+  // lines later, and a review measured at 207.1% of reference. It is read in
+  // exactly one circumstance: when `rewardsBlendedPM` is ABSENT AS A KEY,
+  // which is the legacy shape and the only shape whose rate takes a
+  // participation share. A present-but-unusable blended value no longer
+  // reaches it.
   //
   // LEGACY_STATE carries `rewardsPM`/`rewardsPart` and no blended field, so it
   // takes the legacy branch and the v1 goldens are unaffected -- including
   // through a merge, which design 2 could not say.
+  // A usable numeric rate, or null. Rejects a boolean, an array and an object
+  // by TYPE rather than by whether they coerce: `true` coerced to the rate 1
+  // and `[]` to the rate 0, so the guard was testing coercibility and calling
+  // the result a figure.
+  //
+  // A negative rate is rejected too. Revenue per member cannot be negative
+  // here -- the one stream that legitimately is, fuel settlement, has its own
+  // field -- so a negative belongs in the unusable bucket rather than quietly
+  // inverting a stream.
+  function usableRate(v) {
+    if (typeof v !== 'number' && typeof v !== 'string') return null;
+    if (v === '') return null;
+    var x = Number(v);
+    return (isFinite(x) && x >= 0) ? x : null;
+  }
+
+  // WHICH SHAPE the state is in, and WHETHER ITS VALUE IS USABLE, are separate
+  // questions. Conflating them is what reopened this bug a third time.
+  //
+  // The previous version took the legacy branch whenever rewardsBlendedPM
+  // failed to coerce -- so `''` (one keystroke in its own number input),
+  // null, a corrupt string, `{}`, NaN or a deleted key all silently fell
+  // through to rv.rewardsPM, which the shipped config NO LONGER CONTAINS.
+  // Measured: the rewards stream ZEROED with nothing rendered to say so, and
+  // with a superseded rate still in state it reached 207.1% of reference --
+  // design 2's doubling arriving through a different door. mergeState cannot
+  // help, because `''` is PRESENT: it survives a merge and is not reported in
+  // `added`.
+  //
+  // So the shape is decided by KEY PRESENCE and nothing else, and an
+  // unusable value is an ERROR STATE rather than a fallback:
+  //
+  //   blended key present -> blended, always. A bad value yields rate null
+  //                          and unset:true, never a silent legacy read.
+  //   blended key absent  -> legacy, always. That is the only shape whose
+  //                          rate is participation-discounted.
+  //
+  // rate null contributes nothing through n(), which matches this model's
+  // convention that an em dash means "no figure supplied" while $0 means "a
+  // deliberate zero" -- and `unset` is what lets a surface say the first
+  // rather than print the second.
   function rewardsRate(state) {
     var rv = state.revenue || {};
-    var b = rv.rewardsBlendedPM;
-    if (b !== undefined && b !== null && b !== '' && isFinite(Number(b))) {
-      return { rate: Number(b), share: 1, blended: true };
+    var hasBlended = Object.prototype.hasOwnProperty.call(rv, 'rewardsBlendedPM');
+
+    if (hasBlended) {
+      var b = usableRate(rv.rewardsBlendedPM);
+      return { rate: b, share: 1, blended: true, unset: b === null };
     }
-    return { rate: n(rv.rewardsPM), share: partPct(state, 'rewards') / 100,
-             blended: false };
+    var l = usableRate(rv.rewardsPM);
+    return { rate: l, share: partPct(state, 'rewards') / 100,
+             blended: false, unset: l === null };
   }
 
   // The effective share for any programme, for DISPLAY as well as arithmetic.
@@ -494,6 +545,10 @@
   // activation lag is visible without changing the revenue basis.
   function revenueModel(state, M) {
     var rv = state.revenue || {}, months = 12;
+    // Read as ONE pair, once. Calling rewardsRate twice on a line made the
+    // atomicity of rate-and-share incidental rather than explicit, which is
+    // the shape the owner named as this build's recurring root cause.
+    var rr = rewardsRate(state);
     return M.years.map(function (r) {
       var m = avgMembers(r);
       var streams = {
@@ -502,7 +557,7 @@
         settlement:      m * n(rv.settlementNetPerMember),
         fuelProgram:     m * (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
         vendor:          m * (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-        rewards:         m * rewardsRate(state).share * rewardsRate(state).rate * months,
+        rewards:         m * rr.share * n(rr.rate) * months,
         rewardsBreakage: m * n(rv.rewardsBreakagePerMember)
       };
       var total = Object.keys(streams).reduce(function (a, k) { return a + streams[k]; }, 0);
@@ -520,13 +575,14 @@
   // null when nobody is signed in — the tile degrades, it does not break.
   function revPerMember(state, M, actuals) {
     var rv = state.revenue || {}, months = 12;
+    var rr = rewardsRate(state);          // one pair, read once
     var derived = {
       dues:            n(rv.duesPerLoc) * months,
       duesAncillary:   n(rv.duesAncillaryPerMember),
       settlement:      n(rv.settlementNetPerMember),
       fuelProgram:     (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
       vendor:          (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-      rewards:         rewardsRate(state).share * rewardsRate(state).rate * months,
+      rewards:         rr.share * n(rr.rate) * months,
       rewardsBreakage: n(rv.rewardsBreakagePerMember)
     };
     derived.total = Object.keys(derived).reduce(function (a, k) {

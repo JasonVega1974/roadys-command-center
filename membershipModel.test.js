@@ -2609,7 +2609,20 @@ test('a pre-blended scenario loads at the shipped rate, not double or half', () 
   assert.ok(merged.added.some(a => /rewardsBlendedPM/.test(a)),
     'the added field must be reported to the reader');
   assert.ok(merged.unknown.some(u => /rewardsPM/.test(u)),
-    'the superseded rate must be retained and reported, not read');
+    'the superseded rate must be retained and reported');
+  // AND THAT IT IS NOT READ -- asserted, not claimed. The previous version put
+  // "not read" in the message above while only checking membership in
+  // `unknown`, so the half that mattered was unverified and, as a review
+  // measured, false. Changing the superseded rate must move nothing while the
+  // blended key is present.
+  const bumped = JSON.parse(JSON.stringify(merged.state));
+  bumped.revenue.rewardsPM = 999;
+  const streamOf = st => {
+    const m = MembershipModel.runModel(st);
+    return MembershipModel.revenueModel(st, m)[0].streams.rewards;
+  };
+  assert.equal(streamOf(bumped), streamOf(merged.state),
+    'the superseded rate is still being read');
 });
 
 test('the legacy path still applies a share, and only it does', () => {
@@ -2623,7 +2636,12 @@ test('the legacy path still applies a share, and only it does', () => {
   assert.equal(MembershipModel.rewardsRate(L).rate, L.revenue.rewardsPM);
 });
 
-test('every display surface shows the EFFECTIVE share, not the stored one', () => {
+test('effectiveSharePct returns the effective share, not the stored one', () => {
+  // NAMED FOR WHAT IT CHECKS. It was called "every display surface ...", and a
+  // review measured that reverting a single page call site back to partPct
+  // left the suite at 113/0 -- so it verifies the helper, not the surfaces.
+  // The surfaces are verified by hand on the live page; this pins the helper
+  // they all read.
   // Four surfaces printed partPct raw beside a figure computed without it --
   // a row reading one multiplier next to another multiplier's result, and the
   // same contradiction in the printed report.
@@ -2635,4 +2653,68 @@ test('every display surface shows the EFFECTIVE share, not the stored one', () =
   // Non-blended programmes are unaffected.
   assert.equal(MembershipModel.effectiveSharePct(st, 'vendor'),
                MembershipModel.partPct(st, 'vendor'));
+});
+
+test('an unusable blended rate is an ERROR STATE, never a silent legacy read', () => {
+  // The third direction on one quantity. rewardsRate used to take the legacy
+  // branch whenever the blended field failed to COERCE, so a cleared input,
+  // a corrupt string, {} or NaN all fell through to a superseded rate the
+  // shipped config no longer contains -- zeroing the stream with nothing
+  // rendered, or reaching 207% of reference when an old rate was still in
+  // state. mergeState cannot catch it: '' is PRESENT, so it survives a merge
+  // and is not reported in `added`.
+  //
+  // Shape is decided by KEY PRESENCE now; usability is a separate question
+  // whose failure is flagged.
+  const ref = MembershipModel.defaultState(MGM_CONFIG);
+  const streamOf = st => {
+    const m = MembershipModel.runModel(st);
+    return MembershipModel.revenueModel(st, m)[0].streams.rewards;
+  };
+  const refStream = streamOf(ref);
+
+  const UNUSABLE = ['', null, 'abc', {}, [], true, NaN, Infinity, -14];
+  for (const v of UNUSABLE) {
+    const st = MembershipModel.defaultState(MGM_CONFIG);
+    st.revenue.rewardsPM = 29;             // the superseded rate, still present
+    st.participation.rewards.pct = 50;     // and its stale share
+    st.revenue.rewardsBlendedPM = v;
+    const rr = MembershipModel.rewardsRate(st);
+    const label = JSON.stringify(v) === undefined ? String(v) : JSON.stringify(v);
+
+    assert.equal(rr.blended, true, label + ' must stay on the blended branch');
+    assert.equal(rr.unset, true, label + ' must be flagged unset');
+    assert.equal(rr.rate, null, label + ' must not yield a rate');
+    // Contributes nothing -- but as a FLAGGED absence, which is what lets a
+    // surface print an em dash rather than a figure of zero.
+    assert.equal(streamOf(st), 0, label + ' must contribute nothing');
+    assert.ok(Math.abs(streamOf(st) / refStream - 2) > 0.5, label + ' must not double');
+  }
+
+  // A boolean and an array are rejected by TYPE, not by coercion: `true`
+  // coerced to the rate 1 and `[]` to 0, which the old guard accepted as
+  // figures.
+  const t1 = MembershipModel.defaultState(MGM_CONFIG);
+  t1.revenue.rewardsBlendedPM = true;
+  assert.equal(MembershipModel.rewardsRate(t1).rate, null, 'true is not a rate of 1');
+
+  // Key ABSENT is the only route to the legacy branch.
+  const legacyShaped = MembershipModel.defaultState(MGM_CONFIG);
+  legacyShaped.revenue.rewardsPM = 29;
+  // Set to 50 deliberately: the shipped config carries 100, so asserting
+  // "share < 1" without setting this was asserting a property of a value I had
+  // not controlled -- the assertion passed or failed on the config's default
+  // rather than on the branch under test.
+  legacyShaped.participation.rewards.pct = 50;
+  delete legacyShaped.revenue.rewardsBlendedPM;
+  const lr = MembershipModel.rewardsRate(legacyShaped);
+  assert.equal(lr.blended, false, 'an absent key is the legacy shape');
+  assert.equal(lr.rate, 29);
+  assert.equal(lr.share, 0.5, 'and only that shape is participation-discounted');
+
+  // A usable zero is still a DELIBERATE zero, not an absence.
+  const z = MembershipModel.defaultState(MGM_CONFIG);
+  z.revenue.rewardsBlendedPM = 0;
+  assert.equal(MembershipModel.rewardsRate(z).unset, false, '0 is a real figure');
+  assert.equal(MembershipModel.rewardsRate(z).rate, 0);
 });

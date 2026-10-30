@@ -1625,9 +1625,19 @@ MGM.renderers.revpermember = function (D) {
                 same contradiction in the printed report. A blended rate shows
                 its basis instead of a multiplier, because there is no
                 multiplier to show. */ ''}
-          ${MM.rewardsRate(st).blended
-            ? '<span class="small">blended over all members</span>'
-            : '× ' + pct1(MM.partPct(st, 'rewards'))}</td>
+          ${(() => {
+            const rr = MM.rewardsRate(st);
+            // An em dash, not $0. The rate is unusable -- cleared, corrupt, or
+            // negative -- and this model's convention is that an em dash means
+            // no figure was supplied while $0 means a deliberate zero. A
+            // review measured the previous code modelling this as a real zero
+            // with nothing rendered to say so.
+            if (rr.unset) return '<span class="small">— rate not supplied,'
+              + ' so this stream contributes nothing</span>';
+            return rr.blended
+              ? '<span class="small">blended over all members</span>'
+              : '× ' + pct1(MM.partPct(st, 'rewards'));
+          })()}</td>
         <td class="num">${fm$(rpm.derived.rewards)}</td></tr>
       <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewardsBreakage" value="${esc(L.rewardsBreakage)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.rewardsBreakagePerMember"
@@ -2890,10 +2900,15 @@ MGM.reportAssumptions = function (D) {
       ? `${fmGal(rv.fuelProgramMargin)}/gal × ${fmt(rv.avgGallons)} gal/mo × ${pct1(MM.partPct(st, 'fuel'))} participation — a FORWARD ASSUMPTION entered by the modeller, not a reported figure`
       : `$0.00/gal — the shipped default, and a deliberate zero rather than a missing figure. The source P&amp;L shows fuel settlement netting negative, so nothing supports a positive per-gallon margin here; any positive value would be a forward assumption the modeller owns.`],
 
-    ['Rewards', (MM.rewardsRate(st).blended
-      ? `${fm$(MM.rewardsRate(st).rate)}/mo program fees, blended over ALL active members `
-        + `(the participation share is already inside the rate, so none is applied), plus `
-      : `${fm$(MM.rewardsRate(st).rate)}/mo program fees × ${pct1(MM.partPct(st, 'rewards'))} participation, plus `) +
+    ['Rewards', (() => {
+      const rr = MM.rewardsRate(st);
+      if (rr.unset) return 'not supplied — no usable program-fee rate is entered, '
+        + 'so the fee stream contributes nothing; ';
+      return rr.blended
+        ? `${fm$(rr.rate)}/mo program fees, blended over ALL active members `
+          + `(the participation share is already inside the rate, so none is applied), plus `
+        : `${fm$(rr.rate)}/mo program fees × ${pct1(MM.partPct(st, 'rewards'))} participation, plus `;
+    })() +
       (rv.rewardsBreakagePerMember
         ? `${fm$(rv.rewardsBreakagePerMember)}/member/yr of breakage (expired points — real revenue, but non-durable, and a buyer discounts it)`
         : 'no breakage figure entered')],
