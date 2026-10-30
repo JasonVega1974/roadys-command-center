@@ -5005,11 +5005,6 @@ MGM.syncScenarios = async function () {
  */
 
 MGM.uiPrefs = { hiddenSections: {} };
-// The optimistic-concurrency token from the last successful read, used only
-// by applyHiddenDelta's .eq('updated_at', ...) — never shown, never part of
-// uiPrefs itself, so there is no second field here that could desync from
-// hiddenSections the way the rewards rate and its basis once did.
-MGM._uiPrefsSeenAt = null;
 
 MGM.isCardHidden = id => !!MGM.uiPrefs.hiddenSections[id];
 
@@ -5022,18 +5017,17 @@ MGM.loadUiPrefs = async function () {
   // permission feature, so a missing session must never read as a reason to
   // hide more.
   if (!sb || !MGM.authEmail()) {
-    MGM.uiPrefs.hiddenSections = {}; MGM._uiPrefsSeenAt = null; MGM.refresh(); return;
+    MGM.uiPrefs.hiddenSections = {}; MGM.refresh(); return;
   }
   try {
     const { data, error } = await sb.from('mgm_ui_prefs')
       .select('hidden_sections,updated_at').eq('id', 'v1').maybeSingle();
     if (error || !data) {
-      MGM.uiPrefs.hiddenSections = {}; MGM._uiPrefsSeenAt = null; MGM.refresh(); return;
+      MGM.uiPrefs.hiddenSections = {}; MGM.refresh(); return;
     }
     MGM.uiPrefs.hiddenSections = MM.sanitizeHiddenSections(data.hidden_sections, HIDDEN_SECTION_IDS);
-    MGM._uiPrefsSeenAt = data.updated_at;
   } catch (e) {
-    MGM.uiPrefs.hiddenSections = {}; MGM._uiPrefsSeenAt = null;
+    MGM.uiPrefs.hiddenSections = {};
   }
   MGM.refresh();
 };
@@ -5098,7 +5092,6 @@ MGM.applyHiddenDelta = async function (delta, attempt) {
     return MGM.applyHiddenDelta(delta, attempt + 1);
   }
   MGM.uiPrefs.hiddenSections = MM.sanitizeHiddenSections(upd[0].hidden_sections, HIDDEN_SECTION_IDS);
-  MGM._uiPrefsSeenAt = upd[0].updated_at;
   MGM.refresh();
 };
 
@@ -5110,6 +5103,7 @@ MGM.hideSection = function (id) {
 
 MGM.restoreSection = function (id) {
   if (!MGM.requireAdmin('Restoring a card')) return;
+  if (HIDDEN_SECTION_IDS.indexOf(id) < 0) return;   // not a recognised card id
   MGM.applyHiddenDelta({ [id]: false });
 };
 
