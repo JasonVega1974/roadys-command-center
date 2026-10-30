@@ -58,7 +58,12 @@ EXCLUDE_COMPANY_RE = re.compile(r"^test company\s*#", re.I)
 # Carried verbatim out of the old config, in file order, because they come from
 # `Historical member signups.xlsx` and not from either CSV.
 HISTORY_SOURCE = "Historical member signups.xlsx"
-CARRIED = ("ptpNote", "history", "monthlyHistory")
+# ptpHeldCount (2026-10-30): PTP's held-flat headcount for the growth engine
+# (membershipModelConfig.js has the full reasoning) is a standing fact about
+# the PTP channel, not a CSV aggregate this script computes -- same category
+# as ptpNote, must stay immediately before it in this tuple and in the file
+# (carried_span() requires the carried fields to be one contiguous block).
+CARRIED = ("ptpHeldCount", "ptpNote", "history", "monthlyHistory")
 
 GROUPS = [
     ("ts", "Truck Stop"),
@@ -67,18 +72,24 @@ GROUPS = [
     ("ppo", "PPO"),
     ("lite", "Roady's Lite"),
     ("fuel", "Fuel Stops"),
-    ("ptp", "PTP"),
+    ("svc", "Service Centers"),
 ]
-# Type -> group key, used only when Group is neither PTP nor Roady's Lite.
-# PTP is keyed on Group alone, so a PTP service centre counts as PTP and
-# never as a truck stop.
+# Type -> group key. PTP was removed as a group (2026-10-30): it was never a
+# real location type, only a sales-channel tag on the Group column, and
+# classifying by it discarded the location's real Type -- a PTP-tagged truck
+# stop, PPO and service center all landed in one bucket, modeled with one
+# engine profile. Every location now classifies by its real Type alone,
+# the same as a Roady's-tagged one; a PTP tag no longer changes the bucket.
+# (Roady's Lite is still its own deliberate sub-brand distinction, keyed on
+# Group below in classify() -- that one is a real grouping choice, not a
+# sales-channel label hiding the real type.)
 TYPE_TO_KEY = {
     "truck stop": "ts",
     "truck stop / service center": "tssc",
     "c-store": "cstore",
     "ppo": "ppo",
     "fuel stop": "fuel",
-    "service center": "ptp",
+    "service center": "svc",
 }
 
 # Column spellings seen across exports. The first present alias wins; a missing
@@ -146,15 +157,13 @@ def is_junk(company):
 
 
 def classify(group, rtype):
-    if group == "PTP":
-        return "ptp"
     if group == "Roady's Lite":
         return "lite"
     return TYPE_TO_KEY.get(rtype.lower())
 
 
 def read_locations(path):
-    counts, status = Counter(), Counter()
+    counts, status, ptp_tagged = Counter(), Counter(), Counter()
     dropped, unclassified, names = [], [], set()
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rdr = csv.DictReader(fh)
@@ -179,14 +188,24 @@ def read_locations(path):
             # data did.
             if st != "active":
                 continue
-            key = classify(cell(row, cols, "Group"), cell(row, cols, "Type"))
+            group = cell(row, cols, "Group")
+            key = classify(group, cell(row, cols, "Type"))
+            # PTP no longer changes the bucket (see TYPE_TO_KEY's comment), but
+            # the real count of PTP-tagged active rows is still worth printing
+            # every refresh -- it's the reconciliation check for the hand-
+            # maintained ptpHeldCount field, which this script never touches.
+            # Tagged BEFORE the unclassified check below, not after: a
+            # PTP-tagged row with an unrecognised Type is exactly the row
+            # most likely to be wrong, so it must not silently disappear
+            # from this count the same way it disappears from `counts`.
+            if group == "PTP":
+                ptp_tagged[key if key is not None else "(unclassified)"] += 1
             if key is None:
-                unclassified.append((cell(row, cols, "ID"),
-                                     cell(row, cols, "Group"),
+                unclassified.append((cell(row, cols, "ID"), group,
                                      cell(row, cols, "Type")))
                 continue
             counts[key] += 1
-    return counts, status, dropped, unclassified, names
+    return counts, status, dropped, unclassified, names, ptp_tagged
 
 
 def money(s):
@@ -485,7 +504,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    counts, status, dropped, unclassified, loc_names = read_locations(args.locations)
+    counts, status, dropped, unclassified, loc_names, ptp_tagged = \
+        read_locations(args.locations)
     billing, bill_names = read_billing(args.billing)
     names = loc_names | bill_names
     total = sum(counts.values())
@@ -493,6 +513,17 @@ def main():
     print("Active locations: %d" % total)
     for key, label in GROUPS:
         print("  %-28s %d" % (label, counts.get(key, 0)))
+    ptp_total = sum(ptp_tagged.values())
+    print("PTP-tagged active rows: %d (reconciliation check for the hand-"
+          "maintained ptpHeldCount field in membershipModelConfig.js -- "
+          "this script never writes it)" % ptp_total)
+    for key, label in GROUPS:
+        if ptp_tagged.get(key, 0):
+            print("  %-28s %d" % (label, ptp_tagged[key]))
+    if ptp_tagged.get("(unclassified)", 0):
+        print("  %-28s %d  (also counted above under the unclassified-rows "
+              "warning, if any -- excluded from Active locations)"
+              % ("(unclassified)", ptp_tagged["(unclassified)"]))
     print("Onboarding: %d   Offboarding: %d"
           % (status.get("onboarding", 0), status.get("offboarding", 0)))
     print("Dropped %d non-location rows:" % len(dropped))

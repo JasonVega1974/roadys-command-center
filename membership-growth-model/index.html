@@ -10,8 +10,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="../busDevGallonsConfig.js"></script>
-<script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
 <script src="../membershipModel.js?v=r5"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
@@ -194,6 +192,16 @@ input.cell{width:84px;text-align:right;padding:4px 6px}
 /* Read mode shows values; edit mode reveals controls and row tools. */
 .mgm-editonly{display:none}
 body.mgm-edit .mgm-editonly{display:inline-flex;gap:6px}
+/* Every prior use of .mgm-editonly was a <div>/<span>, so display:inline-flex
+   was always right. The Fuel Gallon Production split-row table is the first
+   to put it on a <tr>/<td>/<th> (the mismatch-nudge row and the "+ Add
+   profile/roadway split" row) -- inline-flex on a table row/cell breaks out
+   of the table's column tracks entirely (measured: a ~1158px-wide table's
+   row collapsing to ~523px and ~210px boxes, not a row). These three
+   overrides make the SAME class behave correctly in a table context without
+   a second class name to keep in sync with the first. */
+body.mgm-edit tr.mgm-editonly{display:table-row}
+body.mgm-edit td.mgm-editonly,body.mgm-edit th.mgm-editonly{display:table-cell}
 .cell{border:1px solid transparent;background:transparent;color:inherit;
       font:inherit;width:100%;text-align:right;padding:3px 5px;border-radius:4px}
 body.mgm-edit .cell{border-color:var(--line);background:var(--surface)}
@@ -509,6 +517,97 @@ const MM = (function () {
   MGM.engineProblem = function () { return problem(MM || engine); };
   return engine;
 }());
+
+// Chokepoint, same discipline as MGM.stripResidue (grep that name: it runs
+// at every one of this file's state-entry points, not only the boot path).
+// Called from every place `MGM.state = merged.state` (or the equivalent)
+// assigns a freshly-merged state: boot (localStorage), MGM.importJSON,
+// MGM.loadLiveState's two branches, MGM.pullLiveState, MGM.scenarioLoad, and
+// MGM.renderCompare's per-scenario merge -- that last one is unreachable
+// today (SCENARIOS_UI_ENABLED is false, see below), but it is still a real
+// MM.mergeState call site and a flag flip must not silently reopen this.
+//
+// A state saved or published before the 2026-10-30 PTP dissolution still
+// has a `ptp` groups entry and no `svc` entry. mergeState replaces a saved
+// `groups` ARRAY wholesale (arrays are never merged element-by-element --
+// see its own bothPlain check) -- so without this, gallons.groupSplits.svc's
+// 23 locations are permanently orphaned (no matching `groups` row, so
+// MM.gallonProduction never visits them -- confirmed to silently drop
+// ~130,000 gal/mo with no error), and a stale `ptp` entry keeps inflating
+// groupTotal()/M.startTotal forever as an ordinary location count the
+// gallons tab can never produce anything for. Caught by an independent
+// review, not by this file's own testing: the override-preserving part of
+// this migration (see the boot-time block below) was verified live across
+// several cases, but this groups-ARRAY half of the same problem was missed
+// at every entry point, including boot.
+//
+// Removing the `ptp` entry outright (an earlier version of this function)
+// left the OPPOSITE hole a second review caught: a returning user's own
+// `ts`/`ppo` counts stay at their pre-dissolution values (e.g. 152/98, not
+// the post-dissolution 187/128) because mergeState keeps the saved array,
+// so dropping `ptp` without redistributing its count silently shrinks
+// groupTotal() by whatever `ptp` used to carry -- the same class of silent
+// loss this function exists to prevent, just in the other direction. Fixed
+// by redistributing the removed `ptp` count across ts/ppo/svc using the
+// same 35:30:23-of-88 ratio the original investigation found, scaled to
+// THIS state's own stored ptp count (not hardcoded to 88), so the total
+// location count is preserved exactly even if an admin had hand-edited the
+// old PTP count before this migration ever ran.
+//
+// Returns whether anything changed, so a caller that only saves
+// conditionally (matching the existing stripResidue call sites' pattern)
+// knows whether a persist is needed.
+MGM.reconcilePtpDissolution = function (state) {
+  const groups = state && state.groups;
+  if (!Array.isArray(groups)) return false;
+  const hasSvc = () => groups.some(g => g && g.key === 'svc');
+  if (!groups.some(g => g && g.key === 'ptp') && hasSvc()) return false; // common case
+  let changed = false;
+
+  // Walk backwards and remove EVERY `ptp` entry (a crafted import could
+  // carry more than one), summing their counts rather than trusting a
+  // single findIndex to see the whole picture.
+  let ptpTotal = 0;
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i] && groups[i].key === 'ptp') {
+      ptpTotal += Number(groups[i].count) || 0;
+      groups.splice(i, 1);
+      changed = true;
+    }
+  }
+
+  // Creates the group from the shipped defaults if the saved array doesn't
+  // have it at all, rather than silently dropping its share of the
+  // redistributed ptp count -- the same silent-loss class this function
+  // exists to close. Reachable for ts/ppo too, not just svc: a hand-edited
+  // import or a crafted live-state row can omit any group.
+  const bumpOrCreate = (key, by) => {
+    const g = groups.find(x => x && x.key === key);
+    if (g) { g.count = (Number(g.count) || 0) + by; return; }
+    const shipped = (MGM_CONFIG.groups || []).find(x => x && x.key === key);
+    groups.push({ key, label: shipped ? shipped.label : key, count: by });
+  };
+  if (ptpTotal > 0) {
+    const tsShare = Math.round(ptpTotal * 35 / 88);
+    const ppoShare = Math.round(ptpTotal * 30 / 88);
+    const svcShare = ptpTotal - tsShare - ppoShare; // remainder absorbs rounding
+    bumpOrCreate('ts', tsShare);
+    bumpOrCreate('ppo', ppoShare);
+    bumpOrCreate('svc', svcShare);
+    changed = true;
+  } else if (!hasSvc()) {
+    // No `ptp` count to redistribute (e.g. a state already missing only
+    // `svc` for some unrelated reason) -- fall back to the shipped default
+    // rather than inventing a count MGM_CONFIG does not already assert.
+    const shipped = (MGM_CONFIG.groups || []).find(g => g.key === 'svc');
+    groups.push(shipped
+      ? { key: 'svc', label: shipped.label, count: shipped.count }
+      : { key: 'svc', label: 'Service Centers', count: 0 });
+    changed = true;
+  }
+  return changed;
+};
+
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
 
 // Scenario-based sharing is being replaced by Publish (one shared live-state
@@ -533,6 +632,7 @@ try {
   if (saved) {
     var merged = MM.mergeState(MM.defaultState(MGM_CONFIG), saved);
     MGM.state = merged.state;
+    var _ptpGroupsFixed = MGM.reconcilePtpDissolution(MGM.state);
 
     // Removing the copy-override feature has to remove its DATA, not just its
     // code. mergeState keeps keys it does not recognise -- deliberately, so an
@@ -569,6 +669,80 @@ try {
       try { console.warn('[MGM] dropped ' + _res.removed + ' stored text '
             + 'override map(s) from a removed feature'); } catch (e3) {}
       try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e4) {}
+    }
+
+    // 2026-10-30: gallons.groupProfile (one [profile,roadway] pair per group)
+    // and gallons.groupBaselineOverride (one override per group) were
+    // replaced by gallons.groupSplits (an array of {profile,roadway,
+    // locations,baselineOverride} rows per group, since a group can now span
+    // more than one profile). mergeState's array handling takes the SAVED
+    // array wholesale when one exists and the shipped array otherwise (see
+    // its bothPlain check), so a state saved before this date already got
+    // the new groupSplits DEFAULTS applied correctly with no code needed
+    // here -- what mergeState does NOT do is carry forward an admin's
+    // PRE-EXISTING per-group override: groupProfile/groupBaselineOverride
+    // are plain objects with no counterpart key in the new defaults, so
+    // they would otherwise survive only as inert "unknown" residue (visible
+    // nowhere, written to every future save, read by nothing) -- exactly
+    // the silent-loss case approved as needing a safe-by-construction fix
+    // rather than an assumption that no override existed.
+    var oldProfile = saved.gallons && saved.gallons.groupProfile;
+    // Seeded from the groups-array fix above (not only from the override
+    // migration below), so a state that needed ONLY the groups-array
+    // reconciliation -- no old-shape gallons.groupProfile at all, e.g. a
+    // live-state row someone hand-edited after 2026-10-30 to remove `svc`
+    // again -- still gets persisted rather than silently re-diverging on
+    // the very next reload.
+    var migratedAny = _ptpGroupsFixed;
+    if (oldProfile) {
+      var oldOverride = (saved.gallons && saved.gallons.groupBaselineOverride) || {};
+      Object.keys(oldProfile).forEach(function (key) {
+        // ptp handled separately below: it was dissolved into three groups
+        // (Truck Stop, PPO, Service Centers), so a single old override has
+        // no one new home to land in -- reallocating it across the three
+        // would be a guess, not a migration.
+        if (key === 'ptp') return;
+        var ov = oldOverride[key];
+        var hasOv = ov !== undefined && ov !== null && ov !== '';
+        // No override for this group: the new real-data split default
+        // already applies via mergeState above. Nothing to carry forward.
+        if (!hasOv) return;
+        var pair = oldProfile[key];
+        if (!pair || pair.length !== 2) return;
+        var g = (MGM.state.groups || []).filter(function (x) { return x.key === key; })[0];
+        // Preserves the admin's exact prior choice (same profile, same
+        // override value) as a single split row sized to the group's
+        // CURRENT count, rather than silently applying the new multi-row
+        // default on top of a customization they made. They can expand it
+        // into the real split manually via "+ Add profile/roadway split"
+        // if they want that instead.
+        MM.setPath(MGM.state, 'gallons.groupSplits.' + key,
+          [{ profile: pair[0], roadway: pair[1], locations: g ? g.count : 0, baselineOverride: ov }]);
+        migratedAny = true;
+      });
+      var ptpOv = oldOverride.ptp;
+      if (ptpOv !== undefined && ptpOv !== null && ptpOv !== '') {
+        MGM.state.ptpNote = '[Migration 2026-10-30] A gallon baseline override of '
+          + ptpOv + ' existed for the old PTP group before it was dissolved into '
+          + 'Truck Stop/PPO/Service Centers. It was NOT automatically reapplied to '
+          + 'any of the three, since there is no single correct new home for it -- '
+          + 'review the new splits on Fuel Gallon Production and re-enter it there '
+          + 'if it still applies. ' + MGM.state.ptpNote;
+        migratedAny = true;
+      }
+      // Explicitly removed rather than left for mergeState's retain-unknown
+      // behaviour: both have now been read, and applied wherever there was
+      // something to preserve. Nothing reads them going forward, so keeping
+      // them would only be permanent, growing residue.
+      if (MGM.state.gallons) {
+        delete MGM.state.gallons.groupProfile;
+        delete MGM.state.gallons.groupBaselineOverride;
+      }
+    }
+    if (migratedAny) {
+      try { console.warn('[MGM] migrated gallons group' + (_ptpGroupsFixed ? 's' : '')
+            + ' / overrides to the new shape (PTP dissolved' + (oldProfile ? ', old overrides carried forward' : '') + ')'); } catch (e5) {}
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e6) {}
     }
   }
 } catch (e) { /* corrupt entry: fall back to defaults rather than a blank page */ }
@@ -751,10 +925,22 @@ MGM.loadRegionVariance = async function () {
   MGM.refresh();
 };
 
-// The injected baseline lookup that keeps the engine pure.
-MGM.baselineFor = function (profile, roadway) {
-  try { return BusDevGallonsCalc.getBaselineRow(profile, roadway) || null; }
-  catch (e) { return null; }
+// UI helpers over MGM.state.gallons.baselines -- this tool's own independent
+// copy of the Bus Dev Potential Gallons tool's profile/roadway baselines
+// (membershipModelConfig.js's comment on `gallons` has the full reasoning),
+// never a live read of BusDevGallonsCalc/busDevGallonsConfig.js any more.
+// The engine itself no longer needs this injected (MM.gallonProduction reads
+// state.gallons.baselines directly, since the data now lives inside the
+// state it already receives) -- these exist only for dropdown population.
+MGM.gallonProfiles = function () {
+  const rows = (MGM.state.gallons || {}).baselines || [];
+  const seen = [];
+  rows.forEach(r => { if (seen.indexOf(r.profile) < 0) seen.push(r.profile); });
+  return seen;
+};
+MGM.gallonRoadwaysFor = function (profile) {
+  const rows = (MGM.state.gallons || {}).baselines || [];
+  return rows.filter(r => r.profile === profile).map(r => r.roadway);
 };
 
 // One place that assembles every layer, so no renderer recomputes a slice
@@ -832,7 +1018,7 @@ MGM.runFor = function (st) {
   return {
     st, pipeline, M, R, F, cost,
     rpm: MM.revPerMember(st, M, MGM.pnlActuals),
-    gallons: MM.gallonProduction(st, MGM.baselineFor, pipeline),
+    gallons: MM.gallonProduction(st, pipeline),
     participation: MM.participationModel(st, M),
     capacity: MM.capacityModel(st, M, pipeline),
     valuation: MM.valuation(vst, R[R.length - 1], ebitdaOverride),
@@ -1359,7 +1545,7 @@ MGM.renderers.starting = function (D) {
      corporate payment records and demo rows.</p>
   <div class="signrow">
     ${sign(st.labels.tiles['starting-tile-active-locations'], fmt(tot), 'verified base', '', 'starting-tile-active-locations')}
-    ${sign(st.labels.tiles['starting-tile-roadys-side'], fmt(tot - M.ptp), 'excl. PTP group', 'dark', 'starting-tile-roadys-side')}
+    ${sign(st.labels.tiles['starting-tile-roadys-side'], fmt(tot - M.ptp), 'excl. PTP (held flat)', 'dark', 'starting-tile-roadys-side')}
     ${sign(st.labels.tiles['starting-tile-monthly-dues'], fm$(st.billing.monthlyDuesTotal),
            `${st.billing.companies} companies · ${st.billing.locations} billed`, 'red', 'starting-tile-monthly-dues')}
     ${sign(st.labels.tiles['starting-tile-paying-locations'], fmt(st.billing.payingLocations),
@@ -1434,7 +1620,14 @@ MGM.renderers.starting = function (D) {
 
   <div class="card" data-card="starting-ptp-unresolved"><h3>PTP — unresolved</h3>
     <p class="note">${esc(st.ptpNote)}</p>
-    <p class="note">Held flat at <code>ptpNet: 0</code> so it cannot distort a projection.</p>
+    <table>
+      <tr><td>PTP locations held flat</td><td class="num"><input class="cell" type="number"
+          min="0" data-k="ptpHeldCount" value="${st.ptpHeldCount}"></td></tr>
+    </table>
+    <p class="note">Held flat at <code>ptpNet: 0</code> so it cannot distort a projection.
+      Independent of the gallons groups below (PTP was never a real location
+      type there, just a sales-channel tag) — this count only feeds the
+      growth engine's roadys/PTP split.</p>
   </div>
 
   ${MGM.tabRenameCard()}
@@ -1827,10 +2020,10 @@ MGM.drawFunnel = function (p, sp) {
 };
 
 // The group `key` is NOT cosmetic: Task 11 interpolates it into state paths
-// (`gallons.groupProfile.<key>`, `gallons.groupBaselineOverride.<key>`). The
-// first draft of this plan created groups with `key: ''` and gave no way to
-// edit it, which meant (a) an added group could never be mapped to a gallon
-// profile, and (b) two added groups collided on the same empty override slot.
+// (`gallons.groupSplits.<key>`). The first draft of this plan created groups
+// with `key: ''` and gave no way to edit it, which meant (a) an added group
+// could never be mapped to a gallon profile split, and (b) two added groups
+// collided on the same empty split slot.
 // So the key is derived from the label, kept unique, and validated here —
 // at the point of creation, with a visible message — rather than relying on
 // `setPath`'s reserved-segment guard, which refuses silently by design.
@@ -1929,9 +2122,7 @@ MGM.renderers.gallons = function (D) {
   const { st, gallons: G, pipeline: p, M } = D;
   const gcfg = st.gallons;
   const rv = MGM.regionVariance || {};
-  const profiles = (() => {
-    try { return BusDevGallonsCalc.getProfiles(); } catch (e) { return []; }
-  })();
+  const profiles = MGM.gallonProfiles();
 
   // Pipeline inbound comes from the same live crm_leads fetch Task 10 gated on
   // MGM.pipelineState. `G.inbound` is a real 0 only when the pipeline loaded
@@ -1946,15 +2137,19 @@ MGM.renderers.gallons = function (D) {
 
   document.getElementById('panel-gallons').innerHTML = `
   <h2>${esc(st.labels.tabs.gallons)}</h2>
-  <p class="sub" data-card="gallons-intro">Network-level production from the live Bus Dev gallons engine.
+  <p class="sub" data-card="gallons-intro">Network-level production from this tool's own gallons engine.
+     Baselines started as a copy of the Bus Dev Potential Gallons tool's profile
+     averages and are expected to diverge over time, not stay in sync.
      Per-prospect value props live in the
      <a href="../bus-dev-potential-gallons/" target="_blank">Bus Dev Potential Gallons</a> tool.</p>
   <div class="signrow">
-    ${/* G.mapped is 0 when no group resolved a baseline -- reachable if
-          busDevGallonsCalculator.js fails to load. "0 gal/mo across the whole
-          network" is a business claim; the absence of an engine is not a
-          production figure. The printed report already said "Not computed"
-          here, so the screen was the half that disagreed.
+    ${/* G.mapped is 0 when no group resolved to a known profile/roadway --
+          baselines are this tool's own config now, not a live read of another
+          script, so this is reachable only if state itself holds a profile
+          name the baselines table does not (e.g. a stale saved state from
+          before a profile was renamed), not from anything failing to load.
+          "0 gal/mo across the whole network" is still a business claim the
+          screen must not assert on a gap like that, so the same guard stays.
 
           The location count that used to be written out here went stale in the
           first data refresh after it was written, which is the staleness this
@@ -1962,58 +2157,134 @@ MGM.renderers.gallons = function (D) {
           it cannot go stale again. */ ''}
     ${G.mapped
       ? sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')
-      : sign('EXISTING NETWORK', '—', 'gallons engine not loaded')}
+      : sign('EXISTING NETWORK', '—', 'no group resolved a baseline')}
     ${sign(st.labels.tiles['gallons-tile-pipeline-inbound'], loadedG ? fmt(G.inbound) : '—',
            loadedG ? `${p.openLeads} open leads` : whyNotG, 'dark', 'gallons-tile-pipeline-inbound')}
     ${!G.mapped
-      ? sign('TOTAL', '—', 'gallons engine not loaded', 'red')
+      ? sign('TOTAL', '—', 'no group resolved a baseline', 'red')
       : loadedG
         ? sign('TOTAL', fmt(G.total), fmt(G.total * 12) + ' gal / yr', 'red')
         : sign('EXISTING ONLY', fmt(G.existing),
                fmt(G.existing * 12) + ' gal / yr · pipeline ' + whyNotG, 'red')}
     ${G.mapped
       ? sign('PER MEMBER', fmt(G.perMember), 'gal / mo, existing network', 'dark')
-      : sign('PER MEMBER', '—', 'gallons engine not loaded', 'dark')}
+      : sign('PER MEMBER', '—', 'no group resolved a baseline', 'dark')}
+  </div>
+
+  <div class="card"><h3>Engine baselines</h3>
+    <!-- No data-card: not in HIDDEN_SECTION_IDS, same category as the other
+         five cards this build deliberately leaves unhideable (see this file's
+         MGM.decorateHiddenSections' comment) -- that function attaches a
+         hide button to ANY element carrying data-card regardless of
+         allowlist membership, so a card outside the allowlist with the
+         attribute gets a button that does nothing when clicked
+         (HIDDEN_SECTION_IDS.indexOf(id) < 0 inside MGM.hideSection refuses
+         the write silently). Adding this card to the 287-id allowlist is a
+         bigger, separately-reviewed change (that system's own bar is a
+         mechanically-verified bijection against the live markup); out of
+         scope here. -->
+
+    <table>
+      <tr><th>Profile</th><th>Roadway</th><th class="num">Baseline gal/mo</th></tr>
+      ${(gcfg.baselines || []).map((b, i) => `<tr>
+        <td>${esc(b.profile)}</td><td>${esc(b.roadway)}</td>
+        <td class="num"><input class="cell" type="number"
+            data-k="gallons.baselines.${i}.baseline" value="${b.baseline}"></td></tr>`).join('')}
+    </table>
+    <div class="mgm-editonly" style="margin-top:10px">
+      <button class="btn" onclick="MGM.resetSection('gallons.baselines')">Reset baselines</button>
+    </div>
+    <p class="note">This tool's own independent copy of the Bus Dev Potential
+      Gallons tool's profile/roadway baselines (captured 2026-10-30) —
+      <b>not a live sync</b>. Editing a value here changes every group split
+      below that uses that profile/roadway and has no row-level override of
+      its own.</p>
   </div>
 
   <div class="card" data-card="gallons-production-by-group"><h3>Production by group</h3>
     <table>
-      <tr><th>Group</th><th class="num" data-col="gallons-production-by-group-col-locations">${esc(st.labels.columns['gallons-production-by-group-col-locations'])}</th><th data-col="gallons-production-by-group-col-engine-profile">${esc(st.labels.columns['gallons-production-by-group-col-engine-profile'])}</th>
-          <th data-col="gallons-production-by-group-col-roadway">${esc(st.labels.columns['gallons-production-by-group-col-roadway'])}</th><th class="num" data-col="gallons-production-by-group-col-baseline-gal-mo">${esc(st.labels.columns['gallons-production-by-group-col-baseline-gal-mo'])}</th><th class="num" data-col="gallons-production-by-group-col-gallons-mo">${esc(st.labels.columns['gallons-production-by-group-col-gallons-mo'])}</th></tr>
-      ${G.byGroup.map(r => `<tr>
-        <td>${esc(r.label)}${r.unmapped ? ' <span class="ovr">unmapped</span>' : ''}</td>
-        <td class="num">${fmt(r.count)}</td>
-        <td><select class="cell" data-k="gallons.groupProfile.${r.key}.0">
-          ${profiles.map(pr => `<option${pr === r.profile ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
-        </select></td>
-        <td><select class="cell" data-k="gallons.groupProfile.${r.key}.1">
-          ${(() => { try { return BusDevGallonsCalc.getValidRoadways(r.profile) || []; }
-                     catch (e) { return []; } })()
-            .map(rd => `<option${rd === r.roadway ? ' selected' : ''}>${esc(rd)}</option>`).join('')}
-        </select></td>
-        <td class="num"><input class="cell" type="number"
-            data-k="gallons.groupBaselineOverride.${r.key}"
-            value="${r.overridden ? r.baseline : ''}" placeholder="${fmt(r.engineBaseline)}">
-            ${r.overridden ? `<span class="ovr" title="Engine says ${fmt(r.engineBaseline)}">overridden · engine ${fmt(r.engineBaseline)}</span>` : ''}</td>
-        <td class="num"><b>${fmt(r.gallons)}</b></td></tr>`).join('')}
+      <tr><th>Group</th><th data-col="gallons-production-by-group-col-engine-profile">${esc(st.labels.columns['gallons-production-by-group-col-engine-profile'])}</th>
+          <th data-col="gallons-production-by-group-col-roadway">${esc(st.labels.columns['gallons-production-by-group-col-roadway'])}</th>
+          <th class="num" data-col="gallons-production-by-group-col-locations">${esc(st.labels.columns['gallons-production-by-group-col-locations'])}</th>
+          <th class="num" data-col="gallons-production-by-group-col-baseline-gal-mo">${esc(st.labels.columns['gallons-production-by-group-col-baseline-gal-mo'])}</th>
+          <th class="num" data-col="gallons-production-by-group-col-gallons-mo">${esc(st.labels.columns['gallons-production-by-group-col-gallons-mo'])}</th><th class="mgm-editonly"></th></tr>
+      ${G.byGroup.map(g => {
+        // g.key reaches here from state.groups, which MGM.makeGroupKey
+        // constrains to [a-z0-9-]+ ONLY for admin-UI-created groups --
+        // MGM.importJSON is deliberately not admin-gated, and a published
+        // mgm_live_state row merges into every signed-in viewer's state the
+        // same way, so neither path runs a crafted key through that
+        // function. Every data-k path and onclick handler below embeds
+        // g.key inside a single-quoted JS string literal that itself sits
+        // inside a double-quoted HTML attribute, and esc() does not escape
+        // `'` -- so an unvalidated key containing `'` or `"` breaks out of
+        // either quoting context and runs as script in any viewer's
+        // browser the moment they load a state carrying it. Validated here,
+        // at the one place these strings get built, rather than trusted
+        // from upstream.
+        const safeKey = /^[a-z0-9-]+$/.test(g.key);
+        const splitPath = `gallons.groupSplits.${g.key}`;
+        const rowsHtml = g.rows.map((row, i) => `<tr>
+          ${i === 0 ? `<td>${esc(g.label)}${g.unmapped ? ' <span class="ovr">unmapped</span>' : ''}${!safeKey ? ' <span class="ovr" title="This group\'s id contains characters this table cannot safely render controls for">unsafe id — read-only</span>' : ''}</td>` : '<td></td>'}
+          ${safeKey ? `<td><select class="cell" data-k="${splitPath}.${i}.profile">
+            ${profiles.map(pr => `<option${pr === row.profile ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
+          </select>${MGM.editedMark(`${splitPath}.${i}.profile`)}</td>
+          <td><select class="cell" data-k="${splitPath}.${i}.roadway">
+            ${MGM.gallonRoadwaysFor(row.profile).map(rd => `<option${rd === row.roadway ? ' selected' : ''}>${esc(rd)}</option>`).join('')}
+          </select>${MGM.editedMark(`${splitPath}.${i}.roadway`)}</td>
+          <td class="num"><input class="cell" type="number"
+              data-k="${splitPath}.${i}.locations" value="${row.locations}">${MGM.editedMark(`${splitPath}.${i}.locations`)}</td>
+          <td class="num"><input class="cell" type="number"
+              data-k="${splitPath}.${i}.baselineOverride"
+              value="${row.overridden ? row.baseline : ''}" placeholder="${fmt(row.engineBaseline)}">
+              ${row.overridden ? `<span class="ovr" title="Engine says ${fmt(row.engineBaseline)}">overridden</span>` : ''}
+              ${row.unmapped ? ' <span class="ovr" title="No baseline matches this profile/roadway">unmapped</span>' : ''}</td>
+          <td class="num"><b>${fmt(row.gallons)}</b></td>
+          <td class="mgm-editonly"><button class="btn" title="Remove this split"
+              onclick="MGM.removeRow('${splitPath}',${i})">✕</button></td>` : `<td>${esc(row.profile)}</td><td>${esc(row.roadway)}</td>
+          <td class="num">${fmt(row.locations)}</td><td class="num">${fmt(row.baseline)}</td>
+          <td class="num"><b>${fmt(row.gallons)}</b></td><td class="mgm-editonly"></td>`}</tr>`).join('');
+        // Soft nudge only, never a block: a group's split rows are each
+        // independently admin-edited, so their locations summing to
+        // something other than the group's own count (edited on Starting
+        // Membership) is a normal, temporary state while rebalancing, not
+        // an error -- the same "informational, never automatic" rule the
+        // hide system's stale-column nudge already uses.
+        const mismatch = g.locations !== g.count;
+        return rowsHtml + (mismatch ? `<tr class="mgm-editonly"><td colspan="6">
+            <span class="note neg">Split locations (${fmt(g.locations)}) don't sum to
+            this group's own count (${fmt(g.count)}, set on Starting Membership).</span>
+          </td><td class="mgm-editonly"></td></tr>` : '') +
+          (safeKey ? `<tr class="mgm-editonly"><td colspan="7"><button class="btn"
+              onclick="MGM.addRow('${splitPath}',{profile:'',roadway:'',locations:0,baselineOverride:null})">+ Add profile/roadway split</button></td></tr>` : '');
+          // Blank, not pre-filled with profiles[0]: a dynamic value here would
+          // need to pass through JSON.stringify to embed safely in JS source,
+          // and JSON.stringify's double-quoted output breaks out of this
+          // onclick attribute's own double quotes the moment the value
+          // contains one (reproduced live: "Unexpected end of input" from a
+          // corrupted attribute). Matches the existing addRow precedent
+          // elsewhere in this file (Add source/rep/year), which is always a
+          // static, single-quoted, blank-or-zero template for the same
+          // reason. A blank profile/roadway correctly reads as unmapped
+          // (flagged, zero gallons) until the admin picks one from the
+          // dropdown -- never a silently wrong number.
+      }).join('')}
       <tr class="total"><td>Existing network</td>
-        <td class="num">${fmt(M.startTotal)}</td><td colspan="3"></td>
-        <td class="num"><b>${fmt(G.existing)}</b></td></tr>
+        <td colspan="4"></td>
+        <td class="num"><b>${fmt(G.existing)}</b></td><td class="mgm-editonly"></td></tr>
     </table>
-    ${G.byGroup.some(r => r.overridden) ? `<p class="note"><span class="ovr">
-      Overridden baselines in use</span> These figures no longer match the Bus Dev
-      gallons engine. <button class="btn"
-      onclick="MGM.resetSection('gallons.groupBaselineOverride')">Revert to engine values</button></p>` : ''}
+    ${G.byGroup.some(g => g.rows.some(r => r.overridden)) ? `<p class="note"><span class="ovr">
+      Overridden baselines in use</span> on at least one split row. These figures no
+      longer track the shared Engine baselines table above for that row.</p>` : ''}
     ${G.mapped < G.byGroup.length ? `<p class="note neg">${G.byGroup.length - G.mapped}
       group(s) are unmapped and contribute zero gallons. Pick a profile and roadway above.</p>` : ''}
-    <p class="note"><span class="assume">assumption</span> Group → profile
-      assignments are assumptions, not measurements: the engine assigns a profile
-      per location from <code>dieselLanes</code> + <code>roadway</code>, which this
-      tool does not have per group. Reading
-      <code>network-locations.json</code> for real per-location profiles is a
-      future refinement.</p>
-    <p class="note">Baselines are read live from
-      <code>busDevGallonsConfig.js</code> and are never written back.</p>
+    <p class="note"><span class="assume">assumption</span> A group's split
+      across profile/roadway combinations is an assumption, sized from a real
+      per-location sample (<code>network-locations.json</code>) where one
+      exists and scaled to the group's count; where no real per-location data
+      exists for a type (C-Stores, PPO, Roady's Lite, Service Centers), the
+      group stays single-profile rather than inventing precision the source
+      data doesn't support.</p>
   </div>
 
   <div class="card" data-card="gallons-pipeline-inbound"><h3>Pipeline inbound</h3>
@@ -3529,18 +3800,18 @@ MGM.reportAssumptions = function (D) {
 MGM.reportGallonSummary = function (D) {
   const { st, gallons: G, M } = D;
   const pipeWhy = MGM.reportPipelineWhy();
-  const overridden = G.byGroup.filter(r => r.overridden).length;
+  const overridden = G.byGroup.reduce((a, g) => a + g.rows.filter(r => r.overridden).length, 0);
   // All-unmapped is an absence, not a network that burns no fuel. The screen
   // flags it in red on the Fuel Gallon Production tab; paper has to carry the
   // same distinction, because "0 gal/mo" is a business claim.
   const head = G.mapped === 0
-    ? `Not computed — no group maps to an engine profile, so no production figure exists for this run.`
+    ? `Not computed — no group resolves a baseline, so no production figure exists for this run.`
     : `${fmt(G.existing)} gal/mo across the ${fmt(M.startTotal)} active locations ` +
-      `(${fmt(G.perMember)} gal/mo per location), from the Bus Dev gallons engine's ` +
-      `per-profile baselines.`;
+      `(${fmt(G.perMember)} gal/mo per location), from this tool's own per-profile ` +
+      `baselines (started as a copy of the Bus Dev Potential Gallons tool's, now independent).`;
   return head + ` Pipeline inbound: ${pipeWhy ? pipeWhy : fmt(G.inbound) + ' gal/mo'}. ` +
-    (overridden ? `${fmt(overridden)} group baseline(s) are overridden and no longer match the engine. ` : '') +
-    `Group-to-profile assignment is an assumption, not a measurement. ` +
+    (overridden ? `${fmt(overridden)} split row baseline(s) are overridden and no longer match this tool's own baseline table. ` : '') +
+    `A group's split across profiles is an assumption, not a measurement. ` +
     `${esc(st.gallons.caveat)}`;
 };
 
@@ -3586,10 +3857,10 @@ MGM.reportWarnings = function (D) {
   const { st, gallons: G, cost: C, capacity: K, pipeline: p } = D;
   const out = [];
 
-  const ov = (st.gallons || {}).groupBaselineOverride || {};
-  const ovKeys = Object.keys(ov).filter(k => ov[k] !== null && ov[k] !== '');
-  if (ovKeys.length) out.push(`Gallon baselines were overridden for ${ovKeys.length} group(s) ` +
-    `and no longer match the Bus Dev Potential Gallons engine.`);
+  const overriddenRows = G ? G.byGroup.reduce((a, g) =>
+    a + g.rows.filter(r => r.overridden).length, 0) : 0;
+  if (overriddenRows) out.push(`Gallon baselines were overridden on ${overriddenRows} ` +
+    `profile/roadway split row(s) and no longer match this tool's own Engine baselines table.`);
 
   if (G && G.mapped < G.byGroup.length) out.push(`${G.byGroup.length - G.mapped} ` +
     `group(s) have no engine profile mapping and contribute zero gallons.`);
@@ -3851,9 +4122,12 @@ MGM.exportCSV = function () {
     ['Capacity gap', K.gap == null ? CSV_NS : K.gap], []);
 
   L.push(['Gallon production by group'],
-    ['Group', 'Locations', 'Profile', 'Roadway', 'Engine baseline', 'Baseline used', 'Overridden', 'Gallons/mo']);
-  G.byGroup.forEach(r => L.push([r.label, r.count, r.profile, r.roadway,
-    r.engineBaseline, r.baseline, r.overridden ? 'YES' : '', r.gallons]));
+    ['Group', 'Group locations', 'Profile', 'Roadway', 'Split locations', 'Engine baseline', 'Baseline used', 'Overridden', 'Gallons/mo']);
+  G.byGroup.forEach(g => {
+    if (!g.rows.length) { L.push([g.label, g.count, CSV_NS, CSV_NS, CSV_NS, CSV_NS, CSV_NS, '', 0]); return; }
+    g.rows.forEach(r => L.push([g.label, g.count, r.profile, r.roadway,
+      r.locations, r.engineBaseline, r.baseline, r.overridden ? 'YES' : '', r.gallons]));
+  });
   L.push(['Existing network', G.existing],
     ['Pipeline inbound', pipeCell(G.inbound)],
     // The network total is existing + inbound, so with inbound unknown the
@@ -3996,6 +4270,7 @@ MGM.importJSON = function (file) {
       // argument, so it gets a FRESH defaultState every call.
       const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), o.state);
       MGM.state = merged.state;
+      MGM.reconcilePtpDissolution(MGM.state);
       // A state object entering the page, so a chokepoint belongs here. The
       // commit claimed three chokepoints covered every entry; a review found
       // this fourth one, and measured an imported file putting the residue
@@ -4155,31 +4430,25 @@ MGM.renderers.about = function (D) {
   const shippedTotal = cfg.groups.reduce((a, g) => a + (+g.count || 0), 0);
   const liveTotal = D.M.startTotal;
   const edited = liveTotal !== shippedTotal;
-  const ptpShipped = cfg.groups.filter(g => g.key === 'ptp')
-    .reduce((a, g) => a + (+g.count || 0), 0);
+  // Not derived from cfg.groups: PTP is not a group any more (dissolved
+  // 2026-10-30, its locations redistributed into the real types they belong
+  // to), but the engine still holds it flat as its own fact -- see
+  // ptpHeldCount's comment in membershipModelConfig.js.
+  const ptpShipped = cfg.ptpHeldCount;
 
   // Derived live, so this card cannot contradict the Fuel Gallon Production tab.
   const G = D.gallons;
-  const baselines = (() => {
-    try {
-      const rows = [];
-      BusDevGallonsCalc.getProfiles().forEach(pr =>
-        (BusDevGallonsCalc.getValidRoadways(pr) || []).forEach(rd => {
-          const row = BusDevGallonsCalc.getBaselineRow(pr, rd);
-          if (row && isFinite(Number(row.baseline)))
-            rows.push({ k: pr + ' / ' + rd, v: Number(row.baseline) });
-        }));
-      return rows.sort((x, y) => x.v - y.v);
-    } catch (e) { return []; }
-  })();
-  // The range the ENGINE TABLE spans, and separately the range this tool
-  // actually reaches. They are not the same -- no group here maps to the Large
-  // truck stop profiles -- so quoting the table's top as "our range" would
-  // claim a baseline nothing in this model uses. The plan's verification list
-  // asserts both ends match the engine; only the bottom one is in play.
-  const used = G.byGroup.filter(r => !r.unmapped)
-    .map(r => r.engineBaseline).filter(v => isFinite(v) && v > 0)
-    .sort((x, y) => x - y);
+  const baselines = (st.gallons.baselines || [])
+    .map(b => ({ k: b.profile + ' / ' + b.roadway, v: Number(b.baseline) }))
+    .filter(r => isFinite(r.v)).sort((x, y) => x.v - y.v);
+  // The range the shared Engine baselines table spans, and separately the
+  // range this tool's group splits actually reach. Flattened across every
+  // row of every group now that a group can span more than one profile --
+  // the pre-2026-10-30 version read one engineBaseline per GROUP, back when
+  // a group could only ever have one.
+  const used = G.byGroup.flatMap(g => g.rows)
+    .filter(r => !r.unmapped).map(r => r.engineBaseline)
+    .filter(v => isFinite(v) && v > 0).sort((x, y) => x - y);
 
   // The derived attrition the shipped steady rate was seeded from.
   const da = MM.derivedAttrition(cfg.history);
@@ -4258,19 +4527,24 @@ MGM.renderers.about = function (D) {
           on ${T('revpermember')}. <b>No figure from it is published in this
           tool's source.</b> It lives in the <code>mgm_pnl_actuals</code> table,
           readable by administrators only — see the permissions card below.</td></tr>
-      <tr data-row="about-where-numbers-come-from-row-gallons-config"><td><code>busDevGallonsConfig.js</code></td>
-        <td>The per-profile gallon baselines, read live; this tool never writes
-          them back. ${baselines.length
-            ? `The engine table spans <b>${fmt(baselines[0].v)}</b>
+      <tr data-row="about-where-numbers-come-from-row-gallons-config"><td>This tool's own
+          <code>gallons.baselines</code></td>
+        <td>The per-profile gallon baselines — this tool's own independent copy of
+          the Bus Dev Potential Gallons tool's profile averages (captured
+          2026-10-30), <b>not a live sync</b>. Expected to diverge from that
+          tool's own baselines over time. ${baselines.length
+            ? `This table spans <b>${fmt(baselines[0].v)}</b>
                (${esc(baselines[0].k)}) to
                <b>${fmt(baselines[baselines.length - 1].v)}</b>
                (${esc(baselines[baselines.length - 1].k)}) gal/mo.`
-            : 'The engine could not be read in this browser, so no range is shown.'}
-          ${used.length
-            ? `The baselines this model actually reaches are a narrower band —
-               <b>${fmt(used[0])}</b> to <b>${fmt(used[used.length - 1])}</b>
-               gal/mo — because no group here maps to the largest profiles.`
-            : ''}</td></tr>
+            : ''}
+          ${used.length && used.length < baselines.length
+            ? `The baselines this model's group splits actually reach are a narrower
+               band — <b>${fmt(used[0])}</b> to <b>${fmt(used[used.length - 1])}</b>
+               gal/mo.`
+            : used.length
+              ? `This model's group splits reach every one of those baselines.`
+              : ''}</td></tr>
       <tr data-row="about-where-numbers-come-from-row-crm-leads"><td><code>crm_leads</code> (live)</td>
         <td>The sales pipeline on ${T('pipeline')}, the per-owner open-lead counts
           on ${T('staffing')}, and the inbound gallons on ${T('gallons')}. This
@@ -4337,11 +4611,11 @@ MGM.renderers.about = function (D) {
         from expired points is a flat per-member line that deliberately does not
         scale with it.</td></tr>
 
-      <tr data-row="about-walkthrough-row-gallons"><td><b>${T('gallons')}</b></td><td>Network gallon production from the Bus
-        Dev engine's baselines — <b>${G.mapped === 0
-          ? 'not computed, because no group is currently mapped to a profile'
+      <tr data-row="about-walkthrough-row-gallons"><td><b>${T('gallons')}</b></td><td>Network gallon production from
+        this tool's own baselines — <b>${G.mapped === 0
+          ? 'not computed, because no group currently resolves a baseline'
           : fmt(G.existing) + ' gal/mo today, ' + fmt(G.perMember) + ' per location'}</b>.
-        The group-to-profile mapping is an assumption and every row is editable.
+        A group's split across profiles is an assumption and every row is editable.
         This tab does <b>not</b> feed ${T('revpermember')} on its own: the button
         <i>Use N gal as the model average</i> is what writes
         <code>revenue.avgGallons</code>, and until someone presses it the revenue
@@ -4518,19 +4792,23 @@ MGM.renderers.about = function (D) {
       survive a refresh, so new data cannot overwrite a judgement call. The signup
       history comes from a spreadsheet rather than a CSV and is carried through
       verbatim.</p>
-    <p class="note">The gallon baselines are not copied at all. They are read live
-      from <code>busDevGallonsConfig.js</code> every time this page loads, so the
-      Bus Dev engine stays the single source for them.</p>`, 'about-refreshing-data')}
+    <p class="note">The gallon baselines are this tool's own independent copy of
+      the Bus Dev Potential Gallons tool's profile/roadway averages (captured
+      2026-10-30), editable on the Fuel Gallon Production tab's "Engine
+      baselines" card. They are <b>not</b> a live sync to that tool and will
+      diverge over time -- that is expected, not a bug.</p>`, 'about-refreshing-data')}
 
   ${card('Known limitations', `
     <p>Read these before quoting a figure out of this tool.</p>
     <ul>
-      <li><b>The group-to-gallon-profile mapping is an assumption, not a
-        measurement.</b> The Bus Dev engine assigns a profile per <i>location</i>
-        from its diesel-lane count and roadway class; this tool has neither per
-        group, so each group is mapped to one profile by hand. Reading
-        <code>network-locations.json</code> for real per-location profiles is a
-        future refinement.</li>
+      <li><b>A group's split across gallon profiles is an assumption, sized
+        from a real sample where one exists.</b> Truck Stop and Truck Stop-
+        Service Center are split across multiple profile/roadway combinations
+        using a real per-location sample from <code>network-locations.json</code>
+        (diesel-lane count and roadway class), scaled to each group's count.
+        C-Stores, PPO, Roady's Lite and Service Centers have no comparable
+        per-location data for their type and stay single-profile rather than
+        inventing a split the source data can't support.</li>
 
       <li><b>Pipeline stage weights are an unsourced ladder.</b> No source file
         contains them. They look authoritative and are not; the derived actual win
@@ -4540,7 +4818,10 @@ MGM.renderers.about = function (D) {
         of 190 as of Jan 1 2024. That gap is unexplained and is an open question
         for Interstate. It is held flat (<code>adds.ptpNet</code> at zero) so it
         cannot distort a projection in either direction while it is
-        unresolved.</li>
+        unresolved. PTP is not a gallons group (it was never a real location
+        type, just a sales-channel tag — its locations are modeled under
+        Truck Stop, PPO and Service Centers by their real type); this is
+        purely about the membership count the growth engine holds flat.</li>
 
       <li><b>Monthly signup history is lumpy from batch deals and must not be read
         as seasonality.</b> The large months in the shipped series are individual
@@ -5400,6 +5681,7 @@ MGM.loadLiveState = async function () {
   if (!MGM.canEdit()) {
     const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
     MGM.state = merged.state;
+    MGM.reconcilePtpDissolution(MGM.state);
     MGM._setLiveStateSeenAt(row.updated_at);
     return;
   }
@@ -5409,6 +5691,7 @@ MGM.loadLiveState = async function () {
     // published truth rather than the shipped defaults. A real sync point.
     const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
     MGM.state = merged.state;
+    MGM.reconcilePtpDissolution(MGM.state);
     MGM.save();
     MGM._setLiveStateSeenAt(row.updated_at);
   }
@@ -5437,6 +5720,7 @@ MGM.pullLiveState = async function () {
   }
   const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
   MGM.state = merged.state;
+  MGM.reconcilePtpDissolution(MGM.state);
   MGM._setLiveStateSeenAt(row.updated_at);
   MGM.save();
   MGM.refresh();
@@ -5756,12 +6040,13 @@ MGM.restoreAllSections = function () {
 
 // Runs after every refresh (see the call inside MGM.refresh). Operates only
 // on the ACTIVE panel's [data-card] elements, decorating each visible one
-// with a hide button and display:none-ing each hidden one. The five cards
+// with a hide button and display:none-ing each hidden one. The six cards
 // deliberately left out of HIDDEN_SECTION_IDS (the two error cards, the
-// dead placeholder, #reportSheet, the edit-only Tab names card) never carry
-// the attribute, so they simply never appear in this NodeList — no
-// exclusion logic needed here, because the exclusion already happened at
-// the allowlist.
+// dead placeholder, #reportSheet, the edit-only Tab names card, and the
+// Engine baselines card on Fuel Gallon Production) never carry the
+// attribute, so they simply never appear in this NodeList — no exclusion
+// logic needed here, because the exclusion already happened at the
+// allowlist.
 MGM.decorateHiddenSections = function () {
   const panel = document.getElementById('panel-' + MGM.tab);
   if (!panel) return;
@@ -6393,6 +6678,7 @@ MGM.scenarioLoad = function (id) {
   // so it gets a fresh defaultState every time.
   const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), rec.state || {});
   MGM.state = merged.state;
+  MGM.reconcilePtpDissolution(MGM.state);
   MGM.scenarioNotice = MGM.scenarioNoticeFor(rec, merged);
   MGM.save(); MGM.refresh();
 };
@@ -6405,8 +6691,10 @@ MGM.scenarioNotice = null;
 MGM.scenarioNoticeFor = function (rec, merged) {
   const added = (merged.added || []).slice();
   const unknown = MGM.reportableUnknown(merged);
-  const ov = MGM.state.gallons && MGM.state.gallons.groupBaselineOverride;
-  const overrides = ov ? Object.keys(ov).filter(k => ov[k] !== null && ov[k] !== '') : [];
+  const splits = (MGM.state.gallons && MGM.state.gallons.groupSplits) || {};
+  const overrides = Object.keys(splits).reduce((a, k) =>
+    a.concat((splits[k] || []).filter(r => r.baselineOverride != null && r.baselineOverride !== '')
+      .map(() => k)), []);
   if (!added.length && !unknown.length && !overrides.length) return null;
   return { name: rec.name, added, unknown, overrides };
 };
@@ -6488,8 +6776,8 @@ MGM.renderScenarioBar = function () {
       ? 'the value is kept, and still travels with this model into saves, scenarios and exports even though nothing reads it'
       : 'the values are kept, and still travel with this model into saves, scenarios and exports even though nothing reads them'}.`;
   if (n && n.overrides.length) msg += ` <span class="warn">It carries overridden gallon
-    baselines</span> that differ from the Bus Dev engine (${show(n.overrides)}) —
-    see Fuel Gallon Production.`;
+    baselines</span> that differ from this tool's own Engine baselines table
+    (${show(n.overrides)}) — see Fuel Gallon Production.`;
   el.style.display = '';
   el.innerHTML = `<div class="inner">${nm ? `Scenario: <b>${esc(nm)}</b>` : 'Loaded scenario'}${msg}</div>`;
 };
@@ -6509,6 +6797,7 @@ MGM.renderCompare = function () {
       // Deep merge here too: a comparison against a scenario that predates a
       // field must compare against that field's default, not against a zero.
       const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), s.state || {});
+      MGM.reconcilePtpDissolution(merged.state);
       return {
         name: s.name, id: s.id, state: merged.state,
         stale: merged.added.length,
