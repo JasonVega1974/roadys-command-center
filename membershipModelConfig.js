@@ -117,14 +117,25 @@
       // model.
       //
       // WHAT THE ROUNDING DOES AND DOES NOT COVER. It protects this file from
-      // here forward. It is not retroactive: the exact values were committed
-      // to this PUBLIC repository on 2026-10-28 and were readable in the
-      // canonical history until the history rewrite that removed them, and
-      // the per-stream pins in the test file at those commits allowed each one
-      // to be recovered to the integer by dividing by the pinned member count.
-      // Anyone who cloned the repository in that window retains them
-      // indefinitely, and GitHub keeps unreferenced objects reachable by SHA
-      // for a period after a force-push.
+      // here forward. It is NOT retroactive and no history rewrite was done:
+      // the exact values were committed to this PUBLIC repository on
+      // 2026-10-28 and REMAIN READABLE in its history, and the per-stream pins
+      // in the test file at those commits recover each one to the integer by
+      // dividing by the pinned member count.
+      //
+      // A full history rewrite was prepared, dry-run and verified, then
+      // abandoned by decision. A scoped rewrite of only the affected branches
+      // was measured and does NOT work: the blobs stay reachable from the 64
+      // other branches that share that ancestry, so the values remained one
+      // `git log` away. Removing them would have required force-pushing all 70
+      // branches, which was judged disproportionate for three already-rounded
+      // drivers at the lighter protection tier.
+      //
+      // So, precisely: the current file is rounded; the history is not; the
+      // exact values are recoverable by anyone with the repository. Treat them
+      // as public. The protection that matters is forward-looking -- the
+      // origin/main baseline in the SR-11 scan now prevents a NEW value
+      // laundering itself by its own commit.
       //
       // So: protected at the tip, previously exposed, and not fully
       // recoverable from that exposure. Stated this way on purpose -- an
