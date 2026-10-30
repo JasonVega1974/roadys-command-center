@@ -781,6 +781,28 @@ test('labels cover all thirteen tabs', () => {
     'these tabs have a label but no labels.notes slot: ' + missing.join(', '));
 });
 
+test('labels.tiles/columns/rows cover every renameable id with no gaps', () => {
+  // Counts asserted the same deliberate way as the thirteen-tabs test above:
+  // a tile/column/row id present in the page's HIDDEN_SECTION_IDS allowlist
+  // but missing a labels entry here would render "undefined" the moment an
+  // admin opens the rename panel, and these counts are the only signal that
+  // would catch it -- the page's own allowlist is not reachable from this
+  // Node test. If this fails after adding or removing a renameable tile,
+  // column or row, update BOTH the page render site and this number.
+  assert.equal(Object.keys(MGM_CONFIG.labels.tiles).length, 33,
+    'thirty-three renameable tile titles.');
+  assert.equal(Object.keys(MGM_CONFIG.labels.columns).length, 79,
+    'seventy-nine renameable column headers (of 106 total -- the rest are ' +
+    'stream-keyed through labels.streams already, month-named, or program-' +
+    'named, each sharing a source this build does not yet give its own ' +
+    'label map).');
+  assert.equal(Object.keys(MGM_CONFIG.labels.rows).length, 23,
+    'twenty-three renameable row labels (of 76 total -- the rest come from ' +
+    'a shared array also used elsewhere (CRM_STAGES, a stream, a program), ' +
+    'are static About-tab text, or (one row) carry embedded markup a plain ' +
+    'label cannot represent).');
+});
+
 const { MembershipModel } = require('./membershipModel.js');
 
 // Tolerance: these are the v1's floating-point results, reproduced exactly.
