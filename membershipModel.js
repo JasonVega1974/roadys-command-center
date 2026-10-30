@@ -431,6 +431,37 @@
     return n((state.revenue || {})[LEGACY_PART[program]]);
   }
 
+  // The share that actually multiplies a programme's per-member rate.
+  //
+  // It is 1 for a BLENDED rate, whatever the participation field says. A
+  // blended rate is a P&L total divided by ALL active members, so the
+  // participation share is already inside it and applying one again
+  // double-discounts the stream.
+  //
+  // This exists because the config comment claimed the participation field was
+  // "a deliberate no-op by construction" while the code made it a no-op only
+  // by its value happening to be 100 -- the same habit this work has corrected
+  // five times: a comment asserting a stronger property than the code
+  // provides. A review then found the path that proved it: resetSection
+  // ('revenue') pulls in the blended rate and leaves participation untouched,
+  // because the pair straddled revenue.* and participation.* and that function
+  // is per-path by design. Starting from any scenario saved before this change,
+  // the rewards stream halved -- about $33.4k in year one, compounding into the
+  // basis.
+  //
+  // So the pairing is gone rather than guarded: nothing multiplies the blended
+  // rate, so no path -- reset, scenario load, import, preset, or a cleared
+  // field -- can halve or zero it. A cleared participation value is also inert
+  // now, where before it coerced the stream to 0.
+  //
+  // LEGACY_STATE carries no blended marker, so it falls through to partPct and
+  // the v1 golden tests are unaffected.
+  function rateShare(state, program) {
+    var rv = state.revenue || {};
+    if (program === 'rewards' && rv.rewardsPMIsBlended) return 1;
+    return partPct(state, program) / 100;
+  }
+
   // Annualized run-rate per year: every stream is charged for 12 months on
   // the average member count, which is what the v1 reported and what a
   // valuation multiple expects. `producing` is carried separately so the
@@ -445,7 +476,7 @@
         settlement:      m * n(rv.settlementNetPerMember),
         fuelProgram:     m * (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
         vendor:          m * (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-        rewards:         m * (partPct(state, 'rewards') / 100) * n(rv.rewardsPM) * months,
+        rewards:         m * rateShare(state, 'rewards') * n(rv.rewardsPM) * months,
         rewardsBreakage: m * n(rv.rewardsBreakagePerMember)
       };
       var total = Object.keys(streams).reduce(function (a, k) { return a + streams[k]; }, 0);
@@ -469,7 +500,7 @@
       settlement:      n(rv.settlementNetPerMember),
       fuelProgram:     (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
       vendor:          (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-      rewards:         (partPct(state, 'rewards') / 100) * n(rv.rewardsPM) * months,
+      rewards:         rateShare(state, 'rewards') * n(rv.rewardsPM) * months,
       rewardsBreakage: n(rv.rewardsBreakagePerMember)
     };
     derived.total = Object.keys(derived).reduce(function (a, k) {
@@ -486,7 +517,29 @@
     var raw = actuals ? actuals.totalPerMemberYr : null;
     var actual = (raw !== null && raw !== undefined && raw !== ''
                   && isFinite(Number(raw))) ? Number(raw) : null;
-    var billable = n((state.billing || {}).duesPerLocBillable);
+    // Realization is measured against the ACTUAL BILLING TOTAL, not against
+    // duesPerLocBillable.
+    //
+    // It used to be duesPerLoc / duesPerLocBillable, and the Oct 29
+    // recalibration set the first to the second -- so the ratio read exactly
+    // 100.00% by construction and would have read 100.00% if both fields were
+    // 999. A review caught that the metric had become a tautology at the very
+    // moment it was supposed to confirm the recalibration.
+    //
+    // Modelled annual dues revenue over actual annual billing is a real
+    // comparison: it cannot be satisfied by making two fields equal, and it
+    // surfaces the denominator mismatch that duesPerLoc carries -- the rate is
+    // dues over PAYING LOCATIONS, applied here to MEMBERS, which are not the
+    // same population.
+    var billing = state.billing || {};
+    var annualBilled = n(billing.monthlyDuesTotal) * 12;
+    // The SAME member basis revenueModel uses -- avgMembers of the first year,
+    // not M.startTotal. Using the integer start read 100.51% against a
+    // modelled revenue built on the average, so the numerator and denominator
+    // described slightly different populations and the metric was off by the
+    // very kind of gap it exists to surface.
+    var modelledMembers = (M && M.years && M.years.length)
+      ? n(avgMembers(M.years[0])) : 0;
 
     return {
       derived: derived,
@@ -495,7 +548,9 @@
       benchmark: bench,
       varianceVsActual: actual === null ? null : derived.total - actual,
       varianceVsBenchmark: derived.total - bench,
-      duesRealization: billable ? 100 * n(rv.duesPerLoc) / billable : null
+      duesRealization: (annualBilled && modelledMembers)
+        ? 100 * (modelledMembers * n(rv.duesPerLoc) * months) / annualBilled
+        : null
     };
   }
 
@@ -728,7 +783,10 @@
         year: r.year, members: m,
         fuel:    m * partPct(state, 'fuel') / 100,
         vendor:  m * partPct(state, 'vendor') / 100,
-        rewards: m * partPct(state, 'rewards') / 100
+        // Reports ALL members as participating when the rate is blended,
+        // because that is what the rate covers. Showing half of them beside a
+        // stream that counts all of them would be two surfaces disagreeing.
+        rewards: m * rateShare(state, 'rewards')
       };
     });
   }

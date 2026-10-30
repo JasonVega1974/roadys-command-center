@@ -1101,8 +1101,19 @@ test('dues realization is reported from the billable vs realized rates', () => {
   // restatement of the implementation. Dividing by all 411 locations instead
   // would read 346.24 and overstate realization, which is the error this test
   // was written to pin.
-  // 100.00% EXACTLY, because duesPerLoc was recalibrated TO the billable rate.
-  near(rpm.duesRealization, 100 * 360.27 / 360.27, 'realization %');
+  // MEASURED AGAINST THE ACTUAL BILLING TOTAL, not against duesPerLocBillable.
+  //
+  // The old form was duesPerLoc / duesPerLocBillable, and the recalibration set
+  // the first to the second -- so it read 100.00% by construction and would
+  // have read 100.00% with both fields at 999. A review caught that the metric
+  // became a tautology at the moment it was meant to confirm the
+  // recalibration, which is this work's recurring habit one more time.
+  //
+  // Modelled annual dues over actual annual billing. Written out rather than
+  // read back off the implementation, so this is a check and not a
+  // restatement:
+  near(rpm.duesRealization,
+       100 * (397.691361 * 360.27 * 12) / (142305 * 12), 'realization %');
 
   // THE FLIP IS RESOLVED. This band previously sat above 100%, deliberately,
   // as a tripwire. The Oct 29 refresh took the billable rate from 382.47 to
@@ -1116,8 +1127,14 @@ test('dues realization is reported from the billable vs realized rates', () => {
   // is tight around 100 for that reason -- if either figure drifts from the
   // other again, this fails rather than drifting quietly past 100 a second
   // time.
-  assert.ok(rpm.duesRealization > 99.95 && rpm.duesRealization < 100.05,
-    `duesPerLoc and duesPerLocBillable must stay equal, so realization is 100.0%; `
+  // ~100.68%, and the OVERSHOOT IS THE POINT. duesPerLoc is dues over PAYING
+  // LOCATIONS (395) applied to MEMBERS (397.7) -- two different populations --
+  // so the model bills slightly more than the P&L did. About $11.7k/yr. That
+  // is a real, small mismatch worth seeing rather than a figure to tune away,
+  // and the band is tight enough to catch it drifting.
+  assert.ok(rpm.duesRealization > 100.6 && rpm.duesRealization < 100.8,
+    `realization is modelled dues over ACTUAL billing, ~100.68%; a reading of `
+    + `exactly 100.00 means the metric has gone self-referential again; `
     + `got ${rpm.duesRealization}`);
 });
 
