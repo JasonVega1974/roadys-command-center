@@ -588,9 +588,43 @@ test('SR-11: no gated value from the local actuals appears in any committed file
   // ── One narrow allowlist, BY FIELD NAME, never by value ──────────────
   //
   // The Oct 29 data refresh set billing.companies to a figure that
-  // coincidentally equals a gated value in the local actuals (the
-  // fuelProgram line). A three-digit integer collision, at exactly this
-  // scan's distinctiveness floor.
+  // coincidentally equals one gated value in the local actuals. A bare
+  // integer collision, at exactly this scan's distinctiveness floor.
+  //
+  // WHICH gated line it collides with is deliberately not written here, and
+  // this is the second correction to this paragraph. It originally named a
+  // specific line; a pre-merge sweep checked that claim by equality rather
+  // than by reading it and found it named the WRONG one. Correcting it to the
+  // right name made the comment accurate and, in the same stroke, published a
+  // gated figure: billing.companies is committed, so "gated line L equals the
+  // company count" states L's value exactly. The accurate version was the
+  // disclosure, and the inaccurate one had been concealing it by being wrong.
+  //
+  // So it names none. The allowlist does not need the name: its justification
+  // is a property of the PUBLIC field -- a company count the refresh script
+  // derives mechanically from the export -- and holds whichever gated line
+  // happens to collide.
+  //
+  // BELOW-FLOOR COVERAGE, stated because it is a real limit and not an
+  // oversight: some gated fields fall below the distinctiveness floor, so
+  // this layer cannot scan for them AT ALL -- and lowering the floor does not
+  // help. Which fields those are is deliberately not written here: naming a
+  // field beside "below the floor" bounds its value's magnitude, which is a
+  // derivation aid of exactly the kind SR-11 exists to keep out of a guard's
+  // own text -- and the count of them is left out for the same reason. To
+  // enumerate them, run the equality check against the gitignored actuals
+  // locally.
+  //
+  // MEASURED on the tracked tree, which is why "lowering the floor does not
+  // help" is a finding and not a guess: a below-floor value matched by digit
+  // stream hits 85 of 160 files, and matched as an exact bare literal still
+  // hits 26 text files -- a short integer is a vendor id, a pixel value, a
+  // row count and a SQL key everywhere in this repo. There is no threshold at
+  // which the check discriminates, so no amount of tuning closes this.
+  //
+  // What covers those values is structural rather than this scan: none is a
+  // per-member driver, so no committed field is derived from one, and layer
+  // 1's field-name rules still apply to any field that tried to be.
   //
   // It is not a leak: billing.companies is the count of companies in the
   // billing export, independently derivable from the location export and
