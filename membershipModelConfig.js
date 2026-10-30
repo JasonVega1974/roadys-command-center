@@ -185,12 +185,13 @@
       // applied to a monthly rate it rounds this to 14.58, overstating by 6%.
       // The $2/mo band is a ~$24/yr window -- the same protective distance --
       // and lands 1.7% from the derived value instead.
-      rewardsPM: 14,
-      // Tells the engine this rate is BLENDED over all active members, so no
-      // participation share may be applied to it. Without this the pairing
-      // with participation.rewards.pct was only as strong as two fields
-      // staying in step, and resetSection('revenue') broke it.
-      rewardsPMIsBlended: true,
+      // The FIELD NAME carries the basis: already blended over all active
+      // members, so no participation share applies. Two earlier designs kept
+      // the basis in a separate field and both broke -- one halved the stream
+      // when a reset moved the rate without the share, the other doubled it
+      // when mergeState restored the marker without the rate. See
+      // rewardsRate() in membershipModel.js.
+      rewardsBlendedPM: 14,
       // Recalibrated at the refreshed member base and rounded to the nearest
       // $25/yr. The P&L did not move; the denominator did -- same expired-points
       // total over 397 active members instead of 375.

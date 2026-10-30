@@ -2572,3 +2572,67 @@ test('the engine cache-bust is not a date, and the page requests it', () => {
   assert.ok(!/^\d{4}-\d{2}-\d{2}$/.test(m[1]),
     'a bare date cannot separate two revisions shipped the same day: ' + m[1]);
 });
+
+// ── A scenario saved BEFORE the blended rate, loaded THROUGH mergeState ────
+// This is the path that let two successive designs ship green. Every control I
+// wrote started from the shipped config and varied the participation share;
+// the golden uses LEGACY_STATE directly and never through a merge. Neither
+// exercises the one thing every real user hits: opening a scenario saved
+// before the change.
+
+test('a pre-blended scenario loads at the shipped rate, not double or half', () => {
+  const preCommit = { revenue: { rewardsPM: 29, duesPerLoc: 362 },
+                      participation: { rewards: { pct: 50, rampMonths: 6 } } };
+  const ref = MembershipModel.defaultState(MGM_CONFIG);
+  const merged = MembershipModel.mergeState(
+    MembershipModel.defaultState(MGM_CONFIG), JSON.parse(JSON.stringify(preCommit)));
+
+  const stream = st => {
+    const m = MembershipModel.runModel(st);
+    return MembershipModel.revenueModel(st, m)[0].streams.rewards;
+  };
+  const r = stream(merged.state) / stream(ref);
+
+  // The two failures this pins, named so a regression says which it is:
+  //   2.00 -- a marker restored from defaults without the rate it qualifies
+  //   0.50 -- a rate moved without the share it was paired with
+  assert.ok(Math.abs(r - 2) > 0.01, 'rewards DOUBLED on a pre-blended scenario');
+  assert.ok(Math.abs(r - 0.5) > 0.01, 'rewards HALVED on a pre-blended scenario');
+  assert.ok(Math.abs(r - 1) < 0.001,
+    'a pre-blended scenario must open at the shipped calibration; ratio ' + r);
+
+  // And the mechanism, not just the outcome: the saved rate must survive as
+  // something nothing reads, and the new field must be REPORTED as filled
+  // rather than appearing silently.
+  assert.equal(MembershipModel.rewardsRate(merged.state).blended, true);
+  assert.equal(MembershipModel.rewardsRate(merged.state).share, 1);
+  assert.ok(merged.added.some(a => /rewardsBlendedPM/.test(a)),
+    'the added field must be reported to the reader');
+  assert.ok(merged.unknown.some(u => /rewardsPM/.test(u)),
+    'the superseded rate must be retained and reported, not read');
+});
+
+test('the legacy path still applies a share, and only it does', () => {
+  // LEGACY_STATE is the one shape that SHOULD take a participation share: its
+  // rate is not blended. Pinned so a future simplification cannot collapse
+  // both branches into the blended one and silently change v1 output.
+  const L = MembershipModel.LEGACY_STATE;
+  assert.equal(MembershipModel.rewardsRate(L).blended, false);
+  assert.ok(MembershipModel.rewardsRate(L).share < 1,
+    'the legacy shape must still be discounted by participation');
+  assert.equal(MembershipModel.rewardsRate(L).rate, L.revenue.rewardsPM);
+});
+
+test('every display surface shows the EFFECTIVE share, not the stored one', () => {
+  // Four surfaces printed partPct raw beside a figure computed without it --
+  // a row reading one multiplier next to another multiplier's result, and the
+  // same contradiction in the printed report.
+  const st = MembershipModel.defaultState(MGM_CONFIG);
+  st.participation.rewards.pct = 50;          // stored value, deliberately stale
+  assert.equal(MembershipModel.partPct(st, 'rewards'), 50, 'the stored value is 50');
+  assert.equal(MembershipModel.effectiveSharePct(st, 'rewards'), 100,
+    'but the EFFECTIVE share is 100, and that is what a surface must print');
+  // Non-blended programmes are unaffected.
+  assert.equal(MembershipModel.effectiveSharePct(st, 'vendor'),
+               MembershipModel.partPct(st, 'vendor'));
+});

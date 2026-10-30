@@ -431,35 +431,61 @@
     return n((state.revenue || {})[LEGACY_PART[program]]);
   }
 
-  // The share that actually multiplies a programme's per-member rate.
+  // The rewards rate AND the share that applies to it, decided together, in
+  // one place, from ONE field.
   //
-  // It is 1 for a BLENDED rate, whatever the participation field says. A
-  // blended rate is a P&L total divided by ALL active members, so the
-  // participation share is already inside it and applying one again
-  // double-discounts the stream.
+  // A blended rate is a P&L total over ALL active members, so the participation
+  // share is already inside it; applying one again double-discounts the stream.
+  // The basis therefore has to travel with the number, and the field NAME is
+  // what carries it: `rewardsBlendedPM` means "already blended, no share".
   //
-  // This exists because the config comment claimed the participation field was
-  // "a deliberate no-op by construction" while the code made it a no-op only
-  // by its value happening to be 100 -- the same habit this work has corrected
-  // five times: a comment asserting a stronger property than the code
-  // provides. A review then found the path that proved it: resetSection
-  // ('revenue') pulls in the blended rate and leaves participation untouched,
-  // because the pair straddled revenue.* and participation.* and that function
-  // is per-path by design. Starting from any scenario saved before this change,
-  // the rewards stream halved -- about $33.4k in year one, compounding into the
-  // basis.
+  // THIS IS THE THIRD DESIGN, and the first two failed in opposite directions:
   //
-  // So the pairing is gone rather than guarded: nothing multiplies the blended
-  // rate, so no path -- reset, scenario load, import, preset, or a cleared
-  // field -- can halve or zero it. A cleared participation value is also inert
-  // now, where before it coerced the stream to 0.
+  //   1. a rate plus participation.rewards.pct = 100, with a comment calling
+  //      the share "a no-op by construction". It was a no-op only while the
+  //      value stayed 100. resetSection('revenue') pulls in the rate and
+  //      leaves participation alone -- the pair straddled revenue.* and
+  //      participation.* and that function is per-path by design -- so every
+  //      pre-commit scenario HALVED the stream.
   //
-  // LEGACY_STATE carries no blended marker, so it falls through to partPct and
-  // the v1 golden tests are unaffected.
-  function rateShare(state, program) {
+  //   2. a rate plus a separate `rewardsPMIsBlended` boolean. mergeState fills
+  //      absent keys from defaults, so a pre-commit scenario came back with
+  //      the marker TRUE and its own old rate intact: the share it was saved
+  //      with was discarded and the stream DOUBLED. Every entry path did it --
+  //      load, import, scenarioLoad, pullScenarios -- with no admin action.
+  //
+  // The lesson, which is the durable part: DEFAULTS-WIN-FOR-ABSENT-KEYS IS
+  // RIGHT FOR A NEW INDEPENDENT FIELD AND WRONG FOR A FIELD THAT CHANGES WHAT
+  // A NEIGHBOURING VALUE MEANS. A qualifier must not be able to arrive without
+  // the thing it qualifies.
+  //
+  // With one field there is nothing to separate. A pre-commit scenario has no
+  // `rewardsBlendedPM`, so mergeState adds it at the shipped calibration and
+  // REPORTS it in `added`; the saved `rewardsPM` survives as a retained
+  // unknown that nothing reads. The stream moves by the difference between two
+  // calibrations, not by a factor of two, and the notice says a field was
+  // filled from defaults.
+  //
+  // LEGACY_STATE carries `rewardsPM`/`rewardsPart` and no blended field, so it
+  // takes the legacy branch and the v1 goldens are unaffected -- including
+  // through a merge, which design 2 could not say.
+  function rewardsRate(state) {
     var rv = state.revenue || {};
-    if (program === 'rewards' && rv.rewardsPMIsBlended) return 1;
-    return partPct(state, program) / 100;
+    var b = rv.rewardsBlendedPM;
+    if (b !== undefined && b !== null && b !== '' && isFinite(Number(b))) {
+      return { rate: Number(b), share: 1, blended: true };
+    }
+    return { rate: n(rv.rewardsPM), share: partPct(state, 'rewards') / 100,
+             blended: false };
+  }
+
+  // The effective share for any programme, for DISPLAY as well as arithmetic.
+  // Four surfaces printed partPct raw beside a figure computed without it --
+  // one row reading "x 50.0%" next to the 100% result, and the same
+  // contradiction in the printed report.
+  function effectiveSharePct(state, program) {
+    if (program === 'rewards') return rewardsRate(state).share * 100;
+    return partPct(state, program);
   }
 
   // Annualized run-rate per year: every stream is charged for 12 months on
@@ -476,7 +502,7 @@
         settlement:      m * n(rv.settlementNetPerMember),
         fuelProgram:     m * (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
         vendor:          m * (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-        rewards:         m * rateShare(state, 'rewards') * n(rv.rewardsPM) * months,
+        rewards:         m * rewardsRate(state).share * rewardsRate(state).rate * months,
         rewardsBreakage: m * n(rv.rewardsBreakagePerMember)
       };
       var total = Object.keys(streams).reduce(function (a, k) { return a + streams[k]; }, 0);
@@ -500,7 +526,7 @@
       settlement:      n(rv.settlementNetPerMember),
       fuelProgram:     (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
       vendor:          (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-      rewards:         rateShare(state, 'rewards') * n(rv.rewardsPM) * months,
+      rewards:         rewardsRate(state).share * rewardsRate(state).rate * months,
       rewardsBreakage: n(rv.rewardsBreakagePerMember)
     };
     derived.total = Object.keys(derived).reduce(function (a, k) {
@@ -786,7 +812,7 @@
         // Reports ALL members as participating when the rate is blended,
         // because that is what the rate covers. Showing half of them beside a
         // stream that counts all of them would be two surfaces disagreeing.
-        rewards: m * rateShare(state, 'rewards')
+        rewards: m * rewardsRate(state).share
       };
     });
   }
@@ -916,6 +942,8 @@
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,
       partPct: partPct,
+      rewardsRate: rewardsRate,
+      effectiveSharePct: effectiveSharePct,
       avgMembers: avgMembers,
       revenueModel: revenueModel,
       revPerMember: revPerMember,
