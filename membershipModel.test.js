@@ -2809,3 +2809,139 @@ test('whitespace is an absence, not a deliberate zero', () => {
   assert.equal(MembershipModel.rewardsRate(z).rate, 0);
   assert.equal(MembershipModel.rewardsRate(z).unset, false, '"0" is a deliberate zero');
 });
+
+/* sanitizeHiddenSections (card hide/show feature).
+ *
+ * hiddenSections lives in MGM.uiPrefs, never in MGM.state, so it never
+ * reaches mergeState, resetAll, importJSON, scenarioLoad or pullScenarios --
+ * there is no merge path for this function to defend against by design. It
+ * is tested as rigorously as rewardsRate's two value-space bugs above
+ * anyway, because it is the ONE place untrusted network data (a row read
+ * back from mgm_ui_prefs) turns into a value this page stores and feeds to
+ * document.getElementById(id) / el.style.display -- and a sanitiser with an
+ * untested edge is a bug with better PR. */
+
+test('sanitizeHiddenSections: known ids pass through, unknown ids are dropped', () => {
+  const allow = ['a', 'b', 'c'];
+  assert.deepEqual(
+    MembershipModel.sanitizeHiddenSections({ a: true, zzz: true }, allow),
+    { a: true });
+  assert.deepEqual(
+    MembershipModel.sanitizeHiddenSections({ a: true, b: true, c: true }, allow),
+    { a: true, b: true, c: true });
+});
+
+test('sanitizeHiddenSections: a falsey value is absent, never stored as false', () => {
+  const allow = ['a', 'b', 'c', 'd', 'e'];
+  const out = MembershipModel.sanitizeHiddenSections(
+    { a: false, b: 0, c: '', d: null, e: undefined }, allow);
+  assert.deepEqual(out, {}, 'no key should survive with a falsey value');
+  assert.equal('a' in out, false,
+    'a falsey key must be absent, not present with value false. Same absence-vs-' +
+    'deliberate-value distinction as rewardsRate.unset: restoring a card deletes ' +
+    'the key, it never sets it to false.');
+});
+
+test('sanitizeHiddenSections: every output value is the literal true', () => {
+  const allow = ['a', 'b', 'c', 'd'];
+  const out = MembershipModel.sanitizeHiddenSections(
+    { a: 1, b: 'yes', c: [1, 2], d: { nested: true } }, allow);
+  for (const k of Object.keys(out)) {
+    assert.equal(out[k], true,
+      k + ' must coerce to the literal boolean true. A stored object or string ' +
+      'here is the copy-residue shape one level down.');
+  }
+});
+
+test('sanitizeHiddenSections: non-object top-level input fails closed to {}', () => {
+  const allow = ['a', 'b'];
+  const bad = [null, undefined, 'a string', 42, true, false,
+               ['a', 'b'], [], NaN, function () {}];
+  for (const v of bad) {
+    assert.deepEqual(MembershipModel.sanitizeHiddenSections(v, allow), {},
+      'input of type ' + typeof v + ' must fail closed, never throw');
+  }
+});
+
+test('sanitizeHiddenSections: an empty or absent allowlist drops everything', () => {
+  assert.deepEqual(MembershipModel.sanitizeHiddenSections({ a: true }, []), {});
+  assert.deepEqual(MembershipModel.sanitizeHiddenSections({ a: true }, null), {});
+  assert.deepEqual(MembershipModel.sanitizeHiddenSections({ a: true }, undefined), {});
+});
+
+test('sanitizeHiddenSections: idempotent, sanitizing twice equals sanitizing once', () => {
+  const allow = ['a', 'b', 'c'];
+  const inputs = [{ a: true }, { a: true, b: false, zzz: true }, {}, { a: 1, b: 0, c: 'x' }];
+  for (const inp of inputs) {
+    const once = MembershipModel.sanitizeHiddenSections(inp, allow);
+    const twice = MembershipModel.sanitizeHiddenSections(once, allow);
+    assert.deepEqual(twice, once,
+      'a second pass must not change an already-clean map -- the client re-sanitizes ' +
+      'its own optimistic merge before every write, so this has to hold');
+  }
+});
+
+test('sanitizeHiddenSections: Object property names are ordinary ids, never read through the prototype chain', () => {
+  // Built with JSON.parse, the realistic shape for a row read back from
+  // Supabase, not an object literal -- {__proto__: true} as a LITERAL sets
+  // the prototype instead of an own key and would test something else.
+  const raw = JSON.parse('{"__proto__":true,"constructor":true,"toString":true,"hasOwnProperty":true}');
+  // None of these four names are on the allowlist. The failure this guards
+  // against is not "wrong map", it is "throws", or "constructor/toString/
+  // hasOwnProperty read as present because they exist on every bare object" --
+  // which a bare `k in allow` lookup would have done.
+  assert.deepEqual(MembershipModel.sanitizeHiddenSections(raw, ['real-card-a']), {});
+  const raw2 = JSON.parse('{"__proto__":true,"real-card-a":true}');
+  assert.deepEqual(MembershipModel.sanitizeHiddenSections(raw2, ['real-card-a']),
+    { 'real-card-a': true });
+});
+
+test('sanitizeHiddenSections: fuzz -- output keys subset the allowlist, output values are always true, never throws', () => {
+  const ALLOW = ['card-a', 'card-b', 'card-c', 'card-d', 'card-e'];
+  const KEY_POOL = ALLOW.concat([
+    'unknown-1', 'unknown-2', '__proto__', 'constructor', 'toString', 'hasOwnProperty',
+    '', '0', 'card-a.extra']);
+  const VALUE_POOL = [
+    true, false, 1, 0, -1, '', 'x', null, undefined, NaN, Infinity, -Infinity,
+    [], [1], {}, { a: 1 }, 'true', 'false', '1', '0'];
+  const pick = (arr, seed) => arr[seed % arr.length];
+
+  let cases = 0;
+  for (let seed = 0; seed < 500; seed++) {
+    const obj = {};
+    const nKeys = seed % 6;
+    for (let i = 0; i < nKeys; i++) {
+      obj[pick(KEY_POOL, seed * 7 + i * 13)] = pick(VALUE_POOL, seed * 11 + i * 17);
+    }
+    cases++;
+    let out;
+    try {
+      out = MembershipModel.sanitizeHiddenSections(obj, ALLOW);
+    } catch (e) {
+      assert.fail('must never throw; threw ' + e.message + ' on ' + JSON.stringify(obj));
+    }
+    assert.equal(typeof out, 'object');
+    for (const k of Object.keys(out)) {
+      assert.ok(ALLOW.includes(k), 'output key "' + k + '" is not on the allowlist');
+      assert.equal(out[k], true, 'output value for "' + k + '" must be literal true');
+    }
+  }
+  assert.equal(cases, 500);
+});
+
+// ── Negative controls: each must FAIL if the fix it names is undone ──
+
+test('CONTROL: an unrecognised key must never survive sanitizeHiddenSections', () => {
+  const out = MembershipModel.sanitizeHiddenSections({ 'not-on-list': true }, ['something-else']);
+  assert.deepEqual(out, {},
+    'if this fails, the allowlist filter has been removed or bypassed -- e.g. ' +
+    'reverted from hasOwnProperty back to a bare `k in allow` lookup');
+});
+
+test('CONTROL: the stored value must be the coerced boolean, not the raw input', () => {
+  const out = MembershipModel.sanitizeHiddenSections({ a: 'yes-but-a-string' }, ['a']);
+  assert.notEqual(out.a, 'yes-but-a-string',
+    'if this fails, the !! -style coercion has been removed and a free-text value ' +
+    'can be stored under an allowlisted key');
+  assert.equal(out.a, true);
+});
