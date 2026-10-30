@@ -277,7 +277,7 @@ body:not(.mgm-admin) .mgm-adminonly{display:none !important}
       <button class="btn ghost mgm-adminonly" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.resetAll()">Reset all</button>
       <button class="btn ghost mgm-editonly" onclick="MGM.toggleRestorePanel()"
-              title="Unhide any card hidden with the ⊘ button. Hidden means hidden for every signed-in viewer, not just admins.">↺ Restore hidden sections</button>
+              title="Show or hide, and rename, any card, tile, column or row in the tool. Hiding needs no Publish step; a rename stays in this browser until you Publish. Either way, other viewers see it on their next page load, not immediately.">👁 Visibility &amp; labels</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
@@ -1347,17 +1347,17 @@ MGM.renderers.starting = function (D) {
   <p class="sub" data-card="starting-intro">Verified active locations as of ${esc(st.DATA_ASOF)}. Excludes
      corporate payment records and demo rows.</p>
   <div class="signrow">
-    ${sign('ACTIVE LOCATIONS', fmt(tot), 'verified base', '', 'starting-tile-active-locations')}
-    ${sign("ROADY'S SIDE", fmt(tot - M.ptp), 'excl. PTP group', 'dark', 'starting-tile-roadys-side')}
-    ${sign('MONTHLY DUES', fm$(st.billing.monthlyDuesTotal),
+    ${sign(st.labels.tiles['starting-tile-active-locations'], fmt(tot), 'verified base', '', 'starting-tile-active-locations')}
+    ${sign(st.labels.tiles['starting-tile-roadys-side'], fmt(tot - M.ptp), 'excl. PTP group', 'dark', 'starting-tile-roadys-side')}
+    ${sign(st.labels.tiles['starting-tile-monthly-dues'], fm$(st.billing.monthlyDuesTotal),
            `${st.billing.companies} companies · ${st.billing.locations} billed`, 'red', 'starting-tile-monthly-dues')}
-    ${sign('PAYING LOCATIONS', fmt(st.billing.payingLocations),
+    ${sign(st.labels.tiles['starting-tile-paying-locations'], fmt(st.billing.payingLocations),
            `${st.billing.zeroBillCompanies} companies bill $0`, 'dark', 'starting-tile-paying-locations')}
   </div>
 
   <div class="card" data-card="starting-groups"><h3>Locations by group</h3>
     <table>
-      <tr><th>Group</th><th class="num" data-col="starting-groups-col-active">Active</th><th class="num" data-col="starting-groups-col-mix">Mix</th></tr>
+      <tr><th>Group</th><th class="num" data-col="starting-groups-col-active">${esc(st.labels.columns['starting-groups-col-active'])}</th><th class="num" data-col="starting-groups-col-mix">${esc(st.labels.columns['starting-groups-col-mix'])}</th></tr>
       ${groups.map((g, i) => `<tr>
         <td><input class="lbl-in" type="text" data-k="groups.${i}.label" value="${esc(g.label)}">
             ${MGM.rowTools('groups', i, groups.length)}</td>
@@ -1378,24 +1378,24 @@ MGM.renderers.starting = function (D) {
   <div class="grid g2">
     <div class="card" data-card="starting-pipeline-status"><h3>Pipeline status</h3>
       <table>
-        <tr data-row="starting-pipeline-status-row-onboarding"><td>Onboarding</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-pipeline-status-row-onboarding"><td>${esc(st.labels.rows['starting-pipeline-status-row-onboarding'])}</td><td class="num"><input class="cell" type="number"
             data-k="statusCounts.onboarding" value="${st.statusCounts.onboarding}"></td></tr>
-        <tr data-row="starting-pipeline-status-row-offboarding"><td>Offboarding</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-pipeline-status-row-offboarding"><td>${esc(st.labels.rows['starting-pipeline-status-row-offboarding'])}</td><td class="num"><input class="cell" type="number"
             data-k="statusCounts.offboarding" value="${st.statusCounts.offboarding}"></td></tr>
       </table>
     </div>
     <div class="card" data-card="starting-billing"><h3>Billing</h3>
       <table>
-        <tr data-row="starting-billing-row-companies"><td>Companies</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-companies"><td>${esc(st.labels.rows['starting-billing-row-companies'])}</td><td class="num"><input class="cell" type="number"
             data-k="billing.companies" value="${st.billing.companies}"></td></tr>
-        <tr data-row="starting-billing-row-billed-locations"><td>Billed locations</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-billed-locations"><td>${esc(st.labels.rows['starting-billing-row-billed-locations'])}</td><td class="num"><input class="cell" type="number"
             data-k="billing.locations" value="${st.billing.locations}"></td></tr>
-        <tr data-row="starting-billing-row-monthly-dues-total"><td>Monthly dues total</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-monthly-dues-total"><td>${esc(st.labels.rows['starting-billing-row-monthly-dues-total'])}</td><td class="num"><input class="cell" type="number"
             data-k="billing.monthlyDuesTotal" value="${st.billing.monthlyDuesTotal}"></td></tr>
         <tr data-row="starting-billing-row-billable-per-location"><td>Billable $/location (dues ÷ <i>paying</i> locations)</td>
           <td class="num"><input class="cell" type="number" step="0.01"
             data-k="billing.duesPerLocBillable" value="${st.billing.duesPerLocBillable}"></td></tr>
-        <tr data-row="starting-billing-row-paying-locations"><td>Paying locations</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-paying-locations"><td>${esc(st.labels.rows['starting-billing-row-paying-locations'])}</td><td class="num"><input class="cell" type="number"
             data-k="billing.payingLocations" value="${st.billing.payingLocations}"></td></tr>
       </table>
       <p class="note">The <b>${fmt(tot)}</b> active count and the
@@ -1440,28 +1440,28 @@ MGM.renderers.additions = function (D) {
   <h2>${esc(st.labels.tabs.additions)}</h2>
   <p class="sub" data-card="additions-intro">PTP conversions and Change of Ownership are excluded from every count.</p>
   <div class="signrow">
-    ${sign('MODELED NEW', fmt(totalNew), 'excl. signings already in the base', '', 'additions-tile-modeled-new')}
-    ${sign('ADDS / MONTH', fmt1(usingPipeline ? pipeline.expectedPerMonth : st.adds.perMonth),
+    ${sign(st.labels.tiles['additions-tile-modeled-new'], fmt(totalNew), 'excl. signings already in the base', '', 'additions-tile-modeled-new')}
+    ${sign(st.labels.tiles['additions-tile-adds-per-month'], fmt1(usingPipeline ? pipeline.expectedPerMonth : st.adds.perMonth),
            usingPipeline ? 'from the pipeline' : 'flat run rate', 'dark', 'additions-tile-adds-per-month')}
-    ${sign('ACTIVATION LAG', st.adds.activationLag + ' mo', 'before revenue counts', 'dark', 'additions-tile-activation-lag')}
-    ${sign('ANNUAL GROWTH', pct1(st.adds.growthPct), 'applied to the add rate', 'red', 'additions-tile-annual-growth')}
+    ${sign(st.labels.tiles['additions-tile-activation-lag'], st.adds.activationLag + ' mo', 'before revenue counts', 'dark', 'additions-tile-activation-lag')}
+    ${sign(st.labels.tiles['additions-tile-annual-growth'], pct1(st.adds.growthPct), 'applied to the add rate', 'red', 'additions-tile-annual-growth')}
   </div>
 
   <div class="card" data-card="additions-basis"><h3>Basis</h3>
     <table>
-      <tr data-row="additions-basis-row-add-rate-basis"><td>Add rate basis</td><td>
+      <tr data-row="additions-basis-row-add-rate-basis"><td>${esc(st.labels.rows['additions-basis-row-add-rate-basis'])}</td><td>
         <select class="cell" data-k="salesPipeline.basis">
           <option value="flat"${!usingPipeline ? ' selected' : ''}>Flat run rate</option>
           <option value="pipeline"${usingPipeline ? ' selected' : ''}>From Sales Pipeline</option>
         </select></td></tr>
-      <tr data-row="additions-basis-row-new-members-per-month"><td>New members / month (flat)</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-new-members-per-month"><td>${esc(st.labels.rows['additions-basis-row-new-members-per-month'])}</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="adds.perMonth" value="${st.adds.perMonth}">
           ${MGM.editedMark('adds.perMonth')}</td></tr>
-      <tr data-row="additions-basis-row-annual-growth"><td>Annual growth in the add rate</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-annual-growth"><td>${esc(st.labels.rows['additions-basis-row-annual-growth'])}</td><td class="num"><input class="cell" type="number"
           step="0.5" data-k="adds.growthPct" value="${st.adds.growthPct}"></td></tr>
-      <tr data-row="additions-basis-row-activation-lag"><td>Activation lag (months)</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-activation-lag"><td>${esc(st.labels.rows['additions-basis-row-activation-lag'])}</td><td class="num"><input class="cell" type="number"
           min="0" data-k="adds.activationLag" value="${st.adds.activationLag}"></td></tr>
-      <tr data-row="additions-basis-row-ptp-net-change"><td>PTP net change / yr</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-ptp-net-change"><td>${esc(st.labels.rows['additions-basis-row-ptp-net-change'])}</td><td class="num"><input class="cell" type="number"
           data-k="adds.ptpNet" value="${st.adds.ptpNet}"></td></tr>
     </table>
     <p class="note">${usingPipeline
@@ -1478,9 +1478,9 @@ MGM.renderers.additions = function (D) {
         ${y0.year}. The New column therefore shows only the months still being
         modeled, so each row foots against its own monthly detail.</p>` : ''; })()}
     <table>
-      <tr><th>Year</th><th class="num" data-col="additions-roll-forward-col-start">Start</th><th class="num" data-col="additions-roll-forward-col-new">New</th>
-          <th class="num" data-col="additions-roll-forward-col-lost">Lost</th><th class="num" data-col="additions-roll-forward-col-end">End</th><th class="num" data-col="additions-roll-forward-col-net">Net</th>
-          <th class="num" data-col="additions-roll-forward-col-growth">Growth</th><th></th></tr>
+      <tr><th>Year</th><th class="num" data-col="additions-roll-forward-col-start">${esc(st.labels.columns['additions-roll-forward-col-start'])}</th><th class="num" data-col="additions-roll-forward-col-new">${esc(st.labels.columns['additions-roll-forward-col-new'])}</th>
+          <th class="num" data-col="additions-roll-forward-col-lost">${esc(st.labels.columns['additions-roll-forward-col-lost'])}</th><th class="num" data-col="additions-roll-forward-col-end">${esc(st.labels.columns['additions-roll-forward-col-end'])}</th><th class="num" data-col="additions-roll-forward-col-net">${esc(st.labels.columns['additions-roll-forward-col-net'])}</th>
+          <th class="num" data-col="additions-roll-forward-col-growth">${esc(st.labels.columns['additions-roll-forward-col-growth'])}</th><th></th></tr>
       ${M.years.map(r => `
         <tr><td>${r.year}${r.year === st.CURRENT_YEAR ? ' <span class="note">proj.</span>' : ''}</td>
         <td class="num">${fmt(r.start)}</td>
@@ -1497,7 +1497,7 @@ MGM.renderers.additions = function (D) {
 
   <div class="card" data-card="additions-source-mix"><h3>Source mix</h3>
     <table>
-      <tr><th>Source</th><th class="num" data-col="additions-source-mix-col-mix">Mix</th>${M.years.map(r => `<th class="num">${r.year}</th>`).join('')}</tr>
+      <tr><th>Source</th><th class="num" data-col="additions-source-mix-col-mix">${esc(st.labels.columns['additions-source-mix-col-mix'])}</th>${M.years.map(r => `<th class="num">${r.year}</th>`).join('')}</tr>
       ${srcs.map((s, i) => `<tr>
         <td><input class="lbl-in" type="text" data-k="sources.${i}.label" value="${esc(s.label)}">
             ${MGM.rowTools('sources', i, srcs.length)}</td>
@@ -1528,9 +1528,13 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 MGM.renderMonthly = function (M, year) {
   const mm = M.months.filter(m => m.year === year);
   if (!mm.length) return '<tr><td class="note">No modeled months in this year.</td></tr>';
-  return '<tr><th>Month</th><th class="num" data-col="additions-roll-forward-monthly-col-start">Start</th><th class="num" data-col="additions-roll-forward-monthly-col-new">New</th>' +
-    '<th class="num" data-col="additions-roll-forward-monthly-col-steady-loss">Steady loss</th><th class="num" data-col="additions-roll-forward-monthly-col-structural">Structural</th>' +
-    '<th class="num" data-col="additions-roll-forward-monthly-col-end">End</th><th class="num" data-col="additions-roll-forward-monthly-col-producing">Producing</th></tr>' +
+  // Plain string concatenation, not a template literal, and `st` is not a
+  // parameter here -- MGM.state directly, the same object D.st always is
+  // (MGM.runFor returns the exact state it was called with).
+  const L = MGM.state.labels.columns;
+  return `<tr><th>Month</th><th class="num" data-col="additions-roll-forward-monthly-col-start">${esc(L['additions-roll-forward-monthly-col-start'])}</th><th class="num" data-col="additions-roll-forward-monthly-col-new">${esc(L['additions-roll-forward-monthly-col-new'])}</th>` +
+    `<th class="num" data-col="additions-roll-forward-monthly-col-steady-loss">${esc(L['additions-roll-forward-monthly-col-steady-loss'])}</th><th class="num" data-col="additions-roll-forward-monthly-col-structural">${esc(L['additions-roll-forward-monthly-col-structural'])}</th>` +
+    `<th class="num" data-col="additions-roll-forward-monthly-col-end">${esc(L['additions-roll-forward-monthly-col-end'])}</th><th class="num" data-col="additions-roll-forward-monthly-col-producing">${esc(L['additions-roll-forward-monthly-col-producing'])}</th></tr>` +
     mm.map(m => {
       // Supplied by the engine (Task 2) rather than re-derived here by
       // inverting runModel's update expression.
@@ -1566,27 +1570,27 @@ MGM.renderers.losses = function (D) {
   <h2>${esc(st.labels.tabs.losses)}</h2>
   <p class="sub" data-card="losses-intro">Steady-state churn plus explicit structural consolidation.</p>
   <div class="signrow">
-    ${sign('PROJECTED LOSSES', fmt(totalLost), 'over the projection', 'red', 'losses-tile-projected-losses')}
-    ${sign('STEADY RATE', pct1(st.attrition.steady), 'annual, recurring', '', 'losses-tile-steady-rate')}
+    ${sign(st.labels.tiles['losses-tile-projected-losses'], fmt(totalLost), 'over the projection', 'red', 'losses-tile-projected-losses')}
+    ${sign(st.labels.tiles['losses-tile-steady-rate'], pct1(st.attrition.steady), 'annual, recurring', '', 'losses-tile-steady-rate')}
     <!-- derivedAttrition returns avg:0, NOT null, when no year has both a loss
          and a prior-year count, so pct1's null guard never fires: this tile
          read "0.0%" under the caption "lost / prior count", asserting that
          members never leave. Every input behind it is editable on Historical
          Data. Gate on rows.length -- the same field the table below keys on --
          and let the caption explain the em dash. -->
-    ${sign('3-YR DERIVED', d.rows.length ? pct1(d.avg) : '—',
+    ${sign(st.labels.tiles['losses-tile-3yr-derived'], d.rows.length ? pct1(d.avg) : '—',
            d.rows.length ? 'lost / prior count'
                          : 'no year has both a loss and a prior count', 'dark', 'losses-tile-3yr-derived')}
-    ${sign('STRUCTURAL', fmt(M.years.reduce((a, r) => a + r.structuralLost, 0)),
+    ${sign(st.labels.tiles['losses-tile-structural'], fmt(M.years.reduce((a, r) => a + r.structuralLost, 0)),
            'one-off consolidation', 'dark', 'losses-tile-structural')}
   </div>
 
   <div class="card" data-card="losses-assumption"><h3>Assumption</h3>
     <table>
-      <tr data-row="losses-assumption-row-steady-annual-attrition"><td>Steady annual attrition</td><td class="num"><input class="cell" type="number"
+      <tr data-row="losses-assumption-row-steady-annual-attrition"><td>${esc(st.labels.rows['losses-assumption-row-steady-annual-attrition'])}</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="attrition.steady" value="${st.attrition.steady}">
           ${MGM.editedMark('attrition.steady')}</td></tr>
-      <tr data-row="losses-assumption-row-pre-spike-baseline"><td>Pre-spike steady baseline</td><td class="num"><input class="cell" type="number"
+      <tr data-row="losses-assumption-row-pre-spike-baseline"><td>${esc(st.labels.rows['losses-assumption-row-pre-spike-baseline'])}</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="attrition.steadyAlt" value="${st.attrition.steadyAlt}"></td></tr>
     </table>
     <div style="margin-top:10px">
@@ -1608,9 +1612,9 @@ MGM.renderers.losses = function (D) {
       ? ` at ${pct1(st.attrition.steadyAlt)} steady` : ''}</h3>
     ${split.rows.length ? `
     <table>
-      <tr><th>Year</th><th class="num" data-col="losses-decomposition-col-prior-count">Prior count</th><th class="num" data-col="losses-decomposition-col-lost">Lost</th>
-          <th class="num" data-col="losses-decomposition-col-total-rate">Total rate</th><th class="num" data-col="losses-decomposition-col-steady">Steady</th>
-          <th class="num" data-col="losses-decomposition-col-structural">Structural</th></tr>
+      <tr><th>Year</th><th class="num" data-col="losses-decomposition-col-prior-count">${esc(st.labels.columns['losses-decomposition-col-prior-count'])}</th><th class="num" data-col="losses-decomposition-col-lost">${esc(st.labels.columns['losses-decomposition-col-lost'])}</th>
+          <th class="num" data-col="losses-decomposition-col-total-rate">${esc(st.labels.columns['losses-decomposition-col-total-rate'])}</th><th class="num" data-col="losses-decomposition-col-steady">${esc(st.labels.columns['losses-decomposition-col-steady'])}</th>
+          <th class="num" data-col="losses-decomposition-col-structural">${esc(st.labels.columns['losses-decomposition-col-structural'])}</th></tr>
       ${split.rows.map(r => `<tr><td>${r.year}</td>
         <td class="num">${fmt(r.base)}</td><td class="num">${fmt(r.totalLost)}</td>
         <td class="num">${pct1(r.totalRate)}</td>
@@ -1632,7 +1636,7 @@ MGM.renderers.losses = function (D) {
 
   <div class="card" data-card="losses-structural-overrides"><h3>Structural overrides by projection year</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="losses-structural-overrides-col-structural-lost">Structural locations lost</th></tr>
+      <tr><th>Year</th><th class="num" data-col="losses-structural-overrides-col-structural-lost">${esc(st.labels.columns['losses-structural-overrides-col-structural-lost'])}</th></tr>
       ${years.map(y => `<tr><td>${y}</td><td class="num"><input class="cell" type="number"
         data-k="attrition.structural.${y}"
         value="${st.attrition.structural[y] == null ? 0 : st.attrition.structural[y]}"></td></tr>`).join('')}
@@ -1682,11 +1686,11 @@ MGM.renderers.pipeline = function (D) {
     const v = (val, fmtFn) => loaded ? fmtFn(val) : '—';
     const d = (desc) => loaded ? desc : whyNot;
     return `<div class="signrow">
-    ${sign('OPEN LOCATIONS', v(p.openLocations, fmt), d(`${p.openLeads} open leads`), '', 'pipeline-tile-open-locations')}
-    ${sign('WEIGHTED', v(p.weightedLocations, fmt1), d('by stage ladder'), 'dark', 'pipeline-tile-weighted')}
-    ${sign('EXPECTED / MONTH', v(p.expectedPerMonth, fmt1),
+    ${sign(st.labels.tiles['pipeline-tile-open-locations'], v(p.openLocations, fmt), d(`${p.openLeads} open leads`), '', 'pipeline-tile-open-locations')}
+    ${sign(st.labels.tiles['pipeline-tile-weighted'], v(p.weightedLocations, fmt1), d('by stage ladder'), 'dark', 'pipeline-tile-weighted')}
+    ${sign(st.labels.tiles['pipeline-tile-expected-per-month'], v(p.expectedPerMonth, fmt1),
            d(`over ${sp.horizonMonths} months`), 'red', 'pipeline-tile-expected-per-month')}
-    ${sign('WIN RATE', (!loaded || p.winRate == null) ? '—' : pct1(p.winRate),
+    ${sign(st.labels.tiles['pipeline-tile-win-rate'], (!loaded || p.winRate == null) ? '—' : pct1(p.winRate),
            !loaded ? whyNot
              : (p.winRate == null ? 'no closed deals yet'
                 : `${p.wonCount} won / ${p.lostCount} lost`), 'dark', 'pipeline-tile-win-rate')}
@@ -1695,9 +1699,9 @@ MGM.renderers.pipeline = function (D) {
 
   <div class="card" data-card="pipeline-funnel-table"><h3>Funnel by stage</h3>
     <table>
-      <tr><th>Stage</th><th class="num" data-col="pipeline-funnel-table-col-leads">Leads</th><th class="num" data-col="pipeline-funnel-table-col-locations">Locations</th>
-          <th class="num" data-col="pipeline-funnel-table-col-weight">Weight</th><th class="num" data-col="pipeline-funnel-table-col-weighted-locs">Weighted locs</th>
-          <th class="num" data-col="pipeline-funnel-table-col-gallons">Gallons</th><th class="num" data-col="pipeline-funnel-table-col-deal-value">Deal value</th></tr>
+      <tr><th>Stage</th><th class="num" data-col="pipeline-funnel-table-col-leads">${esc(st.labels.columns['pipeline-funnel-table-col-leads'])}</th><th class="num" data-col="pipeline-funnel-table-col-locations">${esc(st.labels.columns['pipeline-funnel-table-col-locations'])}</th>
+          <th class="num" data-col="pipeline-funnel-table-col-weight">${esc(st.labels.columns['pipeline-funnel-table-col-weight'])}</th><th class="num" data-col="pipeline-funnel-table-col-weighted-locs">${esc(st.labels.columns['pipeline-funnel-table-col-weighted-locs'])}</th>
+          <th class="num" data-col="pipeline-funnel-table-col-gallons">${esc(st.labels.columns['pipeline-funnel-table-col-gallons'])}</th><th class="num" data-col="pipeline-funnel-table-col-deal-value">${esc(st.labels.columns['pipeline-funnel-table-col-deal-value'])}</th></tr>
       ${MM.CRM_STAGES.map(s => {
         const row = p.byStage[s] || { count: 0, locations: 0, gallons: 0, dealValue: 0 };
         const closed = MM.isClosedStage(s);
@@ -1740,10 +1744,10 @@ MGM.renderers.pipeline = function (D) {
 
   <div class="card" data-card="pipeline-horizon"><h3>Horizon</h3>
     <table>
-      <tr data-row="pipeline-horizon-row-spread-over-months"><td>Spread weighted locations over (months)</td><td class="num">
+      <tr data-row="pipeline-horizon-row-spread-over-months"><td>${esc(st.labels.rows['pipeline-horizon-row-spread-over-months'])}</td><td class="num">
         <input class="cell" type="number" min="1" data-k="salesPipeline.horizonMonths"
           value="${sp.horizonMonths}"></td></tr>
-      <tr data-row="pipeline-horizon-row-average-cycle"><td>Average cycle (days, 0 = unset)</td><td class="num">
+      <tr data-row="pipeline-horizon-row-average-cycle"><td>${esc(st.labels.rows['pipeline-horizon-row-average-cycle'])}</td><td class="num">
         <input class="cell" type="number" min="0" data-k="salesPipeline.avgCycleDays"
           value="${sp.avgCycleDays}"></td></tr>
     </table>
@@ -1759,7 +1763,7 @@ MGM.renderers.pipeline = function (D) {
 
   <div class="grid g2">
     <div class="card" data-card="pipeline-load-by-owner"><h3>Load by owner</h3>
-      <table><tr><th>Owner</th><th class="num" data-col="pipeline-load-by-owner-col-open-leads">Open leads</th><th class="num" data-col="pipeline-load-by-owner-col-open-locations">Open locations</th></tr>
+      <table><tr><th>Owner</th><th class="num" data-col="pipeline-load-by-owner-col-open-leads">${esc(st.labels.columns['pipeline-load-by-owner-col-open-leads'])}</th><th class="num" data-col="pipeline-load-by-owner-col-open-locations">${esc(st.labels.columns['pipeline-load-by-owner-col-open-locations'])}</th></tr>
       ${Object.keys(p.byOwner).length
         ? Object.entries(p.byOwner).map(([k, v]) =>
             `<tr><td>${esc(k)}</td><td class="num">${fmt(v.openLeads)}</td>
@@ -1769,7 +1773,7 @@ MGM.renderers.pipeline = function (D) {
       <p class="note">Feeds the Staffing &amp; Capacity tab.</p>
     </div>
     <div class="card" data-card="pipeline-by-source"><h3>By source</h3>
-      <table><tr><th>Source</th><th class="num" data-col="pipeline-by-source-col-leads">Leads</th><th class="num" data-col="pipeline-by-source-col-locations">Locations</th></tr>
+      <table><tr><th>Source</th><th class="num" data-col="pipeline-by-source-col-leads">${esc(st.labels.columns['pipeline-by-source-col-leads'])}</th><th class="num" data-col="pipeline-by-source-col-locations">${esc(st.labels.columns['pipeline-by-source-col-locations'])}</th></tr>
       ${Object.keys(p.bySource).length
         ? Object.entries(p.bySource).map(([k, v]) =>
             `<tr><td>${esc(k)}</td><td class="num">${fmt(v.leads)}</td>
@@ -1875,13 +1879,13 @@ MGM.renderers.participation = function (D) {
       label.toUpperCase(), pct1(MM.effectiveSharePct(st, k)),
       `${fmt(P.length ? P[P.length - 1][k] : 0)} members in ${M.years[M.years.length - 1].year}`,
       i === 2 ? 'red' : (i === 1 ? 'dark' : ''))).join('')}
-    ${sign('MEMBERS', fmt(P.length ? P[P.length - 1].members : 0), 'final-year average', 'dark', 'participation-tile-members')}
+    ${sign(st.labels.tiles['participation-tile-members'], fmt(P.length ? P[P.length - 1].members : 0), 'final-year average', 'dark', 'participation-tile-members')}
   </div>
 
   <div class="card" data-card="participation-rates-ramp"><h3>Rates and ramp</h3>
     <table>
-      <tr><th>Program</th><th class="num" data-col="participation-rates-ramp-col-participation-pct">Participation %</th>
-          <th class="num" data-col="participation-rates-ramp-col-ramp-months">Ramp (months)</th></tr>
+      <tr><th>Program</th><th class="num" data-col="participation-rates-ramp-col-participation-pct">${esc(st.labels.columns['participation-rates-ramp-col-participation-pct'])}</th>
+          <th class="num" data-col="participation-rates-ramp-col-ramp-months">${esc(st.labels.columns['participation-rates-ramp-col-ramp-months'])}</th></tr>
       ${progs.map(([k, label]) => `<tr data-row="participation-rates-ramp-row-${k}"><td>${esc(label)}</td>
         <td class="num"><input class="cell" type="number" min="0" max="100" step="0.5"
             data-k="participation.${k}.pct" value="${st.participation[k].pct}">
@@ -1900,7 +1904,7 @@ MGM.renderers.participation = function (D) {
 
   <div class="card" data-card="participation-members-by-year"><h3>Participating members by year</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="participation-members-by-year-col-avg-members">Avg members</th>
+      <tr><th>Year</th><th class="num" data-col="participation-members-by-year-col-avg-members">${esc(st.labels.columns['participation-members-by-year-col-avg-members'])}</th>
         ${progs.map(([k, l]) => `<th class="num" data-col="participation-members-by-year-col-${k}">${esc(l)}</th>`).join('')}</tr>
       ${P.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.members)}</td>
         ${progs.map(([k]) => `<td class="num">${fmt(r[k])}</td>`).join('')}</tr>`).join('')}
@@ -1948,7 +1952,7 @@ MGM.renderers.gallons = function (D) {
     ${G.mapped
       ? sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')
       : sign('EXISTING NETWORK', '—', 'gallons engine not loaded')}
-    ${sign('PIPELINE INBOUND', loadedG ? fmt(G.inbound) : '—',
+    ${sign(st.labels.tiles['gallons-tile-pipeline-inbound'], loadedG ? fmt(G.inbound) : '—',
            loadedG ? `${p.openLeads} open leads` : whyNotG, 'dark', 'gallons-tile-pipeline-inbound')}
     ${!G.mapped
       ? sign('TOTAL', '—', 'gallons engine not loaded', 'red')
@@ -1963,8 +1967,8 @@ MGM.renderers.gallons = function (D) {
 
   <div class="card" data-card="gallons-production-by-group"><h3>Production by group</h3>
     <table>
-      <tr><th>Group</th><th class="num" data-col="gallons-production-by-group-col-locations">Locations</th><th data-col="gallons-production-by-group-col-engine-profile">Engine profile</th>
-          <th data-col="gallons-production-by-group-col-roadway">Roadway</th><th class="num" data-col="gallons-production-by-group-col-baseline-gal-mo">Baseline gal/mo</th><th class="num" data-col="gallons-production-by-group-col-gallons-mo">Gallons / mo</th></tr>
+      <tr><th>Group</th><th class="num" data-col="gallons-production-by-group-col-locations">${esc(st.labels.columns['gallons-production-by-group-col-locations'])}</th><th data-col="gallons-production-by-group-col-engine-profile">${esc(st.labels.columns['gallons-production-by-group-col-engine-profile'])}</th>
+          <th data-col="gallons-production-by-group-col-roadway">${esc(st.labels.columns['gallons-production-by-group-col-roadway'])}</th><th class="num" data-col="gallons-production-by-group-col-baseline-gal-mo">${esc(st.labels.columns['gallons-production-by-group-col-baseline-gal-mo'])}</th><th class="num" data-col="gallons-production-by-group-col-gallons-mo">${esc(st.labels.columns['gallons-production-by-group-col-gallons-mo'])}</th></tr>
       ${G.byGroup.map(r => `<tr>
         <td>${esc(r.label)}${r.unmapped ? ' <span class="ovr">unmapped</span>' : ''}</td>
         <td class="num">${fmt(r.count)}</td>
@@ -2003,7 +2007,7 @@ MGM.renderers.gallons = function (D) {
 
   <div class="card" data-card="gallons-pipeline-inbound"><h3>Pipeline inbound</h3>
     <table>
-      <tr><th>Source</th><th class="num" data-col="gallons-pipeline-inbound-col-gal-mo">Gal / mo</th></tr>
+      <tr><th>Source</th><th class="num" data-col="gallons-pipeline-inbound-col-gal-mo">${esc(st.labels.columns['gallons-pipeline-inbound-col-gal-mo'])}</th></tr>
       <tr><td>Open leads — modeled profiles and estimates</td>
           <td class="num">${loadedG ? fmt(G.inbound) : '—'}</td></tr>
       <tr class="total"><td>Total inbound</td>
@@ -2019,7 +2023,7 @@ MGM.renderers.gallons = function (D) {
     ${MGM.regionVariance
       ? `<p class="note">Live from <code>region_variance.json</code>, as of
          ${esc(rv.asOf)} — ${Object.keys(rv).filter(k => typeof rv[k] === 'number').length} regions.</p>
-         <table><tr><th>Region</th><th class="num" data-col="gallons-region-variance-col-variance">Variance</th><th class="num" data-col="gallons-region-variance-col-n">n</th></tr>
+         <table><tr><th>Region</th><th class="num" data-col="gallons-region-variance-col-variance">${esc(st.labels.columns['gallons-region-variance-col-variance'])}</th><th class="num" data-col="gallons-region-variance-col-n">${esc(st.labels.columns['gallons-region-variance-col-n'])}</th></tr>
          ${Object.keys(rv).filter(k => typeof rv[k] === 'number').map(k =>
            `<tr><td>${esc(k)}</td><td class="num">${rv[k] > 0 ? '+' : ''}${rv[k]}%</td>
             <td class="num">${(rv.n || {})[k] || '—'}</td></tr>`).join('')}</table>`
@@ -2063,21 +2067,21 @@ MGM.renderers.revpermember = function (D) {
   <h2>${esc(st.labels.tabs.revpermember)}</h2>
   <p class="sub" data-card="revpermember-intro">Seven net per-member streams, calibrated against the Jan–Sep 2026 P&amp;L.</p>
   <div class="signrow">
-    ${sign('FINAL-YEAR REVENUE', fmM(last.total), `${last.year}, all streams`, '', 'revpermember-tile-final-year-revenue')}
-    ${sign('$ / MEMBER / YR', fm$(rpm.derived.total), 'from the drivers', 'dark', 'revpermember-tile-dollar-per-member-yr')}
-    ${sign('DUES REALIZATION', pct1(rpm.duesRealization),
+    ${sign(st.labels.tiles['revpermember-tile-final-year-revenue'], fmM(last.total), `${last.year}, all streams`, '', 'revpermember-tile-final-year-revenue')}
+    ${sign(st.labels.tiles['revpermember-tile-dollar-per-member-yr'], fm$(rpm.derived.total), 'from the drivers', 'dark', 'revpermember-tile-dollar-per-member-yr')}
+    ${sign(st.labels.tiles['revpermember-tile-dues-realization'], pct1(rpm.duesRealization),
            /* fmCents on the billable figure, not fm$. Rounded to whole
               dollars it read "$362 realized vs $382 billable", whose quotient
               is 94.8% -- printed beside a tile correctly showing 94.6%, which
               is computed from the unrounded 382.47. The caption appeared to
               contradict its own tile by two tenths of a point. */
            `${fm$(st.revenue.duesPerLoc)} realized vs ${fmCents(st.billing.duesPerLocBillable)} billable`, 'red', 'revpermember-tile-dues-realization')}
-    ${sign('AVG MEMBERS', fmt(last.members), `${last.year} average`, 'dark', 'revpermember-tile-avg-members')}
+    ${sign(st.labels.tiles['revpermember-tile-avg-members'], fmt(last.members), `${last.year} average`, 'dark', 'revpermember-tile-avg-members')}
   </div>
 
   <div class="card" data-card="revpermember-drivers"><h3>Drivers</h3>
     <table>
-      <tr><th>Stream</th><th class="num" data-col="revpermember-drivers-col-driver">Driver</th><th class="num" data-col="revpermember-drivers-col-per-member-yr">$/member/yr</th></tr>
+      <tr><th>Stream</th><th class="num" data-col="revpermember-drivers-col-driver">${esc(st.labels.columns['revpermember-drivers-col-driver'])}</th><th class="num" data-col="revpermember-drivers-col-per-member-yr">${esc(st.labels.columns['revpermember-drivers-col-per-member-yr'])}</th></tr>
       <tr data-row="revpermember-drivers-row-dues"><td><input class="lbl-in" type="text" data-k="labels.streams.dues" value="${esc(L.dues)}"></td>
         <td class="num"><input class="cell" type="number" step="0.01" data-k="revenue.duesPerLoc"
           value="${st.revenue.duesPerLoc}"> /mo ${MGM.editedMark('revenue.duesPerLoc')}</td>
@@ -2160,7 +2164,7 @@ MGM.renderers.revpermember = function (D) {
 
   <div class="card" data-card="revpermember-reconciliation"><h3>Reconciliation</h3>
     <table>
-      <tr><th>Stream</th><th class="num" data-col="revpermember-reconciliation-t1-col-from-drivers">From drivers</th>
+      <tr><th>Stream</th><th class="num" data-col="revpermember-reconciliation-t1-col-from-drivers">${esc(st.labels.columns['revpermember-reconciliation-t1-col-from-drivers'])}</th>
           <th class="num" data-col="revpermember-reconciliation-t1-col-pnl-actual">P&amp;L actual</th><th class="num" data-col="revpermember-reconciliation-t1-col-variance">Variance</th></tr>
       ${STREAM_KEYS.map(k => {
         const a = rpm.actualStreams ? rpm.actualStreams[k] : null;
@@ -2184,7 +2188,7 @@ MGM.renderers.revpermember = function (D) {
     </table>
 
     <table style="margin-top:14px">
-      <tr><th>${esc(st.benchmark.label)}</th><th class="num" data-col="revpermember-reconciliation-t2-col-value">Value</th><th class="num" data-col="revpermember-reconciliation-t2-col-variance">Variance</th></tr>
+      <tr><th>${esc(st.benchmark.label)}</th><th class="num" data-col="revpermember-reconciliation-t2-col-value">${esc(st.labels.columns['revpermember-reconciliation-t2-col-value'])}</th><th class="num" data-col="revpermember-reconciliation-t2-col-variance">${esc(st.labels.columns['revpermember-reconciliation-t2-col-variance'])}</th></tr>
       <tr><td><input class="lbl-in" type="text" data-k="benchmark.label" value="${esc(st.benchmark.label)}"></td>
         <td class="num"><input class="cell" type="number" step="500" data-k="benchmark.lostMemberValue"
           value="${st.benchmark.lostMemberValue}"></td>
@@ -2217,9 +2221,9 @@ MGM.renderers.revpermember = function (D) {
 
   <div class="card" data-card="revpermember-revenue-by-year"><h3>Revenue by year</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="revpermember-revenue-by-year-col-avg-members">Avg members</th>
+      <tr><th>Year</th><th class="num" data-col="revpermember-revenue-by-year-col-avg-members">${esc(st.labels.columns['revpermember-revenue-by-year-col-avg-members'])}</th>
         ${STREAM_KEYS.map(k => `<th class="num" data-col="revpermember-revenue-by-year-col-${k}">${esc(L[k])}</th>`).join('')}
-        <th class="num" data-col="revpermember-revenue-by-year-col-total">Total</th></tr>
+        <th class="num" data-col="revpermember-revenue-by-year-col-total">${esc(st.labels.columns['revpermember-revenue-by-year-col-total'])}</th></tr>
       ${R.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${fmt(r.members)}</td>
         ${STREAM_KEYS.map(k => `<td class="num${r.streams[k] < 0 ? ' neg' : ''}">${fm$(r.streams[k])}</td>`).join('')}
         <td class="num"><b>${fm$(r.total)}</b></td></tr>`).join('')}
@@ -2260,23 +2264,23 @@ MGM.renderers.cost = function (D) {
      figures. Until then acquisition and service costs are zero and
      Profit &amp; Cash Flow equals revenue.</p>` : ''}
   <div class="signrow">
-    ${sign('CAC', C.unset ? '—' : fm$(C.cac), 'per new member', '', 'cost-tile-cac')}
-    ${sign('COST TO SERVE', C.unset ? '—' : fm$(C.costToServePerMember), 'per member / yr', 'dark', 'cost-tile-cost-to-serve')}
-    ${sign('LTV', C.ltv == null ? '—' : fm$(C.ltv),
+    ${sign(st.labels.tiles['cost-tile-cac'], C.unset ? '—' : fm$(C.cac), 'per new member', '', 'cost-tile-cac')}
+    ${sign(st.labels.tiles['cost-tile-cost-to-serve'], C.unset ? '—' : fm$(C.costToServePerMember), 'per member / yr', 'dark', 'cost-tile-cost-to-serve')}
+    ${sign(st.labels.tiles['cost-tile-ltv'], C.ltv == null ? '—' : fm$(C.ltv),
            C.lifeYears == null ? 'churn unset' : `${fmt1(C.lifeYears)} yr member life`, 'red', 'cost-tile-ltv')}
-    ${sign('LTV / CAC', C.ltvCac == null ? '—' : fmt1(C.ltvCac) + '×',
+    ${sign(st.labels.tiles['cost-tile-ltv-cac'], C.ltvCac == null ? '—' : fmt1(C.ltvCac) + '×',
            C.payback == null ? 'payback n/a' : `${fmt1(C.payback)} mo payback`, 'dark', 'cost-tile-ltv-cac')}
   </div>
 
   <div class="card" data-card="cost-inputs"><h3>Inputs</h3>
     <table>
-      <tr data-row="cost-inputs-row-sales-marketing-spend"><td>Sales &amp; marketing spend / month</td><td class="num">
+      <tr data-row="cost-inputs-row-sales-marketing-spend"><td>${esc(st.labels.rows['cost-inputs-row-sales-marketing-spend'])}</td><td class="num">
         <input class="cell" type="number" data-k="costs.salesSpendPerMonth"
           value="${st.costs.salesSpendPerMonth}"></td></tr>
-      <tr data-row="cost-inputs-row-acquisition-cost-override"><td>Acquisition cost per member (overrides the derived CAC)</td><td class="num">
+      <tr data-row="cost-inputs-row-acquisition-cost-override"><td>${esc(st.labels.rows['cost-inputs-row-acquisition-cost-override'])}</td><td class="num">
         <input class="cell" type="number" data-k="costs.acquisitionPerMember"
           value="${st.costs.acquisitionPerMember}"></td></tr>
-      <tr data-row="cost-inputs-row-cost-to-serve"><td>Cost to serve per member / yr</td><td class="num">
+      <tr data-row="cost-inputs-row-cost-to-serve"><td>${esc(st.labels.rows['cost-inputs-row-cost-to-serve'])}</td><td class="num">
         <input class="cell" type="number" data-k="costs.costToServePerMember"
           value="${st.costs.costToServePerMember}"></td></tr>
     </table>
@@ -2293,10 +2297,10 @@ MGM.renderers.cost = function (D) {
 
   <div class="card" data-card="cost-by-year"><h3>By year</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="cost-by-year-col-months">Months</th><th class="num" data-col="cost-by-year-col-spend">Spend</th>
-          <th class="num" data-col="cost-by-year-col-new-members">New members</th><th class="num" data-col="cost-by-year-col-cac">CAC</th>
-          <th class="num" data-col="cost-by-year-col-acquisition-cost">Acquisition cost</th><th class="num" data-col="cost-by-year-col-cost-to-serve">Cost to serve</th>
-          <th class="num" data-col="cost-by-year-col-revenue">Revenue</th></tr>
+      <tr><th>Year</th><th class="num" data-col="cost-by-year-col-months">${esc(st.labels.columns['cost-by-year-col-months'])}</th><th class="num" data-col="cost-by-year-col-spend">${esc(st.labels.columns['cost-by-year-col-spend'])}</th>
+          <th class="num" data-col="cost-by-year-col-new-members">${esc(st.labels.columns['cost-by-year-col-new-members'])}</th><th class="num" data-col="cost-by-year-col-cac">${esc(st.labels.columns['cost-by-year-col-cac'])}</th>
+          <th class="num" data-col="cost-by-year-col-acquisition-cost">${esc(st.labels.columns['cost-by-year-col-acquisition-cost'])}</th><th class="num" data-col="cost-by-year-col-cost-to-serve">${esc(st.labels.columns['cost-by-year-col-cost-to-serve'])}</th>
+          <th class="num" data-col="cost-by-year-col-revenue">${esc(st.labels.columns['cost-by-year-col-revenue'])}</th></tr>
       ${/* Em dash means "not supplied", the same rule the tiles above and the
             cash bridge on Profit & Cash Flow follow -- this table used to mix
             a real "$0" into the same row as its own "—" CAC. The gate is the
@@ -2351,19 +2355,19 @@ MGM.renderers.staffing = function (D) {
      Enter a monthly capacity per rep below. A gap computed against zero capacity
      would be meaningless, so none is shown.</p>` : ''}
   <div class="signrow">
-    ${sign('REPS', fmt(reps.length), 'on the roster', '', 'staffing-tile-reps')}
-    ${sign('CAPACITY', K.unset ? '—' : fmt1(K.totalCapacity), 'new locations / mo', 'dark', 'staffing-tile-capacity')}
-    ${sign('MODELED ADDS', fmt1(K.modeledAddsPerMonth), 'new locations / mo', 'red', 'staffing-tile-modeled-adds')}
-    ${sign('GAP', K.gap == null ? '—' : (K.gap > 0 ? '+' + fmt1(K.gap) : fmt1(K.gap)),
+    ${sign(st.labels.tiles['staffing-tile-reps'], fmt(reps.length), 'on the roster', '', 'staffing-tile-reps')}
+    ${sign(st.labels.tiles['staffing-tile-capacity'], K.unset ? '—' : fmt1(K.totalCapacity), 'new locations / mo', 'dark', 'staffing-tile-capacity')}
+    ${sign(st.labels.tiles['staffing-tile-modeled-adds'], fmt1(K.modeledAddsPerMonth), 'new locations / mo', 'red', 'staffing-tile-modeled-adds')}
+    ${sign(st.labels.tiles['staffing-tile-gap'], K.gap == null ? '—' : (K.gap > 0 ? '+' + fmt1(K.gap) : fmt1(K.gap)),
            K.gap == null ? 'capacity unset'
              : (K.gap > 0 ? 'short of plan' : 'capacity to spare'), 'dark', 'staffing-tile-gap')}
   </div>
 
   <div class="card" data-card="staffing-roster"><h3>Roster</h3>
     <table>
-      <tr><th>Rep</th><th class="num" data-col="staffing-roster-col-capacity">Capacity (new locs/mo)</th>
-          <th class="num" data-col="staffing-roster-col-cost-yr">Cost / yr</th><th class="num" data-col="staffing-roster-col-open-leads">Open leads</th>
-          <th class="num" data-col="staffing-roster-col-open-locations">Open locations</th></tr>
+      <tr><th>Rep</th><th class="num" data-col="staffing-roster-col-capacity">${esc(st.labels.columns['staffing-roster-col-capacity'])}</th>
+          <th class="num" data-col="staffing-roster-col-cost-yr">${esc(st.labels.columns['staffing-roster-col-cost-yr'])}</th><th class="num" data-col="staffing-roster-col-open-leads">${esc(st.labels.columns['staffing-roster-col-open-leads'])}</th>
+          <th class="num" data-col="staffing-roster-col-open-locations">${esc(st.labels.columns['staffing-roster-col-open-locations'])}</th></tr>
       ${reps.map((r, i) => {
         const o = K.byOwner[r.name] || { openLeads: 0, openLocations: 0 };
         return `<tr>
@@ -2407,7 +2411,7 @@ MGM.renderers.staffing = function (D) {
 
   ${loadedPipe && Object.keys(K.byOwner).some(name => !reps.find(r => r.name === name))
     ? `<div class="card" data-card="staffing-crm-not-on-roster"><h3>In the CRM but not on the roster</h3>
-       <table><tr><th>Owner</th><th class="num" data-col="staffing-crm-not-on-roster-col-open-leads">Open leads</th></tr>
+       <table><tr><th>Owner</th><th class="num" data-col="staffing-crm-not-on-roster-col-open-leads">${esc(st.labels.columns['staffing-crm-not-on-roster-col-open-leads'])}</th></tr>
        ${Object.entries(K.byOwner).filter(([name]) => !reps.find(r => r.name === name))
          .map(([name, v]) => `<tr><td>${esc(name)}</td>
            <td class="num">${fmt(v.openLeads)}</td></tr>`).join('')}</table>
@@ -2436,10 +2440,10 @@ MGM.renderers.cashflow = function (D) {
   <h2>${esc(st.labels.tabs.cashflow)}</h2>
   <p class="sub" data-card="cashflow-intro">Revenue less cost to serve and acquisition cost, to EBITDA and cash.</p>
   <div class="signrow">
-    ${sign('FINAL-YEAR REVENUE', fmM(last.revenue), `${last.year}`, '', 'cashflow-tile-final-year-revenue')}
-    ${sign('EBITDA', fmM(last.ebitda),
+    ${sign(st.labels.tiles['cashflow-tile-final-year-revenue'], fmM(last.revenue), `${last.year}`, '', 'cashflow-tile-final-year-revenue')}
+    ${sign(st.labels.tiles['cashflow-tile-ebitda'], fmM(last.ebitda),
            C.unset ? 'costs unset — equals revenue (100% margin)' : pct1(last.margin) + ' margin', 'dark', 'cashflow-tile-ebitda')}
-    ${sign('CASH', fmM(last.cash),
+    ${sign(st.labels.tiles['cashflow-tile-cash'], fmM(last.cash),
            C.unset ? 'costs unset — no cost subtracted yet' : 'after capex', 'red', 'cashflow-tile-cash')}
     ${(() => {
       // The boldest number on the page must not defer its basis to the card
@@ -2498,10 +2502,10 @@ MGM.renderers.cashflow = function (D) {
 
   <div class="card" data-card="cashflow-cash-bridge"><h3>Cash bridge</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="cashflow-cash-bridge-col-revenue">Revenue</th><th class="num" data-col="cashflow-cash-bridge-col-cost-to-serve">Cost to serve</th>
-          <th class="num" data-col="cashflow-cash-bridge-col-acquisition">Acquisition</th><th class="num" data-col="cashflow-cash-bridge-col-add-backs">Add-backs</th>
-          <th class="num" data-col="cashflow-cash-bridge-col-ebitda">EBITDA</th><th class="num" data-col="cashflow-cash-bridge-col-margin">Margin</th>
-          <th class="num" data-col="cashflow-cash-bridge-col-capex">Capex</th><th class="num" data-col="cashflow-cash-bridge-col-cash">Cash</th></tr>
+      <tr><th>Year</th><th class="num" data-col="cashflow-cash-bridge-col-revenue">${esc(st.labels.columns['cashflow-cash-bridge-col-revenue'])}</th><th class="num" data-col="cashflow-cash-bridge-col-cost-to-serve">${esc(st.labels.columns['cashflow-cash-bridge-col-cost-to-serve'])}</th>
+          <th class="num" data-col="cashflow-cash-bridge-col-acquisition">${esc(st.labels.columns['cashflow-cash-bridge-col-acquisition'])}</th><th class="num" data-col="cashflow-cash-bridge-col-add-backs">${esc(st.labels.columns['cashflow-cash-bridge-col-add-backs'])}</th>
+          <th class="num" data-col="cashflow-cash-bridge-col-ebitda">${esc(st.labels.columns['cashflow-cash-bridge-col-ebitda'])}</th><th class="num" data-col="cashflow-cash-bridge-col-margin">${esc(st.labels.columns['cashflow-cash-bridge-col-margin'])}</th>
+          <th class="num" data-col="cashflow-cash-bridge-col-capex">${esc(st.labels.columns['cashflow-cash-bridge-col-capex'])}</th><th class="num" data-col="cashflow-cash-bridge-col-cash">${esc(st.labels.columns['cashflow-cash-bridge-col-cash'])}</th></tr>
       ${/* Em dash means "not supplied" in all four supplied columns. Cost to
             serve and acquisition are only unsupplied while C.unset -- once real
             costs exist a genuine $0 in one year is a real figure and prints as
@@ -2525,11 +2529,11 @@ MGM.renderers.cashflow = function (D) {
 
   <div class="card" data-card="cashflow-assumptions"><h3>Assumptions</h3>
     <table>
-      <tr data-row="cashflow-assumptions-row-capex"><td>Capex / yr</td><td class="num"><input class="cell" type="number"
+      <tr data-row="cashflow-assumptions-row-capex"><td>${esc(st.labels.rows['cashflow-assumptions-row-capex'])}</td><td class="num"><input class="cell" type="number"
         data-k="cashflow.capexPerYear" value="${st.cashflow.capexPerYear}"></td></tr>
-      <tr data-row="cashflow-assumptions-row-working-capital-days"><td>Working capital days</td><td class="num"><input class="cell" type="number"
+      <tr data-row="cashflow-assumptions-row-working-capital-days"><td>${esc(st.labels.rows['cashflow-assumptions-row-working-capital-days'])}</td><td class="num"><input class="cell" type="number"
         data-k="cashflow.workingCapitalDays" value="${st.cashflow.workingCapitalDays}"></td></tr>
-      <tr data-row="cashflow-assumptions-row-ebitda-normalization"><td>EBITDA normalization add-backs</td><td class="num"><input class="cell" type="number"
+      <tr data-row="cashflow-assumptions-row-ebitda-normalization"><td>${esc(st.labels.rows['cashflow-assumptions-row-ebitda-normalization'])}</td><td class="num"><input class="cell" type="number"
         step="1000" data-k="valuation.ebitdaNormalization"
         value="${st.valuation.ebitdaNormalization}">${MGM.editedMark('valuation.ebitdaNormalization')}</td></tr>
     </table>
@@ -2638,12 +2642,12 @@ MGM.renderers.cashflow = function (D) {
 
   <div class="card" data-card="cashflow-valuation"><h3>Valuation</h3>
     <table>
-      <tr><th>Lens</th><th class="num" data-col="cashflow-valuation-col-basis">Basis</th><th class="num" data-col="cashflow-valuation-col-multiple">Multiple</th><th class="num" data-col="cashflow-valuation-col-value">Value</th></tr>
-      <tr data-row="cashflow-valuation-row-recurring-revenue"><td>Recurring revenue</td><td class="num">${fm$(v.basis)}</td>
+      <tr><th>Lens</th><th class="num" data-col="cashflow-valuation-col-basis">${esc(st.labels.columns['cashflow-valuation-col-basis'])}</th><th class="num" data-col="cashflow-valuation-col-multiple">${esc(st.labels.columns['cashflow-valuation-col-multiple'])}</th><th class="num" data-col="cashflow-valuation-col-value">${esc(st.labels.columns['cashflow-valuation-col-value'])}</th></tr>
+      <tr data-row="cashflow-valuation-row-recurring-revenue"><td>${esc(st.labels.rows['cashflow-valuation-row-recurring-revenue'])}</td><td class="num">${fm$(v.basis)}</td>
         <td class="num"><input class="cell" type="number" step="0.1" data-k="valuation.revMultiple"
           value="${st.valuation.revMultiple}">×</td>
         <td class="num"><b>${fmM(v.rev)}</b></td></tr>
-      <tr data-row="cashflow-valuation-row-ebitda"><td>EBITDA${C.unset
+      <tr data-row="cashflow-valuation-row-ebitda"><td>${esc(st.labels.rows['cashflow-valuation-row-ebitda'])}${C.unset
         ? (EM != null
             ? ` (at ${pct1(EM)} ${MFP ? 'margin, loaded from the P&amp;L' : 'margin'})`
             : (v.ebitdaBase
@@ -2827,8 +2831,8 @@ MGM.renderers.historical = function (D) {
 
   <div class="card" data-card="historical-signups-losses"><h3>Annual signups and losses</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="historical-signups-losses-col-new">New (Roady's)</th><th class="num" data-col="historical-signups-losses-col-lost">Lost</th>
-          <th class="num" data-col="historical-signups-losses-col-total-count">Total count</th><th></th></tr>
+      <tr><th>Year</th><th class="num" data-col="historical-signups-losses-col-new">${esc(st.labels.columns['historical-signups-losses-col-new'])}</th><th class="num" data-col="historical-signups-losses-col-lost">${esc(st.labels.columns['historical-signups-losses-col-lost'])}</th>
+          <th class="num" data-col="historical-signups-losses-col-total-count">${esc(st.labels.columns['historical-signups-losses-col-total-count'])}</th><th></th></tr>
       ${st.history.map((h, i) => `<tr>
         <td><input class="cell" type="number" data-k="history.${i}.year"
             value="${h.year == null ? '' : h.year}">
@@ -2856,7 +2860,7 @@ MGM.renderers.historical = function (D) {
 
   <div class="card" data-card="historical-derived-attrition"><h3>Derived attrition</h3>
     <table>
-      <tr><th>Year</th><th class="num" data-col="historical-derived-attrition-col-lost">Lost</th><th class="num" data-col="historical-derived-attrition-col-prior-count">Prior count</th><th class="num" data-col="historical-derived-attrition-col-rate">Rate</th></tr>
+      <tr><th>Year</th><th class="num" data-col="historical-derived-attrition-col-lost">${esc(st.labels.columns['historical-derived-attrition-col-lost'])}</th><th class="num" data-col="historical-derived-attrition-col-prior-count">${esc(st.labels.columns['historical-derived-attrition-col-prior-count'])}</th><th class="num" data-col="historical-derived-attrition-col-rate">${esc(st.labels.columns['historical-derived-attrition-col-rate'])}</th></tr>
       ${d.rows.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.lost)}</td>
         <td class="num">${fmt(r.base)}</td><td class="num">${rateCell(r.rate)}</td></tr>`).join('')}
       ${d.rows.length ? '' : `<tr><td colspan="4" class="note">No year has both a
@@ -2888,7 +2892,7 @@ MGM.renderers.historical = function (D) {
     <div style="overflow-x:auto">
     <table>
       <tr><th>Year</th>${MONTH_NAMES.map(m => `<th class="num" data-col="historical-monthly-signups-col-${m.toLowerCase()}">${m}</th>`).join('')}
-        <th class="num" data-col="historical-monthly-signups-col-total">Total</th></tr>
+        <th class="num" data-col="historical-monthly-signups-col-total">${esc(st.labels.columns['historical-monthly-signups-col-total'])}</th></tr>
       ${years.map(y => `<tr><td>${y}${rows[y].ok ? ''
         : ' <span class="ovr">malformed</span>'}</td>
         ${rows[y].cells.map((v, i) => `<td class="num"><input class="cell" type="number"
@@ -3089,9 +3093,33 @@ MGM.reportPnlWhy = function () {
     'The P&L comparison was not available when this report was generated.';
 };
 
+// ── Report-surface valuation: never the gated margin ─────────────────────
+// Print, the Report tab's on-screen copy, and the emailed summary
+// (MGM.summaryText) are all meant to LEAVE the admin's own screen -- unlike
+// the live Cash Flow tab, where the admin who loaded mgm_pnl_actuals is
+// exactly the audience the loaded figure is for. A margin loaded from the
+// P&L must never reach any of those three, even folded into a range or a
+// midpoint: MGM.exportCSV is already admin-gated for precisely this reason
+// ("its valuation columns can be divided to recover the auth-gated P&L
+// margin"), and this is the same number, reached a different way.
+//
+// Recomputing against the UNMODIFIED state (D.st, never the margin-overlaid
+// vst MGM.runFor built) makes the EBITDA lens read exactly as "no margin
+// set" whenever the only margin in play came from the P&L -- the same
+// absence every other unset-margin case already prints correctly, not a
+// new code path. A hand-typed margin is unaffected: typedMargin is never
+// gated, so D.marginFromPnl is false whenever one was entered, and this
+// collapses back to the ordinary D.valuation with zero extra work.
+MGM.reportSafeValuation = function (D) {
+  return (D.cost.unset && D.marginFromPnl)
+    ? MM.valuation(D.st, D.R[D.R.length - 1], null)
+    : D.valuation;
+};
+
 MGM.renderers.report = function (D) {
-  const { st, M, R, F, rpm, valuation: v, cost: C, capacity: K,
+  const { st, M, R, F, cost: C, capacity: K,
           gallons: G, pipeline: p } = D;
+  const v = MGM.reportSafeValuation(D);
   const rp = st.report;
   // HORIZON_YEARS is bounded at 1 by the input, but a scenario or an imported
   // file can carry anything, and `M.years[0].start` on an empty array throws
@@ -3105,8 +3133,9 @@ MGM.renderers.report = function (D) {
     { year: 'numeric', month: 'long', day: 'numeric' });
   const prose = t => t ? `<p>${esc(t).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>')}</p>` : '';
 
-  // The headline, from the engine. `hasValue` is false only when NO lens has a
-  // basis, and then there is no number to print at all -- not a zero.
+  // The headline, from the engine, against the report-safe valuation above
+  // -- never D.valuation directly. `hasValue` is false only when NO lens has
+  // a basis, and then there is no number to print at all -- not a zero.
   const vh = MM.valuationHeadline(v);
 
   // Every piece of the meta line is user-editable and any of them can be
@@ -3217,9 +3246,9 @@ MGM.renderers.report = function (D) {
 
     <h3>Profit &amp; cash flow</h3>
     ${F.length ? `<table>
-      <tr><th>Year</th><th class="num">Revenue</th><th class="num">Cost to serve</th>
-          <th class="num">Acquisition</th><th class="num">Add-backs</th>
-          <th class="num">EBITDA</th><th class="num">Margin</th><th class="num">Cash</th></tr>
+      <tr><th>Year</th><th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-revenue'])}</th><th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-cost-to-serve'])}</th>
+          <th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-acquisition'])}</th><th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-add-backs'])}</th>
+          <th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-ebitda'])}</th><th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-margin'])}</th><th class="num">${esc(st.labels.columns['cashflow-cash-bridge-col-cash'])}</th></tr>
       ${/* Same gate as the cash bridge on Profit & Cash Flow, not a looser one.
             Cost to serve and acquisition are unsupplied only while C.unset --
             once real costs exist, a year that genuinely costs nothing prints
@@ -3243,27 +3272,34 @@ MGM.renderers.report = function (D) {
 
     <h3>Valuation</h3>
     <table>
-      <tr><th>Lens</th><th class="num">Basis</th><th class="num">Multiple</th><th class="num">Value</th></tr>
-      <tr><td>Recurring revenue${v.basis ? '' : ' (no basis — the model projects no revenue)'}</td>
+      <tr><th>Lens</th><th class="num">${esc(st.labels.columns['cashflow-valuation-col-basis'])}</th><th class="num">${esc(st.labels.columns['cashflow-valuation-col-multiple'])}</th><th class="num">${esc(st.labels.columns['cashflow-valuation-col-value'])}</th></tr>
+      <tr><td>${esc(st.labels.rows['cashflow-valuation-row-recurring-revenue'])}${v.basis ? '' : ' (no basis — the model projects no revenue)'}</td>
         <td class="num">${v.basis ? fm$(v.basis) : '—'}</td>
         <td class="num">${st.valuation.revMultiple}×</td>
         <td class="num"><b>${v.rev ? fmM(v.rev) : '—'}</b></td></tr>
       ${/* The EBITDA lens's label is the one place on paper where a $0 could be
             read as "this business earns nothing" rather than "no margin and no
             costs were entered". The wording matches the Valuation card on
-            Profit & Cash Flow word for word, and reads EM (what the lens
-            actually used) rather than the state value -- a loaded P&L margin
-            gives the lens a real basis without ever being typed. */''}
-      <tr><td>EBITDA${C.unset
-        ? (D.effectiveMargin != null
-            ? ` (at ${pct1(D.effectiveMargin)} margin${D.marginFromPnl ? ', loaded from the P&L for this session' : ', entered assumption'})`
-            : (v.ebitdaBase
-                ? ' (add-backs only — costs unset and no margin set)'
-                : ' (no basis — costs unset and no margin set)'))
-        : ' (computed from real costs)'}</td>
+            Profit & Cash Flow word for word, and reads vSafe/the report-safe
+            margin flag (below), never D.effectiveMargin/D.marginFromPnl
+            directly -- those name the REAL loaded figure, and this table is
+            Print/PDF/Report, meant to leave the admin's own screen. A margin
+            loaded from the P&L prints as a qualitative note, never a percent:
+            the percent recovers the gated figure to the decimal exactly the
+            same way exportCSV's division trick does, just typed instead of
+            computed. */''}
+      ${(() => {
+        const reportGated = C.unset && D.marginFromPnl;
+        const caption = !C.unset ? ' (computed from real costs)'
+          : reportGated ? ' (margin basis loaded from the P&L for this session — not shown in a printed or shared report)'
+          : (D.effectiveMargin != null ? ` (at ${pct1(D.effectiveMargin)} margin, entered assumption)`
+            : (v.ebitdaBase ? ' (add-backs only — costs unset and no margin set)'
+              : ' (no basis — costs unset and no margin set)'));
+        return `<tr><td>${esc(st.labels.rows['cashflow-valuation-row-ebitda'])}${caption}</td>
         <td class="num">${(!C.unset || v.ebitdaBase) ? fm$(v.ebitdaBase) : '—'}</td>
         <td class="num">${st.valuation.ebitdaMultiple}×</td>
-        <td class="num"><b>${(!C.unset || v.ebitda) ? fmM(v.ebitda) : '—'}</b></td></tr>
+        <td class="num"><b>${(!C.unset || v.ebitda) ? fmM(v.ebitda) : '—'}</b></td></tr>`;
+      })()}
       ${/* Keyed on v.lensCount -- the same engine field the headline reads --
             rather than re-deriving "which lenses are live" here. The one-lens
             arm deliberately does NOT print "(midpoint $X)" beside the figure:
@@ -3289,7 +3325,7 @@ MGM.renderers.report = function (D) {
 
     ${prose(rp.methodology)}
     ${MGM.reportAssumptions(D)}
-    ${MGM.reportReconciliation(D)}
+    ${MGM.reportReconciliation()}
     ${MGM.reportWarnings(D)}
     ${MGM.reportNotes(D)}
     ${prose(rp.closing)}
@@ -3305,12 +3341,11 @@ MGM.renderers.report = function (D) {
 // tabs carry has to travel with it rather than living only in the UI.
 MGM.reportAssumptions = function (D) {
   const { st, M, rpm, cost: C, capacity: K, pipeline: p,
-          effectiveMargin: EM, typedMargin: TM, marginFromPnl: MFP,
+          typedMargin: TM, marginFromPnl: MFP,
           marginBasisDetail: MBD } = D;
   const rv = st.revenue, at = st.attrition, bm = st.benchmark;
   const struct = Object.values(at.structural || {}).some(v => +v);
   const pipeWhy = MGM.reportPipelineWhy();
-  const period = (MGM.pnlActuals && MGM.pnlActuals.periodLabel) || null;
   const lag = st.adds.activationLag;
 
   const rows = [
@@ -3419,16 +3454,42 @@ MGM.reportAssumptions = function (D) {
     // claim from a typed one: it IS reported, it names its period, and it is
     // session-only. EM/MFP come from MGM.runFor, not from the state -- the
     // loaded figure never enters MGM.state, by design.
+    // The MFP arm used to print pct1(EM), the P&L period label, and (in the
+    // row below) marginBasisDetail prose -- all three straight from the
+    // gated load, in this report's own "Assumptions & sources" table. The
+    // Valuation table elsewhere on this same page already redacts the same
+    // figure (MGM.reportSafeValuation); this row read D.effectiveMargin /
+    // D.marginFromPnl / D.marginBasisDetail directly instead, so a report
+    // could show "not shown in a printed or shared report" in one table and
+    // "41.7% margin, loaded from the Jan-Sep 2026 P&L" nine rows later on
+    // the same page. Found by an independent review, not by this file's own
+    // re-audit, which is exactly the gap a redaction fix has to close with
+    // zero remaining exceptions, not most of them. Reworded to match the
+    // Valuation table's qualitative wording: provenance, never the number,
+    // the period, or the loaded basis-detail prose.
     ['EBITDA', C.unset
       ? (MFP
-          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. This tool never writes it into the model's state, so nothing it saves, syncs or exports carries it — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          ? 'A margin is loaded from the P&amp;L for this session and is visible live on the ' +
+            'Profit &amp; Cash Flow tab, but is never included in this report, its print/PDF ' +
+            'copy, or an emailed summary -- the same rule the Valuation table above follows. ' +
+            '(The admin-only CSV export still carries the underlying valuation inputs, same as ' +
+            'it always has.) This tool never writes the loaded figure into the model\'s state, ' +
+            'so nothing it saves or syncs carries it, and a reader without administrator access, ' +
+            'running the same inputs, sees the revenue lens alone.'
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
       : 'Computed from revenue less cost to serve and acquisition — the margin assumption is not in use.'],
 
+    // marginBasisDetail is itself gated prose describing how the real P&L
+    // margin was derived -- redacted unconditionally whenever a loaded
+    // figure is in play, not only while C.unset, since the content leaks
+    // provenance about mgm_pnl_actuals regardless of whether it happens to
+    // be the figure this run's EBITDA lens actually used.
     ['EBITDA margin basis', `${esc(st.valuation.marginBasis)} — ${esc(st.valuation.marginBasisNote)}` +
-      (MFP && MBD ? ` Basis stated with the loaded figure: ${esc(MBD)}` : '')],
+      (MFP && MBD
+        ? ' A loaded basis applies for this session but is not stated in a printed or shared report — see the live Profit &amp; Cash Flow tab.'
+        : '')],
 
     ['Add-backs', st.valuation.ebitdaNormalization
       ? `${fm$(st.valuation.ebitdaNormalization)}/yr of explicit EBITDA normalization, entered by the modeller`
@@ -3473,52 +3534,39 @@ MGM.reportGallonSummary = function (D) {
 };
 
 // ── The P&L reconciliation, on paper ──────────────────────────────────────
-// The P&L read is ADMIN-ONLY on select, not just on write, so the most likely
-// reader of this section is someone whose report carries no comparison at all.
-// It must say so as a fact, show no zero, and give no advice the holder of a
-// printout cannot act on.
-MGM.reportReconciliation = function (D) {
-  const { st, rpm } = D;
-  const L = st.labels.streams;
-  const period = (MGM.pnlActuals && MGM.pnlActuals.periodLabel) || null;
-  // Not rpm.actual: see MGM.reportActual for why the engine's own test lets an
-  // explicit null through as a $0 actual.
-  const actual = MGM.reportActual(MGM.pnlActuals ? MGM.pnlActuals.totalPerMemberYr : null);
-
-  if (actual == null) {
-    return `<h3>Reconciliation against the P&amp;L</h3>
-      <p class="small"><b>Not reconciled.</b> ${esc(MGM.reportPnlWhy())}
-      The driver figures throughout this report are complete and unaffected —
-      only the comparison against the income statement is missing. The P&amp;L
-      figures live in <code>mgm_pnl_actuals</code>, which is readable by
-      administrators only; they are deliberately absent from the published
-      source of this tool.</p>`;
-  }
-
+// The P&L read is ADMIN-ONLY on select, not just on write, so this section
+// NEVER prints a P&L actual or variance figure, regardless of whether an
+// admin has them loaded for this session. The live Revenue per Member tab
+// still shows the real comparison to the admin who loaded it (unchanged --
+// that is the admin's own screen, the same reasoning margin's own session-
+// only overlay already relies on); this function backs the Report tab,
+// Print/PDF, and (via reportActual's reuse below) the identical condition
+// MGM.summaryText checks before printing an email line, all three of which
+// are meant to leave the admin's screen. A loaded actual used to print here
+// whenever one happened to be loaded, which is exactly the Print/email gap
+// named alongside exportCSV's existing admin-only gate.
+MGM.reportReconciliation = function () {
+  // Two genuinely different facts, worded differently rather than forced
+  // through one sentence: MGM.reportPnlWhy() ("there is nothing to compare")
+  // is accurate only when no comparison exists at all (anon, not an admin,
+  // nothing loaded, a read error, or a loaded period with no total). When a
+  // real comparison DOES exist for this session, reusing that wording would
+  // falsely claim there is nothing to compare when there is -- it is simply
+  // never shown here.
+  const hasComparison = MGM.reportActual(
+    MGM.pnlActuals ? MGM.pnlActuals.totalPerMemberYr : null) != null;
+  const why = hasComparison
+    ? 'A P&amp;L comparison is loaded for this session and is visible live on the ' +
+      'Revenue per Member tab, but is never included in a printed, exported or ' +
+      'emailed copy of this report.'
+    : esc(MGM.reportPnlWhy());
   return `<h3>Reconciliation against the P&amp;L</h3>
-    <table>
-      <tr><th>Stream</th><th class="num">From drivers</th>
-          <th class="num">P&amp;L actual</th><th class="num">Variance</th></tr>
-      ${/* An absent stream actual prints an em dash in BOTH the actual and the
-            variance column. A $0 variance against a missing actual would read
-            as perfect agreement, which is the most misleading thing this table
-            could say. */''}
-      ${STREAM_KEYS.map(k => {
-        const a = MGM.reportActual(rpm.actualStreams ? rpm.actualStreams[k] : null);
-        return `<tr><td>${esc(L[k])}</td>
-          <td class="num">${fm$(rpm.derived[k])}</td>
-          <td class="num">${a == null ? '—' : fm$(a)}</td>
-          <td class="num">${a == null ? '—' : fm$(rpm.derived[k] - a)}</td></tr>`;
-      }).join('')}
-      <tr class="total"><td>Total $/member/yr</td>
-        <td class="num"><b>${fm$(rpm.derived.total)}</b></td>
-        <td class="num"><b>${fm$(actual)}</b></td>
-        <td class="num">${fm$(rpm.derived.total - actual)}</td></tr>
-    </table>
-    <p class="small">Reconciled against <b>${esc(period || 'the loaded P&L period')}</b>.
-      An em dash in the actual column means that period reports no figure for
-      that stream, not a figure of zero. No income-statement line is reproduced
-      here or in the published source of this tool.</p>`;
+    <p class="small"><b>Not included in this report.</b> ${why}
+    The driver figures throughout this report are complete and unaffected —
+    only the comparison against the income statement is omitted here. The
+    P&amp;L figures live in <code>mgm_pnl_actuals</code>, which is readable
+    by administrators only — the same rule that keeps a loaded EBITDA margin
+    out of the valuation shown above.</p>`;
 };
 
 // ── Caveats on this run ───────────────────────────────────────────────────
@@ -3560,20 +3608,32 @@ MGM.reportWarnings = function (D) {
   if (K.unset) out.push(`No per-rep capacity is entered, so this run does not say ` +
     `whether the modeled add rate is achievable at the modeled headcount.`);
 
-  if (D.valuation.lensCount === 1) out.push(`Only one valuation lens has a basis, so ` +
+  // Against the report-safe valuation, not D.valuation directly: this
+  // function's output lands in the Report tab, same as the Valuation table
+  // itself. Checking the raw (possibly margin-overlaid) lensCount here would
+  // silently skip the "only one lens" warning in exactly the case where the
+  // table above has already redacted the EBITDA lens down to one.
+  const vSafe = MGM.reportSafeValuation(D);
+  if (vSafe.lensCount === 1) out.push(`Only one valuation lens has a basis, so ` +
     `the headline is a single-method figure and there is no range. It must not be ` +
     `quoted as a midpoint.`);
-  if (D.valuation.lensCount === 0) out.push(`No valuation lens has a basis, so this ` +
+  if (vSafe.lensCount === 0) out.push(`No valuation lens has a basis, so this ` +
     `run produces no indicated value at all.`);
 
   // The consequence of holding the loaded margin outside the saved state: two
   // readers can legitimately see different headlines for the same scenario.
   // Say so here rather than trying to reconcile them by persisting the figure.
-  if (D.marginFromPnl) out.push(`The EBITDA lens rests on a margin loaded from the ` +
-    `P&L for the session that produced this report. That figure is deliberately not ` +
-    `stored in the model, so the same inputs re-run without administrator access ` +
-    `value on the revenue lens alone and report a different headline. Both are ` +
-    `correct for what they had.`);
+  // Worded for what Report actually shows now: the EBITDA lens is EXCLUDED
+  // from this report (not merely "resting on" a hidden basis), since a
+  // margin loaded from the P&L never appears in anything meant to leave the
+  // admin's own screen.
+  if (C.unset && D.marginFromPnl) out.push(`The EBITDA lens is excluded from this ` +
+    `report: its only basis for the session that produced it was a margin loaded ` +
+    `from the P&L, which this tool never writes into the model's state and never ` +
+    `includes in this report, its print/PDF copy, or an emailed summary (the ` +
+    `admin-only CSV export still carries the underlying valuation inputs, same as ` +
+    `it always has). The same inputs re-run without administrator access reach the ` +
+    `same revenue-lens-only headline shown here.`);
 
   const badYears = Object.keys(st.monthlyHistory || {})
     .filter(k => !Number.isFinite(Number(k)) ||
@@ -3965,7 +4025,11 @@ MGM.importJSON = function (file) {
 /* ── Email: a mailto draft, nothing sent from this page ─────────────────── */
 MGM.summaryText = function () {
   const D = MGM.model();
-  const { st, M, R, F, valuation: v, cost: C } = D;
+  const { st, M, R, F, cost: C } = D;
+  // Report-safe, not D.valuation: this draft is a mailto: body meant to
+  // leave the browser, same reasoning as MGM.reportSafeValuation's own
+  // comment at its definition.
+  const v = MGM.reportSafeValuation(D);
   const first = M.years[0] || null;
   const final = M.years.length ? M.years[M.years.length - 1] : null;
   const last = R.length ? R[R.length - 1] : null;
@@ -3996,9 +4060,14 @@ MGM.summaryText = function () {
     : v.lensCount === 1
       ? `Indicated value: ${fmM(v.indicated)} — ${vh.caption}. Not a midpoint: only one lens has a basis, so there is no range.`
       : 'Indicated value: not available — no valuation lens has a basis. That is an absent figure, not a value of zero.');
-  if (D.marginFromPnl) lines.push(
-    'The EBITDA lens rests on a margin loaded from the P&L for this session only. ' +
-    'It is not stored in the model by this tool, so the same inputs without administrator ' +
+  // Only when the redaction above actually changed something: C.unset is
+  // required because with real costs entered, the EBITDA lens comes from
+  // them, not from marginFromPnl, and this note would otherwise fire beside
+  // a figure it does not describe.
+  if (C.unset && D.marginFromPnl) lines.push(
+    'The EBITDA lens is excluded from the valuation above: its only basis this ' +
+    'session is a margin loaded from the P&L, which this tool never includes in ' +
+    'anything that leaves the browser. The same figures without administrator ' +
     'access value on the revenue lens alone.');
   lines.push('',
     st.report.disclosure,
@@ -4104,7 +4173,17 @@ MGM.renderers.about = function (D) {
   // The derived attrition the shipped steady rate was seeded from.
   const da = MM.derivedAttrition(cfg.history);
   const derivedRows = da.rows.slice(-3);
-  const vh = MM.valuationHeadline(D.valuation);
+  // Report-safe, not D.valuation directly: this tab's own stated rule a few
+  // lines above is "This repo is PUBLIC. Not one gated P&L figure appears
+  // here" -- a stronger, unconditional promise than Report/Print/email's
+  // "meant to leave the screen" (About is ungated and visible to literally
+  // every viewer, including the admin whose OWN session loaded the margin).
+  // Without this, an admin viewing their own About tab after loading the
+  // P&L would see the real margin-derived headline value quoted directly in
+  // the walkthrough's worked example below -- the exact leak this tab's own
+  // comment says can never happen here.
+  const vSafe = MGM.reportSafeValuation(D);
+  const vh = MM.valuationHeadline(vSafe);
 
   // Every walkthrough entry names a tab by its CURRENT label, so renaming a tab
   // renames it here too rather than leaving the tour pointing at a name that is
@@ -4401,7 +4480,7 @@ MGM.renderers.about = function (D) {
         labelled as a single-method figure</b>, rather than averaging it with an
         absent one. A lens at zero is an absent method, not a valuation of zero, so
         averaging would report half of the only real answer. On the shipped
-        defaults exactly ${fmt(D.valuation.lensCount)} lens has a basis and the
+        defaults exactly ${fmt(vSafe.lensCount)} lens has a basis and the
         headline reads <b>${vh.hasValue ? fmM(vh.value) : '—'}</b> —
         ${esc(vh.caption)}.</li>
       <li>The real margin is <b>auth-gated and absent from this repository
@@ -5910,23 +5989,63 @@ MGM.staleHiddenRows = function (rowIds) {
   return stale;
 };
 
+// Visibility manager: every allowlisted id, not just the hidden ones --
+// each with its own on/off toggle. Same hiddenSections data, same
+// sanitizer, same RLS, same MGM.hideSection/restoreSection as the original
+// hidden-only restore list this replaces; the only thing that changed is
+// which ids this function iterates (HIDDEN_SECTION_IDS, all 287) and how
+// each is presented (a checkbox reflecting current state, not a one-way
+// "Restore" button that only ever appeared once something was hidden).
+// Which of labels.tiles/columns/rows an id's rename (if any) is stored
+// under, derived the same way MGM.hiddenSectionType derives the hide type --
+// from the id's own shape, never a second stored field. Returns null for
+// card/note ids and for any tile/column/row id this build does not offer a
+// rename for (a stream-keyed, month-named, program-named, CRM_STAGES-keyed,
+// or About-tab id -- see membershipModelConfig.js's labels.tiles/columns/
+// rows comment for why those stay literals).
+MGM.renameBucket = function (id) {
+  const ty = MGM.hiddenSectionType(id);
+  return ty === 'tile' ? 'tiles' : ty === 'column' ? 'columns' : ty === 'row' ? 'rows' : null;
+};
+MGM.renameable = function (id) {
+  const bucket = MGM.renameBucket(id);
+  return !!(bucket && Object.prototype.hasOwnProperty.call(MGM_CONFIG.labels[bucket], id));
+};
+
+// Admin-only, same mechanism as every other labels.* edit (labels.tabs,
+// labels.streams, labels.charts) -- a normal state field, saveable,
+// included in Publish like everything else. A blank value resets to the
+// shipped default rather than storing an empty label, since an empty tile
+// title or column header is not a usable state, just a different way to be
+// broken. Not routed through the generic data-k binder: these inputs carry
+// no data-k attribute at all (MGM.bindAll's `[data-k],[data-k-text]`
+// selector would simply never match them even though bindAll itself
+// defaults its root to `document`, not to the active panel), the same way
+// this panel's visibility checkboxes already call MGM functions directly
+// rather than being bound.
+MGM.renameLabel = function (id, value) {
+  if (!MGM.requireAdmin('Renaming a label')) return;
+  const bucket = MGM.renameBucket(id);
+  if (!bucket || !MGM.renameable(id)) return;
+  const v = String(value).trim();
+  MGM.state.labels[bucket][id] = v || MGM_CONFIG.labels[bucket][id];
+  MGM.save();
+  MGM.refresh();
+};
+
 MGM.renderRestorePanel = function () {
   const host = document.getElementById('mgmRestorePanel');
   if (!host) return;
   if (!MGM.restorePanelOpen) { host.innerHTML = ''; host.style.display = 'none'; return; }
   host.style.display = 'block';
 
-  const hidden = Object.keys(MGM.uiPrefs.hiddenSections);
-  if (!hidden.length) {
-    host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
-      <h3>Restore hidden sections</h3>
-      <p class="note">Nothing is hidden.</p>
-    </div>`;
-    return;
-  }
+  const hidden = MGM.uiPrefs.hiddenSections;
+  const hiddenIds = Object.keys(hidden);
 
-  const staleCols = MGM.staleHiddenColumns(hidden.filter(id => MGM.hiddenSectionType(id) === 'column'));
-  const staleRows = MGM.staleHiddenRows(hidden.filter(id => MGM.hiddenSectionType(id) === 'row'));
+  // Staleness is only a meaningful question for ids CURRENTLY hidden -- a
+  // visible column/row's live data is already on screen, nothing to nudge.
+  const staleCols = MGM.staleHiddenColumns(hiddenIds.filter(id => MGM.hiddenSectionType(id) === 'column'));
+  const staleRows = MGM.staleHiddenRows(hiddenIds.filter(id => MGM.hiddenSectionType(id) === 'row'));
   const stale = new Set([...staleCols, ...staleRows]);
 
   // Grouped by the tab each id belongs to, derived from the id's own prefix
@@ -5937,7 +6056,7 @@ MGM.renderRestorePanel = function () {
   // KINDS of thing (a whole card vs. one row or column within a table) even
   // when they share a tab.
   const byTab = {};
-  hidden.forEach(id => {
+  HIDDEN_SECTION_IDS.forEach(id => {
     const tab = TAB_ORDER.filter(t => id.indexOf(t + '-') === 0)
       .sort((a, b) => b.length - a.length)[0] || '?';
     (byTab[tab] = byTab[tab] || []).push(id);
@@ -5951,27 +6070,50 @@ MGM.renderRestorePanel = function () {
       (byType[ty] = byType[ty] || []).push(id);
     });
     const typeBlocks = HIDDEN_TYPE_ORDER.filter(ty => byType[ty]).map(ty => {
-      const items = byType[ty].map(id => `
-        <li style="margin:4px 0">${esc(HIDDEN_SECTION_LABELS[id] || id)}
+      const items = byType[ty].map(id => {
+        const isHidden = !!hidden[id];
+        const bucket = MGM.renameBucket(id);
+        const canRename = bucket && MGM.renameable(id);
+        // Checked = currently shown. Toggling calls the exact same
+        // hideSection/restoreSection every other control in the tool uses --
+        // no new write path, no new id, no new table.
+        return `
+        <li style="margin:4px 0">
+          <label style="cursor:pointer">
+            <input type="checkbox" ${isHidden ? '' : 'checked'}
+              onchange="MGM.${isHidden ? 'restoreSection' : 'hideSection'}('${id}')">
+            ${esc(HIDDEN_SECTION_LABELS[id] || id)}
+          </label>
+          ${canRename ? `<input class="lbl-in" type="text" style="margin-left:8px;width:180px"
+              value="${esc(MGM.state.labels[bucket][id])}"
+              onchange="MGM.renameLabel('${id}', this.value)">` : ''}
           ${stale.has(id) ? '<span class="note" style="color:var(--red-bright)">'
             + '&#9888; this table now has real data in this ' + (ty === 'row' ? 'row' : 'column')
             + '</span>' : ''}
-          <button class="btn" onclick="MGM.restoreSection('${id}')">Restore</button>
-        </li>`).join('');
+        </li>`;
+      }).join('');
       return `<div style="margin-top:6px"><span class="note">${HIDDEN_TYPE_LABELS[ty]}</span>
         <ul style="margin:2px 0 0 18px;list-style:none;padding:0">${items}</ul></div>`;
     }).join('');
-    return `<div style="margin-top:12px"><b>${tabLabel}</b>${typeBlocks}</div>`;
+    // Open by default only for the tab currently on screen -- 287 items
+    // across 13 tabs is unreadable flattened, and a visitor opening this
+    // panel almost always wants the tab they are already looking at.
+    return `<details style="margin-top:12px" ${t === MGM.tab ? 'open' : ''}>
+      <summary style="cursor:pointer"><b>${tabLabel}</b></summary>${typeBlocks}</details>`;
   }).join('');
 
   host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
-    <h3>Restore hidden sections</h3>
-    <p class="note">${hidden.length} item(s) hidden across the tool. Hidden means hidden for
-      every signed-in viewer, not just admins. A hidden column or row stays hidden even after
-      real data appears in it -- that nudge below is informational only, never automatic.</p>
+    <h3>Visibility &amp; labels</h3>
+    <p class="note">${hiddenIds.length} of ${HIDDEN_SECTION_IDS.length} item(s) hidden across the tool,
+      for every signed-in viewer, not just admins. A hidden column or row stays hidden even after real
+      data appears in it -- that nudge below is informational only, never automatic. Where a text box
+      appears beside an item, typing in it renames that tile, column or row in this browser; clearing
+      it resets to the shipped default. Hiding needs no Publish step -- it writes the shared list as
+      soon as you click. A rename is a normal state field instead, so it stays in this browser until
+      you Publish. Either way, other viewers see the change on their next page load, not immediately.</p>
     ${groups}
     <p style="margin-top:12px">
-      <button class="btn" onclick="MGM.restoreAllSections()">Restore all</button>
+      <button class="btn" onclick="MGM.restoreAllSections()">Show all</button>
     </p>
   </div>`;
 };
