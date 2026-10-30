@@ -710,6 +710,19 @@ MGM.baselineFor = function (profile, roadway) {
 MGM.model = function () { return MGM.runFor(MGM.state); };
 
 MGM.runFor = function (st) {
+  // NO session override for fuel settlement, deliberately. One was built here
+  // -- a clone carrying the gated figure, with the original `st` returned so
+  // nothing could persist it -- and then removed, because rounding the driver
+  // made it unreachable: the override only fires when the published value is
+  // absent, and the config now publishes a rounded figure. Dead code on the
+  // disclosure surface is exactly what a review criticised elsewhere in this
+  // file, so it is gone rather than kept "in case".
+  //
+  // An administrator still sees the exact figure: the reconciliation table
+  // reads MGM.pnlActuals.streams directly and shows actual against derived per
+  // stream, which is where a rounding gap belongs. The rounded driver and the
+  // gated actual therefore live in different columns of the same table instead
+  // of silently replacing one another.
   const pipeline = MM.pipelineModel(st, MGM.leads, MGM.profiles);
   const M = MM.runModel(st, MM.addsOpts(st, pipeline));
   const R = MM.revenueModel(st, M);
@@ -1668,7 +1681,17 @@ MGM.renderers.revpermember = function (D) {
          Right now: <b>${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'not available')}</b>. The
          <b>From drivers</b> column above is complete and unaffected; only the comparison
          is missing.</p>`
-      : `<p class="note">Reconciled against <b>${esc((MGM.pnlActuals && MGM.pnlActuals.periodLabel) || 'the loaded P&amp;L period')}</b>.</p>`}
+      : `<p class="note">Reconciled against <b>${esc((MGM.pnlActuals && MGM.pnlActuals.periodLabel) || 'the loaded P&amp;L period')}</b>.</p>
+         <p class="note"><b>Three drivers are deliberately rounded.</b> Ancillary
+         dues, fuel settlement and rewards breakage are published in this
+         tool's committed configuration rounded to the nearest
+         <b>$25/member/yr</b>, so the exact P&amp;L figures stay auth-gated —
+         this repository is public. Each therefore differs from the actual by
+         up to $12.50/member/yr, and the <b>Δ</b> column above shows that
+         rounding, not a modelling error. Fuel settlement in particular is on
+         this project's never-commit list by name, so the exact figure exists
+         only in this session and is never written into saved state, a
+         scenario or an export.</p>`}
   </div>
 
   <div class="card"><h3>Revenue by year</h3>
@@ -4449,6 +4472,7 @@ MGM.loadPnlActuals = async function () {
   MGM.loadedMarginPct = null;
   MGM.loadedNetMarginPct = null;
   MGM.loadedMarginBasisDetail = null;
+
   // The gitignored dev fallback, restricted to a LOCAL DEV HOST.
   //
   // It used to sit here unconditionally, above every auth check, so wherever
@@ -4530,6 +4554,7 @@ MGM.applyPnlTotals = function (t) {
   MGM.loadedMarginPct = num('ebitdaMarginPct');
   MGM.loadedNetMarginPct = num('netMarginPct');
   MGM.loadedMarginBasisDetail = t.marginBasisDetail || null;
+
 };
 
 // What the reconciliation tile (and the Valuation card) says for each reason.

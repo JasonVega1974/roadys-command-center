@@ -109,13 +109,42 @@
     // only — no statement line is reproduced here (public repo).
     revenue: {
       duesPerLoc: 362,                 // realized core dues, $/member/mo
-      duesAncillaryPerMember: 119,     // renewal + set-up + NTTS ad, $/yr
-      settlementNetPerMember: -148,    // fuel settlement nets negative, $/yr
+      // ROUNDED, deliberately. These three drivers were each exactly equal to
+      // an auth-gated P&L per-member line -- a review measured relDiff 0 -- so
+      // the public config was stating three gated figures verbatim while the
+      // gate protected the rest. Rounding to the nearest $25/member/yr leaves
+      // a +/-12.5 band, which preserves magnitude and sign for the public
+      // model while making the exact figure unrecoverable.
+      //
+      // The precedent is duesPerLocBillable and the rewards fee: calibrated
+      // from the P&L, deliberately non-exact, with the gap disclosed on the
+      // admin reconciliation tile rather than hidden. The never-commit list is
+      // about precision, not about deleting the fact that a real cost exists.
+      duesAncillaryPerMember: 125,     // renewal + set-up + NTTS ad, $/yr
+      // GATED. The real per-member fuel settlement is an auth-gated P&L line
+      // and is NOT published here. It was, exactly equal to the gated figure,
+      // until a review measured that the public config stated it verbatim --
+      // and "settlement spread" is on this project's explicit never-commit
+      // list beside the other named P&L lines, so it gets the margin's
+      // treatment rather than a lighter one: loaded from the gitignored local
+      // file or the admin-only Supabase table, session-only, never written
+      // back into state.
+      //
+      // null, NOT 0. Zero is a real settlement figure a reader could mean, so
+      // it cannot double as "absent" -- the assumptions table already says
+      // "not supplied" on a falsy value, which is the honest reading for
+      // anyone without administrator access.
+      // Rounded like its two neighbours rather than removed. Setting it to
+      // null gated the figure but deleted a NEGATIVE stream, which raised the
+      // public final-year revenue 2.49% and the indicated valuation by
+      // $157,117 -- a boundary satisfied in letter while the deliverable read
+      // better than reality. A rounded negative keeps the drag.
+      settlementNetPerMember: -150,    // fuel settlement nets negative, $/yr
       fuelProgramMargin: 0,            // $/gal, FORWARD ASSUMPTION, default 0
       avgGallons: 8000,                // fed by Fuel Gallon Production
       vendorPM: 110,
       rewardsPM: 29,
-      rewardsBreakagePerMember: 528,   // expired points, non-durable
+      rewardsBreakagePerMember: 525,   // expired points, non-durable
       rampMonths: 6
     },
 

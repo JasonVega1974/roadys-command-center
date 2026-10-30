@@ -487,12 +487,43 @@ test('SR-11: no gated value from the local actuals appears in any committed file
   // the one it disqualified. A control proved it: injecting a real gated value
   // into the config did not fail the suite. You cannot make a value public by
   // putting it in your own uncommitted tree.
+  // "Already public" means PUBLIC BEFORE THIS CHANGE -- read from
+  // origin/main, not from HEAD.
+  //
+  // Reading HEAD left a hole a review measured: a gated value planted in a NEW
+  // config field failed pre-commit (correctly) and then, once committed, went
+  // green with zero hits -- the coverage diagnostic even counted it as
+  // already-public. Being in the committed config is what defines
+  // already-public, so a value laundered itself by the very commit that
+  // published it. Layer 1 could not catch it either, because its PNL_FIELDS
+  // list matches field NAMES and an unrecognised name is never tested.
+  //
+  // Against origin/main, a literal introduced by the change under review is
+  // scanned. Anything newly published therefore has to be either absent from
+  // the gated file or explicitly allowlisted with a reason -- which is the
+  // path the billing.companies collision already took.
+  //
+  // This is the third position for this read. The first was the working copy,
+  // which let a secret become public by being pasted in. The second was HEAD,
+  // which let it become public by being committed. Both share one shape: the
+  // tree under review was treated as the authority on what the tree under
+  // review is allowed to contain.
   let publicSrc = null;
-  try {
-    publicSrc = require('node:child_process')
-      .execFileSync('git', ['show', 'HEAD:membershipModelConfig.js'],
-                    { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch (e) { /* no git, or the file is not committed yet */ }
+  for (const ref of ['origin/main:membershipModelConfig.js',
+                     'main:membershipModelConfig.js',
+                     'HEAD:membershipModelConfig.js']) {
+    try {
+      publicSrc = require('node:child_process')
+        .execFileSync('git', ['show', ref],
+                      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      if (ref.startsWith('HEAD')) {
+        t.diagnostic('neither origin/main nor main is readable; fell back to HEAD, ' +
+          'which means a gated value introduced by THIS commit would be treated ' +
+          'as already-public and NOT reported');
+      }
+      break;
+    } catch (e) { /* try the next ref */ }
+  }
 
   if (publicSrc === null) {
     // Fall back, but SAY the subtraction is weaker -- in this state a value
@@ -503,6 +534,26 @@ test('SR-11: no gated value from the local actuals appears in any committed file
       'treated as already-public and NOT reported');
   }
   const publicLiterals = literals(publicSrc);
+
+  // Annual totals of the committed monthly history are public too, even though
+  // they are not literals anywhere: each is the sum of twelve published
+  // numbers, so anyone with the config has them. Without this, a gated figure
+  // that happens to equal a published annual total gets reported -- which
+  // began happening the moment the refresh rounded a driver out of the config,
+  // against a hand-transcribed total in this very file.
+  //
+  // Derived from the SAME source as publicLiterals (origin/main), not from the
+  // working tree, for the reason above: a sum of numbers you just added is not
+  // evidence that the sum was already public.
+  try {
+    const hist = /monthlyHistory:\s*\{([\s\S]*?)\n    \}/.exec(publicSrc);
+    if (hist) {
+      for (const row of hist[1].match(/\[[^\]]*\]/g) || []) {
+        const nums = (row.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+        if (nums.length) publicLiterals.add(nums.reduce((a, b) => a + b, 0));
+      }
+    }
+  } catch (e) { /* no history block: nothing to add */ }
   const isYear = n => Number.isInteger(n) && n >= 1900 && n <= 2100;
 
   // ── One narrow allowlist, BY FIELD NAME, never by value ──────────────
@@ -895,13 +946,13 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   const r = MembershipModel.revenueModel(st, MembershipModel.runModel(st))[0];
   near(r.members, 397.691361, 'members');
   near(r.streams.dues, 1727571.272516, 'dues');
-  near(r.streams.duesAncillary, 47325.271968, 'duesAncillary');
-  near(r.streams.settlement, -58858.321439, 'settlement');
+  near(r.streams.duesAncillary, 49711.420134548614, 'duesAncillary');
+  near(r.streams.settlement, -59653.704161458336, 'settlement');
   near(r.streams.fuelProgram, 0, 'fuelProgram — zero by design');
   near(r.streams.vendor, 367466.817635, 'vendor');
   near(r.streams.rewards, 69198.296827, 'rewards');
-  near(r.streams.rewardsBreakage, 209981.038648, 'rewardsBreakage');
-  near(r.total, 2362684.376155, 'total');
+  near(r.streams.rewardsBreakage, 208787.96456510416, 'rewardsBreakage');
+  near(r.total, 2363082.0675159027, 'total');
   // Ties back to the per-member figure the reconciliation tile reports.
   // NOT A CHECK ON THE REFRESH. A review pointed out this ratio cannot fail
   // for any member count: every stream is members x a driver, so total/members
@@ -910,7 +961,7 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   // comment below spells out -- but it was wrongly cited as evidence that the
   // Oct 29 repins were verified. The figures that actually moved with the base
   // are the per-stream absolutes above.
-  near(r.total / r.members, 5941, '$/member/yr (driver sum, base-independent)');
+  near(r.total / r.members, 5942, '$/member/yr (driver sum, base-independent)');
 });
 
 test('fuelProgramMargin defaults to zero, so no prospective fuel revenue', () => {
@@ -921,10 +972,20 @@ test('fuelProgramMargin defaults to zero, so no prospective fuel revenue', () =>
   assert.ok(R[0].streams.settlement < 0, 'settlement nets negative');
 });
 
-test('revPerMember derives $5,941 from the committed drivers', () => {
+test('revPerMember derives the driver sum from the committed drivers', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
-  // 362*12 + 119 - 148 + 0 + 110*12*0.70 + 29*12*0.50 + 528 = 5941.
+  // The driver sum: dues x 12, plus ancillary, plus settlement (negative),
+  // plus the two participation-weighted streams, plus breakage.
+  //
+  // The terms are NOT written out here any more. They were, and three of them
+  // were exactly equal to auth-gated P&L lines -- so this comment published
+  // three gated figures in a file whose own SR-11 rule forbids exactly that:
+  // a guard, test or comment describing a banned value must never contain it.
+  // Rounding those drivers in the config un-masked this, because a literal
+  // stops being "already public" the moment it leaves the committed config.
+  // The sum is asserted below; the terms are read from the config by the
+  // engine, where they belong.
   //
   // This is the DRIVER SUM, computed from the seven committed drivers. It is
   // deliberately close to, but not equal to, the measured per-member figure:
@@ -937,10 +998,10 @@ test('revPerMember derives $5,941 from the committed drivers', () => {
   //
   // Keeping the rounded drivers is an explicit owner decision; the gap is
   // surfaced on the reconciliation tile for a signed-in admin, not hidden.
-  near(rpm.derived.total, 5941, 'derived $/member/yr');
+  near(rpm.derived.total, 5942, 'derived $/member/yr');
   assert.equal(rpm.actual, null, 'unsigned: no actual');
   assert.equal(rpm.benchmark, 20000);
-  near(rpm.varianceVsBenchmark, 5941 - 20000, 'benchmark variance');
+  near(rpm.varianceVsBenchmark, 5942 - 20000, 'benchmark variance');
 });
 
 test('a loaded P&L with no per-member total gives no actual, not a zero', () => {
@@ -1140,25 +1201,25 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
   const last = R[R.length - 1];
-  near(last.total, 2522782.875833, 'final-year revenue basis');
+  near(last.total, 2523207.515266507, 'final-year revenue basis');
 
   // Margin unset (the shipped default): the EBITDA lens is zero, so the
   // revenue lens is the high end.
   st.valuation.ebitdaMargin = 0;
   const a = MembershipModel.valuation(st, last);
-  near(a.rev, 6306957.189582, 'revenue lens at 2.5x');
+  near(a.rev, 6308018.788166268, 'revenue lens at 2.5x');
   near(a.ebitda, 0, 'EBITDA lens is zero at an unset margin');
   near(a.low, 0, 'low is the EBITDA lens here');
-  near(a.high, 6306957.189582, 'high is the revenue lens here');
-  near(a.mid, 3153478.594791, 'midpoint');
+  near(a.high, 6308018.788166268, 'high is the revenue lens here');
+  near(a.mid, 3154009.394083134, 'midpoint');
 
   // An 80% margin inverts the ordering: the EBITDA lens is now on top.
   st.valuation.ebitdaMargin = 80;
   const b = MembershipModel.valuation(st, last);
-  near(b.ebitda, 10091131.503331, 'EBITDA lens at 80% x 5');
-  near(b.low, 6306957.189582, 'low is now the revenue lens');
-  near(b.high, 10091131.503331, 'high is now the EBITDA lens');
-  near(b.mid, 8199044.346457, 'midpoint follows the inversion');
+  near(b.ebitda, 10092830.061066028, 'EBITDA lens at 80% x 5');
+  near(b.low, 6308018.788166268, 'low is now the revenue lens');
+  near(b.high, 10092830.061066028, 'high is now the EBITDA lens');
+  near(b.mid, 8200424.424616148, 'midpoint follows the inversion');
 });
 
 test('indicated is the single lens when only one has a basis, never half of it', () => {
@@ -1175,8 +1236,8 @@ test('indicated is the single lens when only one has a basis, never half of it',
 
   const defaults = MembershipModel.valuation(st, last);
   assert.equal(defaults.lensCount, 1, 'only the revenue lens has a basis');
-  near(defaults.indicated, 6306957.189582, 'indicated is the whole revenue lens');
-  near(defaults.mid, 3153478.594791, 'mid still reports the two-method midpoint');
+  near(defaults.indicated, 6308018.788166268, 'indicated is the whole revenue lens');
+  near(defaults.mid, 3154009.394083134, 'mid still reports the two-method midpoint');
   assert.notEqual(defaults.indicated, defaults.mid,
     'the headline figure must not be half of the only live lens');
 
@@ -1598,12 +1659,24 @@ test('the valuation panel consumes the computed EBITDA, not the margin assumptio
   const viaMargin = MembershipModel.valuation(st, last);               // no override
   const viaComputed = MembershipModel.valuation(st, last, lastF.ebitda);
 
-  // Both lenses pinned to independently computed figures, so neither side is
-  // read back from the code under test:
-  //   margin   = 2,424,563.806607 x 25%
-  //   computed = 2,424,563.806607 - 163,242.808053 - 240,000
-  near(viaMargin.ebitdaBase, 630695.718958, 'margin lens: 25% of final-year revenue');
-  near(viaComputed.ebitdaBase, 2112927.102338, 'computed lens: revenue less real costs');
+  // Both lenses pinned to figures derived from the SAME basis, so neither side
+  // is read back from the code under test. A review found this comment still
+  // naming the PRE-REFRESH basis while the assertions below had moved, and its
+  // arithmetic had not matched them since an earlier repin in the same
+  // session. That is the fifth instance of one habit in this work: a claim of
+  // independent verification left standing over figures that no longer
+  // support it. Restate all three whenever the data refreshes.
+  //
+  //   basis    = 2,523,207.515267   (final-year revenue, pinned above)
+  //   margin   = basis x 25% = 630,801.878817
+  //   computed = basis - 169,855.773495 cost-to-serve
+  //                    - 240,000.000000 sales spend
+  //            = 2,113,351.741772
+  //
+  // Both cost terms are the test's OWN inputs ($400/member/yr over the
+  // modelled base, and $20,000/mo x 12), not figures read out of the engine.
+  near(viaMargin.ebitdaBase, 630801.878817, 'margin lens: 25% of final-year revenue');
+  near(viaComputed.ebitdaBase, 2113351.741772, 'computed lens: revenue less real costs');
 
   // DIRECTION IS DELIBERATELY NOT ASSERTED. With these modest cost inputs
   // ($20k/mo spend, $400/member/yr) the computed EBITDA lands ~3.3x ABOVE a 25%
