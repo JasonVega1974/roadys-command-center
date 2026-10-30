@@ -282,6 +282,10 @@ body:not(.mgm-admin) .mgm-adminonly{display:none !important}
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
       <button class="btn ghost mgm-adminonly" id="scenarioSaveBtn" onclick="MGM.scenarioSave()" style="display:none">Save scenario…</button>
+      <button class="btn ghost mgm-adminonly" onclick="MGM.pullLiveState()"
+              title="Replace your local edits with the latest published state. Anything you have not published will be lost.">⬇ Pull latest</button>
+      <button class="btn primary mgm-adminonly" onclick="MGM.publishState()"
+              title="Push your current state to every signed-in viewer. They will see it on their next page load, not immediately.">☁️ Publish</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.openEmail()"
               title="Opens a draft in your own mail client. Nothing is sent from this page.">✉ Email draft</button>
       <button class="btn ghost" onclick="MGM.doPrint()">⎙ Print</button>
@@ -5227,6 +5231,155 @@ MGM.cloudSave = async function (rec) {
   return { ok: true };
 };
 
+/* ═══════════════ LIVE STATE / PUBLISH ═══════════════
+ *
+ * Replaces scenario-based sharing (hidden, not deleted -- see
+ * SCENARIOS_UI_ENABLED). One shared mgm_live_state row holds the full model
+ * state. An admin edits locally as always; Publish pushes the current state
+ * to that row. Every other signed-in viewer sees it on their next page
+ * load -- no real-time push, no autosave on every keystroke.
+ *
+ * Concurrency is DETECTION, not merge -- a deliberate departure from
+ * hiddenSections' retry-the-delta pattern. See sql/2026-10-30-mgm-live-
+ * state.sql for why: a boolean-map delta is trivially re-appliable against
+ * any snapshot, but a full state tree (with admin-mutable ARRAYS --
+ * groups, sources, history, staffing.reps -- where even the SHAPE can
+ * differ between two edits) has no equivalent trivial delta. Publish
+ * refuses outright on a conflict rather than attempting one.
+ */
+
+// MGM._liveStateSeenAt is the concurrency token from the moment THIS
+// session last synced with the published truth -- at boot, at the last
+// explicit Pull, or after the last successful Publish. Deliberately NOT
+// re-read fresh immediately before every write: reading right before the
+// write would only catch a conflict in the few hundred milliseconds of the
+// write itself, silently missing the much more likely case of "Scott
+// published ten minutes ago and I have been editing locally since without
+// reloading" -- exactly the silent clobber this design exists to prevent.
+MGM._liveStateSeenAt = null;
+
+// Runs at boot for every signed-in viewer. A non-admin always resolves to
+// the published truth -- they cannot save local edits anyway (every write
+// is refused server-side), so there is no unsaved work of theirs to
+// protect. An admin's local edits are NEVER silently overwritten: the
+// token is captured either way (Publish needs it later), but the STATE
+// CONTENT only replaces MGM.state on a genuinely fresh device (no prior
+// localStorage for this tool at all) -- a normal reload resumes from
+// localStorage exactly as it always has.
+MGM.loadLiveState = async function () {
+  const sb = MGM.sb();
+  if (!sb || !MGM.authEmail()) return;  // unsigned: defaults stand, same as every other cloud read
+
+  const { data: row, error } = await sb.from('mgm_live_state')
+    .select('state,updated_at').eq('id', 'v1').maybeSingle();
+  if (error || !row) return;  // fail open: keep whatever state already loaded
+
+  if (!MGM.canEdit()) {
+    const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
+    MGM.state = merged.state;
+    MGM._liveStateSeenAt = row.updated_at;
+    return;
+  }
+
+  MGM._liveStateSeenAt = row.updated_at;
+  if (!localStorage.getItem(STORE_KEY)) {
+    // Fresh device: nothing local to protect, so bootstrap from the
+    // published truth rather than the shipped defaults.
+    const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
+    MGM.state = merged.state;
+    MGM.save();
+  }
+  // Else: this device's local state, already loaded earlier in boot, is
+  // left exactly as it was.
+};
+
+// Explicit admin action: replace local edits with the latest published
+// state. The one place this feature discards local work, and only ever on
+// a confirmed, explicit click -- never automatically.
+MGM.pullLiveState = async function () {
+  if (!MGM.requireAdmin('Pulling the published state')) return;
+  if (!confirm('Replace your local edits with the latest published state? '
+    + 'Anything you have not published will be lost.')) return;
+  const sb = MGM.sb();
+  if (!sb) { alert('Not connected.'); return; }
+  const { data: row, error } = await sb.from('mgm_live_state')
+    .select('state,updated_at').eq('id', 'v1').maybeSingle();
+  if (error || !row) {
+    alert('Could not reach the shared live state' + (error ? ': ' + error.message : '') + '.');
+    return;
+  }
+  const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
+  MGM.state = merged.state;
+  MGM._liveStateSeenAt = row.updated_at;
+  MGM.save();
+  MGM.refresh();
+  alert('Pulled the latest published state.');
+};
+
+MGM.publishState = async function () {
+  if (!MGM.requireAdmin('Publishing')) return;
+  const sb = MGM.sb();
+  if (!sb) { alert('Not connected.'); return; }
+
+  // THE PUBLISH BOUNDARY FAILS CLOSED, identically to MGM.cloudSave and
+  // MGM.exportJSON: verify the OUTBOUND PAYLOAD ITSELF, never trust that a
+  // strip ran upstream. This is a NEW, LARGER outbound surface than either
+  // of those (the full model state, not one scenario or one export click),
+  // so it gets the same scrutiny, not less.
+  MGM.stripResidue(MGM.state);
+  if (MGM.stripResidue.removed) MGM.save();
+  const verdict = MM.residueVerdict({ state: MGM.state });
+  if (verdict !== 'clean') {
+    console.error('[MGM] REFUSED to publish: ' + verdict);
+    alert(verdict === 'residue'
+      ? 'This state still carries stored text from a removed feature, which may '
+        + 'include an auth-gated P&L figure. It was not published.\n\nReload the '
+        + 'page and try again -- the reload cleans it.'
+      : 'This state could not be checked before publishing (it is nested too '
+        + 'deeply to serialise), so it was not published.');
+    return;
+  }
+
+  // No prior sync point this session (e.g. signed in after boot already
+  // ran without a session). There is no earlier baseline being silently
+  // skipped here -- whatever is live right now legitimately becomes one.
+  if (MGM._liveStateSeenAt == null) {
+    const { data: row, error: readErr } = await sb.from('mgm_live_state')
+      .select('updated_at').eq('id', 'v1').maybeSingle();
+    if (readErr || !row) {
+      alert('Could not reach the shared live state' + (readErr ? ': ' + readErr.message : '') + '.');
+      return;
+    }
+    MGM._liveStateSeenAt = row.updated_at;
+  }
+
+  if (!confirm('Publish the current state? Every signed-in viewer will see this '
+    + 'the next time they load the page.')) return;
+
+  const { data: upd, error } = await sb.from('mgm_live_state')
+    .update({ state: MGM.state, published_by: MGM.authEmail() || '' })
+    .eq('id', 'v1').eq('updated_at', MGM._liveStateSeenAt).select();
+
+  if (error) {
+    alert(/row-level security|42501|permission/i.test(error.message || '')
+      ? 'Publishing is limited to administrators.'
+      : 'Could not publish: ' + error.message);
+    return;
+  }
+  if (!upd || !upd.length) {
+    // Lost the race: someone else published since MGM._liveStateSeenAt was
+    // captured. Refuse outright -- see the file header comment for why this
+    // does not attempt to merge.
+    alert('Someone else published since you last loaded the shared state. '
+      + 'Your changes were NOT sent, so nothing was lost or overwritten. '
+      + 'Pull the latest published state, reapply your change on top of it, '
+      + 'and publish again.');
+    return;
+  }
+  MGM._liveStateSeenAt = upd[0].updated_at;
+  alert('Published.');
+};
+
 // Merge the shared cloud set down into the local list. Read-only, so any
 // signed-in user can run it; the sign-in path uses this instead of a full
 // sync so nobody is handed refusals they did not ask for.
@@ -6366,6 +6519,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // then yank hidden ones away a moment later -- a visible flash of
   // content a hide is supposed to prevent the reader from ever seeing.
   await MGM.loadUiPrefs();
+  // Awaited for the same flash-of-content reason as loadUiPrefs: on a fresh
+  // device this bootstraps MGM.state from the published row, and that has
+  // to land before the first MGM.refresh() paints the shipped defaults.
+  await MGM.loadLiveState();
   MGM.loadRegionVariance();      // fetch + its own refresh; nothing waits on it
   MGM.renderAuth();
   MGM.refresh();
