@@ -10,8 +10,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="../busDevGallonsConfig.js"></script>
-<script src="../busDevGallonsCalculator.js"></script>
 <script src="../membershipModelConfig.js?v=2026-10-28"></script>
 <script src="../membershipModel.js?v=r5"></script>
 <!-- Order matters: roadysBD.js reads window.supabase inside client(), so the
@@ -194,6 +192,16 @@ input.cell{width:84px;text-align:right;padding:4px 6px}
 /* Read mode shows values; edit mode reveals controls and row tools. */
 .mgm-editonly{display:none}
 body.mgm-edit .mgm-editonly{display:inline-flex;gap:6px}
+/* Every prior use of .mgm-editonly was a <div>/<span>, so display:inline-flex
+   was always right. The Fuel Gallon Production split-row table is the first
+   to put it on a <tr>/<td>/<th> (the mismatch-nudge row and the "+ Add
+   profile/roadway split" row) -- inline-flex on a table row/cell breaks out
+   of the table's column tracks entirely (measured: a ~1158px-wide table's
+   row collapsing to ~523px and ~210px boxes, not a row). These three
+   overrides make the SAME class behave correctly in a table context without
+   a second class name to keep in sync with the first. */
+body.mgm-edit tr.mgm-editonly{display:table-row}
+body.mgm-edit td.mgm-editonly,body.mgm-edit th.mgm-editonly{display:table-cell}
 .cell{border:1px solid transparent;background:transparent;color:inherit;
       font:inherit;width:100%;text-align:right;padding:3px 5px;border-radius:4px}
 body.mgm-edit .cell{border-color:var(--line);background:var(--surface)}
@@ -498,6 +506,53 @@ const MM = (function () {
   MGM.engineProblem = function () { return problem(MM || engine); };
   return engine;
 }());
+
+// Chokepoint, same discipline as MGM.stripResidue (grep that name: it runs
+// at every one of this file's state-entry points, not only the boot path).
+// Called from all SIX places `MGM.state = merged.state` (or the equivalent)
+// assigns a freshly-merged state: boot (localStorage), MGM.importJSON,
+// MGM.loadLiveState's two branches, MGM.pullLiveState, MGM.scenarioLoad.
+//
+// A state saved or published before the 2026-10-30 PTP dissolution still
+// has a `ptp` groups entry and no `svc` entry. mergeState replaces a saved
+// `groups` ARRAY wholesale (arrays are never merged element-by-element --
+// see its own bothPlain check) -- so without this, gallons.groupSplits.svc's
+// 23 locations are permanently orphaned (no matching `groups` row, so
+// MM.gallonProduction never visits them -- confirmed to silently drop
+// ~130,000 gal/mo with no error), and a stale `ptp` entry keeps inflating
+// groupTotal()/M.startTotal forever as an ordinary location count the
+// gallons tab can never produce anything for. Caught by an independent
+// review, not by this file's own testing: the override-preserving part of
+// this migration (see the boot-time block below) was verified live across
+// several cases, but this groups-ARRAY half of the same problem was missed
+// at every entry point, including boot.
+//
+// Returns whether anything changed, so a caller that only saves
+// conditionally (matching the existing stripResidue call sites' pattern)
+// knows whether a persist is needed.
+MGM.reconcilePtpDissolution = function (state) {
+  const groups = state && state.groups;
+  if (!Array.isArray(groups)) return false;
+  const hasPtp = groups.some(g => g && g.key === 'ptp');
+  const hasSvc = groups.some(g => g && g.key === 'svc');
+  if (!hasPtp && hasSvc) return false;   // already reconciled -- the common case
+  let changed = false;
+  if (hasPtp) {
+    const idx = groups.findIndex(g => g && g.key === 'ptp');
+    if (idx >= 0) { groups.splice(idx, 1); changed = true; }
+  }
+  if (!hasSvc) {
+    // Shipped values, not a hand-typed fallback: the one thing this function
+    // must never do is invent a count MGM_CONFIG does not already assert.
+    const shipped = (MGM_CONFIG.groups || []).find(g => g.key === 'svc');
+    groups.push(shipped
+      ? { key: 'svc', label: shipped.label, count: shipped.count }
+      : { key: 'svc', label: 'Service Centers', count: 0 });
+    changed = true;
+  }
+  return changed;
+};
+
 const STORE_KEY = 'roadys_mgm_v2';   // v2: the v1's state shape is not compatible
 
 // Scenario-based sharing is being replaced by Publish (one shared live-state
@@ -522,6 +577,7 @@ try {
   if (saved) {
     var merged = MM.mergeState(MM.defaultState(MGM_CONFIG), saved);
     MGM.state = merged.state;
+    var _ptpGroupsFixed = MGM.reconcilePtpDissolution(MGM.state);
 
     // Removing the copy-override feature has to remove its DATA, not just its
     // code. mergeState keeps keys it does not recognise -- deliberately, so an
@@ -576,9 +632,15 @@ try {
     // the silent-loss case approved as needing a safe-by-construction fix
     // rather than an assumption that no override existed.
     var oldProfile = saved.gallons && saved.gallons.groupProfile;
+    // Seeded from the groups-array fix above (not only from the override
+    // migration below), so a state that needed ONLY the groups-array
+    // reconciliation -- no old-shape gallons.groupProfile at all, e.g. a
+    // live-state row someone hand-edited after 2026-10-30 to remove `svc`
+    // again -- still gets persisted rather than silently re-diverging on
+    // the very next reload.
+    var migratedAny = _ptpGroupsFixed;
     if (oldProfile) {
       var oldOverride = (saved.gallons && saved.gallons.groupBaselineOverride) || {};
-      var migratedAny = false;
       Object.keys(oldProfile).forEach(function (key) {
         // ptp handled separately below: it was dissolved into three groups
         // (Truck Stop, PPO, Service Centers), so a single old override has
@@ -621,9 +683,10 @@ try {
         delete MGM.state.gallons.groupProfile;
         delete MGM.state.gallons.groupBaselineOverride;
       }
-      if (migratedAny) {
-        try { console.warn('[MGM] migrated gallons group overrides to the new groupSplits shape'); } catch (e5) {}
-      }
+    }
+    if (migratedAny) {
+      try { console.warn('[MGM] migrated gallons group' + (_ptpGroupsFixed ? 's' : '')
+            + ' / overrides to the new shape (PTP dissolved' + (oldProfile ? ', old overrides carried forward' : '') + ')'); } catch (e5) {}
       try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e6) {}
     }
   }
@@ -813,12 +876,7 @@ MGM.loadRegionVariance = async function () {
 // never a live read of BusDevGallonsCalc/busDevGallonsConfig.js any more.
 // The engine itself no longer needs this injected (MM.gallonProduction reads
 // state.gallons.baselines directly, since the data now lives inside the
-// state it already receives) -- these exist only for dropdown population and
-// the "engine says X" placeholder text.
-MGM.baselineFor = function (profile, roadway) {
-  const rows = (MGM.state.gallons || {}).baselines || [];
-  return rows.find(r => r.profile === profile && r.roadway === roadway) || null;
-};
+// state it already receives) -- these exist only for dropdown population.
 MGM.gallonProfiles = function () {
   const rows = (MGM.state.gallons || {}).baselines || [];
   const seen = [];
@@ -2058,10 +2116,22 @@ MGM.renderers.gallons = function (D) {
       : sign('PER MEMBER', '—', 'no group resolved a baseline', 'dark')}
   </div>
 
-  <div class="card" data-card="gallons-engine-baselines"><h3>Engine baselines</h3>
+  <div class="card"><h3>Engine baselines</h3>
+    <!-- No data-card: not in HIDDEN_SECTION_IDS, same category as the other
+         five cards this build deliberately leaves unhideable (see
+         MGM.decorateHiddenSections' comment) -- that function attaches a
+         hide button to ANY element carrying data-card regardless of
+         allowlist membership, so a card outside the allowlist with the
+         attribute gets a button that does nothing when clicked
+         (HIDDEN_SECTION_IDS.indexOf(id) < 0 inside MGM.hideSection refuses
+         the write silently). Adding this card to the 287-id allowlist is a
+         bigger, separately-reviewed change (that system's own bar is a
+         mechanically-verified bijection against the live markup); out of
+         scope here. -->
+
     <table>
       <tr><th>Profile</th><th>Roadway</th><th class="num">Baseline gal/mo</th></tr>
-      ${gcfg.baselines.map((b, i) => `<tr>
+      ${(gcfg.baselines || []).map((b, i) => `<tr>
         <td>${esc(b.profile)}</td><td>${esc(b.roadway)}</td>
         <td class="num"><input class="cell" type="number"
             data-k="gallons.baselines.${i}.baseline" value="${b.baseline}"></td></tr>`).join('')}
@@ -2084,17 +2154,31 @@ MGM.renderers.gallons = function (D) {
           <th class="num" data-col="gallons-production-by-group-col-baseline-gal-mo">${esc(st.labels.columns['gallons-production-by-group-col-baseline-gal-mo'])}</th>
           <th class="num" data-col="gallons-production-by-group-col-gallons-mo">${esc(st.labels.columns['gallons-production-by-group-col-gallons-mo'])}</th><th class="mgm-editonly"></th></tr>
       ${G.byGroup.map(g => {
+        // g.key reaches here from state.groups, which MGM.makeGroupKey
+        // constrains to [a-z0-9-]+ ONLY for admin-UI-created groups --
+        // MGM.importJSON is deliberately not admin-gated, and a published
+        // mgm_live_state row merges into every signed-in viewer's state the
+        // same way, so neither path runs a crafted key through that
+        // function. Every data-k path and onclick handler below embeds
+        // g.key inside a single-quoted JS string literal that itself sits
+        // inside a double-quoted HTML attribute, and esc() does not escape
+        // `'` -- so an unvalidated key containing `'` or `"` breaks out of
+        // either quoting context and runs as script in any viewer's
+        // browser the moment they load a state carrying it. Validated here,
+        // at the one place these strings get built, rather than trusted
+        // from upstream.
+        const safeKey = /^[a-z0-9-]+$/.test(g.key);
         const splitPath = `gallons.groupSplits.${g.key}`;
         const rowsHtml = g.rows.map((row, i) => `<tr>
-          ${i === 0 ? `<td>${esc(g.label)}${g.unmapped ? ' <span class="ovr">unmapped</span>' : ''}</td>` : '<td></td>'}
-          <td><select class="cell" data-k="${splitPath}.${i}.profile">
+          ${i === 0 ? `<td>${esc(g.label)}${g.unmapped ? ' <span class="ovr">unmapped</span>' : ''}${!safeKey ? ' <span class="ovr" title="This group\'s id contains characters this table cannot safely render controls for">unsafe id — read-only</span>' : ''}</td>` : '<td></td>'}
+          ${safeKey ? `<td><select class="cell" data-k="${splitPath}.${i}.profile">
             ${profiles.map(pr => `<option${pr === row.profile ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
-          </select></td>
+          </select>${MGM.editedMark(`${splitPath}.${i}.profile`)}</td>
           <td><select class="cell" data-k="${splitPath}.${i}.roadway">
             ${MGM.gallonRoadwaysFor(row.profile).map(rd => `<option${rd === row.roadway ? ' selected' : ''}>${esc(rd)}</option>`).join('')}
-          </select></td>
+          </select>${MGM.editedMark(`${splitPath}.${i}.roadway`)}</td>
           <td class="num"><input class="cell" type="number"
-              data-k="${splitPath}.${i}.locations" value="${row.locations}"></td>
+              data-k="${splitPath}.${i}.locations" value="${row.locations}">${MGM.editedMark(`${splitPath}.${i}.locations`)}</td>
           <td class="num"><input class="cell" type="number"
               data-k="${splitPath}.${i}.baselineOverride"
               value="${row.overridden ? row.baseline : ''}" placeholder="${fmt(row.engineBaseline)}">
@@ -2102,7 +2186,9 @@ MGM.renderers.gallons = function (D) {
               ${row.unmapped ? ' <span class="ovr" title="No baseline matches this profile/roadway">unmapped</span>' : ''}</td>
           <td class="num"><b>${fmt(row.gallons)}</b></td>
           <td class="mgm-editonly"><button class="btn" title="Remove this split"
-              onclick="MGM.removeRow('${splitPath}',${i})">✕</button></td></tr>`).join('');
+              onclick="MGM.removeRow('${splitPath}',${i})">✕</button></td>` : `<td>${esc(row.profile)}</td><td>${esc(row.roadway)}</td>
+          <td class="num">${fmt(row.locations)}</td><td class="num">${fmt(row.baseline)}</td>
+          <td class="num"><b>${fmt(row.gallons)}</b></td><td></td>`}</tr>`).join('');
         // Soft nudge only, never a block: a group's split rows are each
         // independently admin-edited, so their locations summing to
         // something other than the group's own count (edited on Starting
@@ -2114,8 +2200,8 @@ MGM.renderers.gallons = function (D) {
             <span class="note neg">Split locations (${fmt(g.locations)}) don't sum to
             this group's own count (${fmt(g.count)}, set on Starting Membership).</span>
           </td><td></td></tr>` : '') +
-          `<tr class="mgm-editonly"><td colspan="7"><button class="btn"
-              onclick="MGM.addRow('${splitPath}',{profile:'',roadway:'',locations:0,baselineOverride:null})">+ Add profile/roadway split</button></td></tr>`;
+          (safeKey ? `<tr class="mgm-editonly"><td colspan="7"><button class="btn"
+              onclick="MGM.addRow('${splitPath}',{profile:'',roadway:'',locations:0,baselineOverride:null})">+ Add profile/roadway split</button></td></tr>` : '');
           // Blank, not pre-filled with profiles[0]: a dynamic value here would
           // need to pass through JSON.stringify to embed safely in JS source,
           // and JSON.stringify's double-quoted output breaks out of this
@@ -2129,7 +2215,7 @@ MGM.renderers.gallons = function (D) {
           // dropdown -- never a silently wrong number.
       }).join('')}
       <tr class="total"><td>Existing network</td>
-        <td colspan="3"></td>
+        <td colspan="4"></td>
         <td class="num"><b>${fmt(G.existing)}</b></td><td></td></tr>
     </table>
     ${G.byGroup.some(g => g.rows.some(r => r.overridden)) ? `<p class="note"><span class="ovr">
@@ -4129,6 +4215,7 @@ MGM.importJSON = function (file) {
       // argument, so it gets a FRESH defaultState every call.
       const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), o.state);
       MGM.state = merged.state;
+      MGM.reconcilePtpDissolution(MGM.state);
       // A state object entering the page, so a chokepoint belongs here. The
       // commit claimed three chokepoints covered every entry; a review found
       // this fourth one, and measured an imported file putting the residue
@@ -4650,9 +4737,11 @@ MGM.renderers.about = function (D) {
       survive a refresh, so new data cannot overwrite a judgement call. The signup
       history comes from a spreadsheet rather than a CSV and is carried through
       verbatim.</p>
-    <p class="note">The gallon baselines are not copied at all. They are read live
-      from <code>busDevGallonsConfig.js</code> every time this page loads, so the
-      Bus Dev engine stays the single source for them.</p>`, 'about-refreshing-data')}
+    <p class="note">The gallon baselines are this tool's own independent copy of
+      the Bus Dev Potential Gallons tool's profile/roadway averages (captured
+      2026-10-30), editable on the Fuel Gallon Production tab's "Engine
+      baselines" card. They are <b>not</b> a live sync to that tool and will
+      diverge over time -- that is expected, not a bug.</p>`, 'about-refreshing-data')}
 
   ${card('Known limitations', `
     <p>Read these before quoting a figure out of this tool.</p>
@@ -5537,6 +5626,7 @@ MGM.loadLiveState = async function () {
   if (!MGM.canEdit()) {
     const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
     MGM.state = merged.state;
+    MGM.reconcilePtpDissolution(MGM.state);
     MGM._setLiveStateSeenAt(row.updated_at);
     return;
   }
@@ -5546,6 +5636,7 @@ MGM.loadLiveState = async function () {
     // published truth rather than the shipped defaults. A real sync point.
     const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
     MGM.state = merged.state;
+    MGM.reconcilePtpDissolution(MGM.state);
     MGM.save();
     MGM._setLiveStateSeenAt(row.updated_at);
   }
@@ -5574,6 +5665,7 @@ MGM.pullLiveState = async function () {
   }
   const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
   MGM.state = merged.state;
+  MGM.reconcilePtpDissolution(MGM.state);
   MGM._setLiveStateSeenAt(row.updated_at);
   MGM.save();
   MGM.refresh();
@@ -6530,6 +6622,7 @@ MGM.scenarioLoad = function (id) {
   // so it gets a fresh defaultState every time.
   const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), rec.state || {});
   MGM.state = merged.state;
+  MGM.reconcilePtpDissolution(MGM.state);
   MGM.scenarioNotice = MGM.scenarioNoticeFor(rec, merged);
   MGM.save(); MGM.refresh();
 };

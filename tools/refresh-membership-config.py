@@ -163,7 +163,7 @@ def classify(group, rtype):
 
 
 def read_locations(path):
-    counts, status = Counter(), Counter()
+    counts, status, ptp_tagged = Counter(), Counter(), Counter()
     dropped, unclassified, names = [], [], set()
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rdr = csv.DictReader(fh)
@@ -188,14 +188,20 @@ def read_locations(path):
             # data did.
             if st != "active":
                 continue
-            key = classify(cell(row, cols, "Group"), cell(row, cols, "Type"))
+            group = cell(row, cols, "Group")
+            key = classify(group, cell(row, cols, "Type"))
             if key is None:
-                unclassified.append((cell(row, cols, "ID"),
-                                     cell(row, cols, "Group"),
+                unclassified.append((cell(row, cols, "ID"), group,
                                      cell(row, cols, "Type")))
                 continue
             counts[key] += 1
-    return counts, status, dropped, unclassified, names
+            # PTP no longer changes the bucket (see TYPE_TO_KEY's comment), but
+            # the real count of PTP-tagged active rows is still worth printing
+            # every refresh -- it's the reconciliation check for the hand-
+            # maintained ptpHeldCount field, which this script never touches.
+            if group == "PTP":
+                ptp_tagged[key] += 1
+    return counts, status, dropped, unclassified, names, ptp_tagged
 
 
 def money(s):
@@ -494,7 +500,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    counts, status, dropped, unclassified, loc_names = read_locations(args.locations)
+    counts, status, dropped, unclassified, loc_names, ptp_tagged = \
+        read_locations(args.locations)
     billing, bill_names = read_billing(args.billing)
     names = loc_names | bill_names
     total = sum(counts.values())
@@ -502,6 +509,13 @@ def main():
     print("Active locations: %d" % total)
     for key, label in GROUPS:
         print("  %-28s %d" % (label, counts.get(key, 0)))
+    ptp_total = sum(ptp_tagged.values())
+    print("PTP-tagged active rows: %d (reconciliation check for the hand-"
+          "maintained ptpHeldCount below -- this script does not write it)"
+          % ptp_total)
+    for key, label in GROUPS:
+        if ptp_tagged.get(key, 0):
+            print("  %-28s %d" % (label, ptp_tagged[key]))
     print("Onboarding: %d   Offboarding: %d"
           % (status.get("onboarding", 0), status.get("offboarding", 0)))
     print("Dropped %d non-location rows:" % len(dropped))
