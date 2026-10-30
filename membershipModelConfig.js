@@ -451,7 +451,12 @@
       historical: 'Historical Data', report: 'Report',
       // Thirteenth tab (Task 20): the tool's own documentation. Last in
       // TAB_ORDER so the walkthrough it contains reads in tab order.
-      about: 'About & Tutorial'
+      about: 'About & Tutorial',
+      // Fourteenth tab (2026-10-30): admin-only P&L actuals entry, replacing
+      // the Supabase SQL editor as the only way to supply mgm_pnl_actuals.
+      // Last in TAB_ORDER -- ADMIN_ONLY_TABS hides its button from everyone
+      // else, so its position never shifts what a non-admin sees.
+      pnl: 'P&L Actuals'
     },
     streams: {
       dues: 'Membership dues', duesAncillary: 'Renewal, set-up & ad fees',
@@ -468,7 +473,7 @@
     notes: {
       starting: '', additions: '', losses: '', pipeline: '', participation: '',
       gallons: '', revpermember: '', cost: '', staffing: '', cashflow: '',
-      historical: '', about: ''
+      historical: '', about: '', pnl: ''
     },
     // Tile titles, table column headers, and table row labels that are
     // literal hardcoded strings in the renderers rather than engine-derived

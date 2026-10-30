@@ -807,15 +807,16 @@ test('SR-11: no gated value from the local actuals appears in any committed file
     ' local literals excluded as already-public, a calendar year, or too few digits');
 });
 
-test('labels cover all thirteen tabs', () => {
-  // Twelve until Task 20 added `about`, the About & Tutorial tab. The count is
+test('labels cover all fourteen tabs', () => {
+  // Twelve until Task 20 added `about`, the About & Tutorial tab; thirteen
+  // until 2026-10-30 added `pnl`, the admin-only P&L Actuals tab. The count is
   // asserted rather than derived so that adding a tab is a deliberate act: a
   // tab present in TAB_ORDER but missing from labels.tabs renders a button
   // labelled "undefined", and a label with no tab is dead config nobody sees.
-  assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 13,
-    'thirteen tabs: the original twelve plus `about` (Task 20). If this fails ' +
-    'after a tab was added or removed, update BOTH labels.tabs and the page ' +
-    'TAB_ORDER array, then this number.');
+  assert.equal(Object.keys(MGM_CONFIG.labels.tabs).length, 14,
+    'fourteen tabs: the original twelve, plus `about` (Task 20), plus `pnl` ' +
+    '(2026-10-30). If this fails after a tab was added or removed, update ' +
+    'BOTH labels.tabs and the page TAB_ORDER array, then this number.');
   // Every tab also needs a notes slot: MGM.tabNotes binds a textarea to
   // labels.notes.<tab>, and a missing key makes mergeState report the first
   // typed note as a field "this build no longer uses" on every later scenario
