@@ -277,7 +277,7 @@ body:not(.mgm-admin) .mgm-adminonly{display:none !important}
       <button class="btn ghost mgm-adminonly" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.resetAll()">Reset all</button>
       <button class="btn ghost mgm-editonly" onclick="MGM.toggleRestorePanel()"
-              title="Show or hide, and rename, any card, tile, column or row in the tool. Hiding takes effect for every signed-in viewer immediately; a rename reaches other viewers once you Publish.">👁 Visibility &amp; labels</button>
+              title="Show or hide, and rename, any card, tile, column or row in the tool. Hiding needs no Publish step; a rename stays in this browser until you Publish. Either way, other viewers see it on their next page load, not immediately.">👁 Visibility &amp; labels</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
@@ -3341,7 +3341,7 @@ MGM.renderers.report = function (D) {
 // tabs carry has to travel with it rather than living only in the UI.
 MGM.reportAssumptions = function (D) {
   const { st, M, rpm, cost: C, capacity: K, pipeline: p,
-          effectiveMargin: EM, typedMargin: TM, marginFromPnl: MFP,
+          typedMargin: TM, marginFromPnl: MFP,
           marginBasisDetail: MBD } = D;
   const rv = st.revenue, at = st.attrition, bm = st.benchmark;
   const struct = Object.values(at.structural || {}).some(v => +v);
@@ -3470,11 +3470,12 @@ MGM.reportAssumptions = function (D) {
     ['EBITDA', C.unset
       ? (MFP
           ? 'A margin is loaded from the P&amp;L for this session and is visible live on the ' +
-            'Profit &amp; Cash Flow tab, but is never included in a printed, exported or emailed ' +
-            'copy of this report -- the same rule the Valuation table above follows. This tool ' +
-            'never writes it into the model\'s state, so nothing it saves, syncs or exports carries ' +
-            'it, and a reader without administrator access, running the same inputs, sees the ' +
-            'revenue lens alone.'
+            'Profit &amp; Cash Flow tab, but is never included in this report, its print/PDF ' +
+            'copy, or an emailed summary -- the same rule the Valuation table above follows. ' +
+            '(The admin-only CSV export still carries the underlying valuation inputs, same as ' +
+            'it always has.) This tool never writes the loaded figure into the model\'s state, ' +
+            'so nothing it saves or syncs carries it, and a reader without administrator access, ' +
+            'running the same inputs, sees the revenue lens alone.'
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
@@ -3487,7 +3488,7 @@ MGM.reportAssumptions = function (D) {
     // be the figure this run's EBITDA lens actually used.
     ['EBITDA margin basis', `${esc(st.valuation.marginBasis)} — ${esc(st.valuation.marginBasisNote)}` +
       (MFP && MBD
-        ? ' A loaded basis applies for this session but is not stated in a printed or shared report -- see the live Profit & Cash Flow tab.'
+        ? ' A loaded basis applies for this session but is not stated in a printed or shared report — see the live Profit &amp; Cash Flow tab.'
         : '')],
 
     ['Add-backs', st.valuation.ebitdaNormalization
@@ -3628,9 +3629,11 @@ MGM.reportWarnings = function (D) {
   // admin's own screen.
   if (C.unset && D.marginFromPnl) out.push(`The EBITDA lens is excluded from this ` +
     `report: its only basis for the session that produced it was a margin loaded ` +
-    `from the P&L, which this tool never includes in anything that leaves the ` +
-    `browser. The same inputs re-run without administrator access reach the same ` +
-    `revenue-lens-only headline shown here.`);
+    `from the P&L, which this tool never writes into the model's state and never ` +
+    `includes in this report, its print/PDF copy, or an emailed summary (the ` +
+    `admin-only CSV export still carries the underlying valuation inputs, same as ` +
+    `it always has). The same inputs re-run without administrator access reach the ` +
+    `same revenue-lens-only headline shown here.`);
 
   const badYears = Object.keys(st.monthlyHistory || {})
     .filter(k => !Number.isFinite(Number(k)) ||
@@ -6092,13 +6095,13 @@ MGM.renderRestorePanel = function () {
 
   host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
     <h3>Visibility &amp; labels</h3>
-    <p class="note">${hiddenIds.length} of ${HIDDEN_SECTION_IDS.length} item(s) hidden across the tool.
-      Unchecking an item hides it for every signed-in viewer immediately, not just admins. A hidden
-      column or row stays hidden even after real data appears in it -- that nudge below is
-      informational only, never automatic. Where a text box appears beside an item, typing in it
-      renames that tile, column or row in this browser; clearing it resets to the shipped default.
-      Unlike hiding, a rename only reaches other viewers once you Publish -- it is a normal state
-      field, not a separate shared preference.</p>
+    <p class="note">${hiddenIds.length} of ${HIDDEN_SECTION_IDS.length} item(s) hidden across the tool,
+      for every signed-in viewer, not just admins. A hidden column or row stays hidden even after real
+      data appears in it -- that nudge below is informational only, never automatic. Where a text box
+      appears beside an item, typing in it renames that tile, column or row in this browser; clearing
+      it resets to the shipped default. Hiding needs no Publish step -- it writes the shared list as
+      soon as you click. A rename is a normal state field instead, so it stays in this browser until
+      you Publish. Either way, other viewers see the change on their next page load, not immediately.</p>
     ${groups}
     <p style="margin-top:12px">
       <button class="btn" onclick="MGM.restoreAllSections()">Show all</button>
