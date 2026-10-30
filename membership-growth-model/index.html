@@ -1636,18 +1636,27 @@ MGM.renderers.starting = function (D) {
          <b>${fmt(st.billing.locations)}</b> billed ones. Dividing by the larger
          figure understates what a billable location is worth and so overstates
          the dues realization on Revenue per Member.</p>
-      <p class="note">The three "excl. C-Stores" rows exclude
-         <b>${fmt(st.billing.cstoreExcludedCompanies)}</b> companies /
-         <b>${fmt(st.billing.cstoreExcludedLocations)}</b> locations /
-         ${fm$(st.billing.cstoreExcludedDues)}/mo whose billing line is
-         unambiguously C-Store revenue (every active location at that company
-         is a C-Store) -- a company that blends C-Store with another type
-         bills one figure for the whole company with no per-location split, so
-         it stays in every total above rather than guessing an allocation.
-         A C-Store's legitimately low membership fee would otherwise drag down
-         a rate meant to read as "what a truck stop / PPO / etc. location
-         bills"; Revenue per Member's dues realization is measured against
-         this excluded total, not the unexcluded one above it.</p>
+      <p class="note">${st.billing.cstoreExcludedCompanies
+        ? `The three "excl. C-Stores" rows exclude
+           <b>${fmt(st.billing.cstoreExcludedCompanies)}</b> companies /
+           <b>${fmt(st.billing.cstoreExcludedLocations)}</b> locations /
+           ${fm$(st.billing.cstoreExcludedDues)}/mo whose billing line is
+           unambiguously C-Store revenue (every active location at that company
+           is a C-Store) -- a company that blends C-Store with another type
+           bills one figure for the whole company with no per-location split, so
+           it stays in every total above rather than guessing an allocation.
+           A C-Store's legitimately low membership fee would otherwise drag down
+           a rate meant to read as "what a truck stop / PPO / etc. location
+           bills"; Revenue per Member's dues realization is measured against
+           this excluded total, not the unexcluded one above it.`
+        : `The three "excl. C-Stores" rows currently equal their unexcluded
+           counterparts -- NOT because no C-Store billing lines exist (there
+           are <b>${fmt((groups.find(g => g.key === 'cstore') || {}).count || 0)}</b>
+           C-Store locations, see the Groups table above), but because the
+           billing snapshot these figures were last refreshed from has no
+           matching location-list CSV available to cross-reference against
+           locally. See membershipModelConfig.js's "2026-10-30 EXCEPTION #2"
+           comment. The next real refresh populates these fields for real.`}</p>
     </div>
   </div>
 
@@ -2399,7 +2408,9 @@ MGM.renderers.revpermember = function (D) {
               is 94.8% -- printed beside a tile correctly showing 94.6%, which
               is computed from the unrounded 382.47. The caption appeared to
               contradict its own tile by two tenths of a point. */
-           `${fm$(st.revenue.duesPerLoc)} realized vs ${fmCents(st.billing.duesPerLocBillableExclCStores)} billable excl. C-Stores`, 'red', 'revpermember-tile-dues-realization')}
+           `${fm$(st.revenue.duesPerLoc)} realized vs ${fmCents(st.billing.duesPerLocBillableExclCStores)} billable` +
+           (st.billing.cstoreExcludedCompanies ? ' excl. C-Stores' : ''),
+           'red', 'revpermember-tile-dues-realization')}
     ${sign(st.labels.tiles['revpermember-tile-avg-members'], fmt(last.members), `${last.year} average`, 'dark', 'revpermember-tile-avg-members')}
   </div>
 
@@ -3722,11 +3733,20 @@ MGM.reportAssumptions = function (D) {
         ? b.monthlyDuesTotalExclCStores / b.payingLocationsExclCStores : null;
       const matches = derived != null &&
         Math.abs(Number(b.duesPerLocBillableExclCStores) - derived) < 0.005;
-      return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillableExclCStores)} billable per paying location excl. C-Stores · ` +
+      return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillableExclCStores)} billable per paying location` +
+        (b.cstoreExcludedCompanies ? ' excl. C-Stores' : '') + ' · ' +
         (rpm.duesRealization == null
           ? 'realization not derivable — no billable figure is entered'
           : `${pct1(rpm.duesRealization)} realization`) +
-        (matches
+        (!b.cstoreExcludedCompanies
+          // Zero exclusion computed for this snapshot (see "2026-10-30
+          // EXCEPTION #2"): the excl-C-Stores and unexcluded figures are
+          // currently the SAME number, so neither the `matches` nor the
+          // `entered by hand` sentence below would say anything true --
+          // both compare the excl-C-Stores paying-location count against
+          // itself and claim a distinction that does not exist yet.
+          ? `. No C-Store exclusion has been computed for this billing snapshot yet (0 companies) -- this figure is currently the unexcluded ${fmt(b.payingLocations)}-paying-location average. See membershipModelConfig.js's "2026-10-30 EXCEPTION #2".`
+          : matches
           ? `. The billable figure is ${fm$(b.monthlyDuesTotalExclCStores)} of monthly dues divided by the ${fmt(b.payingLocationsExclCStores)} paying locations that are not pure C-Store companies, not by all ${fmt(b.payingLocations)} paying locations — C-Stores' legitimately low fee would otherwise drag down a rate meant to read as what a truck stop / PPO / etc. location bills.`
           : `. The billable figure was entered by hand and is not ${fm$(b.monthlyDuesTotalExclCStores)} ÷ ${fmt(b.payingLocationsExclCStores)} paying locations excl. C-Stores (${derived == null ? 'no paying-location count is entered' : fmCents(derived)}).`);
     })()],
@@ -3987,7 +4007,12 @@ MGM.reportWarnings = function (D) {
 // eleven tabs that carry one.
 MGM.reportNotes = function (D) {
   const notes = D.st.labels.notes || {};
+  // Defense in depth, not the primary fix: no ADMIN_ONLY_TABS id has a
+  // notes textarea at all today (see the comment at the end of
+  // MGM.renderers.pnl), but a future admin-only tab that forgot to omit one
+  // must not have it printed here regardless.
   const rows = TAB_ORDER
+    .filter(k => ADMIN_ONLY_TABS.indexOf(k) < 0)
     .filter(k => notes[k] && String(notes[k]).trim())
     .map(k => `<tr><td>${esc(D.st.labels.tabs[k] || k)}</td>
       <td>${esc(String(notes[k])).replace(/\n/g, '<br>')}</td></tr>`);
@@ -4563,17 +4588,25 @@ MGM.renderers.about = function (D) {
           ${fmCents(b.monthlyDuesTotal / b.locations)} and overstates dues
           realization by about four points, which is a mistake this project
           actually made and corrected.
-          <b>${fmt(b.cstoreExcludedCompanies)}</b> of those companies bill
-          unambiguously as C-Stores alone (every active location there is a
-          C-Store) and are excluded from a separate true-stop-only pair --
-          <b>${fmCents(b.duesPerLocBillableExclCStores)}</b> per billable
-          location excl. C-Stores, the figure Revenue per Member's dues
-          realization is actually measured against, since a C-Store's
-          legitimately low $100-250 fee would otherwise drag down a rate
-          meant to read as what a truck stop / PPO / etc. location bills. A
-          company that blends C-Store with another type bills one figure for
-          the whole company with no per-location split, so it is left in both
-          totals rather than guessing an allocation.</td></tr>
+          ${b.cstoreExcludedCompanies
+            ? `<b>${fmt(b.cstoreExcludedCompanies)}</b> of those companies bill
+               unambiguously as C-Stores alone (every active location there is a
+               C-Store) and are excluded from a separate true-stop-only pair --
+               <b>${fmCents(b.duesPerLocBillableExclCStores)}</b> per billable
+               location excl. C-Stores, the figure Revenue per Member's dues
+               realization is actually measured against, since a C-Store's
+               legitimately low $100-250 fee would otherwise drag down a rate
+               meant to read as what a truck stop / PPO / etc. location bills. A
+               company that blends C-Store with another type bills one figure for
+               the whole company with no per-location split, so it is left in both
+               totals rather than guessing an allocation.`
+            : `A true-stop-only pair exists for this (excluding whichever companies
+               bill unambiguously as C-Stores alone), but it currently equals the
+               figures above unchanged -- not because no C-Store billing lines
+               exist, but because this snapshot has no matching location-list CSV
+               locally to cross-reference against. See membershipModelConfig.js's
+               "2026-10-30 EXCEPTION #2" comment; the next real refresh populates
+               it for real.`}</td></tr>
       <tr data-row="about-where-numbers-come-from-row-historical-signups"><td><code>Historical member signups.xlsx</code></td>
         <td>Annual signups and losses
           (${esc(MGM.yearSpan(cfg.history.map(h => h.year)))}), the monthly series
@@ -5386,10 +5419,29 @@ MGM.renderAuth = function () {
     if (eb) eb.textContent = '✎ Edit';
   }
 
-  // ...and must not leave them standing on an admin-only tab -- the rail
-  // would show no active button and the panel would hold the refusal card
-  // with no obvious way back.
-  if (!admin && ADMIN_ONLY_TABS.indexOf(MGM.tab) >= 0) MGM.tab = TAB_ORDER[0];
+  // ...and must not leave them standing on an admin-only tab, with its panel
+  // still painted and its draft still in memory. Setting MGM.tab alone left
+  // the rail's active button pointing at a hidden tab and the gated form
+  // visible in the DOM until some UNRELATED render happened to repaint it --
+  // not a cross-user disclosure (same browser, same session), but a real
+  // gap between what this comment claimed and what actually ran. Found by
+  // an independent review.
+  if (!admin && ADMIN_ONLY_TABS.indexOf(MGM.tab) >= 0) {
+    MGM.tab = TAB_ORDER[0];
+    const pnlPanel = document.getElementById('panel-pnl');
+    if (pnlPanel) pnlPanel.innerHTML = '';
+    MGM.pnlDraft = null;
+  }
+
+  // Unconditional, every call -- this is the ONE place admin status
+  // actually changes (same reason body.mgm-admin is toggled above), so the
+  // rail's admin-only button has to follow it here too. Without this, the
+  // P&L Actuals button never appeared on a fresh page load at all: boot
+  // calls MGM.renderTabs() and MGM.switchTab('starting') (itself calling
+  // renderTabs) BEFORE loadAdminStatus() resolves, and nothing re-ran
+  // renderTabs afterward until an unrelated tab click happened to. Also
+  // found by the same review.
+  MGM.renderTabs();
 
   let bar;
   if (!email) {
@@ -5571,6 +5623,20 @@ MGM.bindPnl = function (root) {
 
 MGM.pnlSaveToCloud = async function () {
   if (!MGM.requireAdmin('Saving P&L actuals')) return;
+  // The gitignored local dev fixture (MGM_PNL_ACTUALS, loaded with no admin
+  // check on a local dev host -- see MGM.loadPnlActuals) pre-filled this
+  // draft, including its own id. MGM.sb() on localhost still points at the
+  // SAME production Supabase project, since the anon key is published in
+  // this committed HTML -- there is no separate "local" backend. Saving
+  // here would upsert fixture data over a real period by primary key with
+  // no warning at all. Refuse outright rather than hand-confirm: a dev
+  // fixture has no legitimate reason to ever reach mgm_pnl_actuals.
+  if (MGM.pnlReason === 'ok-local') {
+    return alert('This draft was pre-filled from the LOCAL DEV FIXTURE file, not from '
+               + 'mgm_pnl_actuals. Saving would upsert that fixture data into the real '
+               + 'table by its id -- refused. Clear the form and type real figures '
+               + 'before saving, or remove the local fixture file.');
+  }
   const d = MGM.pnlDraftInit();
   if (!String(d.id || '').trim()) {
     return alert('Give the period an id first — e.g. 2026-09. It is the primary key, '
@@ -5750,9 +5816,18 @@ MGM.renderers.pnl = function (D) {
       — ${esc(MGM.pnlWhy ? MGM.pnlWhy() : '')}</p>
   </div>
 
-  ${MGM.renderPnlRecalibration(D)}
-
-  ${MGM.tabNotes('pnl')}`;
+  ${MGM.renderPnlRecalibration(D)}`;
+  // Deliberately NO MGM.tabNotes('pnl') here, unlike every other tab. That
+  // helper's textarea binds data-k-text="labels.notes.<tab>" -- the PUBLIC
+  // binder, which writes into MGM.state and so into localStorage,
+  // mgm_scenarios (any signed-in user), mgm_live_state (same), the JSON
+  // export, AND MGM.reportNotes' printed "Notes & assumptions" table (which
+  // walks TAB_ORDER with no admin filter). A free-text box on the one tab
+  // whose entire design is "these figures never enter MGM.state" would be
+  // exactly the copy-residue leak shape this build has already fixed once,
+  // this time on the tab where the reader is looking at the income
+  // statement while typing. Caught by an independent review, not by this
+  // file's own testing.
 
   MGM.bindPnl(host);
 };
@@ -5782,10 +5857,12 @@ MGM.pnlRecalibrationProposal = function (D) {
   const streams = MGM.pnlActuals ? MGM.pnlActuals.streams : null;
   // period_months defaults to 12 the same way the save form does -- a
   // period with no months typed is assumed to be a full year, not treated
-  // as "undated" and silently divided by nothing.
+  // as "undated" and silently divided by nothing. No member-count basis is
+  // passed: streams[k] is already $/member/yr (see the engine function's
+  // own comment), so there is no per-member division left to do here.
   const months = (MGM.pnlActuals && MGM.pnlActuals.periodMonths != null)
     ? MGM.pnlActuals.periodMonths : 12;
-  return MM.pnlRecalibrationProposal(streams, D.st.billing, D.M.startTotal, months);
+  return MM.pnlRecalibrationProposal(streams, D.st.billing, months);
 };
 
 // Clones D.st, patches every driver with a PROPOSED value into the clone,
@@ -5807,9 +5884,22 @@ MGM.pnlRecalibrationSizing = function (D, proposal) {
   };
 };
 
-MGM.pnlApplyRecalibration = function (path, value) {
+// Takes the DRIVER KEY, not a path/value pair baked into the onclick
+// string at render time -- key is always one of the four literal strings
+// from MGM.PNL_RECAL_DRIVERS (a compile-time constant, never built from
+// untrusted data), and the value actually written is RE-DERIVED here, from
+// the current state, rather than trusted from the DOM. On this file's
+// highest-security surface, "only the rounded value for one of four
+// approved drivers may ever be written here" is worth holding structurally
+// rather than by convention alone. Found by an independent review.
+MGM.pnlApplyRecalibration = function (key) {
   if (!MGM.requireAdmin('Applying a recalibrated driver')) return;
-  MM.setPath(MGM.state, path, value);
+  const driver = MGM.PNL_RECAL_DRIVERS.find(d => d[0] === key);
+  if (!driver) return;
+  const proposal = MGM.pnlRecalibrationProposal(MGM.model());
+  const p = proposal[key];
+  if (!p || p.proposed == null) return;
+  MM.setPath(MGM.state, p.path, p.proposed);
   MGM.save();
   MGM.refresh();
 };
@@ -5835,7 +5925,7 @@ MGM.renderPnlRecalibration = function (D) {
         ? ' <span class="ovr" title="The exact derived figure already sat within one tenth of this rounding step of a round multiple -- consider a wider step before applying.">rounding may not protect this figure — review before applying</span>'
         : ''}</td>
       <td class="mgm-editonly">${p.proposed == null || noChange ? '' : `<button class="btn"
-        onclick="MGM.pnlApplyRecalibration('${p.path}',${p.proposed})">Apply</button>`}</td>
+        onclick="MGM.pnlApplyRecalibration('${key}')">Apply</button>`}</td>
     </tr>`;
   }).join('');
 

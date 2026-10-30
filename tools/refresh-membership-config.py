@@ -238,6 +238,17 @@ def read_billing(path, company_types):
     # IN the average rather than guess an allocation the data cannot support.
     cstore_excl_companies = cstore_excl_locations = 0
     cstore_excl_dues = 0.0
+    # Billing rows whose Company has NO entry at all in company_types --
+    # i.e. the location-list CSV has no active row for that company name.
+    # company_types.get(name) returns None for these, which silently takes
+    # the "not pure C-Store" branch below exactly as if the company really
+    # were a mix of types -- identical outcome, opposite reason, and no
+    # signal either way that the join missed. A case/punctuation mismatch
+    # between the two exports would produce this same silent non-exclusion,
+    # which is precisely the under-exclusion risk "2026-10-30 EXCEPTION #2"
+    # already accepts for the vintage gap -- it must not ALSO hide inside a
+    # name-join nobody is watching.
+    unmatched_billing_companies = []
     names = set()
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rdr = csv.DictReader(fh)
@@ -246,6 +257,8 @@ def read_billing(path, company_types):
             name = cell(row, cols, "Company")
             if name:
                 names.add(name)
+            if name and name not in company_types:
+                unmatched_billing_companies.append(name)
             companies += 1
             n = int(money(cell(row, cols, "Locations")))
             locations += n
@@ -266,6 +279,7 @@ def read_billing(path, company_types):
     paying_locations_excl = paying_locations - cstore_excl_locations
     dues_excl = dues - cstore_excl_dues
     return {
+        "unmatchedBillingCompanies": unmatched_billing_companies,
         "companies": companies,
         "locations": locations,
         "monthlyDuesTotal": int(round(dues)),
@@ -607,6 +621,15 @@ def main():
              billing["cstoreExcludedDues"]))
     print("  duesPerLocBillable          $%.2f  ->  $%.2f excl. C-Stores"
           % (billing["duesPerLocBillable"], billing["duesPerLocBillableExclCStores"]))
+    unmatched = billing["unmatchedBillingCompanies"]
+    if unmatched:
+        print("\n!! %d billing compan%s with NO matching active row in the location-list "
+              "CSV (name mismatch -- case, punctuation, a closed location, or a genuine "
+              "gap) -- NOT excluded from the true-stop-only average even if actually a "
+              "pure C-Store, since there is no location-list evidence either way:"
+              % (len(unmatched), "y" if len(unmatched) == 1 else "ies"))
+        for name in unmatched:
+            print("  %s" % name)
     print("Onboarding: %d   Offboarding: %d"
           % (status.get("onboarding", 0), status.get("offboarding", 0)))
     print("Dropped %d non-location rows:" % len(dropped))

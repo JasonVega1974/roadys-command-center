@@ -712,6 +712,23 @@
     // modelled revenue built on the average, so the numerator and denominator
     // described slightly different populations and the metric was off by the
     // very kind of gap it exists to surface.
+    //
+    // KNOWN LIMITATION, flagged not fixed (2026-10-30): modelledMembers is
+    // every active location, C-Stores included; annualBilled above now
+    // excludes them. So once a real refresh populates a non-zero
+    // cstoreExcludedCompanies, this ratio compares a full-population
+    // numerator against a C-Store-excluded denominator -- realization will
+    // read roughly 1/(1 - cstoreShare) too high, re-opening the exact "model
+    // claims more per location than was billed" gap the Oct 29 recalibration
+    // (3b7b979) was written to close. Excluding C-Store's own modelled
+    // member count from `modelledMembers` would fix it, but that is a
+    // growth-model population split nobody has asked for yet and is
+    // deliberately NOT done here -- see one-quantity-one-field and
+    // keep-changes-to-what-was-asked discipline elsewhere in this build.
+    // The test below is a deliberate tripwire: it is pinned to the CURRENT
+    // (zero-exclusion) state and will start failing the moment a real
+    // refresh changes that, which is the signal to bring this back as its
+    // own explicit decision rather than letting it drift silently past.
     var modelledMembers = (M && M.years && M.years.length)
       ? n(avgMembers(M.years[0])) : 0;
 
@@ -826,26 +843,44 @@
   // already owns the full valuation pipeline (MGM.runFor) this function has
   // no need to duplicate.
   //
-  // Three of the four drivers derive the SAME way the Oct 29 recalibration
-  // (3b7b979) established: programme total / months / ALL ACTIVE MEMBERS
-  // (startTotal, not an averaged year-1 figure -- the precedent's own
-  // "397 active members" is the model's current active base). The fourth,
-  // duesPerLoc, does NOT derive from mgm_pnl_actuals at all -- it tracks
+  // `streams[k]` IS ALREADY $/member/YEAR -- not a raw period total needing
+  // a member-count division. Half A's own entry form says so directly
+  // ("Per-stream actuals, per member per year", "Actual $/member/yr"
+  // column), and the Revenue per Member reconciliation table, the CSV
+  // export and the variance-disclosure note all treat
+  // rpm.actualStreams[k]/rpm.derived[k] as that same unit with no further
+  // member-count division anywhere in this file. A FIRST VERSION of this
+  // function divided by an active-member count on top of that (modelled on
+  // the Oct 29 recalibration's "programme fee total / months / members",
+  // which derives a per-member rate from a RAW total off the workbook -- a
+  // different source, already in a different unit, than what Half A's form
+  // actually asks an admin to type). That double-divided the three
+  // P&L-sourced drivers down to effectively zero against the real active
+  // base. Caught by an independent review, not by this function's own
+  // original test suite, which asserted its own (wrong) formula's output
+  // rather than checking it against revPerMember's actual unit contract --
+  // see the round-trip test in membershipModel.test.js that replaced those
+  // assertions.
+  //
+  // This function's real job, given that: convert a $/member/YEAR figure to
+  // $/member/MONTH where the public driver is monthly (rewardsBlendedPM),
+  // re-scale for a period that is not a full 12 months (an admin who typed
+  // an annualized estimate derived from partial-year data), round with
+  // equivalent protection, and flag a near-boundary collision. `months` is
+  // the loaded period's period_months (NOT hardcoded 12 -- a 9-month figure
+  // an admin entered as "the annual rate implied by this partial period" is
+  // a different thing from one entered against a full year).
+  //
+  // duesPerLoc does NOT derive from mgm_pnl_actuals at all -- it tracks
   // billing.duesPerLocBillableExclCStores, a billing-CSV figure that is
   // already public and already protected by the true-stop-only exclusion,
   // so it gets no additional rounding and no collision check: there is no
   // sensitive figure behind it to protect.
-  //
-  // `streams` is MGM.pnlActuals.streams (or null -- nothing loaded, nothing
-  // to propose). `billing` is state.billing. `startTotal` is M.startTotal
-  // from the already-computed growth model. `months` is the loaded period's
-  // period_months (NOT hardcoded 12 -- a partial-year P&L period must not be
-  // silently annualized as if it were a full year).
-  function pnlRecalibrationProposal(streams, billing, startTotal, months) {
+  function pnlRecalibrationProposal(streams, billing, months) {
     streams = streams || null;
     billing = billing || {};
-    var m = n(months) || 12;
-    var basis = n(startTotal);
+    var m = n(months);
+    m = (isFinite(m) && m > 0) ? m : 12;
 
     // Rounds toward the nearest multiple of `step`, then flags when the
     // rounding moved the value by less than a tenth of its own step --
@@ -864,41 +899,44 @@
       return { exact: exact, proposed: proposed, flagged: movedBy < step * 0.1 };
     }
 
-    // `annualize`: rewardsBlendedPM is a $/member/MONTH field, so the period
-    // total converts to a monthly run-rate and stops there. breakage and
-    // settlement are $/member/YEAR fields, so that same monthly run-rate has
-    // to be re-annualized (x12) -- WITHOUT this, a 9-month period would
-    // under-propose an annual driver by 25%, and even a full 12-month period
-    // only happens to look right by coincidence (x12/12 cancels), which is
-    // exactly the shape that hides a bug until a partial-year period exposes
-    // it. Confirmed against the Oct 29 precedent (3b7b979): breakage's own
-    // description is "same expired-points TOTAL over members", i.e.
-    // total/members with NO month division at all -- this formula reproduces
-    // that exactly when months=12, and generalizes correctly when it isn't.
-    var fromPnl = function (key, step, annualize) {
-      if (!streams || streams[key] === null || streams[key] === undefined
-          || streams[key] === '' || !basis) {
+    // `monthly`: rewardsBlendedPM's PUBLIC field is $/member/MONTH, so the
+    // already-annual stream figure divides by 12 once more than the two
+    // annual drivers do. Checked explicitly for finiteness BEFORE n()
+    // coerces it -- n() silently treats non-numeric junk as 0, which would
+    // turn a corrupt stored value into a confidently-proposed real zero
+    // instead of "nothing usable here", the exact defect class this model
+    // has fought everywhere else (see usableRate/rewardsRate above).
+    var fromPnl = function (key, step, monthly) {
+      if (!streams || streams[key] === null || streams[key] === undefined || streams[key] === '') {
         return { exact: null, proposed: null, flagged: false };
       }
-      var total = n(streams[key]);
-      var perMonth = total / m / basis;
-      return round(annualize ? perMonth * 12 : perMonth, step);
+      var raw = Number(streams[key]);
+      if (!isFinite(raw)) return { exact: null, proposed: null, flagged: false };
+      var annual = raw * (12 / m);
+      return round(monthly ? annual / 12 : annual, step);
     };
 
+    // 0 is the refresh script's own "cannot compute" sentinel for this
+    // field (paying_locations_excl is zero -- see
+    // tools/refresh-membership-config.py), never a real billable rate. That
+    // is THIS field's own convention, not a reversal of "a real reported
+    // zero is a genuine figure" elsewhere: duesPerLocBillableExclCStores is
+    // a computed billing aggregate with a known not-computable sentinel,
+    // not an admin-typed P&L actual.
     var duesExact = billing.duesPerLocBillableExclCStores;
-    var duesProposed = (duesExact === null || duesExact === undefined
-                         || duesExact === '' || !isFinite(Number(duesExact)))
-      ? null : Math.round(Number(duesExact) * 100) / 100;
+    var duesUsable = duesExact !== null && duesExact !== undefined && duesExact !== ''
+      && isFinite(Number(duesExact)) && Number(duesExact) !== 0;
+    var duesProposed = duesUsable ? Math.round(Number(duesExact) * 100) / 100 : null;
 
     return {
       duesPerLoc: { exact: duesProposed, proposed: duesProposed, flagged: false,
                     path: 'revenue.duesPerLoc', step: 0.01 },
       rewardsBlendedPM: Object.assign(
-        fromPnl('rewards', 2, false), { path: 'revenue.rewardsBlendedPM', step: 2 }),
+        fromPnl('rewards', 2, true), { path: 'revenue.rewardsBlendedPM', step: 2 }),
       rewardsBreakagePerMember: Object.assign(
-        fromPnl('rewardsBreakage', 25, true), { path: 'revenue.rewardsBreakagePerMember', step: 25 }),
+        fromPnl('rewardsBreakage', 25, false), { path: 'revenue.rewardsBreakagePerMember', step: 25 }),
       settlementNetPerMember: Object.assign(
-        fromPnl('settlement', 25, true), { path: 'revenue.settlementNetPerMember', step: 25 })
+        fromPnl('settlement', 25, false), { path: 'revenue.settlementNetPerMember', step: 25 })
     };
   }
 

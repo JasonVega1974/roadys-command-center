@@ -473,7 +473,12 @@
     notes: {
       starting: '', additions: '', losses: '', pipeline: '', participation: '',
       gallons: '', revpermember: '', cost: '', staffing: '', cashflow: '',
-      historical: '', about: '', pnl: ''
+      historical: '', about: ''
+      // `pnl` deliberately has NO slot. labels.notes.<tab> binds a free-text
+      // textarea into MGM.state (MGM.tabNotes/data-k-text) -- the one thing
+      // the P&L Actuals tab's entire design exists to keep OUT of state. See
+      // membership-growth-model/index.html's comment at the end of
+      // MGM.renderers.pnl.
     },
     // Tile titles, table column headers, and table row labels that are
     // literal hardcoded strings in the renderers rather than engine-derived
