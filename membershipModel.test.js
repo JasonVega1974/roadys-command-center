@@ -335,8 +335,15 @@ test('SR-11: no committed file assigns an undeclared number to a P&L field', (t)
     'membershipModel.test.js', path.join('membership-growth-model', 'index.html')];
 
   // Field names that hold, or could hold, a figure off the income statement.
-  const PNL_FIELDS = ['grossProfit', 'gross_profit', 'netIncome', 'net_income',
-    'netMargin', 'net_margin', 'settlementSpread', 'settlement_spread',
+  // Both spellings for every term. A review found this list carried
+  // `settlementSpread` and `settlement_spread` but not the SPACED form, while
+  // carrying both for the other three -- and a comment of mine survived only
+  // in that gap. That is the reword-around-the-list failure this very test
+  // documents as having already happened once.
+  const PNL_FIELDS = ['grossProfit', 'gross_profit', 'gross profit',
+    'netIncome', 'net_income', 'net income',
+    'netMargin', 'net_margin', 'net margin',
+    'settlementSpread', 'settlement_spread', 'settlement spread',
     'payrollTotal', 'payroll_total', 'opexTotal', 'opex_total',
     'ebitdaMargin', 'marginPct', 'totalPerMemberYr'];
 
@@ -508,7 +515,7 @@ test('SR-11: no gated value from the local actuals appears in any committed file
   // which let it become public by being committed. Both share one shape: the
   // tree under review was treated as the authority on what the tree under
   // review is allowed to contain.
-  let publicSrc = null;
+  let publicSrc = null, usedRef = null;
   for (const ref of ['origin/main:membershipModelConfig.js',
                      'main:membershipModelConfig.js',
                      'HEAD:membershipModelConfig.js']) {
@@ -516,13 +523,35 @@ test('SR-11: no gated value from the local actuals appears in any committed file
       publicSrc = require('node:child_process')
         .execFileSync('git', ['show', ref],
                       { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      if (ref.startsWith('HEAD')) {
-        t.diagnostic('neither origin/main nor main is readable; fell back to HEAD, ' +
-          'which means a gated value introduced by THIS commit would be treated ' +
-          'as already-public and NOT reported');
-      }
+      usedRef = ref;
       break;
     } catch (e) { /* try the next ref */ }
+  }
+
+  // ASSERT, do not merely diagnose. The previous version reported the HEAD
+  // fallback through t.diagnostic and left the suite GREEN -- and a review
+  // measured that `git clone --single-branch --depth 1`, the default shape for
+  // most CI, makes BOTH origin/main and main unreadable. So the hole closed
+  // last round was open in exactly the place this check is supposed to be the
+  // authority, reading 110/0 with a note nobody fails on.
+  //
+  // A diagnostic on a passing test is not a control. Falling back to HEAD
+  // means a gated value introduced by this very commit counts as
+  // already-public, so the fallback fails the suite instead. CI must fetch
+  // main; a deliberate run without it sets MGM_ALLOW_HEAD_BASELINE=1 and
+  // thereby records that this layer was not in force.
+  //
+  // The `main` rung is named too: a review poisoned a local `main` and it
+  // silently became the public baseline. If that is the ref in use, say which.
+  if (usedRef && !usedRef.startsWith('origin/main')) {
+    const why = 'the already-public baseline came from `' + usedRef +
+      '`, not origin/main. origin/main is the only ref that means "already ' +
+      'published": `main` can be stale or locally modified, and HEAD is the ' +
+      'commit under review, which would launder a value introduced by it. ' +
+      'Fetch main (a --single-branch --depth 1 clone has neither ref), or set ' +
+      'MGM_ALLOW_HEAD_BASELINE=1 to run with this layer knowingly weakened.';
+    if (process.env.MGM_ALLOW_HEAD_BASELINE === '1') t.diagnostic('WEAKENED: ' + why);
+    else assert.fail(why);
   }
 
   if (publicSrc === null) {
@@ -946,13 +975,32 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   const r = MembershipModel.revenueModel(st, MembershipModel.runModel(st))[0];
   near(r.members, 397.691361, 'members');
   near(r.streams.dues, 1727571.272516, 'dues');
-  near(r.streams.duesAncillary, 49711.420134548614, 'duesAncillary');
-  near(r.streams.settlement, -59653.704161458336, 'settlement');
+
+  // DERIVED FROM THE DRIVER, not pasted from the engine. These four moved in
+  // the Oct 29 rounding and I repinned them with the values the run printed --
+  // full double precision, which a review spotted as the tell: the unchanged
+  // pins in this test scatter in the tenth decimal because they were computed
+  // by hand, and these implied the engine's internal member value to fifteen
+  // places. Against this test's own opening rule, "NOT by calling
+  // revenueModel".
+  //
+  // Each of these streams IS members x a committed driver, so writing that
+  // product is both the hand derivation and the documentation of the formula.
+  // `dues` and `vendor` above keep their hand-computed absolutes because their
+  // formulas are not a single driver per member.
+  const D = MGM_CONFIG.revenue;
+  near(r.streams.duesAncillary, r.members * D.duesAncillaryPerMember, 'duesAncillary');
+  near(r.streams.settlement, r.members * D.settlementNetPerMember, 'settlement');
   near(r.streams.fuelProgram, 0, 'fuelProgram — zero by design');
   near(r.streams.vendor, 367466.817635, 'vendor');
   near(r.streams.rewards, 69198.296827, 'rewards');
-  near(r.streams.rewardsBreakage, 208787.96456510416, 'rewardsBreakage');
-  near(r.total, 2363082.0675159027, 'total');
+  near(r.streams.rewardsBreakage,
+       r.members * D.rewardsBreakagePerMember, 'rewardsBreakage');
+  // The sum of the seven, so a stream silently dropping out of the total is
+  // caught -- which asserting the printed figure could not do.
+  near(r.total, r.streams.dues + r.streams.duesAncillary + r.streams.settlement
+              + r.streams.fuelProgram + r.streams.vendor + r.streams.rewards
+              + r.streams.rewardsBreakage, 'total is the sum of its streams');
   // Ties back to the per-member figure the reconciliation tile reports.
   // NOT A CHECK ON THE REFRESH. A review pointed out this ratio cannot fail
   // for any member count: every stream is members x a driver, so total/members

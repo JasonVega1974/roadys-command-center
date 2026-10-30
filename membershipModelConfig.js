@@ -121,24 +121,17 @@
       // admin reconciliation tile rather than hidden. The never-commit list is
       // about precision, not about deleting the fact that a real cost exists.
       duesAncillaryPerMember: 125,     // renewal + set-up + NTTS ad, $/yr
-      // GATED. The real per-member fuel settlement is an auth-gated P&L line
-      // and is NOT published here. It was, exactly equal to the gated figure,
-      // until a review measured that the public config stated it verbatim --
-      // and "settlement spread" is on this project's explicit never-commit
-      // list beside the other named P&L lines, so it gets the margin's
-      // treatment rather than a lighter one: loaded from the gitignored local
-      // file or the admin-only Supabase table, session-only, never written
-      // back into state.
+      // ROUNDED like its two neighbours, not removed. An attempt to publish
+      // nothing here gated the exact figure and deleted a NEGATIVE stream with
+      // it, which raised the public final-year revenue 2.49% and the indicated
+      // valuation by $157,117 -- the boundary satisfied in letter while the
+      // deliverable read better than reality. A rounded negative keeps the
+      // drag, which is the honest half of the trade.
       //
-      // null, NOT 0. Zero is a real settlement figure a reader could mean, so
-      // it cannot double as "absent" -- the assumptions table already says
-      // "not supplied" on a falsy value, which is the honest reading for
-      // anyone without administrator access.
-      // Rounded like its two neighbours rather than removed. Setting it to
-      // null gated the figure but deleted a NEGATIVE stream, which raised the
-      // public final-year revenue 2.49% and the indicated valuation by
-      // $157,117 -- a boundary satisfied in letter while the deliverable read
-      // better than reality. A rounded negative keeps the drag.
+      // This line is on the project's never-commit list by name, so the
+      // rounding is the protection and the exact figure belongs only in the
+      // gated sources. An administrator sees it in the reconciliation table's
+      // Actual column, beside this rounded driver, rather than in place of it.
       settlementNetPerMember: -150,    // fuel settlement nets negative, $/yr
       fuelProgramMargin: 0,            // $/gal, FORWARD ASSUMPTION, default 0
       avgGallons: 8000,                // fed by Fuel Gallon Production
