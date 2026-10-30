@@ -816,6 +816,92 @@
     };
   }
 
+  // ── P&L recalibration proposal (Half B, 2026-10-30) ─────────────────────
+  //
+  // Pure and testable on purpose: this is the ONE place that derives a
+  // candidate public driver value from gated P&L figures, so it is the one
+  // place equivalent-protection rounding and the collision check have to be
+  // right. Everything else (sizing the before/after headline, rendering the
+  // review panel, the admin's apply click) lives at the page level, which
+  // already owns the full valuation pipeline (MGM.runFor) this function has
+  // no need to duplicate.
+  //
+  // Three of the four drivers derive the SAME way the Oct 29 recalibration
+  // (3b7b979) established: programme total / months / ALL ACTIVE MEMBERS
+  // (startTotal, not an averaged year-1 figure -- the precedent's own
+  // "397 active members" is the model's current active base). The fourth,
+  // duesPerLoc, does NOT derive from mgm_pnl_actuals at all -- it tracks
+  // billing.duesPerLocBillableExclCStores, a billing-CSV figure that is
+  // already public and already protected by the true-stop-only exclusion,
+  // so it gets no additional rounding and no collision check: there is no
+  // sensitive figure behind it to protect.
+  //
+  // `streams` is MGM.pnlActuals.streams (or null -- nothing loaded, nothing
+  // to propose). `billing` is state.billing. `startTotal` is M.startTotal
+  // from the already-computed growth model. `months` is the loaded period's
+  // period_months (NOT hardcoded 12 -- a partial-year P&L period must not be
+  // silently annualized as if it were a full year).
+  function pnlRecalibrationProposal(streams, billing, startTotal, months) {
+    streams = streams || null;
+    billing = billing || {};
+    var m = n(months) || 12;
+    var basis = n(startTotal);
+
+    // Rounds toward the nearest multiple of `step`, then flags when the
+    // rounding moved the value by less than a tenth of its own step --
+    // i.e. the raw figure already sat suspiciously close to a rounding
+    // boundary, so this particular rounding provides little real distance
+    // from the gated figure behind it. A human reviewing REAL numbers can
+    // widen the step; this function's job is only to say so, never to guess
+    // a better step on its own.
+    function round(exact, step) {
+      if (exact == null || !isFinite(exact)) return { exact: null, proposed: null, flagged: false };
+      var proposed = Math.round(exact / step) * step;
+      // -0 reads as "0" in every caller, but printing it is a visible tell
+      // that this driver's true sign flipped at a rounding boundary.
+      if (proposed === 0) proposed = 0;
+      var movedBy = Math.abs(proposed - exact);
+      return { exact: exact, proposed: proposed, flagged: movedBy < step * 0.1 };
+    }
+
+    // `annualize`: rewardsBlendedPM is a $/member/MONTH field, so the period
+    // total converts to a monthly run-rate and stops there. breakage and
+    // settlement are $/member/YEAR fields, so that same monthly run-rate has
+    // to be re-annualized (x12) -- WITHOUT this, a 9-month period would
+    // under-propose an annual driver by 25%, and even a full 12-month period
+    // only happens to look right by coincidence (x12/12 cancels), which is
+    // exactly the shape that hides a bug until a partial-year period exposes
+    // it. Confirmed against the Oct 29 precedent (3b7b979): breakage's own
+    // description is "same expired-points TOTAL over members", i.e.
+    // total/members with NO month division at all -- this formula reproduces
+    // that exactly when months=12, and generalizes correctly when it isn't.
+    var fromPnl = function (key, step, annualize) {
+      if (!streams || streams[key] === null || streams[key] === undefined
+          || streams[key] === '' || !basis) {
+        return { exact: null, proposed: null, flagged: false };
+      }
+      var total = n(streams[key]);
+      var perMonth = total / m / basis;
+      return round(annualize ? perMonth * 12 : perMonth, step);
+    };
+
+    var duesExact = billing.duesPerLocBillableExclCStores;
+    var duesProposed = (duesExact === null || duesExact === undefined
+                         || duesExact === '' || !isFinite(Number(duesExact)))
+      ? null : Math.round(Number(duesExact) * 100) / 100;
+
+    return {
+      duesPerLoc: { exact: duesProposed, proposed: duesProposed, flagged: false,
+                    path: 'revenue.duesPerLoc', step: 0.01 },
+      rewardsBlendedPM: Object.assign(
+        fromPnl('rewards', 2, false), { path: 'revenue.rewardsBlendedPM', step: 2 }),
+      rewardsBreakagePerMember: Object.assign(
+        fromPnl('rewardsBreakage', 25, true), { path: 'revenue.rewardsBreakagePerMember', step: 25 }),
+      settlementNetPerMember: Object.assign(
+        fromPnl('settlement', 25, true), { path: 'revenue.settlementNetPerMember', step: 25 })
+    };
+  }
+
   // Order and membership copied from CRM.html:1155 so the funnel here and
   // the funnel in the CRM cannot drift apart.
   var CRM_STAGES = ['Prospect', 'Qualified', 'Contacted', 'Meeting Scheduled',
@@ -1129,6 +1215,7 @@
       revPerMember: revPerMember,
       valuation: valuation,
       valuationHeadline: valuationHeadline,
+      pnlRecalibrationProposal: pnlRecalibrationProposal,
       CRM_STAGES: CRM_STAGES,
       CRM_CLOSED_STAGES: CRM_CLOSED_STAGES,
       isClosedStage: isClosedStage,

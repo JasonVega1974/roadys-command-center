@@ -5750,9 +5750,117 @@ MGM.renderers.pnl = function (D) {
       — ${esc(MGM.pnlWhy ? MGM.pnlWhy() : '')}</p>
   </div>
 
+  ${MGM.renderPnlRecalibration(D)}
+
   ${MGM.tabNotes('pnl')}`;
 
   MGM.bindPnl(host);
+};
+
+/* ═══════════════════ P&L RECALIBRATION PROPOSAL (Half B) ═══════════════════
+   Review-gated, NEVER automatic. MM.pnlRecalibrationProposal (pure, tested
+   in membershipModel.test.js) derives a candidate value per driver from the
+   currently LOADED-AND-SAVED period (MGM.pnlActuals -- not the in-progress
+   draft above, which could be mid-edit and isn't what mgm_pnl_actuals
+   actually holds yet) and the current billing figures. This block only
+   renders the comparison and wires an explicit per-driver Apply button;
+   nothing here writes anywhere on its own.
+*/
+
+// The four drivers this panel can touch, in the order the user approved
+// them: duesPerLoc, rewardsPM (now revenue.rewardsBlendedPM -- see
+// rewardsRate() in membershipModel.js for why the field was renamed),
+// rewardsBreakagePerMember, settlementNetPerMember.
+MGM.PNL_RECAL_DRIVERS = [
+  ['duesPerLoc', 'Dues $/location/mo', '$/loc/mo'],
+  ['rewardsBlendedPM', 'Rewards (blended) $/member/mo', '$/member/mo'],
+  ['rewardsBreakagePerMember', 'Rewards breakage $/member/yr', '$/member/yr'],
+  ['settlementNetPerMember', 'Fuel settlement (net) $/member/yr', '$/member/yr']
+];
+
+MGM.pnlRecalibrationProposal = function (D) {
+  const streams = MGM.pnlActuals ? MGM.pnlActuals.streams : null;
+  // period_months defaults to 12 the same way the save form does -- a
+  // period with no months typed is assumed to be a full year, not treated
+  // as "undated" and silently divided by nothing.
+  const months = (MGM.pnlActuals && MGM.pnlActuals.periodMonths != null)
+    ? MGM.pnlActuals.periodMonths : 12;
+  return MM.pnlRecalibrationProposal(streams, D.st.billing, D.M.startTotal, months);
+};
+
+// Clones D.st, patches every driver with a PROPOSED value into the clone,
+// and compares the resulting headline against D's own (the CURRENT
+// published state) -- a sizing table, not an estimate, since both sides run
+// through the exact same MGM.runFor pipeline D itself came from.
+MGM.pnlRecalibrationSizing = function (D, proposal) {
+  const patched = JSON.parse(JSON.stringify(D.st));
+  let anyPatched = false;
+  MGM.PNL_RECAL_DRIVERS.forEach(([key]) => {
+    const p = proposal[key];
+    if (p && p.proposed != null) { MM.setPath(patched, p.path, p.proposed); anyPatched = true; }
+  });
+  if (!anyPatched) return null;
+  const after = MGM.runFor(patched);
+  return {
+    before: MM.valuationHeadline(D.valuation),
+    after: MM.valuationHeadline(after.valuation)
+  };
+};
+
+MGM.pnlApplyRecalibration = function (path, value) {
+  if (!MGM.requireAdmin('Applying a recalibrated driver')) return;
+  MM.setPath(MGM.state, path, value);
+  MGM.save();
+  MGM.refresh();
+};
+
+MGM.renderPnlRecalibration = function (D) {
+  if (!MGM.pnlActuals) {
+    return `<div class="card"><h3>Recalibration</h3>
+      <p class="note">No saved P&amp;L period is loaded, so there is nothing to
+        propose. Save a period above, then reload this tab.</p></div>`;
+  }
+  const proposal = MGM.pnlRecalibrationProposal(D);
+  const sizing = MGM.pnlRecalibrationSizing(D, proposal);
+  const fmt2 = x => x == null ? '—' : fmCents(x);
+
+  const rows = MGM.PNL_RECAL_DRIVERS.map(([key, label]) => {
+    const p = proposal[key];
+    const current = MM.getPath(D.st, p.path);
+    const noChange = p.proposed == null || Number(p.proposed) === Number(current);
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td class="num">${fmt2(current)}</td>
+      <td class="num">${fmt2(p.proposed)}${p.flagged
+        ? ' <span class="ovr" title="The exact derived figure already sat within one tenth of this rounding step of a round multiple -- consider a wider step before applying.">rounding may not protect this figure — review before applying</span>'
+        : ''}</td>
+      <td class="mgm-editonly">${p.proposed == null || noChange ? '' : `<button class="btn"
+        onclick="MGM.pnlApplyRecalibration('${p.path}',${p.proposed})">Apply</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="card"><h3>Recalibration available — review and approve</h3>
+    <p class="note">Computed from <b>${esc(MGM.pnlActuals.periodLabel || '(unlabelled period)')}</b>,
+       the period currently saved in <code>mgm_pnl_actuals</code> -- NOT the draft
+       above if you have unsaved edits. <b>Nothing here ever applies on its own.</b>
+       Review each row and click Apply only for the drivers you approve, even if a
+       proposed value looks identical to the current one.</p>
+    <table>
+      <tr><th>Driver</th><th class="num">Current</th><th class="num">Proposed</th><th class="mgm-editonly"></th></tr>
+      ${rows}
+    </table>
+    ${sizing ? `<p class="note"><b>Headline valuation if every proposed value above were
+       applied:</b> ${sizing.before.hasValue ? fm$(sizing.before.value) : '—'} →
+       ${sizing.after.hasValue ? fm$(sizing.after.value) : '—'}${
+         (sizing.before.hasValue && sizing.after.hasValue && sizing.before.value)
+           ? ` (${pct1(100 * (sizing.after.value - sizing.before.value) / sizing.before.value)})`
+           : ''
+       }. This line is a sizing aid for the decision, not itself an action -- applying
+       happens per row above.</p>`
+    : `<p class="note">None of the four drivers has a proposed value to size against
+       (no matching stream in the loaded period and no billing figure) -- applying
+       nothing would change the headline.</p>`}
+  </div>`;
 };
 
 // ── The gated P&L ─────────────────────────────────────────────────────────
