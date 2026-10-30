@@ -74,7 +74,19 @@ main{max-width:1240px;margin:0 auto;padding:26px 20px 80px}
 .grid{display:grid;gap:16px}
 .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
 @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow);position:relative}
+/* The per-card hide toggle. Deliberately NOT the ✕ used for removeRow /
+   scenarioDelete -- ✕ means destructive and irreversible elsewhere on this
+   page, and this is neither: the card's data is untouched and the restore
+   panel undoes it in one click. ⊘ (circled slash) reads as "disable this
+   view", not "delete this". mgm-editonly: visible only in admin edit mode,
+   same as every other inline edit affordance on this page; the real
+   boundary is mgm_ui_prefs' admin-only write policy, not this class. */
+.mgm-hide-btn{position:absolute;top:10px;right:10px;width:26px;height:26px;
+  border-radius:6px;border:1px solid var(--line);background:var(--surface);
+  color:var(--ink-soft);font-size:15px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.mgm-hide-btn:hover{border-color:#8A909C;color:var(--ink)}
 .card.flush{padding:0;overflow:hidden}
 .card .hd{padding:14px 20px;border-bottom:1px solid var(--line-soft);display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .card .bd{padding:16px 20px}
@@ -240,6 +252,8 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
       <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
       <button class="btn ghost" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost" onclick="MGM.resetAll()">Reset all</button>
+      <button class="btn ghost mgm-editonly" onclick="MGM.toggleRestorePanel()"
+              title="Unhide any card hidden with the ⊘ button. Hidden means hidden for every signed-in viewer, not just admins.">↺ Restore hidden sections</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
@@ -252,6 +266,7 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
   </div>
 </header>
 <div class="scenbar noprint" id="scenarioBar" style="display:none"></div>
+<div class="noprint" id="mgmRestorePanel" style="display:none"></div>
 <nav class="tabrail noprint">
   <div class="inner" id="tabrail"></div>
 </nav>
@@ -798,6 +813,112 @@ const TAB_ORDER = ['starting', 'additions', 'losses', 'pipeline', 'participation
   'gallons', 'revpermember', 'cost', 'staffing', 'cashflow', 'historical', 'report',
   'about'];
 
+// ── Card hide/show allowlist ────────────────────────────────────────────
+//
+// THE ALLOWLIST IS THE CONTAINMENT. MM.sanitizeHiddenSections drops any key
+// not in this set, on both read and write -- so this array is not UI
+// inventory housekeeping, it is the boundary of what a hide can ever refer
+// to. See docs/superpowers/plans/2026-10-29-mgm-card-hide-show.md for the
+// full derivation (60, not the 45 first assumed) and what each one is.
+//
+// FROZEN AND APPEND-ONLY. A saved hide refers to an id: renaming one orphans
+// a hide, and reusing a retired one applies a stranger's hide to a new card.
+// This is the SV_SIGNAGE trap from CLAUDE.md (index-keyed arrays break on a
+// mid-list insert) arriving through a stable key instead of an index -- the
+// stability is only real if the id, once shipped, never changes meaning.
+//
+// Every id here MUST have a matching data-card="..." attribute on exactly
+// one card in membership-growth-model/index.html. That correspondence is
+// checked by hand (there is no DOM test harness in this project; see
+// MM.sanitizeHiddenSections's comment on why membershipModel.test.js cannot
+// reach page markup) -- walk every tab once in a browser after any change
+// here and confirm each id's card still carries its attribute.
+//
+// Deliberately excluded, and why (full reasoning in the plan doc):
+//   - the fatal "could not load its model script" card -- replaces
+//     document.body; a hide must never be able to suppress a fatal error
+//   - the per-tab "This tab could not render" card -- the only thing shown
+//     when a renderer throws
+//   - the "Not implemented yet" placeholder -- dead code today (every
+//     TAB_ORDER tab has an explicit renderer) and would need an id for
+//     code that cannot run
+//   - #reportSheet -- IS the Report tab; hiding it empties the tab, which is
+//     breaking it, not tidying it
+//   - the edit-mode-only "Tab names" card -- already conditional on admin
+//     edit mode; an id nothing would use
+const HIDDEN_SECTION_IDS = Object.freeze([
+  'starting-groups', 'starting-pipeline-status', 'starting-billing',
+  'starting-model-settings', 'starting-ptp-unresolved', 'starting-notes',
+  'additions-basis', 'additions-roll-forward', 'additions-source-mix',
+  'additions-scenario-compare', 'additions-notes',
+  'losses-assumption', 'losses-decomposition', 'losses-structural-overrides',
+  'losses-notes',
+  'pipeline-funnel-table', 'pipeline-horizon', 'pipeline-load-by-owner',
+  'pipeline-by-source', 'pipeline-funnel-chart', 'pipeline-notes',
+  'participation-rates-ramp', 'participation-members-by-year', 'participation-notes',
+  'gallons-production-by-group', 'gallons-pipeline-inbound', 'gallons-region-variance',
+  'gallons-feed-revenue', 'gallons-notes',
+  'revpermember-drivers', 'revpermember-reconciliation', 'revpermember-revenue-by-year',
+  'revpermember-revenue-chart', 'revpermember-notes',
+  'cost-inputs', 'cost-by-year', 'cost-notes',
+  'staffing-roster', 'staffing-crm-not-on-roster', 'staffing-notes',
+  'cashflow-cash-bridge', 'cashflow-assumptions', 'cashflow-valuation', 'cashflow-notes',
+  'historical-signups-losses', 'historical-derived-attrition', 'historical-monthly-signups',
+  'historical-history-chart', 'historical-monthly-chart', 'historical-notes',
+  'report-report-fields',
+  'about-what-this-is', 'about-where-numbers-come-from', 'about-walkthrough',
+  'about-who-can-edit', 'about-judgement-calls', 'about-refreshing-data',
+  'about-known-limitations', 'about-questions', 'about-notes',
+]);
+
+// A fixed, short description per id for the "Restore hidden sections" list --
+// NOT the card's live heading, because six headings are template expressions
+// (e.g. "Monthly signups, 2023–2026") and four chart titles are editable
+// labels (MGM.chartTitle), so a heading read back off a hidden (and
+// therefore unrendered) card cannot be relied on, and a heading-based label
+// would drift the moment someone renames a chart title -- the same trap the
+// id scheme itself exists to avoid.
+const HIDDEN_SECTION_LABELS = Object.freeze({
+  'starting-groups': 'Locations by group', 'starting-pipeline-status': 'Pipeline status',
+  'starting-billing': 'Billing', 'starting-model-settings': 'Model settings',
+  'starting-ptp-unresolved': 'PTP — unresolved', 'starting-notes': 'Notes & assumptions',
+  'additions-basis': 'Basis', 'additions-roll-forward': 'Roll-forward',
+  'additions-source-mix': 'Source mix', 'additions-scenario-compare': 'Scenario comparison',
+  'additions-notes': 'Notes & assumptions',
+  'losses-assumption': 'Assumption', 'losses-decomposition': 'Historical decomposition',
+  'losses-structural-overrides': 'Structural overrides by projection year',
+  'losses-notes': 'Notes & assumptions',
+  'pipeline-funnel-table': 'Funnel by stage', 'pipeline-horizon': 'Horizon',
+  'pipeline-load-by-owner': 'Load by owner', 'pipeline-by-source': 'By source',
+  'pipeline-funnel-chart': 'Funnel chart', 'pipeline-notes': 'Notes & assumptions',
+  'participation-rates-ramp': 'Rates and ramp',
+  'participation-members-by-year': 'Participating members by year',
+  'participation-notes': 'Notes & assumptions',
+  'gallons-production-by-group': 'Production by group',
+  'gallons-pipeline-inbound': 'Pipeline inbound', 'gallons-region-variance': 'Region variance',
+  'gallons-feed-revenue': 'Feed the revenue model', 'gallons-notes': 'Notes & assumptions',
+  'revpermember-drivers': 'Drivers', 'revpermember-reconciliation': 'Reconciliation',
+  'revpermember-revenue-by-year': 'Revenue by year', 'revpermember-revenue-chart': 'Revenue chart',
+  'revpermember-notes': 'Notes & assumptions',
+  'cost-inputs': 'Inputs', 'cost-by-year': 'By year', 'cost-notes': 'Notes & assumptions',
+  'staffing-roster': 'Roster', 'staffing-crm-not-on-roster': 'In the CRM but not on the roster',
+  'staffing-notes': 'Notes & assumptions',
+  'cashflow-cash-bridge': 'Cash bridge', 'cashflow-assumptions': 'Assumptions',
+  'cashflow-valuation': 'Valuation', 'cashflow-notes': 'Notes & assumptions',
+  'historical-signups-losses': 'Annual signups and losses',
+  'historical-derived-attrition': 'Derived attrition',
+  'historical-monthly-signups': 'Monthly signups', 'historical-history-chart': 'History chart',
+  'historical-monthly-chart': 'Monthly chart', 'historical-notes': 'Notes & assumptions',
+  'report-report-fields': 'Report fields',
+  'about-what-this-is': 'What this is',
+  'about-where-numbers-come-from': 'Where the numbers come from',
+  'about-walkthrough': 'How to use it — a walk through the tabs',
+  'about-who-can-edit': 'Who can edit, and who can see the P&L',
+  'about-judgement-calls': 'The four judgement calls that materially move the output',
+  'about-refreshing-data': 'Refreshing the data', 'about-known-limitations': 'Known limitations',
+  'about-questions': 'Questions', 'about-notes': 'Notes & assumptions',
+});
+
 MGM.renderTabs = function () {
   const t = MGM.state.labels.tabs;
   document.getElementById('tabrail').innerHTML = TAB_ORDER.map(k =>
@@ -836,6 +957,15 @@ MGM.refresh = function () {
   // have been evaluated on a partially loaded page.
   if (MGM.renderScenarioBar) MGM.renderScenarioBar();
   if (MGM.bindAll) MGM.bindAll();
+  // Same guard as the two lines above, and the same reason: refresh() runs
+  // during the very first render, before this definition (further down the
+  // file) has been evaluated.
+  if (MGM.decorateHiddenSections) MGM.decorateHiddenSections();
+  // Keeps the open restore panel in step with the list it is showing --
+  // without this, restoring the last hidden card left the panel open and
+  // stale (still claiming "1 card hidden") until the admin closed and
+  // reopened it.
+  if (MGM.renderRestorePanel) MGM.renderRestorePanel();
 };
 MGM.refreshSoft = MGM.refresh;
 
@@ -877,7 +1007,7 @@ MGM.renderers.starting = function (D) {
            `${st.billing.zeroBillCompanies} companies bill $0`, 'dark')}
   </div>
 
-  <div class="card"><h3>Locations by group</h3>
+  <div class="card" data-card="starting-groups"><h3>Locations by group</h3>
     <table>
       <tr><th>Group</th><th class="num">Active</th><th class="num">Mix</th></tr>
       ${groups.map((g, i) => `<tr>
@@ -898,7 +1028,7 @@ MGM.renderers.starting = function (D) {
   </div>
 
   <div class="grid g2">
-    <div class="card"><h3>Pipeline status</h3>
+    <div class="card" data-card="starting-pipeline-status"><h3>Pipeline status</h3>
       <table>
         <tr><td>Onboarding</td><td class="num"><input class="cell" type="number"
             data-k="statusCounts.onboarding" value="${st.statusCounts.onboarding}"></td></tr>
@@ -906,7 +1036,7 @@ MGM.renderers.starting = function (D) {
             data-k="statusCounts.offboarding" value="${st.statusCounts.offboarding}"></td></tr>
       </table>
     </div>
-    <div class="card"><h3>Billing</h3>
+    <div class="card" data-card="starting-billing"><h3>Billing</h3>
       <table>
         <tr><td>Companies</td><td class="num"><input class="cell" type="number"
             data-k="billing.companies" value="${st.billing.companies}"></td></tr>
@@ -934,7 +1064,7 @@ MGM.renderers.starting = function (D) {
     </div>
   </div>
 
-  <div class="card"><h3>Model settings</h3>
+  <div class="card" data-card="starting-model-settings"><h3>Model settings</h3>
     <table>
       <tr><td>Data as of</td><td><input class="cell" type="text" data-k="DATA_ASOF" value="${esc(st.DATA_ASOF)}"></td></tr>
       <tr><td>Current year</td><td><input class="cell" type="number" data-k="CURRENT_YEAR" value="${st.CURRENT_YEAR}"></td></tr>
@@ -943,7 +1073,7 @@ MGM.renderers.starting = function (D) {
     </table>
   </div>
 
-  <div class="card"><h3>PTP — unresolved</h3>
+  <div class="card" data-card="starting-ptp-unresolved"><h3>PTP — unresolved</h3>
     <p class="note">${esc(st.ptpNote)}</p>
     <p class="note">Held flat at <code>ptpNet: 0</code> so it cannot distort a projection.</p>
   </div>
@@ -969,7 +1099,7 @@ MGM.renderers.additions = function (D) {
     ${sign('ANNUAL GROWTH', pct1(st.adds.growthPct), 'applied to the add rate', 'red')}
   </div>
 
-  <div class="card"><h3>Basis</h3>
+  <div class="card" data-card="additions-basis"><h3>Basis</h3>
     <table>
       <tr><td>Add rate basis</td><td>
         <select class="cell" data-k="salesPipeline.basis">
@@ -993,7 +1123,7 @@ MGM.renderers.additions = function (D) {
       ? '<p class="note"><span class="ovr">No pipeline data loaded</span> Sign in on the Sales Pipeline tab, or the add rate is zero.</p>' : ''}
   </div>
 
-  <div class="card"><h3>Roll-forward</h3>
+  <div class="card" data-card="additions-roll-forward"><h3>Roll-forward</h3>
     ${(() => { const y0 = M.years[0];
       return y0.ytd ? `<p class="note">The ${fmt(y0.start)} opening count already
         includes <b>${fmt(y0.ytd)}</b> signings booked Jan–${MONTH_NAMES[st.ASOF_MONTH - 1]}
@@ -1017,7 +1147,7 @@ MGM.renderers.additions = function (D) {
     </table>
   </div>
 
-  <div class="card"><h3>Source mix</h3>
+  <div class="card" data-card="additions-source-mix"><h3>Source mix</h3>
     <table>
       <tr><th>Source</th><th class="num">Mix</th>${M.years.map(r => `<th class="num">${r.year}</th>`).join('')}</tr>
       ${srcs.map((s, i) => `<tr>
@@ -1103,7 +1233,7 @@ MGM.renderers.losses = function (D) {
            'one-off consolidation', 'dark')}
   </div>
 
-  <div class="card"><h3>Assumption</h3>
+  <div class="card" data-card="losses-assumption"><h3>Assumption</h3>
     <table>
       <tr><td>Steady annual attrition</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="attrition.steady" value="${st.attrition.steady}">
@@ -1126,7 +1256,7 @@ MGM.renderers.losses = function (D) {
        body, asserting a property of a decomposition that was not there. Both
        are now keyed to split.rows.length, and the empty case says why it is
        empty instead of going quiet. -->
-  <div class="card"><h3>Historical decomposition${split.rows.length
+  <div class="card" data-card="losses-decomposition"><h3>Historical decomposition${split.rows.length
       ? ` at ${pct1(st.attrition.steadyAlt)} steady` : ''}</h3>
     ${split.rows.length ? `
     <table>
@@ -1152,7 +1282,7 @@ MGM.renderers.losses = function (D) {
        this table.</p>`}
   </div>
 
-  <div class="card"><h3>Structural overrides by projection year</h3>
+  <div class="card" data-card="losses-structural-overrides"><h3>Structural overrides by projection year</h3>
     <table>
       <tr><th>Year</th><th class="num">Structural locations lost</th></tr>
       ${years.map(y => `<tr><td>${y}</td><td class="num"><input class="cell" type="number"
@@ -1215,7 +1345,7 @@ MGM.renderers.pipeline = function (D) {
   </div>`; })()}
   ${banner}
 
-  <div class="card"><h3>Funnel by stage</h3>
+  <div class="card" data-card="pipeline-funnel-table"><h3>Funnel by stage</h3>
     <table>
       <tr><th>Stage</th><th class="num">Leads</th><th class="num">Locations</th>
           <th class="num">Weight</th><th class="num">Weighted locs</th>
@@ -1256,7 +1386,7 @@ MGM.renderers.pipeline = function (D) {
       onclick="MGM.resetSection('salesPipeline.stageWeights')">Reset stage weights</button></div>
   </div>
 
-  <div class="card"><h3>Horizon</h3>
+  <div class="card" data-card="pipeline-horizon"><h3>Horizon</h3>
     <table>
       <tr><td>Spread weighted locations over (months)</td><td class="num">
         <input class="cell" type="number" min="1" data-k="salesPipeline.horizonMonths"
@@ -1276,7 +1406,7 @@ MGM.renderers.pipeline = function (D) {
   </div>
 
   <div class="grid g2">
-    <div class="card"><h3>Load by owner</h3>
+    <div class="card" data-card="pipeline-load-by-owner"><h3>Load by owner</h3>
       <table><tr><th>Owner</th><th class="num">Open leads</th><th class="num">Open locations</th></tr>
       ${Object.keys(p.byOwner).length
         ? Object.entries(p.byOwner).map(([k, v]) =>
@@ -1286,7 +1416,7 @@ MGM.renderers.pipeline = function (D) {
       </table>
       <p class="note">Feeds the Staffing &amp; Capacity tab.</p>
     </div>
-    <div class="card"><h3>By source</h3>
+    <div class="card" data-card="pipeline-by-source"><h3>By source</h3>
       <table><tr><th>Source</th><th class="num">Leads</th><th class="num">Locations</th></tr>
       ${Object.keys(p.bySource).length
         ? Object.entries(p.bySource).map(([k, v]) =>
@@ -1298,7 +1428,7 @@ MGM.renderers.pipeline = function (D) {
     </div>
   </div>
 
-  <div class="card flush"><div style="padding:18px 20px 0">${MGM.chartTitle('funnel')}</div>
+  <div class="card flush" data-card="pipeline-funnel-chart"><div style="padding:18px 20px 0">${MGM.chartTitle('funnel')}</div>
     ${loadedP
       ? '<div style="height:260px;padding:10px 20px 20px"><canvas id="chFunnel"></canvas></div>'
       : `<p class="note" style="padding:0 20px 20px">No pipeline data to chart —
@@ -1396,7 +1526,7 @@ MGM.renderers.participation = function (D) {
     ${sign('MEMBERS', fmt(P.length ? P[P.length - 1].members : 0), 'final-year average', 'dark')}
   </div>
 
-  <div class="card"><h3>Rates and ramp</h3>
+  <div class="card" data-card="participation-rates-ramp"><h3>Rates and ramp</h3>
     <table>
       <tr><th>Program</th><th class="num">Participation %</th>
           <th class="num">Ramp (months)</th></tr>
@@ -1416,7 +1546,7 @@ MGM.renderers.participation = function (D) {
        scale with participation.</p>
   </div>
 
-  <div class="card"><h3>Participating members by year</h3>
+  <div class="card" data-card="participation-members-by-year"><h3>Participating members by year</h3>
     <table>
       <tr><th>Year</th><th class="num">Avg members</th>
         ${progs.map(([, l]) => `<th class="num">${esc(l)}</th>`).join('')}</tr>
@@ -1479,7 +1609,7 @@ MGM.renderers.gallons = function (D) {
       : sign('PER MEMBER', '—', 'gallons engine not loaded', 'dark')}
   </div>
 
-  <div class="card"><h3>Production by group</h3>
+  <div class="card" data-card="gallons-production-by-group"><h3>Production by group</h3>
     <table>
       <tr><th>Group</th><th class="num">Locations</th><th>Engine profile</th>
           <th>Roadway</th><th class="num">Baseline gal/mo</th><th class="num">Gallons / mo</th></tr>
@@ -1519,7 +1649,7 @@ MGM.renderers.gallons = function (D) {
       <code>busDevGallonsConfig.js</code> and are never written back.</p>
   </div>
 
-  <div class="card"><h3>Pipeline inbound</h3>
+  <div class="card" data-card="gallons-pipeline-inbound"><h3>Pipeline inbound</h3>
     <table>
       <tr><th>Source</th><th class="num">Gal / mo</th></tr>
       <tr><td>Open leads — modeled profiles and estimates</td>
@@ -1533,7 +1663,7 @@ MGM.renderers.gallons = function (D) {
       unknown, not zero, until it loads — the figures above read '—' rather than 0.`}</p>
   </div>
 
-  <div class="card"><h3>Region variance</h3>
+  <div class="card" data-card="gallons-region-variance"><h3>Region variance</h3>
     ${MGM.regionVariance
       ? `<p class="note">Live from <code>region_variance.json</code>, as of
          ${esc(rv.asOf)} — ${Object.keys(rv).filter(k => typeof rv[k] === 'number').length} regions.</p>
@@ -1547,7 +1677,7 @@ MGM.renderers.gallons = function (D) {
       network aggregates.</p>
   </div>
 
-  <div class="card"><h3>Feed the revenue model</h3>
+  <div class="card" data-card="gallons-feed-revenue"><h3>Feed the revenue model</h3>
     <p class="note">Revenue per Member currently uses
       <b>${fmt(st.revenue.avgGallons)}</b> gal/mo per participating location.</p>
     <button class="btn primary" onclick="MGM.useGallonsInModel(${G.perMember})">
@@ -1593,7 +1723,7 @@ MGM.renderers.revpermember = function (D) {
     ${sign('AVG MEMBERS', fmt(last.members), `${last.year} average`, 'dark')}
   </div>
 
-  <div class="card"><h3>Drivers</h3>
+  <div class="card" data-card="revpermember-drivers"><h3>Drivers</h3>
     <table>
       <tr><th>Stream</th><th class="num">Driver</th><th class="num">$/member/yr</th></tr>
       <tr><td><input class="lbl-in" type="text" data-k="labels.streams.dues" value="${esc(L.dues)}"></td>
@@ -1676,7 +1806,7 @@ MGM.renderers.revpermember = function (D) {
       behind them are auth-gated P&amp;L lines and are not published here.</p>
   </div>
 
-  <div class="card"><h3>Reconciliation</h3>
+  <div class="card" data-card="revpermember-reconciliation"><h3>Reconciliation</h3>
     <table>
       <tr><th>Stream</th><th class="num">From drivers</th>
           <th class="num">P&amp;L actual</th><th class="num">Variance</th></tr>
@@ -1733,7 +1863,7 @@ MGM.renderers.revpermember = function (D) {
          protected.</p>`}
   </div>
 
-  <div class="card"><h3>Revenue by year</h3>
+  <div class="card" data-card="revpermember-revenue-by-year"><h3>Revenue by year</h3>
     <table>
       <tr><th>Year</th><th class="num">Avg members</th>
         ${STREAM_KEYS.map(k => `<th class="num">${esc(L[k])}</th>`).join('')}
@@ -1747,7 +1877,7 @@ MGM.renderers.revpermember = function (D) {
       Total Income and is not revenue.</p>
   </div>
 
-  <div class="card flush"><div style="padding:18px 20px 0">${MGM.chartTitle('revenue')}</div>
+  <div class="card flush" data-card="revpermember-revenue-chart"><div style="padding:18px 20px 0">${MGM.chartTitle('revenue')}</div>
     <div style="height:280px;padding:10px 20px 20px"><canvas id="chRevenue"></canvas></div></div>
 
   ${MGM.tabNotes('revpermember')}`;
@@ -1786,7 +1916,7 @@ MGM.renderers.cost = function (D) {
            C.payback == null ? 'payback n/a' : `${fmt1(C.payback)} mo payback`, 'dark')}
   </div>
 
-  <div class="card"><h3>Inputs</h3>
+  <div class="card" data-card="cost-inputs"><h3>Inputs</h3>
     <table>
       <tr><td>Sales &amp; marketing spend / month</td><td class="num">
         <input class="cell" type="number" data-k="costs.salesSpendPerMonth"
@@ -1809,7 +1939,7 @@ MGM.renderers.cost = function (D) {
       CAC is zero: an unset cost is not an instant payback.</p>
   </div>
 
-  <div class="card"><h3>By year</h3>
+  <div class="card" data-card="cost-by-year"><h3>By year</h3>
     <table>
       <tr><th>Year</th><th class="num">Months</th><th class="num">Spend</th>
           <th class="num">New members</th><th class="num">CAC</th>
@@ -1877,7 +2007,7 @@ MGM.renderers.staffing = function (D) {
              : (K.gap > 0 ? 'short of plan' : 'capacity to spare'), 'dark')}
   </div>
 
-  <div class="card"><h3>Roster</h3>
+  <div class="card" data-card="staffing-roster"><h3>Roster</h3>
     <table>
       <tr><th>Rep</th><th class="num">Capacity (new locs/mo)</th>
           <th class="num">Cost / yr</th><th class="num">Open leads</th>
@@ -1924,7 +2054,7 @@ MGM.renderers.staffing = function (D) {
   </div>
 
   ${loadedPipe && Object.keys(K.byOwner).some(name => !reps.find(r => r.name === name))
-    ? `<div class="card"><h3>In the CRM but not on the roster</h3>
+    ? `<div class="card" data-card="staffing-crm-not-on-roster"><h3>In the CRM but not on the roster</h3>
        <table><tr><th>Owner</th><th class="num">Open leads</th></tr>
        ${Object.entries(K.byOwner).filter(([name]) => !reps.find(r => r.name === name))
          .map(([name, v]) => `<tr><td>${esc(name)}</td>
@@ -2014,7 +2144,7 @@ MGM.renderers.cashflow = function (D) {
     })()}
   </div>
 
-  <div class="card"><h3>Cash bridge</h3>
+  <div class="card" data-card="cashflow-cash-bridge"><h3>Cash bridge</h3>
     <table>
       <tr><th>Year</th><th class="num">Revenue</th><th class="num">Cost to serve</th>
           <th class="num">Acquisition</th><th class="num">Add-backs</th>
@@ -2041,7 +2171,7 @@ MGM.renderers.cashflow = function (D) {
       Set them on the Cost to Acquire &amp; Serve tab.</p>` : ''}
   </div>
 
-  <div class="card"><h3>Assumptions</h3>
+  <div class="card" data-card="cashflow-assumptions"><h3>Assumptions</h3>
     <table>
       <tr><td>Capex / yr</td><td class="num"><input class="cell" type="number"
         data-k="cashflow.capexPerYear" value="${st.cashflow.capexPerYear}"></td></tr>
@@ -2154,7 +2284,7 @@ MGM.renderers.cashflow = function (D) {
       ${esc(st.valuation.marginBasisNote)}</p>
   </div>
 
-  <div class="card"><h3>Valuation</h3>
+  <div class="card" data-card="cashflow-valuation"><h3>Valuation</h3>
     <table>
       <tr><th>Lens</th><th class="num">Basis</th><th class="num">Multiple</th><th class="num">Value</th></tr>
       <tr><td>Recurring revenue</td><td class="num">${fm$(v.basis)}</td>
@@ -2343,7 +2473,7 @@ MGM.renderers.historical = function (D) {
   <p class="sub">Source data feeding New Additions, Member Losses and Revenue per
      Member. Roady's + Roady's Lite only — PTPC and COO excluded throughout.</p>
 
-  <div class="card"><h3>Annual signups and losses</h3>
+  <div class="card" data-card="historical-signups-losses"><h3>Annual signups and losses</h3>
     <table>
       <tr><th>Year</th><th class="num">New (Roady's)</th><th class="num">Lost</th>
           <th class="num">Total count</th><th></th></tr>
@@ -2372,7 +2502,7 @@ MGM.renderers.historical = function (D) {
       the verified figure.</p>
   </div>
 
-  <div class="card"><h3>Derived attrition</h3>
+  <div class="card" data-card="historical-derived-attrition"><h3>Derived attrition</h3>
     <table>
       <tr><th>Year</th><th class="num">Lost</th><th class="num">Prior count</th><th class="num">Rate</th></tr>
       ${d.rows.map(r => `<tr><td>${r.year}</td><td class="num">${fmt(r.lost)}</td>
@@ -2400,7 +2530,7 @@ MGM.renderers.historical = function (D) {
          is unaffected either way.`}</p>
   </div>
 
-  <div class="card"><h3>Monthly signups${years.length
+  <div class="card" data-card="historical-monthly-signups"><h3>Monthly signups${years.length
       ? `, ${MGM.yearSpan(years)}` : ''}</h3>
     ${!years.length ? '<p class="note">No monthly series loaded.</p>' : `
     <div style="overflow-x:auto">
@@ -2445,11 +2575,11 @@ MGM.renderers.historical = function (D) {
   </div>
 
   <div class="grid g2">
-    <div class="card flush"><div style="padding:18px 20px 0">${MGM.chartTitle('history')}</div>
+    <div class="card flush" data-card="historical-history-chart"><div style="padding:18px 20px 0">${MGM.chartTitle('history')}</div>
       ${st.history.length
         ? '<div style="height:260px;padding:10px 20px 20px"><canvas id="chHistory"></canvas></div>'
         : '<p class="note" style="padding:10px 20px 20px">No annual rows entered — nothing to chart.</p>'}</div>
-    <div class="card flush"><div style="padding:18px 20px 0">
+    <div class="card flush" data-card="historical-monthly-chart"><div style="padding:18px 20px 0">
       ${MGM.chartTitle('monthly')}</div>
       ${years.length
         ? '<div style="height:260px;padding:10px 20px 20px"><canvas id="chMonthly"></canvas></div>'
@@ -2638,7 +2768,7 @@ MGM.renderers.report = function (D) {
   ].filter(Boolean);
 
   document.getElementById('panel-report').innerHTML = `
-  <div class="noprint card"><h3>Report fields</h3>
+  <div class="noprint card" data-card="report-report-fields"><h3>Report fields</h3>
     <table>
       <tr><td>Company</td><td><input class="lbl-in" type="text" data-k="report.company" value="${esc(rp.company)}"></td></tr>
       <tr><td>Title</td><td><input class="lbl-in" type="text" data-k="report.title" value="${esc(rp.title)}"></td></tr>
@@ -3628,7 +3758,7 @@ MGM.renderers.about = function (D) {
   // renames it here too rather than leaving the tour pointing at a name that is
   // no longer on the rail.
   const T = k => esc(st.labels.tabs[k] || k);
-  const card = (title, body) => `<div class="card"><h3>${title}</h3>${body}</div>`;
+  const card = (title, body, id) => `<div class="card" data-card="${id}"><h3>${title}</h3>${body}</div>`;
 
   document.getElementById('panel-about').innerHTML = `
   <h2>${esc(st.labels.tabs.about)}</h2>
@@ -3649,7 +3779,7 @@ MGM.renderers.about = function (D) {
     <p class="note">The horizon is <b>${fmt(st.HORIZON_YEARS)}
       year${st.HORIZON_YEARS === 1 ? '' : 's'}</b> from
       ${esc(String(st.CURRENT_YEAR))}, and the source data is current through
-      <b>${esc(st.DATA_ASOF)}</b>.</p>`)}
+      <b>${esc(st.DATA_ASOF)}</b>.</p>`, 'about-what-this-is')}
 
   ${card('Where the numbers come from', `
     <p>Six sources. Everything else in the tool is an assumption you can change.</p>
@@ -3723,7 +3853,7 @@ MGM.renderers.about = function (D) {
       base is <b>${fmt(liveTotal)}</b>, not the shipped ${fmt(shippedTotal)} —
       someone has changed a group count. The figures in the table above are the
       shipped ones, because an edit does not change where the shipped number came
-      from.</p>` : ''}`)}
+      from.</p>` : ''}`, 'about-where-numbers-come-from')}
 
   ${card('How to use it — a walk through the tabs', `
     <p>In rail order. For each one: what it shows, what you can change, and what
@@ -3831,7 +3961,7 @@ MGM.renderers.about = function (D) {
     <p class="note">Every tab except ${T('report')} carries a <b>Notes &amp;
       assumptions</b> box. Those notes are stored with the model and are
       <b>printed in the report</b>, under <i>Notes &amp; assumptions recorded by
-      tab</i>, so they travel with the packet instead of staying on screen.</p>`)}
+      tab</i>, so they travel with the packet instead of staying on screen.</p>`, 'about-walkthrough')}
 
   ${card('Who can edit, and who can see the P&amp;L', `
     <p>The read side is not uniform, and assuming it is will mislead you.</p>
@@ -3874,7 +4004,7 @@ MGM.renderers.about = function (D) {
       it saves, syncs or exports carries it. An administrator and a non-admin therefore see
       genuinely <b>different valuation headlines for the same saved scenario</b>.
       That is not a bug and not a disagreement: each is correct for the inputs it
-      had, and both are captioned.</p>`)}
+      had, and both are captioned.</p>`, 'about-who-can-edit')}
 
   ${card('The four judgement calls that materially move the output', `
     <p><b>1. Attrition.</b> The derived rates for
@@ -3931,7 +4061,7 @@ MGM.renderers.about = function (D) {
         than inventing an allocation. <b>Anyone quoting a valuation out of this
         tool must quote that basis with it.</b> Enter real operating costs before
         quoting anything at all.</li>
-    </ul>`)}
+    </ul>`, 'about-judgement-calls')}
 
   ${card('Refreshing the data', `
     <p><code>tools/refresh-membership-config.py</code> regenerates the data block
@@ -3948,7 +4078,7 @@ MGM.renderers.about = function (D) {
       verbatim.</p>
     <p class="note">The gallon baselines are not copied at all. They are read live
       from <code>busDevGallonsConfig.js</code> every time this page loads, so the
-      Bus Dev engine stays the single source for them.</p>`)}
+      Bus Dev engine stays the single source for them.</p>`, 'about-refreshing-data')}
 
   ${card('Known limitations', `
     <p>Read these before quoting a figure out of this tool.</p>
@@ -4033,13 +4163,13 @@ MGM.renderers.about = function (D) {
       supplied</i>, while a <b>$0</b> means <i>a figure of zero was supplied
       deliberately</i>. And an <b>assumption</b> or <b>override</b> badge marks a
       value that is not sourced data. Both conventions travel into the printed
-      report and the CSV.</p>`)}
+      report and the CSV.</p>`, 'about-known-limitations')}
 
   ${card('Questions', `
     <p>Reach the maintainer at
       <a href="mailto:${esc(st.report.contact)}">${esc(st.report.contact)}</a>.</p>
     <p class="note">Found a figure on a tab that disagrees with this page? That is
-      a defect in one of the two — please say which tab and which figure.</p>`)}
+      a defect in one of the two — please say which tab and which figure.</p>`, 'about-questions')}
 
   ${MGM.tabNotes('about')}`;
 };
@@ -4859,6 +4989,222 @@ MGM.syncScenarios = async function () {
   MGM.renderAuth();
 };
 
+/* ═══════════════ CARD HIDE/SHOW (admin-only, shared) ═══════════════
+ *
+ * Which cards are hidden is NOT part of MGM.state. See the schema plan
+ * (docs/superpowers/plans/2026-10-29-mgm-card-hide-show.md, section 2) for
+ * the full containment argument: anything in MGM.state crosses the
+ * mgm_scenarios / exportJSON publish boundary, and mergeState's retain-
+ * unknown behaviour would let an unrecognised key survive a merge with its
+ * value intact -- the exact shape of the C1 copy-residue leak, one level
+ * down. Kept entirely outside state, in MGM.uiPrefs, this field has no
+ * merge path to defend at all: it is never written into a scenario, an
+ * export, or localStorage. The containment that DOES apply here is
+ * MM.sanitizeHiddenSections, run on every value that comes back off the
+ * network, in both directions.
+ */
+
+MGM.uiPrefs = { hiddenSections: {} };
+// The optimistic-concurrency token from the last successful read, used only
+// by applyHiddenDelta's .eq('updated_at', ...) — never shown, never part of
+// uiPrefs itself, so there is no second field here that could desync from
+// hiddenSections the way the rewards rate and its basis once did.
+MGM._uiPrefsSeenAt = null;
+
+MGM.isCardHidden = id => !!MGM.uiPrefs.hiddenSections[id];
+
+MGM.loadUiPrefs = async function () {
+  const sb = MGM.sb();
+  // Unsigned visitors get the shipped, un-tidied view. mgm_ui_prefs' SELECT
+  // policy is "any signed-in user", not anon, so an unsigned reader cannot
+  // read this row at all — and the correct fallback for that is "show
+  // everything", never "hide everything": this is a tidying feature, not a
+  // permission feature, so a missing session must never read as a reason to
+  // hide more.
+  if (!sb || !MGM.authEmail()) {
+    MGM.uiPrefs.hiddenSections = {}; MGM._uiPrefsSeenAt = null; MGM.refresh(); return;
+  }
+  try {
+    const { data, error } = await sb.from('mgm_ui_prefs')
+      .select('hidden_sections,updated_at').eq('id', 'v1').maybeSingle();
+    if (error || !data) {
+      MGM.uiPrefs.hiddenSections = {}; MGM._uiPrefsSeenAt = null; MGM.refresh(); return;
+    }
+    MGM.uiPrefs.hiddenSections = MM.sanitizeHiddenSections(data.hidden_sections, HIDDEN_SECTION_IDS);
+    MGM._uiPrefsSeenAt = data.updated_at;
+  } catch (e) {
+    MGM.uiPrefs.hiddenSections = {}; MGM._uiPrefsSeenAt = null;
+  }
+  MGM.refresh();
+};
+
+// Read-modify-write with optimistic concurrency. On a lost race it retries
+// the SAME delta against a fresh read rather than retrying the merged
+// snapshot: retrying the snapshot would reinstate whatever it saw on this
+// attempt and silently stomp the other admin's change that just landed.
+// Retrying the delta ("hide card X") converges regardless of what else
+// changed underneath it. Bounded retries, then an error rather than a loop
+// — a lost hide is cheap to recover by re-hiding, unlike
+// gs-travel-planner.html's tpVaultMutateWraps, which must abort outright
+// because a lost write there destroys someone's only way into the vault.
+//
+// delta: { "<card-id>": true } to hide, { "<card-id>": false } to restore.
+MGM.applyHiddenDelta = async function (delta, attempt) {
+  attempt = attempt || 0;
+  const sb = MGM.sb();
+  if (!sb) {
+    alert('Not connected — the hidden-card list is shared through the cloud and needs a connection.');
+    return;
+  }
+
+  const prevLocal = Object.assign({}, MGM.uiPrefs.hiddenSections);
+  // Optimistic local update so the click feels instant; corrected below if
+  // the write does not land.
+  MGM.uiPrefs.hiddenSections = MM.sanitizeHiddenSections(
+    Object.assign({}, prevLocal, delta), HIDDEN_SECTION_IDS);
+  MGM.refresh();
+
+  const { data: row, error: readErr } = await sb.from('mgm_ui_prefs')
+    .select('hidden_sections,updated_at').eq('id', 'v1').maybeSingle();
+  if (readErr || !row) {
+    MGM.uiPrefs.hiddenSections = prevLocal; MGM.refresh();
+    alert('Could not reach the shared hidden-card list: '
+      + (readErr ? readErr.message : 'no row') + '. Nothing was changed.');
+    return;
+  }
+  const serverSections = MM.sanitizeHiddenSections(row.hidden_sections, HIDDEN_SECTION_IDS);
+  const merged = MM.sanitizeHiddenSections(Object.assign({}, serverSections, delta), HIDDEN_SECTION_IDS);
+
+  const { data: upd, error: writeErr } = await sb.from('mgm_ui_prefs')
+    .update({ hidden_sections: merged, updated_by: MGM.authEmail() || '' })
+    .eq('id', 'v1').eq('updated_at', row.updated_at).select();
+
+  if (writeErr) {
+    MGM.uiPrefs.hiddenSections = prevLocal; MGM.refresh();
+    alert(/row-level security|42501|permission/i.test(writeErr.message || '')
+      ? 'Hiding and restoring cards is limited to administrators.'
+      : 'Could not save the change: ' + writeErr.message);
+    return;
+  }
+  if (!upd || !upd.length) {
+    // Someone else wrote first. Retry the ORIGINAL delta — not `merged`,
+    // which was computed from a snapshot that is now stale — against a
+    // fresh read.
+    if (attempt >= 5) {
+      MGM.uiPrefs.hiddenSections = prevLocal; MGM.refresh();
+      alert('Another admin is changing the hidden-card list at the same time. Please try again.');
+      return;
+    }
+    return MGM.applyHiddenDelta(delta, attempt + 1);
+  }
+  MGM.uiPrefs.hiddenSections = MM.sanitizeHiddenSections(upd[0].hidden_sections, HIDDEN_SECTION_IDS);
+  MGM._uiPrefsSeenAt = upd[0].updated_at;
+  MGM.refresh();
+};
+
+MGM.hideSection = function (id) {
+  if (!MGM.requireAdmin('Hiding a card')) return;
+  if (HIDDEN_SECTION_IDS.indexOf(id) < 0) return;   // not a recognised card id
+  MGM.applyHiddenDelta({ [id]: true });
+};
+
+MGM.restoreSection = function (id) {
+  if (!MGM.requireAdmin('Restoring a card')) return;
+  MGM.applyHiddenDelta({ [id]: false });
+};
+
+MGM.restoreAllSections = function () {
+  if (!MGM.requireAdmin('Restoring every hidden card')) return;
+  const ids = Object.keys(MGM.uiPrefs.hiddenSections);
+  if (!ids.length) { alert('Nothing is hidden.'); return; }
+  const delta = {};
+  ids.forEach(id => { delta[id] = false; });
+  MGM.applyHiddenDelta(delta);
+};
+
+// Runs after every refresh (see the call inside MGM.refresh). Operates only
+// on the ACTIVE panel's [data-card] elements, decorating each visible one
+// with a hide button and display:none-ing each hidden one. The five cards
+// deliberately left out of HIDDEN_SECTION_IDS (the two error cards, the
+// dead placeholder, #reportSheet, the edit-only Tab names card) never carry
+// the attribute, so they simply never appear in this NodeList — no
+// exclusion logic needed here, because the exclusion already happened at
+// the allowlist.
+MGM.decorateHiddenSections = function () {
+  const panel = document.getElementById('panel-' + MGM.tab);
+  if (!panel) return;
+  panel.querySelectorAll('[data-card]').forEach(el => {
+    const id = el.getAttribute('data-card');
+    if (MGM.isCardHidden(id)) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mgm-hide-btn mgm-editonly';
+    btn.title = 'Hide this card — admin only, can be restored';
+    btn.textContent = '⊘';
+    btn.onclick = function (e) { e.stopPropagation(); MGM.hideSection(id); };
+    el.appendChild(btn);
+  });
+};
+
+// ── "Restore hidden sections" — the one place a hide is undone ──────────
+// Deliberately global rather than a per-card inline unhide: a hidden card
+// is display:none, so there is nowhere ON a hidden card to put a control
+// that unhides it. One list, grouped by tab, is also the only place "how
+// much has been hidden across the whole tool" becomes visible at all.
+MGM.restorePanelOpen = false;
+MGM.toggleRestorePanel = function () {
+  MGM.restorePanelOpen = !MGM.restorePanelOpen;
+  MGM.renderRestorePanel();
+};
+
+MGM.renderRestorePanel = function () {
+  const host = document.getElementById('mgmRestorePanel');
+  if (!host) return;
+  if (!MGM.restorePanelOpen) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  host.style.display = 'block';
+
+  const hidden = Object.keys(MGM.uiPrefs.hiddenSections);
+  if (!hidden.length) {
+    host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
+      <h3>Restore hidden sections</h3>
+      <p class="note">Nothing is hidden.</p>
+    </div>`;
+    return;
+  }
+
+  // Grouped by the tab each id belongs to, derived from the id's own prefix
+  // -- the longest TAB_ORDER entry it starts with, rather than splitting on
+  // the first hyphen, so a future tab key containing a hyphen still groups
+  // correctly.
+  const byTab = {};
+  hidden.forEach(id => {
+    const tab = TAB_ORDER.filter(t => id.indexOf(t + '-') === 0)
+      .sort((a, b) => b.length - a.length)[0] || '?';
+    (byTab[tab] = byTab[tab] || []).push(id);
+  });
+
+  const groups = TAB_ORDER.filter(t => byTab[t]).map(t => {
+    const tabLabel = esc((MGM.state.labels.tabs || {})[t] || t);
+    const items = byTab[t].map(id => `
+      <li style="margin:4px 0">${esc(HIDDEN_SECTION_LABELS[id] || id)}
+        <button class="btn" onclick="MGM.restoreSection('${id}')">Restore</button>
+      </li>`).join('');
+    return `<div style="margin-top:10px"><b>${tabLabel}</b>
+      <ul style="margin:4px 0 0 18px;list-style:none;padding:0">${items}</ul></div>`;
+  }).join('');
+
+  host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
+    <h3>Restore hidden sections</h3>
+    <p class="note">${hidden.length} card(s) hidden across the tool. Hidden means hidden for
+      every signed-in viewer, not just admins.</p>
+    ${groups}
+    <p style="margin-top:12px">
+      <button class="btn" onclick="MGM.restoreAllSections()">Restore all</button>
+    </p>
+  </div>`;
+};
+
 /* ═══════════════ SCENARIOS (Task 14) ═══════════════ */
 
 const SCEN_KEY = 'roadys_mgm_scenarios_v1';
@@ -5304,7 +5650,7 @@ MGM.renderCompare = function () {
 
   const anyStale = runs.some(r => r.stale || r.extra);
 
-  return `<div class="card"><h3>Scenario comparison</h3>
+  return `<div class="card" data-card="additions-scenario-compare"><h3>Scenario comparison</h3>
     <div style="overflow-x:auto"><table>
       <tr><th>Measure</th>${runs.map(r => `<th class="num">${head(r)}</th>`).join('')}</tr>
       ${rows.map(([label, fn]) => `<tr><td>${label}</td>${
@@ -5356,7 +5702,10 @@ MGM.tabNotes = function (key) {
   // unnecessary -- the print rules hide every panel except #panel-report, so
   // this card cannot reach the page. The notes themselves DO print, through
   // MGM.reportNotes, which is what the placeholder promises.
-  return `<div class="card">
+  // The id is derived from `key`, the tab this instance belongs to -- ONE
+  // template rendered on 12 tabs needs one id per tab, or hiding the notes
+  // on one tab would hide them on all twelve at once.
+  return `<div class="card" data-card="${key}-notes">
     <h3>Notes &amp; assumptions</h3>
     <textarea class="prose" data-k-text="labels.notes.${key}"
       placeholder="Assumptions and caveats for this tab — printed with the report."></textarea>
@@ -5425,6 +5774,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // pipelineState at its 'unsigned' default.
   await MGM.loadPipeline();
   if (MGM.authEmail()) await MGM.pullScenarios({ quiet: true });
+  // Awaited, like loadAdminStatus above and for the same reason: an
+  // un-awaited call would paint the first frame with every card visible,
+  // then yank hidden ones away a moment later -- a visible flash of
+  // content a hide is supposed to prevent the reader from ever seeing.
+  await MGM.loadUiPrefs();
   MGM.loadRegionVariance();      // fetch + its own refresh; nothing waits on it
   MGM.renderAuth();
   MGM.refresh();

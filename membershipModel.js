@@ -362,6 +362,46 @@
     return json.indexOf('"copy":') < 0 ? 'clean' : 'residue';
   }
 
+  // The containment for the admin card hide/show feature. Lives here, not in
+  // the page, so it gets the same Node test coverage as the rest of this
+  // file rather than a hand-eyeballed review of page JS -- the page has no
+  // test harness (it is a <script> that assigns globals, not a requireable
+  // module; see the SR-11 layer-2 test's own comment on why require() cannot
+  // reach it).
+  //
+  // This is the DELIBERATE OPPOSITE of mergeState's retain-unknown behaviour.
+  // mergeState keeps an unrecognised key so a feature that is still mid-build
+  // does not lose data on a round trip -- that is right for the model's
+  // `state`, where an unrecognised field might be tomorrow's feature. It is
+  // wrong here: `hiddenSections` never travels through mergeState at all (it
+  // lives in MGM.uiPrefs, never in MGM.state -- see the card-hide-show plan),
+  // but if it ever did, keeping an unknown key is exactly how the `copy`
+  // residue survived a feature revert. So this drops what it does not
+  // recognise, on both read and write, rather than keeping it.
+  //
+  // allowlist is passed in rather than read from a module-level constant: the
+  // allowlist is UI inventory (which cards exist on the page), which this
+  // pure engine has no business knowing, and passing it keeps this function
+  // testable with a small list instead of the real 60-entry one.
+  function sanitizeHiddenSections(raw, allowlist) {
+    var allow = {};
+    (allowlist || []).forEach(function (id) { if (typeof id === 'string') allow[id] = true; });
+    var out = {};
+    // Not an object, or an array (typeof [] === 'object'), or null
+    // (typeof null === 'object') -- all three fail closed to {} rather than
+    // throwing or coercing something unintended into a key.
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    Object.keys(raw).forEach(function (k) {
+      // hasOwnProperty, not `k in allow`: allow is a plain object built from
+      // the allowlist, so an id that happens to be a native Object property
+      // name ('constructor', 'toString', '__proto__') must not read as
+      // present via the prototype chain rather than via an actual list entry.
+      if (!Object.prototype.hasOwnProperty.call(allow, k)) return;  // unknown: DROPPED
+      if (raw[k]) out[k] = true;   // coerced; a falsey value is simply absent
+    });
+    return out;
+  }
+
   function mergeState(defaults, saved) {
     var added = [], unknown = [];
 
@@ -1018,6 +1058,7 @@
       mergeState: mergeState,
       stripResidue: stripResidue,
       residueVerdict: residueVerdict,
+      sanitizeHiddenSections: sanitizeHiddenSections,
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,
       partPct: partPct,
