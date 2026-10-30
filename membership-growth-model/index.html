@@ -198,6 +198,17 @@ body.mgm-edit .mgm-editonly{display:inline-flex;gap:6px}
       font:inherit;width:100%;text-align:right;padding:3px 5px;border-radius:4px}
 body.mgm-edit .cell{border-color:var(--line);background:var(--surface)}
 .cell:focus{border-color:var(--red);outline:none}
+/* select.cell's CLOSED box correctly inherits a readable color/background
+   from the rules above, but a <select>'s open dropdown list is rendered by
+   the browser's own native popup, which does not reliably honor
+   `color:inherit`/`background:transparent` the way an ordinary element does
+   -- on Windows Chrome/Edge in particular, the popup falls back to a plain
+   white list while still painting the page's (light, dark-mode) inherited
+   text color on top of it, so every option reads as invisible light text on
+   white. <option> needs its own EXPLICIT (non-inherited) color and
+   background for the popup specifically; most engines honor that even
+   though they ignore inherited values. */
+select.cell option{background:var(--surface);color:var(--ink)}
 .lbl-in{border:1px solid transparent;background:transparent;color:inherit;
         font:inherit;width:100%;padding:3px 5px;border-radius:4px}
 body.mgm-edit .lbl-in{border-color:var(--line);background:var(--surface)}
