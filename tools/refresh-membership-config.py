@@ -190,17 +190,21 @@ def read_locations(path):
                 continue
             group = cell(row, cols, "Group")
             key = classify(group, cell(row, cols, "Type"))
+            # PTP no longer changes the bucket (see TYPE_TO_KEY's comment), but
+            # the real count of PTP-tagged active rows is still worth printing
+            # every refresh -- it's the reconciliation check for the hand-
+            # maintained ptpHeldCount field, which this script never touches.
+            # Tagged BEFORE the unclassified check below, not after: a
+            # PTP-tagged row with an unrecognised Type is exactly the row
+            # most likely to be wrong, so it must not silently disappear
+            # from this count the same way it disappears from `counts`.
+            if group == "PTP":
+                ptp_tagged[key if key is not None else "(unclassified)"] += 1
             if key is None:
                 unclassified.append((cell(row, cols, "ID"), group,
                                      cell(row, cols, "Type")))
                 continue
             counts[key] += 1
-            # PTP no longer changes the bucket (see TYPE_TO_KEY's comment), but
-            # the real count of PTP-tagged active rows is still worth printing
-            # every refresh -- it's the reconciliation check for the hand-
-            # maintained ptpHeldCount field, which this script never touches.
-            if group == "PTP":
-                ptp_tagged[key] += 1
     return counts, status, dropped, unclassified, names, ptp_tagged
 
 
@@ -511,11 +515,15 @@ def main():
         print("  %-28s %d" % (label, counts.get(key, 0)))
     ptp_total = sum(ptp_tagged.values())
     print("PTP-tagged active rows: %d (reconciliation check for the hand-"
-          "maintained ptpHeldCount below -- this script does not write it)"
-          % ptp_total)
+          "maintained ptpHeldCount field in membershipModelConfig.js -- "
+          "this script never writes it)" % ptp_total)
     for key, label in GROUPS:
         if ptp_tagged.get(key, 0):
             print("  %-28s %d" % (label, ptp_tagged[key]))
+    if ptp_tagged.get("(unclassified)", 0):
+        print("  %-28s %d  (also counted above under the unclassified-rows "
+              "warning, if any -- excluded from Active locations)"
+              % ("(unclassified)", ptp_tagged["(unclassified)"]))
     print("Onboarding: %d   Offboarding: %d"
           % (status.get("onboarding", 0), status.get("offboarding", 0)))
     print("Dropped %d non-location rows:" % len(dropped))

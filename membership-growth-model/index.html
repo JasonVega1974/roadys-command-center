@@ -509,9 +509,12 @@ const MM = (function () {
 
 // Chokepoint, same discipline as MGM.stripResidue (grep that name: it runs
 // at every one of this file's state-entry points, not only the boot path).
-// Called from all SIX places `MGM.state = merged.state` (or the equivalent)
+// Called from every place `MGM.state = merged.state` (or the equivalent)
 // assigns a freshly-merged state: boot (localStorage), MGM.importJSON,
-// MGM.loadLiveState's two branches, MGM.pullLiveState, MGM.scenarioLoad.
+// MGM.loadLiveState's two branches, MGM.pullLiveState, MGM.scenarioLoad, and
+// MGM.renderCompare's per-scenario merge -- that last one is unreachable
+// today (SCENARIOS_UI_ENABLED is false, see below), but it is still a real
+// MM.mergeState call site and a flag flip must not silently reopen this.
 //
 // A state saved or published before the 2026-10-30 PTP dissolution still
 // has a `ptp` groups entry and no `svc` entry. mergeState replaces a saved
@@ -527,23 +530,62 @@ const MM = (function () {
 // several cases, but this groups-ARRAY half of the same problem was missed
 // at every entry point, including boot.
 //
+// Removing the `ptp` entry outright (an earlier version of this function)
+// left the OPPOSITE hole a second review caught: a returning user's own
+// `ts`/`ppo` counts stay at their pre-dissolution values (e.g. 152/98, not
+// the post-dissolution 187/128) because mergeState keeps the saved array,
+// so dropping `ptp` without redistributing its count silently shrinks
+// groupTotal() by whatever `ptp` used to carry -- the same class of silent
+// loss this function exists to prevent, just in the other direction. Fixed
+// by redistributing the removed `ptp` count across ts/ppo/svc using the
+// same 35:30:23-of-88 ratio the original investigation found, scaled to
+// THIS state's own stored ptp count (not hardcoded to 88), so the total
+// location count is preserved exactly even if an admin had hand-edited the
+// old PTP count before this migration ever ran.
+//
 // Returns whether anything changed, so a caller that only saves
 // conditionally (matching the existing stripResidue call sites' pattern)
 // knows whether a persist is needed.
 MGM.reconcilePtpDissolution = function (state) {
   const groups = state && state.groups;
   if (!Array.isArray(groups)) return false;
-  const hasPtp = groups.some(g => g && g.key === 'ptp');
-  const hasSvc = groups.some(g => g && g.key === 'svc');
-  if (!hasPtp && hasSvc) return false;   // already reconciled -- the common case
+  const hasSvc = () => groups.some(g => g && g.key === 'svc');
+  if (!groups.some(g => g && g.key === 'ptp') && hasSvc()) return false; // common case
   let changed = false;
-  if (hasPtp) {
-    const idx = groups.findIndex(g => g && g.key === 'ptp');
-    if (idx >= 0) { groups.splice(idx, 1); changed = true; }
+
+  // Walk backwards and remove EVERY `ptp` entry (a crafted import could
+  // carry more than one), summing their counts rather than trusting a
+  // single findIndex to see the whole picture.
+  let ptpTotal = 0;
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i] && groups[i].key === 'ptp') {
+      ptpTotal += Number(groups[i].count) || 0;
+      groups.splice(i, 1);
+      changed = true;
+    }
   }
-  if (!hasSvc) {
-    // Shipped values, not a hand-typed fallback: the one thing this function
-    // must never do is invent a count MGM_CONFIG does not already assert.
+
+  const bump = (key, by) => {
+    const g = groups.find(x => x && x.key === key);
+    if (g) g.count = (Number(g.count) || 0) + by;
+    return g;
+  };
+  if (ptpTotal > 0) {
+    const tsShare = Math.round(ptpTotal * 35 / 88);
+    const ppoShare = Math.round(ptpTotal * 30 / 88);
+    const svcShare = ptpTotal - tsShare - ppoShare; // remainder absorbs rounding
+    bump('ts', tsShare);
+    bump('ppo', ppoShare);
+    if (!bump('svc', svcShare)) {
+      const shipped = (MGM_CONFIG.groups || []).find(g => g.key === 'svc');
+      groups.push({ key: 'svc', label: shipped ? shipped.label : 'Service Centers',
+                     count: svcShare });
+    }
+    changed = true;
+  } else if (!hasSvc()) {
+    // No `ptp` count to redistribute (e.g. a state already missing only
+    // `svc` for some unrelated reason) -- fall back to the shipped default
+    // rather than inventing a count MGM_CONFIG does not already assert.
     const shipped = (MGM_CONFIG.groups || []).find(g => g.key === 'svc');
     groups.push(shipped
       ? { key: 'svc', label: shipped.label, count: shipped.count }
@@ -2118,7 +2160,7 @@ MGM.renderers.gallons = function (D) {
 
   <div class="card"><h3>Engine baselines</h3>
     <!-- No data-card: not in HIDDEN_SECTION_IDS, same category as the other
-         five cards this build deliberately leaves unhideable (see
+         five cards this build deliberately leaves unhideable (see this file's
          MGM.decorateHiddenSections' comment) -- that function attaches a
          hide button to ANY element carrying data-card regardless of
          allowlist membership, so a card outside the allowlist with the
@@ -2188,7 +2230,7 @@ MGM.renderers.gallons = function (D) {
           <td class="mgm-editonly"><button class="btn" title="Remove this split"
               onclick="MGM.removeRow('${splitPath}',${i})">✕</button></td>` : `<td>${esc(row.profile)}</td><td>${esc(row.roadway)}</td>
           <td class="num">${fmt(row.locations)}</td><td class="num">${fmt(row.baseline)}</td>
-          <td class="num"><b>${fmt(row.gallons)}</b></td><td></td>`}</tr>`).join('');
+          <td class="num"><b>${fmt(row.gallons)}</b></td><td class="mgm-editonly"></td>`}</tr>`).join('');
         // Soft nudge only, never a block: a group's split rows are each
         // independently admin-edited, so their locations summing to
         // something other than the group's own count (edited on Starting
@@ -2199,7 +2241,7 @@ MGM.renderers.gallons = function (D) {
         return rowsHtml + (mismatch ? `<tr class="mgm-editonly"><td colspan="6">
             <span class="note neg">Split locations (${fmt(g.locations)}) don't sum to
             this group's own count (${fmt(g.count)}, set on Starting Membership).</span>
-          </td><td></td></tr>` : '') +
+          </td><td class="mgm-editonly"></td></tr>` : '') +
           (safeKey ? `<tr class="mgm-editonly"><td colspan="7"><button class="btn"
               onclick="MGM.addRow('${splitPath}',{profile:'',roadway:'',locations:0,baselineOverride:null})">+ Add profile/roadway split</button></td></tr>` : '');
           // Blank, not pre-filled with profiles[0]: a dynamic value here would
@@ -2216,7 +2258,7 @@ MGM.renderers.gallons = function (D) {
       }).join('')}
       <tr class="total"><td>Existing network</td>
         <td colspan="4"></td>
-        <td class="num"><b>${fmt(G.existing)}</b></td><td></td></tr>
+        <td class="num"><b>${fmt(G.existing)}</b></td><td class="mgm-editonly"></td></tr>
     </table>
     ${G.byGroup.some(g => g.rows.some(r => r.overridden)) ? `<p class="note"><span class="ovr">
       Overridden baselines in use</span> on at least one split row. These figures no
@@ -5985,12 +6027,13 @@ MGM.restoreAllSections = function () {
 
 // Runs after every refresh (see the call inside MGM.refresh). Operates only
 // on the ACTIVE panel's [data-card] elements, decorating each visible one
-// with a hide button and display:none-ing each hidden one. The five cards
+// with a hide button and display:none-ing each hidden one. The six cards
 // deliberately left out of HIDDEN_SECTION_IDS (the two error cards, the
-// dead placeholder, #reportSheet, the edit-only Tab names card) never carry
-// the attribute, so they simply never appear in this NodeList — no
-// exclusion logic needed here, because the exclusion already happened at
-// the allowlist.
+// dead placeholder, #reportSheet, the edit-only Tab names card, and the
+// Engine baselines card on Fuel Gallon Production) never carry the
+// attribute, so they simply never appear in this NodeList — no exclusion
+// logic needed here, because the exclusion already happened at the
+// allowlist.
 MGM.decorateHiddenSections = function () {
   const panel = document.getElementById('panel-' + MGM.tab);
   if (!panel) return;
@@ -6741,6 +6784,7 @@ MGM.renderCompare = function () {
       // Deep merge here too: a comparison against a scenario that predates a
       // field must compare against that field's default, not against a zero.
       const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), s.state || {});
+      MGM.reconcilePtpDissolution(merged.state);
       return {
         name: s.name, id: s.id, state: merged.state,
         stale: merged.added.length,
