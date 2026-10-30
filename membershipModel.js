@@ -694,8 +694,19 @@
     // surfaces the denominator mismatch that duesPerLoc carries -- the rate is
     // dues over PAYING LOCATIONS, applied here to MEMBERS, which are not the
     // same population.
+    //
+    // monthlyDuesTotalExclCStores, NOT monthlyDuesTotal (2026-10-30): a
+    // C-Store's legitimately low $100-250 fee pulls the billing total down
+    // against a duesPerLoc assumption calibrated on non-C-Store locations, so
+    // the unexcluded total would read a realization gap that is really just
+    // C-Stores' own pricing, not a drift between assumption and actual. This
+    // is a SEPARATE field the refresh script computes directly from the
+    // billing CSV with the same C-Store rows removed -- not duesPerLocBillable
+    // (excl.) times payingLocations (excl.) multiplied back out, which would
+    // recreate the exact duesPerLoc/duesPerLocBillable tautology shape a prior
+    // review already found and fixed once in this same function.
     var billing = state.billing || {};
-    var annualBilled = n(billing.monthlyDuesTotal) * 12;
+    var annualBilled = n(billing.monthlyDuesTotalExclCStores) * 12;
     // The SAME member basis revenueModel uses -- avgMembers of the first year,
     // not M.startTotal. Using the integer start read 100.51% against a
     // modelled revenue built on the average, so the numerator and denominator

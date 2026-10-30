@@ -53,6 +53,26 @@ test('duesPerLocBillable divides by paying locations, not all locations', () => 
     Math.round((b.monthlyDuesTotal / b.locations) * 100) / 100);
 });
 
+test('the true-stop-only (excl. C-Stores) billing pair ships at zero exclusion for this vintage', () => {
+  // "2026-10-30 EXCEPTION #2" in membershipModelConfig.js: these six fields
+  // are shipped equal to their unexcluded counterparts (zero companies/
+  // locations/dues excluded) because computing the real exclusion needs a
+  // location-list CSV matching THIS billing snapshot's own vintage (Oct 29),
+  // and only a Sept 21 pair is locally available -- mixing the two would
+  // subtract a Sept 21 C-Store slice from an Oct 29 total, which is a real
+  // number but not a real answer. This test is a deliberate tripwire: once a
+  // real refresh runs with one matching CSV pair, these fields diverge from
+  // their unexcluded counterparts and this assertion starts failing on
+  // purpose -- update it to the new real figures at that point, not before.
+  const b = MGM_CONFIG.billing;
+  assert.equal(b.cstoreExcludedCompanies, 0);
+  assert.equal(b.cstoreExcludedLocations, 0);
+  assert.equal(b.cstoreExcludedDues, 0);
+  assert.equal(b.duesPerLocBillableExclCStores, b.duesPerLocBillable);
+  assert.equal(b.payingLocationsExclCStores, b.payingLocations);
+  assert.equal(b.monthlyDuesTotalExclCStores, b.monthlyDuesTotal);
+});
+
 test('a zero prior count yields no rate, not Infinity', () => {
   // prev.count != null passes for 0, and 100 * lost / 0 is Infinity -- which
   // avg then averaged, so the Historical tab's three-year average and the
@@ -822,8 +842,8 @@ test('labels.tiles/columns/rows cover every renameable id with no gaps', () => {
     'stream-keyed through labels.streams already, month-named, or program-' +
     'named, each sharing a source this build does not yet give its own ' +
     'label map).');
-  assert.equal(Object.keys(MGM_CONFIG.labels.rows).length, 23,
-    'twenty-three renameable row labels (of 76 total -- the rest come from ' +
+  assert.equal(Object.keys(MGM_CONFIG.labels.rows).length, 26,
+    'twenty-six renameable row labels (of 79 total -- the rest come from ' +
     'a shared array also used elsewhere (CRM_STAGES, a stream, a program), ' +
     'are static About-tab text, or (one row) carry embedded markup a plain ' +
     'label cannot represent).');
@@ -1236,6 +1256,43 @@ test('dues realization is reported from the billable vs realized rates', () => {
     `realization is modelled dues over ACTUAL billing, ~100.94%; a reading of `
     + `exactly 100.00 means the metric has gone self-referential again; `
     + `got ${rpm.duesRealization}`);
+});
+
+test('dues realization reads monthlyDuesTotalExclCStores, not monthlyDuesTotal', () => {
+  // The shipped config has these two fields equal (zero exclusion, pending
+  // the next real CSV refresh -- membershipModelConfig.js's "2026-10-30
+  // EXCEPTION #2"), so a test against the default state alone cannot tell
+  // which field the formula actually reads. This test makes them diverge.
+  const base = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(base);
+
+  // Positive control: a decoy monthlyDuesTotal must be IGNORED when
+  // monthlyDuesTotalExclCStores is held fixed across both states.
+  const stA = JSON.parse(JSON.stringify(base));
+  stA.billing.monthlyDuesTotal = 999999;
+  stA.billing.monthlyDuesTotalExclCStores = 142305;
+  const rpmA = MembershipModel.revPerMember(stA, M, null);
+
+  const stB = JSON.parse(JSON.stringify(base));
+  stB.billing.monthlyDuesTotal = 142305;
+  stB.billing.monthlyDuesTotalExclCStores = 142305;
+  const rpmB = MembershipModel.revPerMember(stB, M, null);
+
+  near(rpmA.duesRealization, rpmB.duesRealization,
+    'two states with the same monthlyDuesTotalExclCStores but different ' +
+    'monthlyDuesTotal (999999 vs 142305) must realize IDENTICALLY -- proves ' +
+    'the denominator is the excl-C-Stores field, not the full one');
+
+  // Negative control: changing ONLY monthlyDuesTotalExclCStores must move
+  // the result -- without this, the positive control above could pass for
+  // the wrong reason (e.g. the field were read nowhere at all).
+  const stC = JSON.parse(JSON.stringify(base));
+  stC.billing.monthlyDuesTotal = 142305;
+  stC.billing.monthlyDuesTotalExclCStores = 71152.5; // half of stB's
+  const rpmC = MembershipModel.revPerMember(stC, M, null);
+  near(rpmC.duesRealization, 2 * rpmB.duesRealization,
+    'halving monthlyDuesTotalExclCStores must double realization -- the ' +
+    'field actually drives the denominator, this is not a stale read');
 });
 
 test('GOLDEN: valuation under legacy settings reproduces the v1 exactly', () => {

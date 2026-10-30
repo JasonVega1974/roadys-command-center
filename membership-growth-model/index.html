@@ -1178,9 +1178,11 @@ const HIDDEN_SECTION_IDS = Object.freeze([
   'revpermember-drivers-row-settlement', 'revpermember-drivers-row-vendor', 'revpermember-reconciliation-row-dues',
   'revpermember-reconciliation-row-duesAncillary', 'revpermember-reconciliation-row-fuelProgram', 'revpermember-reconciliation-row-rewards',
   'revpermember-reconciliation-row-rewardsBreakage', 'revpermember-reconciliation-row-settlement', 'revpermember-reconciliation-row-vendor',
-  'starting-billing-row-billable-per-location', 'starting-billing-row-billed-locations', 'starting-billing-row-companies',
-  'starting-billing-row-monthly-dues-total', 'starting-billing-row-paying-locations', 'starting-pipeline-status-row-offboarding',
-  'starting-pipeline-status-row-onboarding',
+  'starting-billing-row-billable-per-location', 'starting-billing-row-billable-per-location-excl-cstores',
+  'starting-billing-row-billed-locations', 'starting-billing-row-companies',
+  'starting-billing-row-monthly-dues-total', 'starting-billing-row-monthly-dues-total-excl-cstores',
+  'starting-billing-row-paying-locations', 'starting-billing-row-paying-locations-excl-cstores',
+  'starting-pipeline-status-row-offboarding', 'starting-pipeline-status-row-onboarding',
 ]);
 
 // A fixed, short description per id for the "Restore hidden sections" list --
@@ -1450,10 +1452,13 @@ const HIDDEN_SECTION_LABELS = Object.freeze({
   'revpermember-reconciliation-row-settlement': 'Reconciliation — Fuel settlement (net)',
   'revpermember-reconciliation-row-vendor': 'Reconciliation — Vendor programs',
   'starting-billing-row-billable-per-location': 'Billing — Billable $/location',
+  'starting-billing-row-billable-per-location-excl-cstores': 'Billing — Billable $/location excl. C-Stores',
   'starting-billing-row-billed-locations': 'Billing — Billed locations',
   'starting-billing-row-companies': 'Billing — Companies',
   'starting-billing-row-monthly-dues-total': 'Billing — Monthly dues total',
+  'starting-billing-row-monthly-dues-total-excl-cstores': 'Billing — Monthly dues total excl. C-Stores',
   'starting-billing-row-paying-locations': 'Billing — Paying locations',
+  'starting-billing-row-paying-locations-excl-cstores': 'Billing — Paying locations excl. C-Stores',
   'starting-pipeline-status-row-offboarding': 'Pipeline status — Offboarding',
   'starting-pipeline-status-row-onboarding': 'Pipeline status — Onboarding',
 });
@@ -1594,6 +1599,12 @@ MGM.renderers.starting = function (D) {
             data-k="billing.duesPerLocBillable" value="${st.billing.duesPerLocBillable}"></td></tr>
         <tr data-row="starting-billing-row-paying-locations"><td>${esc(st.labels.rows['starting-billing-row-paying-locations'])}</td><td class="num"><input class="cell" type="number"
             data-k="billing.payingLocations" value="${st.billing.payingLocations}"></td></tr>
+        <tr data-row="starting-billing-row-monthly-dues-total-excl-cstores"><td>${esc(st.labels.rows['starting-billing-row-monthly-dues-total-excl-cstores'])}</td><td class="num"><input class="cell" type="number"
+            data-k="billing.monthlyDuesTotalExclCStores" value="${st.billing.monthlyDuesTotalExclCStores}"></td></tr>
+        <tr data-row="starting-billing-row-billable-per-location-excl-cstores"><td>${esc(st.labels.rows['starting-billing-row-billable-per-location-excl-cstores'])}</td><td class="num"><input class="cell" type="number" step="0.01"
+            data-k="billing.duesPerLocBillableExclCStores" value="${st.billing.duesPerLocBillableExclCStores}"></td></tr>
+        <tr data-row="starting-billing-row-paying-locations-excl-cstores"><td>${esc(st.labels.rows['starting-billing-row-paying-locations-excl-cstores'])}</td><td class="num"><input class="cell" type="number"
+            data-k="billing.payingLocationsExclCStores" value="${st.billing.payingLocationsExclCStores}"></td></tr>
       </table>
       <p class="note">The <b>${fmt(tot)}</b> active count and the
          <b>${fmt(st.billing.locations)}</b> billed locations come from two
@@ -1606,6 +1617,18 @@ MGM.renderers.starting = function (D) {
          <b>${fmt(st.billing.locations)}</b> billed ones. Dividing by the larger
          figure understates what a billable location is worth and so overstates
          the dues realization on Revenue per Member.</p>
+      <p class="note">The three "excl. C-Stores" rows exclude
+         <b>${fmt(st.billing.cstoreExcludedCompanies)}</b> companies /
+         <b>${fmt(st.billing.cstoreExcludedLocations)}</b> locations /
+         ${fm$(st.billing.cstoreExcludedDues)}/mo whose billing line is
+         unambiguously C-Store revenue (every active location at that company
+         is a C-Store) -- a company that blends C-Store with another type
+         bills one figure for the whole company with no per-location split, so
+         it stays in every total above rather than guessing an allocation.
+         A C-Store's legitimately low membership fee would otherwise drag down
+         a rate meant to read as "what a truck stop / PPO / etc. location
+         bills"; Revenue per Member's dues realization is measured against
+         this excluded total, not the unexcluded one above it.</p>
     </div>
   </div>
 
@@ -2357,7 +2380,7 @@ MGM.renderers.revpermember = function (D) {
               is 94.8% -- printed beside a tile correctly showing 94.6%, which
               is computed from the unrounded 382.47. The caption appeared to
               contradict its own tile by two tenths of a point. */
-           `${fm$(st.revenue.duesPerLoc)} realized vs ${fmCents(st.billing.duesPerLocBillable)} billable`, 'red', 'revpermember-tile-dues-realization')}
+           `${fm$(st.revenue.duesPerLoc)} realized vs ${fmCents(st.billing.duesPerLocBillableExclCStores)} billable excl. C-Stores`, 'red', 'revpermember-tile-dues-realization')}
     ${sign(st.labels.tiles['revpermember-tile-avg-members'], fmt(last.members), `${last.year} average`, 'dark', 'revpermember-tile-avg-members')}
   </div>
 
@@ -3663,23 +3686,30 @@ MGM.reportAssumptions = function (D) {
     // (dues ÷ every billed record) are four points of dues realization apart,
     // and whole-dollar rounding is not what keeps them apart.
     //
-    // The provenance sentence is CONDITIONAL. duesPerLocBillable is a bound
-    // input, not a computed field, so the "divides X by Y" claim stops being
-    // true the moment anyone types over it -- and an assumptions table that
-    // describes arithmetic the figure no longer follows is worse than one that
-    // says where the figure came from honestly.
+    // The provenance sentence is CONDITIONAL. duesPerLocBillableExclCStores
+    // is a bound input, not a computed field, so the "divides X by Y" claim
+    // stops being true the moment anyone types over it -- and an assumptions
+    // table that describes arithmetic the figure no longer follows is worse
+    // than one that says where the figure came from honestly.
+    //
+    // ExclCStores, not the plain billing.* trio: duesRealization is measured
+    // against monthlyDuesTotalExclCStores (membershipModel.js), so this
+    // sentence's "matches" check has to compare against the SAME pair the
+    // metric actually uses, or it would call a real, excl-C-Stores-derived
+    // figure "entered by hand" just because it no longer equals the
+    // UNEXCLUDED division.
     ['Dues', (() => {
-      const b = st.billing, derived = b.payingLocations
-        ? b.monthlyDuesTotal / b.payingLocations : null;
+      const b = st.billing, derived = b.payingLocationsExclCStores
+        ? b.monthlyDuesTotalExclCStores / b.payingLocationsExclCStores : null;
       const matches = derived != null &&
-        Math.abs(Number(b.duesPerLocBillable) - derived) < 0.005;
-      return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillable)} billable per paying location · ` +
+        Math.abs(Number(b.duesPerLocBillableExclCStores) - derived) < 0.005;
+      return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillableExclCStores)} billable per paying location excl. C-Stores · ` +
         (rpm.duesRealization == null
           ? 'realization not derivable — no billable figure is entered'
           : `${pct1(rpm.duesRealization)} realization`) +
         (matches
-          ? `. The billable figure is ${fm$(b.monthlyDuesTotal)} of monthly dues divided by the ${fmt(b.payingLocations)} locations that bill, not by all ${fmt(b.locations)} billed records — dividing by the larger figure understates what a billable location is worth and so overstates this realization.`
-          : `. The billable figure was entered by hand and is not ${fm$(b.monthlyDuesTotal)} ÷ ${fmt(b.payingLocations)} paying locations (${derived == null ? 'no paying-location count is entered' : fmCents(derived)}).`);
+          ? `. The billable figure is ${fm$(b.monthlyDuesTotalExclCStores)} of monthly dues divided by the ${fmt(b.payingLocationsExclCStores)} paying locations that are not pure C-Store companies, not by all ${fmt(b.payingLocations)} paying locations — C-Stores' legitimately low fee would otherwise drag down a rate meant to read as what a truck stop / PPO / etc. location bills.`
+          : `. The billable figure was entered by hand and is not ${fm$(b.monthlyDuesTotalExclCStores)} ÷ ${fmt(b.payingLocationsExclCStores)} paying locations excl. C-Stores (${derived == null ? 'no paying-location count is entered' : fmCents(derived)}).`);
     })()],
 
     ['Fuel settlement', rv.settlementNetPerMember
@@ -4513,7 +4543,18 @@ MGM.renderers.about = function (D) {
           location. Dividing by all ${fmt(b.locations)} instead gives
           ${fmCents(b.monthlyDuesTotal / b.locations)} and overstates dues
           realization by about four points, which is a mistake this project
-          actually made and corrected.</td></tr>
+          actually made and corrected.
+          <b>${fmt(b.cstoreExcludedCompanies)}</b> of those companies bill
+          unambiguously as C-Stores alone (every active location there is a
+          C-Store) and are excluded from a separate true-stop-only pair --
+          <b>${fmCents(b.duesPerLocBillableExclCStores)}</b> per billable
+          location excl. C-Stores, the figure Revenue per Member's dues
+          realization is actually measured against, since a C-Store's
+          legitimately low $100-250 fee would otherwise drag down a rate
+          meant to read as what a truck stop / PPO / etc. location bills. A
+          company that blends C-Store with another type bills one figure for
+          the whole company with no per-location split, so it is left in both
+          totals rather than guessing an allocation.</td></tr>
       <tr data-row="about-where-numbers-come-from-row-historical-signups"><td><code>Historical member signups.xlsx</code></td>
         <td>Annual signups and losses
           (${esc(MGM.yearSpan(cfg.history.map(h => h.year)))}), the monthly series

@@ -32,6 +32,24 @@
   // snapshot this block's other counts are still carrying). The next real
   // refresh should supersede groups/gallons.groupSplits/ptpHeldCount below
   // with the script's own fresh output rather than hand-reconciling further.
+  //
+  // 2026-10-30 EXCEPTION #2: billing.*ExclCStores below (the true-stop-only
+  // dues-average fix) ship at ZERO exclusion -- equal to the unexcluded
+  // figures above them, cstoreExcludedCompanies/Locations/Dues all 0 -- NOT
+  // because no C-Store locations exist (there are 21, see `groups` above),
+  // but because computing the real exclusion requires cross-referencing
+  // THIS block's own billing snapshot (company_membership_report_2026-10-
+  // 29.csv) against its matching location-list, and only the Sept 21 pair is
+  // locally available, not the Oct 29 one this block's other billing figures
+  // came from. Mixing the two would subtract a Sept 21 C-Store slice from an
+  // Oct 29 total -- a real number, but not a real answer to "how much of
+  // THIS total is C-Store". tools/refresh-membership-config.py's read_billing
+  // now computes this pair correctly from one consistent snapshot (verified
+  // via --dry-run against the Sept 21 pair: $384.06 -> $387.70, 9 companies
+  // / 9 locations / $2,125 excluded, matching the approved investigation
+  // exactly) -- the NEXT real refresh populates these six fields for real,
+  // superseding the zero-exclusion placeholder below the same way it will
+  // supersede groups/gallons.groupSplits/ptpHeldCount above.
   var DATA = {
     DATA_ASOF: 'Oct 29, 2026',
     CURRENT_YEAR: 2026,
@@ -71,7 +89,18 @@
       // companies billing $0.00 belong in neither half of a realization ratio.
       duesPerLocBillable: 360.27,
       payingLocations: 395,    // 6 companies / 16 locations bill $0.00
-      zeroBillCompanies: 6
+      zeroBillCompanies: 6,
+
+      // True-stop-only pair: ships at zero exclusion for THIS snapshot --
+      // see "2026-10-30 EXCEPTION #2" above for why -- equal to the three
+      // unexcluded fields above. Once a real refresh runs with one matching
+      // CSV pair, these six diverge from them automatically.
+      duesPerLocBillableExclCStores: 360.27,
+      payingLocationsExclCStores: 395,
+      monthlyDuesTotalExclCStores: 142305,
+      cstoreExcludedCompanies: 0,
+      cstoreExcludedLocations: 0,
+      cstoreExcludedDues: 0
     },
 
     statusCounts: { onboarding: 7, offboarding: 10 },
@@ -598,10 +627,13 @@
       'losses-assumption-row-steady-annual-attrition': 'Steady annual attrition',
       'pipeline-horizon-row-average-cycle': 'Average cycle (days, 0 = unset)',
       'pipeline-horizon-row-spread-over-months': 'Spread weighted locations over (months)',
+      'starting-billing-row-billable-per-location-excl-cstores': 'Billable $/location excl. C-Stores',
       'starting-billing-row-billed-locations': 'Billed locations',
       'starting-billing-row-companies': 'Companies',
       'starting-billing-row-monthly-dues-total': 'Monthly dues total',
+      'starting-billing-row-monthly-dues-total-excl-cstores': 'Monthly dues total excl. C-Stores',
       'starting-billing-row-paying-locations': 'Paying locations',
+      'starting-billing-row-paying-locations-excl-cstores': 'Paying locations excl. C-Stores',
       'starting-pipeline-status-row-offboarding': 'Offboarding',
       'starting-pipeline-status-row-onboarding': 'Onboarding'
     }
