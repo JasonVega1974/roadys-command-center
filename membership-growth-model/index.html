@@ -277,7 +277,7 @@ body:not(.mgm-admin) .mgm-adminonly{display:none !important}
       <button class="btn ghost mgm-adminonly" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.resetAll()">Reset all</button>
       <button class="btn ghost mgm-editonly" onclick="MGM.toggleRestorePanel()"
-              title="Unhide any card hidden with the ⊘ button. Hidden means hidden for every signed-in viewer, not just admins.">↺ Restore hidden sections</button>
+              title="Show or hide any card, tile, column or row in the tool. Hidden means hidden for every signed-in viewer, not just admins.">👁 Visibility manager</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
@@ -5901,23 +5901,26 @@ MGM.staleHiddenRows = function (rowIds) {
   return stale;
 };
 
+// Visibility manager: every allowlisted id, not just the hidden ones --
+// each with its own on/off toggle. Same hiddenSections data, same
+// sanitizer, same RLS, same MGM.hideSection/restoreSection as the original
+// hidden-only restore list this replaces; the only thing that changed is
+// which ids this function iterates (HIDDEN_SECTION_IDS, all 287) and how
+// each is presented (a checkbox reflecting current state, not a one-way
+// "Restore" button that only ever appeared once something was hidden).
 MGM.renderRestorePanel = function () {
   const host = document.getElementById('mgmRestorePanel');
   if (!host) return;
   if (!MGM.restorePanelOpen) { host.innerHTML = ''; host.style.display = 'none'; return; }
   host.style.display = 'block';
 
-  const hidden = Object.keys(MGM.uiPrefs.hiddenSections);
-  if (!hidden.length) {
-    host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
-      <h3>Restore hidden sections</h3>
-      <p class="note">Nothing is hidden.</p>
-    </div>`;
-    return;
-  }
+  const hidden = MGM.uiPrefs.hiddenSections;
+  const hiddenIds = Object.keys(hidden);
 
-  const staleCols = MGM.staleHiddenColumns(hidden.filter(id => MGM.hiddenSectionType(id) === 'column'));
-  const staleRows = MGM.staleHiddenRows(hidden.filter(id => MGM.hiddenSectionType(id) === 'row'));
+  // Staleness is only a meaningful question for ids CURRENTLY hidden -- a
+  // visible column/row's live data is already on screen, nothing to nudge.
+  const staleCols = MGM.staleHiddenColumns(hiddenIds.filter(id => MGM.hiddenSectionType(id) === 'column'));
+  const staleRows = MGM.staleHiddenRows(hiddenIds.filter(id => MGM.hiddenSectionType(id) === 'row'));
   const stale = new Set([...staleCols, ...staleRows]);
 
   // Grouped by the tab each id belongs to, derived from the id's own prefix
@@ -5928,7 +5931,7 @@ MGM.renderRestorePanel = function () {
   // KINDS of thing (a whole card vs. one row or column within a table) even
   // when they share a tab.
   const byTab = {};
-  hidden.forEach(id => {
+  HIDDEN_SECTION_IDS.forEach(id => {
     const tab = TAB_ORDER.filter(t => id.indexOf(t + '-') === 0)
       .sort((a, b) => b.length - a.length)[0] || '?';
     (byTab[tab] = byTab[tab] || []).push(id);
@@ -5942,27 +5945,42 @@ MGM.renderRestorePanel = function () {
       (byType[ty] = byType[ty] || []).push(id);
     });
     const typeBlocks = HIDDEN_TYPE_ORDER.filter(ty => byType[ty]).map(ty => {
-      const items = byType[ty].map(id => `
-        <li style="margin:4px 0">${esc(HIDDEN_SECTION_LABELS[id] || id)}
+      const items = byType[ty].map(id => {
+        const isHidden = !!hidden[id];
+        // Checked = currently shown. Toggling calls the exact same
+        // hideSection/restoreSection every other control in the tool uses --
+        // no new write path, no new id, no new table.
+        return `
+        <li style="margin:4px 0">
+          <label style="cursor:pointer">
+            <input type="checkbox" ${isHidden ? '' : 'checked'}
+              onchange="MGM.${isHidden ? 'restoreSection' : 'hideSection'}('${id}')">
+            ${esc(HIDDEN_SECTION_LABELS[id] || id)}
+          </label>
           ${stale.has(id) ? '<span class="note" style="color:var(--red-bright)">'
             + '&#9888; this table now has real data in this ' + (ty === 'row' ? 'row' : 'column')
             + '</span>' : ''}
-          <button class="btn" onclick="MGM.restoreSection('${id}')">Restore</button>
-        </li>`).join('');
+        </li>`;
+      }).join('');
       return `<div style="margin-top:6px"><span class="note">${HIDDEN_TYPE_LABELS[ty]}</span>
         <ul style="margin:2px 0 0 18px;list-style:none;padding:0">${items}</ul></div>`;
     }).join('');
-    return `<div style="margin-top:12px"><b>${tabLabel}</b>${typeBlocks}</div>`;
+    // Open by default only for the tab currently on screen -- 287 items
+    // across 13 tabs is unreadable flattened, and a visitor opening this
+    // panel almost always wants the tab they are already looking at.
+    return `<details style="margin-top:12px" ${t === MGM.tab ? 'open' : ''}>
+      <summary style="cursor:pointer"><b>${tabLabel}</b></summary>${typeBlocks}</details>`;
   }).join('');
 
   host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
-    <h3>Restore hidden sections</h3>
-    <p class="note">${hidden.length} item(s) hidden across the tool. Hidden means hidden for
-      every signed-in viewer, not just admins. A hidden column or row stays hidden even after
-      real data appears in it -- that nudge below is informational only, never automatic.</p>
+    <h3>Visibility manager</h3>
+    <p class="note">${hiddenIds.length} of ${HIDDEN_SECTION_IDS.length} item(s) hidden across the tool.
+      Unchecking an item hides it for every signed-in viewer, not just admins. A hidden column or row
+      stays hidden even after real data appears in it -- that nudge below is informational only, never
+      automatic.</p>
     ${groups}
     <p style="margin-top:12px">
-      <button class="btn" onclick="MGM.restoreAllSections()">Restore all</button>
+      <button class="btn" onclick="MGM.restoreAllSections()">Show all</button>
     </p>
   </div>`;
 };
