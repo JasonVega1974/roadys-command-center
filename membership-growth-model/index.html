@@ -222,6 +222,14 @@ body.mgm-edit .lbl-in{border-color:var(--line);background:var(--surface)}
    clears body.mgm-admin; if that line is ever dropped, this rule hides every
    edit control including the admin's own. */
 body:not(.mgm-admin) .mgm-editonly{display:none !important}
+/* Header lockdown for non-admins, deliberately NOT .mgm-editonly: that class
+   also requires edit MODE to be toggled on, which is right for inline
+   per-row/per-card editing affordances but wrong for header buttons like
+   Reset/Presets/Email draft -- an admin should see those regardless of
+   whether they have Edit toggled on, same as Reset all and the other
+   header buttons already did before this class existed. This hides on
+   admin status alone. */
+body:not(.mgm-admin) .mgm-adminonly{display:none !important}
 .adminbar{font-family:'Barlow';font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:10px}
 .adminbar.ro{background:var(--chip);color:var(--ink-soft)}
 .adminbar.rw{background:var(--sign-green);color:#fff}
@@ -265,19 +273,19 @@ body:not(.mgm-admin) .mgm-editonly{display:none !important}
     </div>
     <div class="actions noprint">
       <span id="authBar" class="authbar"></span>
-      <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
-      <button class="btn ghost" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
-      <button class="btn ghost" onclick="MGM.resetAll()">Reset all</button>
+      <button class="btn ghost" id="themeBtn" title="Toggle light / dark">☀️/🌙 Light/Dark</button>
+      <button class="btn ghost mgm-adminonly" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
+      <button class="btn ghost mgm-adminonly" onclick="MGM.resetAll()">Reset all</button>
       <button class="btn ghost mgm-editonly" onclick="MGM.toggleRestorePanel()"
               title="Unhide any card hidden with the ⊘ button. Hidden means hidden for every signed-in viewer, not just admins.">↺ Restore hidden sections</button>
-      <button class="btn ghost" onclick="MGM.applyPreset('Conservative')">Conservative</button>
-      <button class="btn ghost" onclick="MGM.applyPreset('Base')">Base</button>
-      <button class="btn ghost" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
-      <button class="btn ghost" id="scenarioSaveBtn" onclick="MGM.scenarioSave()" style="display:none">Save scenario…</button>
-      <button class="btn ghost" onclick="MGM.openEmail()"
+      <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Conservative')">Conservative</button>
+      <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Base')">Base</button>
+      <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
+      <button class="btn ghost mgm-adminonly" id="scenarioSaveBtn" onclick="MGM.scenarioSave()" style="display:none">Save scenario…</button>
+      <button class="btn ghost mgm-adminonly" onclick="MGM.openEmail()"
               title="Opens a draft in your own mail client. Nothing is sent from this page.">✉ Email draft</button>
       <button class="btn ghost" onclick="MGM.doPrint()">⎙ Print</button>
-      <button class="btn primary" onclick="MGM.switchTab('report')">Generate Report</button>
+      <button class="btn primary mgm-adminonly" onclick="MGM.switchTab('report')">Generate Report</button>
     </div>
   </div>
 </header>
