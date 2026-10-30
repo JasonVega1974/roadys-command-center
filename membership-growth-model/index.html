@@ -4738,8 +4738,17 @@ MGM.isEdited = function (path) {
       !== JSON.stringify(MM.getPath(MGM_CONFIG, path));
 };
 
+// Admin-only. MGM.isEdited(path) is pure data comparison with no notion of
+// who is looking -- gating lives here, the single choke point all 11 call
+// sites render through, rather than at each call site, so there is exactly
+// one place this can be gotten wrong instead of eleven. Gated on
+// MGM.canEdit() alone (admin status), not additionally on edit MODE being
+// toggled: this is diagnostic information about the model's current state
+// ("this cell differs from the shipped default"), useful to an admin
+// browsing as much as one actively editing, the same reasoning
+// .mgm-adminonly header buttons use.
 MGM.editedMark = function (path) {
-  return MGM.isEdited(path)
+  return (MGM.canEdit() && MGM.isEdited(path))
     ? '<span class="edited" title="Differs from the shipped default">edited</span>' : '';
 };
 
