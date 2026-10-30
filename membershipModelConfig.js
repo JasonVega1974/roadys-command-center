@@ -441,6 +441,14 @@
       'pipeline-load-by-owner-col-open-locations': 'Open locations',
       'revpermember-drivers-col-driver': 'Driver',
       'revpermember-drivers-col-per-member-yr': '$/member/yr',
+      // revpermember-reconciliation-t1-col-pnl-actual and -variance are
+      // deliberately absent: they're the SENSITIVE-tier fields the P&L-
+      // margin containment work covers, not plain renameable text. Their
+      // header row no longer renders in Report/Print at all (see
+      // MGM.reportReconciliation), and renaming is lower-stakes on screen
+      // but still not worth a second place this id's provenance has to be
+      // reasoned about. t2's columns (the benchmark table, a published
+      // third-party figure, not P&L-sourced) carry no such restriction.
       'revpermember-reconciliation-t1-col-from-drivers': 'From drivers',
       'revpermember-reconciliation-t2-col-value': 'Value',
       'revpermember-reconciliation-t2-col-variance': 'Variance',

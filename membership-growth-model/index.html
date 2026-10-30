@@ -277,7 +277,7 @@ body:not(.mgm-admin) .mgm-adminonly{display:none !important}
       <button class="btn ghost mgm-adminonly" id="editBtn" onclick="MGM.toggleEdit()">✎ Edit</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.resetAll()">Reset all</button>
       <button class="btn ghost mgm-editonly" onclick="MGM.toggleRestorePanel()"
-              title="Show or hide, and rename, any card, tile, column or row in the tool. Hidden and renamed both mean for every signed-in viewer, not just admins.">👁 Visibility &amp; labels</button>
+              title="Show or hide, and rename, any card, tile, column or row in the tool. Hiding takes effect for every signed-in viewer immediately; a rename reaches other viewers once you Publish.">👁 Visibility &amp; labels</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Conservative')">Conservative</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Base')">Base</button>
       <button class="btn ghost mgm-adminonly" onclick="MGM.applyPreset('Aggressive')">Aggressive</button>
@@ -3117,7 +3117,7 @@ MGM.reportSafeValuation = function (D) {
 };
 
 MGM.renderers.report = function (D) {
-  const { st, M, R, F, rpm, cost: C, capacity: K,
+  const { st, M, R, F, cost: C, capacity: K,
           gallons: G, pipeline: p } = D;
   const v = MGM.reportSafeValuation(D);
   const rp = st.report;
@@ -3325,7 +3325,7 @@ MGM.renderers.report = function (D) {
 
     ${prose(rp.methodology)}
     ${MGM.reportAssumptions(D)}
-    ${MGM.reportReconciliation(D)}
+    ${MGM.reportReconciliation()}
     ${MGM.reportWarnings(D)}
     ${MGM.reportNotes(D)}
     ${prose(rp.closing)}
@@ -3346,7 +3346,6 @@ MGM.reportAssumptions = function (D) {
   const rv = st.revenue, at = st.attrition, bm = st.benchmark;
   const struct = Object.values(at.structural || {}).some(v => +v);
   const pipeWhy = MGM.reportPipelineWhy();
-  const period = (MGM.pnlActuals && MGM.pnlActuals.periodLabel) || null;
   const lag = st.adds.activationLag;
 
   const rows = [
@@ -3455,16 +3454,41 @@ MGM.reportAssumptions = function (D) {
     // claim from a typed one: it IS reported, it names its period, and it is
     // session-only. EM/MFP come from MGM.runFor, not from the state -- the
     // loaded figure never enters MGM.state, by design.
+    // The MFP arm used to print pct1(EM), the P&L period label, and (in the
+    // row below) marginBasisDetail prose -- all three straight from the
+    // gated load, in this report's own "Assumptions & sources" table. The
+    // Valuation table elsewhere on this same page already redacts the same
+    // figure (MGM.reportSafeValuation); this row read D.effectiveMargin /
+    // D.marginFromPnl / D.marginBasisDetail directly instead, so a report
+    // could show "not shown in a printed or shared report" in one table and
+    // "41.7% margin, loaded from the Jan-Sep 2026 P&L" nine rows later on
+    // the same page. Found by an independent review, not by this file's own
+    // re-audit, which is exactly the gap a redaction fix has to close with
+    // zero remaining exceptions, not most of them. Reworded to match the
+    // Valuation table's qualitative wording: provenance, never the number,
+    // the period, or the loaded basis-detail prose.
     ['EBITDA', C.unset
       ? (MFP
-          ? `${pct1(EM)} margin, loaded from the ${period ? esc(period) + ' ' : ''}P&amp;L for the session that produced this report. This tool never writes it into the model's state, so nothing it saves, syncs or exports carries it — and a reader without administrator access, running the same inputs, sees the revenue lens alone.`
+          ? 'A margin is loaded from the P&amp;L for this session and is visible live on the ' +
+            'Profit &amp; Cash Flow tab, but is never included in a printed, exported or emailed ' +
+            'copy of this report -- the same rule the Valuation table above follows. This tool ' +
+            'never writes it into the model\'s state, so nothing it saves, syncs or exports carries ' +
+            'it, and a reader without administrator access, running the same inputs, sees the ' +
+            'revenue lens alone.'
           : (TM
               ? `${pct1(TM)} margin — an assumption entered by the modeller, not a reported figure`
               : 'No margin is entered and no P&amp;L actual was loaded, so the EBITDA lens has no basis at all. The figure beside it is an absent method, not a valuation of zero.'))
       : 'Computed from revenue less cost to serve and acquisition — the margin assumption is not in use.'],
 
+    // marginBasisDetail is itself gated prose describing how the real P&L
+    // margin was derived -- redacted unconditionally whenever a loaded
+    // figure is in play, not only while C.unset, since the content leaks
+    // provenance about mgm_pnl_actuals regardless of whether it happens to
+    // be the figure this run's EBITDA lens actually used.
     ['EBITDA margin basis', `${esc(st.valuation.marginBasis)} — ${esc(st.valuation.marginBasisNote)}` +
-      (MFP && MBD ? ` Basis stated with the loaded figure: ${esc(MBD)}` : '')],
+      (MFP && MBD
+        ? ' A loaded basis applies for this session but is not stated in a printed or shared report -- see the live Profit & Cash Flow tab.'
+        : '')],
 
     ['Add-backs', st.valuation.ebitdaNormalization
       ? `${fm$(st.valuation.ebitdaNormalization)}/yr of explicit EBITDA normalization, entered by the modeller`
@@ -5981,10 +6005,12 @@ MGM.renameable = function (id) {
 // included in Publish like everything else. A blank value resets to the
 // shipped default rather than storing an empty label, since an empty tile
 // title or column header is not a usable state, just a different way to be
-// broken. Not routed through the generic data-k binder: this panel's other
-// controls (the visibility checkboxes) already call MGM functions directly
-// rather than relying on MGM.bindAll, which is scoped to the active tab
-// panel and never runs against this one.
+// broken. Not routed through the generic data-k binder: these inputs carry
+// no data-k attribute at all (MGM.bindAll's `[data-k],[data-k-text]`
+// selector would simply never match them even though bindAll itself
+// defaults its root to `document`, not to the active panel), the same way
+// this panel's visibility checkboxes already call MGM functions directly
+// rather than being bound.
 MGM.renameLabel = function (id, value) {
   if (!MGM.requireAdmin('Renaming a label')) return;
   const bucket = MGM.renameBucket(id);
@@ -6067,10 +6093,12 @@ MGM.renderRestorePanel = function () {
   host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
     <h3>Visibility &amp; labels</h3>
     <p class="note">${hiddenIds.length} of ${HIDDEN_SECTION_IDS.length} item(s) hidden across the tool.
-      Unchecking an item hides it for every signed-in viewer, not just admins. A hidden column or row
-      stays hidden even after real data appears in it -- that nudge below is informational only, never
-      automatic. Where a text box appears beside an item, typing in it renames that tile, column or row
-      for everyone; clearing it resets to the shipped default.</p>
+      Unchecking an item hides it for every signed-in viewer immediately, not just admins. A hidden
+      column or row stays hidden even after real data appears in it -- that nudge below is
+      informational only, never automatic. Where a text box appears beside an item, typing in it
+      renames that tile, column or row in this browser; clearing it resets to the shipped default.
+      Unlike hiding, a rename only reaches other viewers once you Publish -- it is a normal state
+      field, not a separate shared preference.</p>
     ${groups}
     <p style="margin-top:12px">
       <button class="btn" onclick="MGM.restoreAllSections()">Show all</button>
