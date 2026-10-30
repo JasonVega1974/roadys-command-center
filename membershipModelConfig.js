@@ -108,7 +108,16 @@
     // Calibrated against the Jan–Sep 2026 P&L. Per-member forward drivers
     // only — no statement line is reproduced here (public repo).
     revenue: {
-      duesPerLoc: 362,                 // realized core dues, $/member/mo
+      // RECALIBRATED to the measured blended billable rate. The Oct 29 refresh
+      // moved that rate to 360.27 (dues / PAYING locations) while this driver
+      // still read 362, which pushed dues realization past 100% -- the model
+      // assuming more per location than was actually billed. Setting it to the
+      // measured rate puts realization at 100.0% by construction.
+      //
+      // Not rounded, unlike the three gated-equal drivers: this figure is
+      // already published in the billing block above as duesPerLocBillable, so
+      // stating it here discloses nothing new.
+      duesPerLoc: 360.27,                 // realized core dues, $/member/mo
       // ROUNDED, deliberately. These three drivers were each exactly equal to
       // an auth-gated P&L per-member line -- a review measured relDiff 0 -- so
       // the public config was stating three gated figures verbatim while the
@@ -163,8 +172,24 @@
       fuelProgramMargin: 0,            // $/gal, FORWARD ASSUMPTION, default 0
       avgGallons: 8000,                // fed by Fuel Gallon Production
       vendorPM: 110,
-      rewardsPM: 29,
-      rewardsBreakagePerMember: 525,   // expired points, non-durable
+      // BLENDED $/member/mo, derived from the P&L the same way duesPerLoc is:
+      // the rewards programme fee total / months / ALL active members. That
+      // basis already includes non-participants, which is why
+      // participation.rewards.pct is 100 below -- the two changes are PAIRED.
+      // Shipping this figure at the old 50% participation would halve the
+      // stream: measured at -$95,544 on the headline, against +$184,718 for
+      // the participation change alone and -$6,370 for the two together.
+      //
+      // Rounded to the nearest $2/mo rather than the $25/yr convention used
+      // for the annual drivers. The convention was built for annual figures;
+      // applied to a monthly rate it rounds this to 14.58, overstating by 6%.
+      // The $2/mo band is a ~$24/yr window -- the same protective distance --
+      // and lands 1.7% from the derived value instead.
+      rewardsPM: 14,
+      // Recalibrated at the refreshed member base and rounded to the nearest
+      // $25/yr. The P&L did not move; the denominator did -- same expired-points
+      // total over 397 active members instead of 375.
+      rewardsBreakagePerMember: 500,   // expired points, non-durable
       rampMonths: 6
     },
 
@@ -173,7 +198,13 @@
     participation: {
       fuel:    { pct: 55, rampMonths: 6 },
       vendor:  { pct: 70, rampMonths: 6 },
-      rewards: { pct: 50, rampMonths: 6 }
+      // 100, PAIRED with revenue.rewardsPM above. That driver is now a BLENDED
+      // rate computed over all active members, so the participation share is
+      // already inside it; applying a second 50% would double-discount the
+      // stream. This field is therefore a deliberate no-op by construction --
+      // the About tab discloses it alongside the other inputs that accept a
+      // value and move nothing.
+      rewards: { pct: 100, rampMonths: 6 }
     },
 
     // Stage weights are an UNSOURCED assumption ladder — no source file

@@ -974,7 +974,7 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const r = MembershipModel.revenueModel(st, MembershipModel.runModel(st))[0];
   near(r.members, 397.691361, 'members');
-  near(r.streams.dues, 1727571.272516, 'dues');
+  near(r.streams.dues, 1719315.1998598874, 'dues');
 
   // DERIVED FROM THE DRIVER, not pasted from the engine. These four moved in
   // the Oct 29 rounding and I repinned them with the values the run printed --
@@ -993,7 +993,7 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   near(r.streams.settlement, r.members * D.settlementNetPerMember, 'settlement');
   near(r.streams.fuelProgram, 0, 'fuelProgram — zero by design');
   near(r.streams.vendor, 367466.817635, 'vendor');
-  near(r.streams.rewards, 69198.296827, 'rewards');
+  near(r.streams.rewards, 66812.14866083334, 'rewards');
   near(r.streams.rewardsBreakage,
        r.members * D.rewardsBreakagePerMember, 'rewardsBreakage');
   // The sum of the seven, so a stream silently dropping out of the total is
@@ -1009,7 +1009,7 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   // comment below spells out -- but it was wrongly cited as evidence that the
   // Oct 29 repins were verified. The figures that actually moved with the base
   // are the per-stream absolutes above.
-  near(r.total / r.members, 5942, '$/member/yr (driver sum, base-independent)');
+  near(r.total / r.members, 5890.24, '$/member/yr (driver sum, base-independent)');
 });
 
 test('fuelProgramMargin defaults to zero, so no prospective fuel revenue', () => {
@@ -1046,10 +1046,10 @@ test('revPerMember derives the driver sum from the committed drivers', () => {
   //
   // Keeping the rounded drivers is an explicit owner decision; the gap is
   // surfaced on the reconciliation tile for a signed-in admin, not hidden.
-  near(rpm.derived.total, 5942, 'derived $/member/yr');
+  near(rpm.derived.total, 5890.24, 'derived $/member/yr');
   assert.equal(rpm.actual, null, 'unsigned: no actual');
   assert.equal(rpm.benchmark, 20000);
-  near(rpm.varianceVsBenchmark, 5942 - 20000, 'benchmark variance');
+  near(rpm.varianceVsBenchmark, 5890.24 - 20000, 'benchmark variance');
 });
 
 test('a loaded P&L with no per-member total gives no actual, not a zero', () => {
@@ -1101,22 +1101,24 @@ test('dues realization is reported from the billable vs realized rates', () => {
   // restatement of the implementation. Dividing by all 411 locations instead
   // would read 346.24 and overstate realization, which is the error this test
   // was written to pin.
-  near(rpm.duesRealization, 100 * 362 / 360.27, 'realization %');
+  // 100.00% EXACTLY, because duesPerLoc was recalibrated TO the billable rate.
+  near(rpm.duesRealization, 100 * 360.27 / 360.27, 'realization %');
 
-  // THE BAND MOVED PAST 100%, AND THAT IS A FLAGGED OPEN ITEM, not a repin.
-  // The Oct 29 refresh took the billable rate from 382.47 to 360.27 while the
-  // model's assumed revenue.duesPerLoc stayed at 362, so realization went
-  // 94.6% -> 100.5%: the model now assumes slightly MORE per location than
-  // the blended rate actually billed.
+  // THE FLIP IS RESOLVED. This band previously sat above 100%, deliberately,
+  // as a tripwire. The Oct 29 refresh took the billable rate from 382.47 to
+  // 360.27 while assumed duesPerLoc stayed at 362, pushing realization
+  // 94.6% -> 100.5%: the model claiming more per location than was billed.
+  // The band was pinned ABOVE 100 so the rewards-calibration work could not
+  // land without confronting it.
   //
-  // duesPerLoc is a revenue driver and changing it moves the valuation, so it
-  // is a decision rather than arithmetic. The owner's call was to leave it and
-  // fold it into the rewards-calibration work, where the other drivers are
-  // being set from real P&L figures. This band is deliberately asserted ABOVE
-  // 100 so that work cannot quietly land without confronting it.
-  assert.ok(rpm.duesRealization > 100.4 && rpm.duesRealization < 100.6,
-    `realization is expected at 100.5% until duesPerLoc is recalibrated with the `
-    + `rewards work; got ${rpm.duesRealization}`);
+  // It confronted it: duesPerLoc is now 360.27, the measured rate, so
+  // realization is 100.0% by construction rather than by coincidence. The band
+  // is tight around 100 for that reason -- if either figure drifts from the
+  // other again, this fails rather than drifting quietly past 100 a second
+  // time.
+  assert.ok(rpm.duesRealization > 99.95 && rpm.duesRealization < 100.05,
+    `duesPerLoc and duesPerLocBillable must stay equal, so realization is 100.0%; `
+    + `got ${rpm.duesRealization}`);
 });
 
 test('GOLDEN: valuation under legacy settings reproduces the v1 exactly', () => {
@@ -1249,25 +1251,25 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
   const last = R[R.length - 1];
-  near(last.total, 2523207.515266507, 'final-year revenue basis');
+  near(last.total, 2501228.178176269, 'final-year revenue basis');
 
   // Margin unset (the shipped default): the EBITDA lens is zero, so the
   // revenue lens is the high end.
   st.valuation.ebitdaMargin = 0;
   const a = MembershipModel.valuation(st, last);
-  near(a.rev, 6308018.788166268, 'revenue lens at 2.5x');
+  near(a.rev, 6253070.445440672, 'revenue lens at 2.5x');
   near(a.ebitda, 0, 'EBITDA lens is zero at an unset margin');
   near(a.low, 0, 'low is the EBITDA lens here');
-  near(a.high, 6308018.788166268, 'high is the revenue lens here');
-  near(a.mid, 3154009.394083134, 'midpoint');
+  near(a.high, 6253070.445440672, 'high is the revenue lens here');
+  near(a.mid, 3126535.222720336, 'midpoint');
 
   // An 80% margin inverts the ordering: the EBITDA lens is now on top.
   st.valuation.ebitdaMargin = 80;
   const b = MembershipModel.valuation(st, last);
-  near(b.ebitda, 10092830.061066028, 'EBITDA lens at 80% x 5');
-  near(b.low, 6308018.788166268, 'low is now the revenue lens');
-  near(b.high, 10092830.061066028, 'high is now the EBITDA lens');
-  near(b.mid, 8200424.424616148, 'midpoint follows the inversion');
+  near(b.ebitda, 10004912.712705076, 'EBITDA lens at 80% x 5');
+  near(b.low, 6253070.445440672, 'low is now the revenue lens');
+  near(b.high, 10004912.712705076, 'high is now the EBITDA lens');
+  near(b.mid, 8128991.579072874, 'midpoint follows the inversion');
 });
 
 test('indicated is the single lens when only one has a basis, never half of it', () => {
@@ -1284,8 +1286,8 @@ test('indicated is the single lens when only one has a basis, never half of it',
 
   const defaults = MembershipModel.valuation(st, last);
   assert.equal(defaults.lensCount, 1, 'only the revenue lens has a basis');
-  near(defaults.indicated, 6308018.788166268, 'indicated is the whole revenue lens');
-  near(defaults.mid, 3154009.394083134, 'mid still reports the two-method midpoint');
+  near(defaults.indicated, 6253070.445440672, 'indicated is the whole revenue lens');
+  near(defaults.mid, 3126535.222720336, 'mid still reports the two-method midpoint');
   assert.notEqual(defaults.indicated, defaults.mid,
     'the headline figure must not be half of the only live lens');
 
@@ -1529,7 +1531,11 @@ test('participation reports participating members per program per year', () => {
     near(r.members, expected, `${y.year} member basis is the year average`);
     near(r.fuel, expected * 0.55, `${y.year} fuel participants`);
     near(r.vendor, expected * 0.70, `${y.year} vendor participants`);
-    near(r.rewards, expected * 0.50, `${y.year} rewards participants`);
+    // 1.00, not 0.50: revenue.rewardsPM is a BLENDED rate over all active
+    // members now, so the participation share is already inside it and this
+    // field is a deliberate no-op. Pinned at 1.00 so reintroducing a second
+    // discount here fails rather than silently halving the stream.
+    near(r.rewards, expected * 1.00, `${y.year} rewards participants`);
   });
 });
 
@@ -1715,16 +1721,16 @@ test('the valuation panel consumes the computed EBITDA, not the margin assumptio
   // independent verification left standing over figures that no longer
   // support it. Restate all three whenever the data refreshes.
   //
-  //   basis    = 2,523,207.515267   (final-year revenue, pinned above)
-  //   margin   = basis x 25% = 630,801.878817
+  //   basis    = 2,501,228.178176   (final-year revenue, pinned above)
+  //   margin   = basis x 25% = 625,307.044544
   //   computed = basis - 169,855.773495 cost-to-serve
   //                    - 240,000.000000 sales spend
-  //            = 2,113,351.741772
+  //            = 2,091,372.404681
   //
   // Both cost terms are the test's OWN inputs ($400/member/yr over the
   // modelled base, and $20,000/mo x 12), not figures read out of the engine.
-  near(viaMargin.ebitdaBase, 630801.878817, 'margin lens: 25% of final-year revenue');
-  near(viaComputed.ebitdaBase, 2113351.741772, 'computed lens: revenue less real costs');
+  near(viaMargin.ebitdaBase, 625307.044544, 'margin lens: 25% of final-year revenue');
+  near(viaComputed.ebitdaBase, 2091372.404681, 'computed lens: revenue less real costs');
 
   // DIRECTION IS DELIBERATELY NOT ASSERTED. With these modest cost inputs
   // ($20k/mo spend, $400/member/yr) the computed EBITDA lands ~3.3x ABOVE a 25%
@@ -1755,7 +1761,7 @@ test('a reset restores a section from config without touching siblings', () => {
   st.revenue.duesPerLoc = 999;
   st.valuation.revMultiple = 11;
   st.revenue = MembershipModel.defaultState(MGM_CONFIG).revenue;   // resetSection
-  assert.equal(st.revenue.duesPerLoc, 362, 'section restored');
+  assert.equal(st.revenue.duesPerLoc, 360.27, 'section restored');
   assert.equal(st.valuation.revMultiple, 11, 'sibling untouched');
 });
 
