@@ -3583,20 +3583,30 @@ MGM.reportWarnings = function (D) {
   if (K.unset) out.push(`No per-rep capacity is entered, so this run does not say ` +
     `whether the modeled add rate is achievable at the modeled headcount.`);
 
-  if (D.valuation.lensCount === 1) out.push(`Only one valuation lens has a basis, so ` +
+  // Against the report-safe valuation, not D.valuation directly: this
+  // function's output lands in the Report tab, same as the Valuation table
+  // itself. Checking the raw (possibly margin-overlaid) lensCount here would
+  // silently skip the "only one lens" warning in exactly the case where the
+  // table above has already redacted the EBITDA lens down to one.
+  const vSafe = MGM.reportSafeValuation(D);
+  if (vSafe.lensCount === 1) out.push(`Only one valuation lens has a basis, so ` +
     `the headline is a single-method figure and there is no range. It must not be ` +
     `quoted as a midpoint.`);
-  if (D.valuation.lensCount === 0) out.push(`No valuation lens has a basis, so this ` +
+  if (vSafe.lensCount === 0) out.push(`No valuation lens has a basis, so this ` +
     `run produces no indicated value at all.`);
 
   // The consequence of holding the loaded margin outside the saved state: two
   // readers can legitimately see different headlines for the same scenario.
   // Say so here rather than trying to reconcile them by persisting the figure.
-  if (D.marginFromPnl) out.push(`The EBITDA lens rests on a margin loaded from the ` +
-    `P&L for the session that produced this report. That figure is deliberately not ` +
-    `stored in the model, so the same inputs re-run without administrator access ` +
-    `value on the revenue lens alone and report a different headline. Both are ` +
-    `correct for what they had.`);
+  // Worded for what Report actually shows now: the EBITDA lens is EXCLUDED
+  // from this report (not merely "resting on" a hidden basis), since a
+  // margin loaded from the P&L never appears in anything meant to leave the
+  // admin's own screen.
+  if (C.unset && D.marginFromPnl) out.push(`The EBITDA lens is excluded from this ` +
+    `report: its only basis for the session that produced it was a margin loaded ` +
+    `from the P&L, which this tool never includes in anything that leaves the ` +
+    `browser. The same inputs re-run without administrator access reach the same ` +
+    `revenue-lens-only headline shown here.`);
 
   const badYears = Object.keys(st.monthlyHistory || {})
     .filter(k => !Number.isFinite(Number(k)) ||
@@ -4136,7 +4146,17 @@ MGM.renderers.about = function (D) {
   // The derived attrition the shipped steady rate was seeded from.
   const da = MM.derivedAttrition(cfg.history);
   const derivedRows = da.rows.slice(-3);
-  const vh = MM.valuationHeadline(D.valuation);
+  // Report-safe, not D.valuation directly: this tab's own stated rule a few
+  // lines above is "This repo is PUBLIC. Not one gated P&L figure appears
+  // here" -- a stronger, unconditional promise than Report/Print/email's
+  // "meant to leave the screen" (About is ungated and visible to literally
+  // every viewer, including the admin whose OWN session loaded the margin).
+  // Without this, an admin viewing their own About tab after loading the
+  // P&L would see the real margin-derived headline value quoted directly in
+  // the walkthrough's worked example below -- the exact leak this tab's own
+  // comment says can never happen here.
+  const vSafe = MGM.reportSafeValuation(D);
+  const vh = MM.valuationHeadline(vSafe);
 
   // Every walkthrough entry names a tab by its CURRENT label, so renaming a tab
   // renames it here too rather than leaving the tour pointing at a name that is
@@ -4433,7 +4453,7 @@ MGM.renderers.about = function (D) {
         labelled as a single-method figure</b>, rather than averaging it with an
         absent one. A lens at zero is an absent method, not a valuation of zero, so
         averaging would report half of the only real answer. On the shipped
-        defaults exactly ${fmt(D.valuation.lensCount)} lens has a basis and the
+        defaults exactly ${fmt(vSafe.lensCount)} lens has a basis and the
         headline reads <b>${vh.hasValue ? fmM(vh.value) : '—'}</b> —
         ${esc(vh.caption)}.</li>
       <li>The real margin is <b>auth-gated and absent from this repository
