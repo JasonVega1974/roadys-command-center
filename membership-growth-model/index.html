@@ -710,6 +710,19 @@ MGM.baselineFor = function (profile, roadway) {
 MGM.model = function () { return MGM.runFor(MGM.state); };
 
 MGM.runFor = function (st) {
+  // NO session override for fuel settlement, deliberately. One was built here
+  // -- a clone carrying the gated figure, with the original `st` returned so
+  // nothing could persist it -- and then removed, because rounding the driver
+  // made it unreachable: the override only fires when the published value is
+  // absent, and the config now publishes a rounded figure. Dead code on the
+  // disclosure surface is exactly what a review criticised elsewhere in this
+  // file, so it is gone rather than kept "in case".
+  //
+  // An administrator still sees the exact figure: the reconciliation table
+  // reads MGM.pnlActuals.streams directly and shows actual against derived per
+  // stream, which is where a rounding gap belongs. The rounded driver and the
+  // gated actual therefore live in different columns of the same table instead
+  // of silently replacing one another.
   const pipeline = MM.pipelineModel(st, MGM.leads, MGM.profiles);
   const M = MM.runModel(st, MM.addsOpts(st, pipeline));
   const R = MM.revenueModel(st, M);
@@ -1377,7 +1390,7 @@ MGM.renderers.participation = function (D) {
      consumes them. One source, two views.</p>
   <div class="signrow">
     ${progs.map(([k, label], i) => sign(
-      label.toUpperCase(), pct1(MM.partPct(st, k)),
+      label.toUpperCase(), pct1(MM.effectiveSharePct(st, k)),
       `${fmt(P.length ? P[P.length - 1][k] : 0)} members in ${M.years[M.years.length - 1].year}`,
       i === 2 ? 'red' : (i === 1 ? 'dark' : ''))).join('')}
     ${sign('MEMBERS', fmt(P.length ? P[P.length - 1].members : 0), 'final-year average', 'dark')}
@@ -1441,10 +1454,15 @@ MGM.renderers.gallons = function (D) {
      <a href="../bus-dev-potential-gallons/" target="_blank">Bus Dev Potential Gallons</a> tool.</p>
   <div class="signrow">
     ${/* G.mapped is 0 when no group resolved a baseline -- reachable if
-          busDevGallonsCalculator.js fails to load. "0 gal/mo across 375
-          locations" is a business claim; the absence of an engine is not a
+          busDevGallonsCalculator.js fails to load. "0 gal/mo across the whole
+          network" is a business claim; the absence of an engine is not a
           production figure. The printed report already said "Not computed"
-          here, so the screen was the half that disagreed. */ ''}
+          here, so the screen was the half that disagreed.
+
+          The location count that used to be written out here went stale in the
+          first data refresh after it was written, which is the staleness this
+          file's own documentation warns about. Phrased without a count now, so
+          it cannot go stale again. */ ''}
     ${G.mapped
       ? sign('EXISTING NETWORK', fmt(G.existing), 'gal / mo')
       : sign('EXISTING NETWORK', '—', 'gallons engine not loaded')}
@@ -1600,8 +1618,26 @@ MGM.renderers.revpermember = function (D) {
           value="${st.revenue.vendorPM}"> /mo × ${pct1(MM.partPct(st, 'vendor'))}</td>
         <td class="num">${fm$(rpm.derived.vendor)}</td></tr>
       <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewards" value="${esc(L.rewards)}"></td>
-        <td class="num"><input class="cell" type="number" data-k="revenue.rewardsPM"
-          value="${st.revenue.rewardsPM}"> /mo × ${pct1(MM.partPct(st, 'rewards'))}</td>
+        <td class="num"><input class="cell" type="number" data-k="revenue.rewardsBlendedPM"
+          value="${st.revenue.rewardsBlendedPM}"> /mo
+          ${/* The EFFECTIVE share, not partPct. This printed "x 50.0%" beside a
+                figure computed at 100% -- one row contradicting itself, and the
+                same contradiction in the printed report. A blended rate shows
+                its basis instead of a multiplier, because there is no
+                multiplier to show. */ ''}
+          ${(() => {
+            const rr = MM.rewardsRate(st);
+            // An em dash, not $0. The rate is unusable -- cleared, corrupt, or
+            // negative -- and this model's convention is that an em dash means
+            // no figure was supplied while $0 means a deliberate zero. A
+            // review measured the previous code modelling this as a real zero
+            // with nothing rendered to say so.
+            if (rr.unset) return '<span class="small">— rate not supplied,'
+              + ' so this stream contributes nothing</span>';
+            return rr.blended
+              ? '<span class="small">blended over all members</span>'
+              : '× ' + pct1(MM.partPct(st, 'rewards'));
+          })()}</td>
         <td class="num">${fm$(rpm.derived.rewards)}</td></tr>
       <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewardsBreakage" value="${esc(L.rewardsBreakage)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.rewardsBreakagePerMember"
@@ -1620,6 +1656,24 @@ MGM.renderers.revpermember = function (D) {
     <p class="note">Rewards breakage is expired-points revenue: real, but a buyer
       discounts it. It is held as a flat per-member figure rather than inside the
       program fee so it never scales with participation.</p>
+    <p class="note"><b>Breakage has been falling steeply, and this model assumes
+      it stops.</b> Expired-points income was about <b>77%</b> of the prior year
+      in 2025 and about <b>55%</b> of the prior year in 2026 — roughly
+      <b>42%</b> of the 2024 level after two years, with the steeper fall in the
+      most recent one. The driver here is calibrated on the <b>2026</b> figure
+      and the three-year projection then holds it <b>flat</b>.
+      <br><br>
+      That flat-hold is an assumption, not a measured rate, and it is the
+      optimistic reading of a declining series: a driver that has roughly
+      halved in a year is not a stable forward input. Nobody has established
+      the cause yet — whether it is a change in points policy, redemption
+      behaviour, member mix, or an accounting reclassification — so the shape of
+      the next three years is unknown rather than modelled. Revisit this once
+      the cause is known; if the decline continues at anything like the recent
+      rate, this stream is materially overstated.
+      <br><br>
+      Only the year-over-year <i>ratios</i> are given above. The dollar figures
+      behind them are auth-gated P&amp;L lines and are not published here.</p>
   </div>
 
   <div class="card"><h3>Reconciliation</h3>
@@ -1663,7 +1717,20 @@ MGM.renderers.revpermember = function (D) {
          Right now: <b>${esc(MGM.pnlWhy ? MGM.pnlWhy() : 'not available')}</b>. The
          <b>From drivers</b> column above is complete and unaffected; only the comparison
          is missing.</p>`
-      : `<p class="note">Reconciled against <b>${esc((MGM.pnlActuals && MGM.pnlActuals.periodLabel) || 'the loaded P&amp;L period')}</b>.</p>`}
+      : `<p class="note">Reconciled against <b>${esc((MGM.pnlActuals && MGM.pnlActuals.periodLabel) || 'the loaded P&amp;L period')}</b>.</p>
+         <p class="note"><b>Three drivers are deliberately rounded.</b> Ancillary
+         dues, fuel settlement and rewards breakage are published in this
+         tool's committed configuration rounded to the nearest
+         <b>$25/member/yr</b>, because this repository is public. Each
+         therefore differs from the actual by up to $12.50/member/yr, and the
+         <b>Δ</b> column above shows that rounding, not a modelling error.
+         Fuel settlement is on this project's never-commit list by name.</p>
+         <p class="note"><b>Scope of that protection.</b> The rounding applies
+         to the configuration as it stands now, and not to the repository's
+         history. The exact figures were committed to this public repository on
+         28 Oct 2026 and remain readable there; no history rewrite was
+         performed. Treat these three figures as already public, not as
+         protected.</p>`}
   </div>
 
   <div class="card"><h3>Revenue by year</h3>
@@ -2466,11 +2533,11 @@ MGM.drawMonthlyHistory = function (st) {
 // unset default, which is the one thing this row exists to distinguish.
 const fmGal = n => '$' + (Math.round(n * 1000) / 1000).toFixed(3);
 
-// Cents, where cents are the whole point. fm$ rounds to whole dollars, so the
-// billable dues figure prints as "$382" -- and the difference this project
-// spent a correction on is $382.47 (dues ÷ the 375 locations that bill) versus
-// $366.82 (dues ÷ all 391 billed records), four points of dues realization
-// apart. Rounding both to "$382" and "$367" keeps them distinguishable by luck,
+// Cents, where cents are the whole point. fm$ rounds to whole dollars, and the
+// difference this project spent a correction on is dues ÷ the locations that
+// BILL versus dues ÷ all billed records -- about four points of dues
+// realization apart. Both rates round to figures that happen to stay
+// distinguishable, by luck,
 // not by design, and the report is the artifact where the figure gets quoted.
 const fmCents = n => (n < 0 ? '-$' : '$') +
   Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2789,7 +2856,9 @@ MGM.reportAssumptions = function (D) {
     ['Activation lag', `${lag} ${lag === 1 ? 'month' : 'months'} before a new location produces revenue`],
 
     ['Participation',
-      `fuel ${pct1(MM.partPct(st, 'fuel'))} · vendor ${pct1(MM.partPct(st, 'vendor'))} · rewards ${pct1(MM.partPct(st, 'rewards'))}`],
+      `fuel ${pct1(MM.partPct(st, 'fuel'))} · vendor ${pct1(MM.partPct(st, 'vendor'))} · `
+      + `rewards ${pct1(MM.effectiveSharePct(st, 'rewards'))}`
+      + (MM.rewardsRate(st).blended ? ' (blended rate — the field is not applied)' : '')],
 
     // fmCents, not fm$: $382.47 (dues ÷ the locations that bill) and $366.82
     // (dues ÷ every billed record) are four points of dues realization apart,
@@ -2831,7 +2900,15 @@ MGM.reportAssumptions = function (D) {
       ? `${fmGal(rv.fuelProgramMargin)}/gal × ${fmt(rv.avgGallons)} gal/mo × ${pct1(MM.partPct(st, 'fuel'))} participation — a FORWARD ASSUMPTION entered by the modeller, not a reported figure`
       : `$0.00/gal — the shipped default, and a deliberate zero rather than a missing figure. The source P&amp;L shows fuel settlement netting negative, so nothing supports a positive per-gallon margin here; any positive value would be a forward assumption the modeller owns.`],
 
-    ['Rewards', `${fm$(rv.rewardsPM)}/mo program fees × ${pct1(MM.partPct(st, 'rewards'))} participation, plus ` +
+    ['Rewards', (() => {
+      const rr = MM.rewardsRate(st);
+      if (rr.unset) return 'not supplied — no usable program-fee rate is entered, '
+        + 'so the fee stream contributes nothing; ';
+      return rr.blended
+        ? `${fm$(rr.rate)}/mo program fees, blended over ALL active members `
+          + `(the participation share is already inside the rate, so none is applied), plus `
+        : `${fm$(rr.rate)}/mo program fees × ${pct1(MM.partPct(st, 'rewards'))} participation, plus `;
+    })() +
       (rv.rewardsBreakagePerMember
         ? `${fm$(rv.rewardsBreakagePerMember)}/member/yr of breakage (expired points — real revenue, but non-durable, and a buyer discounts it)`
         : 'no breakage figure entered')],
@@ -3491,9 +3568,13 @@ MGM.sendEmail = function () {
 //     the limitations card, which accept a value and move nothing, and are
 //     disclosed rather than quietly described as drivers.
 //  2. Every FIGURE is read live out of MGM_CONFIG or computed by the engine,
-//     never typed into the prose. A hardcoded 375 in a paragraph goes stale the
-//     first time the refresh script runs; `cfg.groups` cannot. Where a figure
-//     is quoted as PROVENANCE ("this came from that export") it is read from
+//     never typed into the prose. A hardcoded count in a paragraph goes stale
+//     the first time the refresh script runs; `cfg.groups` cannot. This very
+//     sentence used to name the then-current count as its example, and that
+//     example went stale in the next refresh -- so the rule now states the
+//     shape and not the instance, which is also what SR-11 requires of any
+//     guard. Where a figure is quoted as PROVENANCE ("this came from that
+//     export") it is read from
 //     MGM_CONFIG -- the shipped value -- not from MGM.state, because a reader's
 //     own edit does not change where the shipped number came from. The card
 //     says so when the two differ.
@@ -3926,12 +4007,26 @@ MGM.renderers.about = function (D) {
         is absent or genuinely zero.</b> The tables carry an em dash for absence;
         the charts have no way to.</li>
 
-      <li><b>Five inputs accept a value and change nothing.</b> Named here rather
+      <li><b>Six inputs accept a value and change nothing.</b> Named here rather
         than left to be discovered: the three per-program <i>Ramp (months)</i>
         fields on ${T('participation')}, the <i>Average cycle (days)</i> field on
-        ${T('pipeline')} — which nothing derives either, despite its label — and
-        <i>Working capital days</i> on ${T('cashflow')}. An edit to any of them is
-        saved, exported and synced, and moves no figure in the model.</li>
+        ${T('pipeline')} — which nothing derives either, despite its label —
+        <i>Working capital days</i> on ${T('cashflow')}, and the <i>Rewards</i>
+        participation percentage on ${T('participation')}. An edit to any of them
+        is saved, exported and synced, and moves no figure in the model.
+        <br><br>
+        The rewards one is new and has a reason: that programme's rate is
+        <i>blended</i> over all active members, so the participation share is
+        already inside the figure and applying it again would discount the
+        stream twice. The field is kept rather than removed so a scenario saved
+        before the change still loads, and the Program Participation tab shows
+        the <i>effective</i> share — 100% — rather than the stored value, so no
+        surface reads one number beside a figure computed from another.
+        <br><br>
+        This count was <b>five</b> until the rewards rate was recalibrated, and
+        it was not updated at the time — a card whose whole job is to name the
+        inert inputs, silently omitting one. Worth noting because the omission
+        is the exact failure the card exists to prevent.</li>
     </ul>
     <p class="note">Two conventions run through every tab and are the fastest way
       to read this tool correctly. An <b>em dash</b> always means <i>no figure was
@@ -4440,6 +4535,7 @@ MGM.loadPnlActuals = async function () {
   MGM.loadedMarginPct = null;
   MGM.loadedNetMarginPct = null;
   MGM.loadedMarginBasisDetail = null;
+
   // The gitignored dev fallback, restricted to a LOCAL DEV HOST.
   //
   // It used to sit here unconditionally, above every auth check, so wherever
@@ -4521,6 +4617,7 @@ MGM.applyPnlTotals = function (t) {
   MGM.loadedMarginPct = num('ebitdaMarginPct');
   MGM.loadedNetMarginPct = num('netMarginPct');
   MGM.loadedMarginBasisDetail = t.marginBasisDetail || null;
+
 };
 
 // What the reconciliation tile (and the Valuation card) says for each reason.

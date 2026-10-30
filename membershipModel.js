@@ -431,12 +431,147 @@
     return n((state.revenue || {})[LEGACY_PART[program]]);
   }
 
+  // The rewards rate AND the share that applies to it, decided together, in
+  // one place, from ONE field.
+  //
+  // A blended rate is a P&L total over ALL active members, so the participation
+  // share is already inside it; applying one again double-discounts the stream.
+  // The basis therefore has to travel with the number, and the field NAME is
+  // what carries it: `rewardsBlendedPM` means "already blended, no share".
+  //
+  // THIS IS THE THIRD DESIGN, and the first two failed in opposite directions:
+  //
+  //   1. a rate plus participation.rewards.pct = 100, with a comment calling
+  //      the share "a no-op by construction". It was a no-op only while the
+  //      value stayed 100. resetSection('revenue') pulls in the rate and
+  //      leaves participation alone -- the pair straddled revenue.* and
+  //      participation.* and that function is per-path by design -- so every
+  //      pre-commit scenario HALVED the stream.
+  //
+  //   2. a rate plus a separate `rewardsPMIsBlended` boolean. mergeState fills
+  //      absent keys from defaults, so a pre-commit scenario came back with
+  //      the marker TRUE and its own old rate intact: the share it was saved
+  //      with was discarded and the stream DOUBLED. Every entry path did it --
+  //      load, import, scenarioLoad, pullScenarios -- with no admin action.
+  //
+  // The lesson, which is the durable part: DEFAULTS-WIN-FOR-ABSENT-KEYS IS
+  // RIGHT FOR A NEW INDEPENDENT FIELD AND WRONG FOR A FIELD THAT CHANGES WHAT
+  // A NEIGHBOURING VALUE MEANS. A qualifier must not be able to arrive without
+  // the thing it qualifies.
+  //
+  // With one field there is nothing to separate. A pre-commit scenario has no
+  // `rewardsBlendedPM`, so mergeState adds it at the shipped calibration and
+  // REPORTS it in `added`; the saved `rewardsPM` survives as a retained
+  // unknown. The stream moves by the difference between two calibrations, not
+  // by a factor of two, and the notice says a field was filled from defaults.
+  //
+  // `rewardsPM` IS STILL READ, and an earlier version of this comment said
+  // "that nothing reads" -- which the legacy branch below contradicts four
+  // lines later, and a review measured at 207.1% of reference. It is read in
+  // exactly one circumstance: when `rewardsBlendedPM` is ABSENT AS A KEY,
+  // which is the legacy shape and the only shape whose rate takes a
+  // participation share. A present-but-unusable blended value no longer
+  // reaches it.
+  //
+  // LEGACY_STATE carries `rewardsPM`/`rewardsPart` and no blended field, so it
+  // takes the legacy branch and the v1 goldens are unaffected -- including
+  // through a merge, which design 2 could not say.
+  // A usable numeric rate, or null. Rejects a boolean, an array and an object
+  // by TYPE rather than by whether they coerce: `true` coerced to the rate 1
+  // and `[]` to the rate 0, so the guard was testing coercibility and calling
+  // the result a figure.
+  //
+  // A negative rate is rejected too. Revenue per member cannot be negative
+  // here -- the one stream that legitimately is, fuel settlement, has its own
+  // field -- so a negative belongs in the unusable bucket rather than quietly
+  // inverting a stream.
+  // A STRING IS ACCEPTED ON PURPOSE, and this is load-bearing: an imported
+  // JSON scenario carries whatever the file held, and a hand-edited or
+  // third-party export legitimately stores a number as a string. The UI path
+  // never needs it -- the bound input writes a number or null -- so anyone
+  // reading only the UI path would reasonably "tighten" this to number-only
+  // and silently break every imported scenario. It stays.
+  //
+  // Whitespace is NOT a figure, though. Number(' ') is 0, so ' ', '	' and a
+  // non-breaking space all arrived as a usable rate of zero and printed the
+  // deliberate-$0 reading instead of "not supplied" -- the
+  // absence-rendered-as-a-business-fact defect this model has corrected about
+  // thirty times. Trimming first makes them empty, and empty is absent.
+  //
+  // MAGNITUDE IS BOUNDED, because validating the input is not the same as
+  // validating what the model does with it. 1e308 passed every check here and
+  // then `members x rate x 12` overflowed to Infinity, which propagated into
+  // the revenue streams. A per-member MONTHLY rate has a real-world bound; a
+  // billion dollars is already absurd by six orders of magnitude, so anything
+  // beyond it is corrupt data rather than a figure, and saying so here keeps
+  // one predicate instead of spreading finiteness checks over every product.
+  var RATE_CEILING = 1e9;
+
+  function usableRate(v) {
+    if (typeof v !== 'number' && typeof v !== 'string') return null;
+    var t = (typeof v === 'string') ? v.trim() : v;
+    if (t === '') return null;
+    var x = Number(t);
+    return (isFinite(x) && x >= 0 && x <= RATE_CEILING) ? x : null;
+  }
+
+  // WHICH SHAPE the state is in, and WHETHER ITS VALUE IS USABLE, are separate
+  // questions. Conflating them is what reopened this bug a third time.
+  //
+  // The previous version took the legacy branch whenever rewardsBlendedPM
+  // failed to coerce -- so `''` (one keystroke in its own number input),
+  // null, a corrupt string, `{}`, NaN or a deleted key all silently fell
+  // through to rv.rewardsPM, which the shipped config NO LONGER CONTAINS.
+  // Measured: the rewards stream ZEROED with nothing rendered to say so, and
+  // with a superseded rate still in state it reached 207.1% of reference --
+  // design 2's doubling arriving through a different door. mergeState cannot
+  // help, because `''` is PRESENT: it survives a merge and is not reported in
+  // `added`.
+  //
+  // So the shape is decided by KEY PRESENCE and nothing else, and an
+  // unusable value is an ERROR STATE rather than a fallback:
+  //
+  //   blended key present -> blended, always. A bad value yields rate null
+  //                          and unset:true, never a silent legacy read.
+  //   blended key absent  -> legacy, always. That is the only shape whose
+  //                          rate is participation-discounted.
+  //
+  // rate null contributes nothing through n(), which matches this model's
+  // convention that an em dash means "no figure supplied" while $0 means "a
+  // deliberate zero" -- and `unset` is what lets a surface say the first
+  // rather than print the second.
+  function rewardsRate(state) {
+    var rv = state.revenue || {};
+    var hasBlended = Object.prototype.hasOwnProperty.call(rv, 'rewardsBlendedPM');
+
+    if (hasBlended) {
+      var b = usableRate(rv.rewardsBlendedPM);
+      return { rate: b, share: 1, blended: true, unset: b === null };
+    }
+    var l = usableRate(rv.rewardsPM);
+    return { rate: l, share: partPct(state, 'rewards') / 100,
+             blended: false, unset: l === null };
+  }
+
+  // The effective share for any programme, for DISPLAY as well as arithmetic.
+  // Four surfaces printed partPct raw beside a figure computed without it --
+  // one row reading "x 50.0%" next to the 100% result, and the same
+  // contradiction in the printed report.
+  function effectiveSharePct(state, program) {
+    if (program === 'rewards') return rewardsRate(state).share * 100;
+    return partPct(state, program);
+  }
+
   // Annualized run-rate per year: every stream is charged for 12 months on
   // the average member count, which is what the v1 reported and what a
   // valuation multiple expects. `producing` is carried separately so the
   // activation lag is visible without changing the revenue basis.
   function revenueModel(state, M) {
     var rv = state.revenue || {}, months = 12;
+    // Read as ONE pair, once. Calling rewardsRate twice on a line made the
+    // atomicity of rate-and-share incidental rather than explicit, which is
+    // the shape the owner named as this build's recurring root cause.
+    var rr = rewardsRate(state);
     return M.years.map(function (r) {
       var m = avgMembers(r);
       var streams = {
@@ -445,7 +580,7 @@
         settlement:      m * n(rv.settlementNetPerMember),
         fuelProgram:     m * (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
         vendor:          m * (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-        rewards:         m * (partPct(state, 'rewards') / 100) * n(rv.rewardsPM) * months,
+        rewards:         m * rr.share * n(rr.rate) * months,
         rewardsBreakage: m * n(rv.rewardsBreakagePerMember)
       };
       var total = Object.keys(streams).reduce(function (a, k) { return a + streams[k]; }, 0);
@@ -463,13 +598,14 @@
   // null when nobody is signed in — the tile degrades, it does not break.
   function revPerMember(state, M, actuals) {
     var rv = state.revenue || {}, months = 12;
+    var rr = rewardsRate(state);          // one pair, read once
     var derived = {
       dues:            n(rv.duesPerLoc) * months,
       duesAncillary:   n(rv.duesAncillaryPerMember),
       settlement:      n(rv.settlementNetPerMember),
       fuelProgram:     (partPct(state, 'fuel') / 100) * n(rv.avgGallons) * n(rv.fuelProgramMargin) * months,
       vendor:          (partPct(state, 'vendor') / 100) * n(rv.vendorPM) * months,
-      rewards:         (partPct(state, 'rewards') / 100) * n(rv.rewardsPM) * months,
+      rewards:         rr.share * n(rr.rate) * months,
       rewardsBreakage: n(rv.rewardsBreakagePerMember)
     };
     derived.total = Object.keys(derived).reduce(function (a, k) {
@@ -486,7 +622,29 @@
     var raw = actuals ? actuals.totalPerMemberYr : null;
     var actual = (raw !== null && raw !== undefined && raw !== ''
                   && isFinite(Number(raw))) ? Number(raw) : null;
-    var billable = n((state.billing || {}).duesPerLocBillable);
+    // Realization is measured against the ACTUAL BILLING TOTAL, not against
+    // duesPerLocBillable.
+    //
+    // It used to be duesPerLoc / duesPerLocBillable, and the Oct 29
+    // recalibration set the first to the second -- so the ratio read exactly
+    // 100.00% by construction and would have read 100.00% if both fields were
+    // 999. A review caught that the metric had become a tautology at the very
+    // moment it was supposed to confirm the recalibration.
+    //
+    // Modelled annual dues revenue over actual annual billing is a real
+    // comparison: it cannot be satisfied by making two fields equal, and it
+    // surfaces the denominator mismatch that duesPerLoc carries -- the rate is
+    // dues over PAYING LOCATIONS, applied here to MEMBERS, which are not the
+    // same population.
+    var billing = state.billing || {};
+    var annualBilled = n(billing.monthlyDuesTotal) * 12;
+    // The SAME member basis revenueModel uses -- avgMembers of the first year,
+    // not M.startTotal. Using the integer start read 100.51% against a
+    // modelled revenue built on the average, so the numerator and denominator
+    // described slightly different populations and the metric was off by the
+    // very kind of gap it exists to surface.
+    var modelledMembers = (M && M.years && M.years.length)
+      ? n(avgMembers(M.years[0])) : 0;
 
     return {
       derived: derived,
@@ -495,7 +653,9 @@
       benchmark: bench,
       varianceVsActual: actual === null ? null : derived.total - actual,
       varianceVsBenchmark: derived.total - bench,
-      duesRealization: billable ? 100 * n(rv.duesPerLoc) / billable : null
+      duesRealization: (annualBilled && modelledMembers)
+        ? 100 * (modelledMembers * n(rv.duesPerLoc) * months) / annualBilled
+        : null
     };
   }
 
@@ -728,7 +888,10 @@
         year: r.year, members: m,
         fuel:    m * partPct(state, 'fuel') / 100,
         vendor:  m * partPct(state, 'vendor') / 100,
-        rewards: m * partPct(state, 'rewards') / 100
+        // Reports ALL members as participating when the rate is blended,
+        // because that is what the rate covers. Showing half of them beside a
+        // stream that counts all of them would be two surfaces disagreeing.
+        rewards: m * rewardsRate(state).share
       };
     });
   }
@@ -858,6 +1021,8 @@
       attritionSplit: attritionSplit,
       applyScenario: applyScenario,
       partPct: partPct,
+      rewardsRate: rewardsRate,
+      effectiveSharePct: effectiveSharePct,
       avgMembers: avgMembers,
       revenueModel: revenueModel,
       revPerMember: revPerMember,
