@@ -98,6 +98,11 @@ main{max-width:1240px;margin:0 auto;padding:26px 20px 80px}
 .mgm-col-hide-btn{margin-left:6px;cursor:pointer;opacity:.6;font-size:11px;
   border:none;background:none;color:inherit;padding:0;vertical-align:middle}
 .mgm-col-hide-btn:hover{opacity:1}
+/* Row hide: the same small inline glyph as a column, placed after the row's
+   identity cell instead of a header. */
+.mgm-row-hide-btn{margin-left:6px;cursor:pointer;opacity:.6;font-size:11px;
+  border:none;background:none;color:inherit;padding:0;vertical-align:middle}
+.mgm-row-hide-btn:hover{opacity:1}
 .card.flush{padding:0;overflow:hidden}
 .card .hd{padding:14px 20px;border-bottom:1px solid var(--line-soft);display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .card .bd{padding:16px 20px}
@@ -933,6 +938,33 @@ const HIDDEN_SECTION_IDS = Object.freeze([
   'staffing-crm-not-on-roster-col-open-leads', 'staffing-roster-col-capacity', 'staffing-roster-col-cost-yr',
   'staffing-roster-col-open-leads', 'staffing-roster-col-open-locations', 'starting-groups-col-active',
   'starting-groups-col-mix',
+  // ── Table rows ──
+  'about-walkthrough-row-about', 'about-walkthrough-row-additions', 'about-walkthrough-row-cashflow',
+  'about-walkthrough-row-cost', 'about-walkthrough-row-gallons', 'about-walkthrough-row-historical',
+  'about-walkthrough-row-losses', 'about-walkthrough-row-participation', 'about-walkthrough-row-pipeline',
+  'about-walkthrough-row-report', 'about-walkthrough-row-revpermember', 'about-walkthrough-row-staffing',
+  'about-walkthrough-row-starting', 'about-where-numbers-come-from-row-crm-leads', 'about-where-numbers-come-from-row-gallons-config',
+  'about-where-numbers-come-from-row-historical-signups', 'about-where-numbers-come-from-row-location-list', 'about-where-numbers-come-from-row-membership-report',
+  'about-where-numbers-come-from-row-pnl', 'about-who-can-edit-row-editing', 'about-who-can-edit-row-exporting',
+  'about-who-can-edit-row-importing', 'about-who-can-edit-row-pnl-reconciliation', 'about-who-can-edit-row-reading-scenarios',
+  'about-who-can-edit-row-saving-scenarios', 'about-who-can-edit-row-viewing', 'additions-basis-row-activation-lag',
+  'additions-basis-row-add-rate-basis', 'additions-basis-row-annual-growth', 'additions-basis-row-new-members-per-month',
+  'additions-basis-row-ptp-net-change', 'cashflow-assumptions-row-capex', 'cashflow-assumptions-row-ebitda-normalization',
+  'cashflow-assumptions-row-working-capital-days', 'cashflow-valuation-row-ebitda', 'cashflow-valuation-row-recurring-revenue',
+  'cost-inputs-row-acquisition-cost-override', 'cost-inputs-row-cost-to-serve', 'cost-inputs-row-sales-marketing-spend',
+  'losses-assumption-row-pre-spike-baseline', 'losses-assumption-row-steady-annual-attrition', 'participation-rates-ramp-row-fuel',
+  'participation-rates-ramp-row-rewards', 'participation-rates-ramp-row-vendor', 'pipeline-funnel-table-row-closed-lost',
+  'pipeline-funnel-table-row-closed-won', 'pipeline-funnel-table-row-contacted', 'pipeline-funnel-table-row-meeting-scheduled',
+  'pipeline-funnel-table-row-negotiation', 'pipeline-funnel-table-row-not-qualified', 'pipeline-funnel-table-row-proposal-sent',
+  'pipeline-funnel-table-row-prospect', 'pipeline-funnel-table-row-qualified', 'pipeline-horizon-row-average-cycle',
+  'pipeline-horizon-row-spread-over-months', 'revpermember-drivers-row-dues', 'revpermember-drivers-row-duesAncillary',
+  'revpermember-drivers-row-fuelProgram', 'revpermember-drivers-row-rewards', 'revpermember-drivers-row-rewardsBreakage',
+  'revpermember-drivers-row-settlement', 'revpermember-drivers-row-vendor', 'revpermember-reconciliation-row-dues',
+  'revpermember-reconciliation-row-duesAncillary', 'revpermember-reconciliation-row-fuelProgram', 'revpermember-reconciliation-row-rewards',
+  'revpermember-reconciliation-row-rewardsBreakage', 'revpermember-reconciliation-row-settlement', 'revpermember-reconciliation-row-vendor',
+  'starting-billing-row-billable-per-location', 'starting-billing-row-billed-locations', 'starting-billing-row-companies',
+  'starting-billing-row-monthly-dues-total', 'starting-billing-row-paying-locations', 'starting-pipeline-status-row-offboarding',
+  'starting-pipeline-status-row-onboarding',
 ]);
 
 // A fixed, short description per id for the "Restore hidden sections" list --
@@ -1132,6 +1164,82 @@ const HIDDEN_SECTION_LABELS = Object.freeze({
   'staffing-roster-col-open-locations': 'Roster — Open locations',
   'starting-groups-col-active': 'Locations by group — Active',
   'starting-groups-col-mix': 'Locations by group — Mix',
+  'about-walkthrough-row-about': 'How to use it — About',
+  'about-walkthrough-row-additions': 'How to use it — New Additions',
+  'about-walkthrough-row-cashflow': 'How to use it — Profit & Cash Flow',
+  'about-walkthrough-row-cost': 'How to use it — Cost to Acquire & Serve',
+  'about-walkthrough-row-gallons': 'How to use it — Fuel Gallon Production',
+  'about-walkthrough-row-historical': 'How to use it — Historical Data',
+  'about-walkthrough-row-losses': 'How to use it — Member Losses',
+  'about-walkthrough-row-participation': 'How to use it — Program Participation',
+  'about-walkthrough-row-pipeline': 'How to use it — Sales Pipeline',
+  'about-walkthrough-row-report': 'How to use it — Report',
+  'about-walkthrough-row-revpermember': 'How to use it — Revenue per Member',
+  'about-walkthrough-row-staffing': 'How to use it — Staffing',
+  'about-walkthrough-row-starting': 'How to use it — Starting Membership',
+  'about-where-numbers-come-from-row-crm-leads': 'Where the numbers come from — crm_leads (live)',
+  'about-where-numbers-come-from-row-gallons-config': 'Where the numbers come from — gallons config',
+  'about-where-numbers-come-from-row-historical-signups': 'Where the numbers come from — historical signups file',
+  'about-where-numbers-come-from-row-location-list': 'Where the numbers come from — location-list.csv',
+  'about-where-numbers-come-from-row-membership-report': 'Where the numbers come from — membership report',
+  'about-where-numbers-come-from-row-pnl': 'Where the numbers come from — the P&L',
+  'about-who-can-edit-row-editing': 'Who can edit — Editing any number or any label',
+  'about-who-can-edit-row-exporting': 'Who can edit — Printing, CSV export, JSON export',
+  'about-who-can-edit-row-importing': 'Who can edit — Importing a model file',
+  'about-who-can-edit-row-pnl-reconciliation': 'Who can edit — The P&L reconciliation',
+  'about-who-can-edit-row-reading-scenarios': 'Who can edit — Reading saved scenarios',
+  'about-who-can-edit-row-saving-scenarios': 'Who can edit — Saving or syncing a scenario',
+  'about-who-can-edit-row-viewing': 'Who can edit — Viewing every tab, chart and table',
+  'additions-basis-row-activation-lag': 'Basis — Activation lag (months)',
+  'additions-basis-row-add-rate-basis': 'Basis — Add rate basis',
+  'additions-basis-row-annual-growth': 'Basis — Annual growth in the add rate',
+  'additions-basis-row-new-members-per-month': 'Basis — New members / month (flat)',
+  'additions-basis-row-ptp-net-change': 'Basis — PTP net change / yr',
+  'cashflow-assumptions-row-capex': 'Assumptions — Capex / yr',
+  'cashflow-assumptions-row-ebitda-normalization': 'Assumptions — EBITDA normalization add-backs',
+  'cashflow-assumptions-row-working-capital-days': 'Assumptions — Working capital days',
+  'cashflow-valuation-row-ebitda': 'Valuation — EBITDA',
+  'cashflow-valuation-row-recurring-revenue': 'Valuation — Recurring revenue',
+  'cost-inputs-row-acquisition-cost-override': 'Inputs — Acquisition cost per member',
+  'cost-inputs-row-cost-to-serve': 'Inputs — Cost to serve per member / yr',
+  'cost-inputs-row-sales-marketing-spend': 'Inputs — Sales & marketing spend / month',
+  'losses-assumption-row-pre-spike-baseline': 'Assumption — Pre-spike steady baseline',
+  'losses-assumption-row-steady-annual-attrition': 'Assumption — Steady annual attrition',
+  'participation-rates-ramp-row-fuel': 'Rates and ramp — Fuel program',
+  'participation-rates-ramp-row-rewards': 'Rates and ramp — Rewards program',
+  'participation-rates-ramp-row-vendor': 'Rates and ramp — Vendor programs',
+  'pipeline-funnel-table-row-closed-lost': 'Funnel by stage — Closed Lost',
+  'pipeline-funnel-table-row-closed-won': 'Funnel by stage — Closed Won',
+  'pipeline-funnel-table-row-contacted': 'Funnel by stage — Contacted',
+  'pipeline-funnel-table-row-meeting-scheduled': 'Funnel by stage — Meeting Scheduled',
+  'pipeline-funnel-table-row-negotiation': 'Funnel by stage — Negotiation',
+  'pipeline-funnel-table-row-not-qualified': 'Funnel by stage — Not Qualified',
+  'pipeline-funnel-table-row-proposal-sent': 'Funnel by stage — Proposal Sent',
+  'pipeline-funnel-table-row-prospect': 'Funnel by stage — Prospect',
+  'pipeline-funnel-table-row-qualified': 'Funnel by stage — Qualified',
+  'pipeline-horizon-row-average-cycle': 'Horizon — Average cycle (days)',
+  'pipeline-horizon-row-spread-over-months': 'Horizon — Spread weighted locations over (months)',
+  'revpermember-drivers-row-dues': 'Drivers — Membership dues',
+  'revpermember-drivers-row-duesAncillary': 'Drivers — Renewal, set-up & ad fees',
+  'revpermember-drivers-row-fuelProgram': 'Drivers — Fuel program margin',
+  'revpermember-drivers-row-rewards': 'Drivers — Rewards program fees',
+  'revpermember-drivers-row-rewardsBreakage': 'Drivers — Rewards breakage (expired points)',
+  'revpermember-drivers-row-settlement': 'Drivers — Fuel settlement (net)',
+  'revpermember-drivers-row-vendor': 'Drivers — Vendor programs',
+  'revpermember-reconciliation-row-dues': 'Reconciliation — Membership dues',
+  'revpermember-reconciliation-row-duesAncillary': 'Reconciliation — Renewal, set-up & ad fees',
+  'revpermember-reconciliation-row-fuelProgram': 'Reconciliation — Fuel program margin',
+  'revpermember-reconciliation-row-rewards': 'Reconciliation — Rewards program fees',
+  'revpermember-reconciliation-row-rewardsBreakage': 'Reconciliation — Rewards breakage (expired points)',
+  'revpermember-reconciliation-row-settlement': 'Reconciliation — Fuel settlement (net)',
+  'revpermember-reconciliation-row-vendor': 'Reconciliation — Vendor programs',
+  'starting-billing-row-billable-per-location': 'Billing — Billable $/location',
+  'starting-billing-row-billed-locations': 'Billing — Billed locations',
+  'starting-billing-row-companies': 'Billing — Companies',
+  'starting-billing-row-monthly-dues-total': 'Billing — Monthly dues total',
+  'starting-billing-row-paying-locations': 'Billing — Paying locations',
+  'starting-pipeline-status-row-offboarding': 'Pipeline status — Offboarding',
+  'starting-pipeline-status-row-onboarding': 'Pipeline status — Onboarding',
 });
 
 MGM.renderTabs = function () {
@@ -1177,6 +1285,7 @@ MGM.refresh = function () {
   // file) has been evaluated.
   if (MGM.decorateHiddenSections) MGM.decorateHiddenSections();
   if (MGM.decorateHiddenColumns) MGM.decorateHiddenColumns();
+  if (MGM.decorateHiddenRows) MGM.decorateHiddenRows();
   // Keeps the open restore panel in step with the list it is showing --
   // without this, restoring the last hidden card left the panel open and
   // stale (still claiming "1 card hidden") until the admin closed and
@@ -1250,24 +1359,24 @@ MGM.renderers.starting = function (D) {
   <div class="grid g2">
     <div class="card" data-card="starting-pipeline-status"><h3>Pipeline status</h3>
       <table>
-        <tr><td>Onboarding</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-pipeline-status-row-onboarding"><td>Onboarding</td><td class="num"><input class="cell" type="number"
             data-k="statusCounts.onboarding" value="${st.statusCounts.onboarding}"></td></tr>
-        <tr><td>Offboarding</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-pipeline-status-row-offboarding"><td>Offboarding</td><td class="num"><input class="cell" type="number"
             data-k="statusCounts.offboarding" value="${st.statusCounts.offboarding}"></td></tr>
       </table>
     </div>
     <div class="card" data-card="starting-billing"><h3>Billing</h3>
       <table>
-        <tr><td>Companies</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-companies"><td>Companies</td><td class="num"><input class="cell" type="number"
             data-k="billing.companies" value="${st.billing.companies}"></td></tr>
-        <tr><td>Billed locations</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-billed-locations"><td>Billed locations</td><td class="num"><input class="cell" type="number"
             data-k="billing.locations" value="${st.billing.locations}"></td></tr>
-        <tr><td>Monthly dues total</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-monthly-dues-total"><td>Monthly dues total</td><td class="num"><input class="cell" type="number"
             data-k="billing.monthlyDuesTotal" value="${st.billing.monthlyDuesTotal}"></td></tr>
-        <tr><td>Billable $/location (dues ÷ <i>paying</i> locations)</td>
+        <tr data-row="starting-billing-row-billable-per-location"><td>Billable $/location (dues ÷ <i>paying</i> locations)</td>
           <td class="num"><input class="cell" type="number" step="0.01"
             data-k="billing.duesPerLocBillable" value="${st.billing.duesPerLocBillable}"></td></tr>
-        <tr><td>Paying locations</td><td class="num"><input class="cell" type="number"
+        <tr data-row="starting-billing-row-paying-locations"><td>Paying locations</td><td class="num"><input class="cell" type="number"
             data-k="billing.payingLocations" value="${st.billing.payingLocations}"></td></tr>
       </table>
       <p class="note">The <b>${fmt(tot)}</b> active count and the
@@ -1321,19 +1430,19 @@ MGM.renderers.additions = function (D) {
 
   <div class="card" data-card="additions-basis"><h3>Basis</h3>
     <table>
-      <tr><td>Add rate basis</td><td>
+      <tr data-row="additions-basis-row-add-rate-basis"><td>Add rate basis</td><td>
         <select class="cell" data-k="salesPipeline.basis">
           <option value="flat"${!usingPipeline ? ' selected' : ''}>Flat run rate</option>
           <option value="pipeline"${usingPipeline ? ' selected' : ''}>From Sales Pipeline</option>
         </select></td></tr>
-      <tr><td>New members / month (flat)</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-new-members-per-month"><td>New members / month (flat)</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="adds.perMonth" value="${st.adds.perMonth}">
           ${MGM.editedMark('adds.perMonth')}</td></tr>
-      <tr><td>Annual growth in the add rate</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-annual-growth"><td>Annual growth in the add rate</td><td class="num"><input class="cell" type="number"
           step="0.5" data-k="adds.growthPct" value="${st.adds.growthPct}"></td></tr>
-      <tr><td>Activation lag (months)</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-activation-lag"><td>Activation lag (months)</td><td class="num"><input class="cell" type="number"
           min="0" data-k="adds.activationLag" value="${st.adds.activationLag}"></td></tr>
-      <tr><td>PTP net change / yr</td><td class="num"><input class="cell" type="number"
+      <tr data-row="additions-basis-row-ptp-net-change"><td>PTP net change / yr</td><td class="num"><input class="cell" type="number"
           data-k="adds.ptpNet" value="${st.adds.ptpNet}"></td></tr>
     </table>
     <p class="note">${usingPipeline
@@ -1455,10 +1564,10 @@ MGM.renderers.losses = function (D) {
 
   <div class="card" data-card="losses-assumption"><h3>Assumption</h3>
     <table>
-      <tr><td>Steady annual attrition</td><td class="num"><input class="cell" type="number"
+      <tr data-row="losses-assumption-row-steady-annual-attrition"><td>Steady annual attrition</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="attrition.steady" value="${st.attrition.steady}">
           ${MGM.editedMark('attrition.steady')}</td></tr>
-      <tr><td>Pre-spike steady baseline</td><td class="num"><input class="cell" type="number"
+      <tr data-row="losses-assumption-row-pre-spike-baseline"><td>Pre-spike steady baseline</td><td class="num"><input class="cell" type="number"
           step="0.1" data-k="attrition.steadyAlt" value="${st.attrition.steadyAlt}"></td></tr>
     </table>
     <div style="margin-top:10px">
@@ -1579,7 +1688,11 @@ MGM.renderers.pipeline = function (D) {
         // weight input stays live either way — editing the ladder is useful
         // before any data exists.
         const g = n => loadedP ? n : '—';
-        return `<tr${closed ? ' class="note"' : ''}>
+        // Slug is derived from s, a fixed CRM_STAGES entry -- never from an
+        // editable label, since CRM_STAGES itself is the stable key (the
+        // reasoning the column ids already use for STREAM_KEYS/progs).
+        const rowId = 'pipeline-funnel-table-row-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        return `<tr${closed ? ' class="note"' : ''} data-row="${rowId}">
           <td>${esc(s)}${closed ? ' <span class="note">(closed)</span>' : ''}</td>
           <td class="num">${g(fmt(row.count))}</td>
           <td class="num">${g(fmt(row.locations))}</td>
@@ -1608,10 +1721,10 @@ MGM.renderers.pipeline = function (D) {
 
   <div class="card" data-card="pipeline-horizon"><h3>Horizon</h3>
     <table>
-      <tr><td>Spread weighted locations over (months)</td><td class="num">
+      <tr data-row="pipeline-horizon-row-spread-over-months"><td>Spread weighted locations over (months)</td><td class="num">
         <input class="cell" type="number" min="1" data-k="salesPipeline.horizonMonths"
           value="${sp.horizonMonths}"></td></tr>
-      <tr><td>Average cycle (days, 0 = unset)</td><td class="num">
+      <tr data-row="pipeline-horizon-row-average-cycle"><td>Average cycle (days, 0 = unset)</td><td class="num">
         <input class="cell" type="number" min="0" data-k="salesPipeline.avgCycleDays"
           value="${sp.avgCycleDays}"></td></tr>
     </table>
@@ -1750,7 +1863,7 @@ MGM.renderers.participation = function (D) {
     <table>
       <tr><th>Program</th><th class="num" data-col="participation-rates-ramp-col-participation-pct">Participation %</th>
           <th class="num" data-col="participation-rates-ramp-col-ramp-months">Ramp (months)</th></tr>
-      ${progs.map(([k, label]) => `<tr><td>${esc(label)}</td>
+      ${progs.map(([k, label]) => `<tr data-row="participation-rates-ramp-row-${k}"><td>${esc(label)}</td>
         <td class="num"><input class="cell" type="number" min="0" max="100" step="0.5"
             data-k="participation.${k}.pct" value="${st.participation[k].pct}">
             ${MGM.editedMark(`participation.${k}.pct`)}</td>
@@ -1946,28 +2059,28 @@ MGM.renderers.revpermember = function (D) {
   <div class="card" data-card="revpermember-drivers"><h3>Drivers</h3>
     <table>
       <tr><th>Stream</th><th class="num" data-col="revpermember-drivers-col-driver">Driver</th><th class="num" data-col="revpermember-drivers-col-per-member-yr">$/member/yr</th></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.dues" value="${esc(L.dues)}"></td>
+      <tr data-row="revpermember-drivers-row-dues"><td><input class="lbl-in" type="text" data-k="labels.streams.dues" value="${esc(L.dues)}"></td>
         <td class="num"><input class="cell" type="number" step="0.01" data-k="revenue.duesPerLoc"
           value="${st.revenue.duesPerLoc}"> /mo ${MGM.editedMark('revenue.duesPerLoc')}</td>
         <td class="num">${fm$(rpm.derived.dues)}</td></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.duesAncillary" value="${esc(L.duesAncillary)}"></td>
+      <tr data-row="revpermember-drivers-row-duesAncillary"><td><input class="lbl-in" type="text" data-k="labels.streams.duesAncillary" value="${esc(L.duesAncillary)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.duesAncillaryPerMember"
           value="${st.revenue.duesAncillaryPerMember}"> /yr</td>
         <td class="num">${fm$(rpm.derived.duesAncillary)}</td></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.settlement" value="${esc(L.settlement)}"></td>
+      <tr data-row="revpermember-drivers-row-settlement"><td><input class="lbl-in" type="text" data-k="labels.streams.settlement" value="${esc(L.settlement)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.settlementNetPerMember"
           value="${st.revenue.settlementNetPerMember}"> /yr</td>
         <td class="num ${rpm.derived.settlement < 0 ? 'neg' : ''}">${fm$(rpm.derived.settlement)}</td></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.fuelProgram" value="${esc(L.fuelProgram)}"></td>
+      <tr data-row="revpermember-drivers-row-fuelProgram"><td><input class="lbl-in" type="text" data-k="labels.streams.fuelProgram" value="${esc(L.fuelProgram)}"></td>
         <td class="num"><input class="cell" type="number" step="0.001" data-k="revenue.fuelProgramMargin"
           value="${st.revenue.fuelProgramMargin}"> /gal × ${fmt(st.revenue.avgGallons)} gal
           × ${pct1(MM.partPct(st, 'fuel'))}</td>
         <td class="num">${fm$(rpm.derived.fuelProgram)}</td></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.vendor" value="${esc(L.vendor)}"></td>
+      <tr data-row="revpermember-drivers-row-vendor"><td><input class="lbl-in" type="text" data-k="labels.streams.vendor" value="${esc(L.vendor)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.vendorPM"
           value="${st.revenue.vendorPM}"> /mo × ${pct1(MM.partPct(st, 'vendor'))}</td>
         <td class="num">${fm$(rpm.derived.vendor)}</td></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewards" value="${esc(L.rewards)}"></td>
+      <tr data-row="revpermember-drivers-row-rewards"><td><input class="lbl-in" type="text" data-k="labels.streams.rewards" value="${esc(L.rewards)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.rewardsBlendedPM"
           value="${st.revenue.rewardsBlendedPM}"> /mo
           ${/* The EFFECTIVE share, not partPct. This printed "x 50.0%" beside a
@@ -1989,7 +2102,7 @@ MGM.renderers.revpermember = function (D) {
               : '× ' + pct1(MM.partPct(st, 'rewards'));
           })()}</td>
         <td class="num">${fm$(rpm.derived.rewards)}</td></tr>
-      <tr><td><input class="lbl-in" type="text" data-k="labels.streams.rewardsBreakage" value="${esc(L.rewardsBreakage)}"></td>
+      <tr data-row="revpermember-drivers-row-rewardsBreakage"><td><input class="lbl-in" type="text" data-k="labels.streams.rewardsBreakage" value="${esc(L.rewardsBreakage)}"></td>
         <td class="num"><input class="cell" type="number" data-k="revenue.rewardsBreakagePerMember"
           value="${st.revenue.rewardsBreakagePerMember}"> /yr</td>
         <td class="num">${fm$(rpm.derived.rewardsBreakage)}</td></tr>
@@ -2032,7 +2145,7 @@ MGM.renderers.revpermember = function (D) {
           <th class="num" data-col="revpermember-reconciliation-t1-col-pnl-actual">P&amp;L actual</th><th class="num" data-col="revpermember-reconciliation-t1-col-variance">Variance</th></tr>
       ${STREAM_KEYS.map(k => {
         const a = rpm.actualStreams ? rpm.actualStreams[k] : null;
-        return `<tr><td>${esc(L[k])}</td>
+        return `<tr data-row="revpermember-reconciliation-row-${k}"><td>${esc(L[k])}</td>
           <td class="num">${fm$(rpm.derived[k])}</td>
           <td class="num">${a == null ? '<span class="note">—</span>' : fm$(a)}</td>
           <td class="num ${a != null && rpm.derived[k] - a < 0 ? 'neg' : ''}">${
@@ -2138,13 +2251,13 @@ MGM.renderers.cost = function (D) {
 
   <div class="card" data-card="cost-inputs"><h3>Inputs</h3>
     <table>
-      <tr><td>Sales &amp; marketing spend / month</td><td class="num">
+      <tr data-row="cost-inputs-row-sales-marketing-spend"><td>Sales &amp; marketing spend / month</td><td class="num">
         <input class="cell" type="number" data-k="costs.salesSpendPerMonth"
           value="${st.costs.salesSpendPerMonth}"></td></tr>
-      <tr><td>Acquisition cost per member (overrides the derived CAC)</td><td class="num">
+      <tr data-row="cost-inputs-row-acquisition-cost-override"><td>Acquisition cost per member (overrides the derived CAC)</td><td class="num">
         <input class="cell" type="number" data-k="costs.acquisitionPerMember"
           value="${st.costs.acquisitionPerMember}"></td></tr>
-      <tr><td>Cost to serve per member / yr</td><td class="num">
+      <tr data-row="cost-inputs-row-cost-to-serve"><td>Cost to serve per member / yr</td><td class="num">
         <input class="cell" type="number" data-k="costs.costToServePerMember"
           value="${st.costs.costToServePerMember}"></td></tr>
     </table>
@@ -2393,11 +2506,11 @@ MGM.renderers.cashflow = function (D) {
 
   <div class="card" data-card="cashflow-assumptions"><h3>Assumptions</h3>
     <table>
-      <tr><td>Capex / yr</td><td class="num"><input class="cell" type="number"
+      <tr data-row="cashflow-assumptions-row-capex"><td>Capex / yr</td><td class="num"><input class="cell" type="number"
         data-k="cashflow.capexPerYear" value="${st.cashflow.capexPerYear}"></td></tr>
-      <tr><td>Working capital days</td><td class="num"><input class="cell" type="number"
+      <tr data-row="cashflow-assumptions-row-working-capital-days"><td>Working capital days</td><td class="num"><input class="cell" type="number"
         data-k="cashflow.workingCapitalDays" value="${st.cashflow.workingCapitalDays}"></td></tr>
-      <tr><td>EBITDA normalization add-backs</td><td class="num"><input class="cell" type="number"
+      <tr data-row="cashflow-assumptions-row-ebitda-normalization"><td>EBITDA normalization add-backs</td><td class="num"><input class="cell" type="number"
         step="1000" data-k="valuation.ebitdaNormalization"
         value="${st.valuation.ebitdaNormalization}">${MGM.editedMark('valuation.ebitdaNormalization')}</td></tr>
     </table>
@@ -2507,11 +2620,11 @@ MGM.renderers.cashflow = function (D) {
   <div class="card" data-card="cashflow-valuation"><h3>Valuation</h3>
     <table>
       <tr><th>Lens</th><th class="num" data-col="cashflow-valuation-col-basis">Basis</th><th class="num" data-col="cashflow-valuation-col-multiple">Multiple</th><th class="num" data-col="cashflow-valuation-col-value">Value</th></tr>
-      <tr><td>Recurring revenue</td><td class="num">${fm$(v.basis)}</td>
+      <tr data-row="cashflow-valuation-row-recurring-revenue"><td>Recurring revenue</td><td class="num">${fm$(v.basis)}</td>
         <td class="num"><input class="cell" type="number" step="0.1" data-k="valuation.revMultiple"
           value="${st.valuation.revMultiple}">×</td>
         <td class="num"><b>${fmM(v.rev)}</b></td></tr>
-      <tr><td>EBITDA${C.unset
+      <tr data-row="cashflow-valuation-row-ebitda"><td>EBITDA${C.unset
         ? (EM != null
             ? ` (at ${pct1(EM)} ${MFP ? 'margin, loaded from the P&amp;L' : 'margin'})`
             : (v.ebitdaBase
@@ -4005,7 +4118,7 @@ MGM.renderers.about = function (D) {
     <p>Six sources. Everything else in the tool is an assumption you can change.</p>
     <table>
       <tr><th>Source</th><th data-col="about-where-numbers-come-from-col-what-it-supplies">What it supplies</th></tr>
-      <tr><td><code>location-list-2026-10-28.csv</code></td>
+      <tr data-row="about-where-numbers-come-from-row-location-list"><td><code>location-list-2026-10-28.csv</code></td>
         <td>The active base — <b>${fmt(shippedTotal)}</b> locations across
           ${fmt(cfg.groups.length)} groups
           (${cfg.groups.map(g => esc(g.label) + ' ' + fmt(g.count)).join(', ')}).
@@ -4013,7 +4126,7 @@ MGM.renderers.about = function (D) {
           script below rather than hand-transcribed, which is how an off-by-one
           between two groups was found — an error that had survived review
           precisely because the total was right either way.</td></tr>
-      <tr><td><code>company_membership_report_2026-10-28.csv</code></td>
+      <tr data-row="about-where-numbers-come-from-row-membership-report"><td><code>company_membership_report_2026-10-28.csv</code></td>
         <td><b>${fmt(b.companies)}</b> companies and <b>${fmt(b.locations)}</b>
           billed locations carrying <b>${fm$(b.monthlyDuesTotal)}</b> of dues a
           month. <b>${fmt(b.zeroBillCompanies)}</b> companies bill nothing, so
@@ -4023,7 +4136,7 @@ MGM.renderers.about = function (D) {
           ${fmCents(b.monthlyDuesTotal / b.locations)} and overstates dues
           realization by about four points, which is a mistake this project
           actually made and corrected.</td></tr>
-      <tr><td><code>Historical member signups.xlsx</code></td>
+      <tr data-row="about-where-numbers-come-from-row-historical-signups"><td><code>Historical member signups.xlsx</code></td>
         <td>Annual signups and losses
           (${esc(MGM.yearSpan(cfg.history.map(h => h.year)))}), the monthly series
           behind them
@@ -4031,12 +4144,12 @@ MGM.renderers.about = function (D) {
                  .filter(Number.isFinite).sort((x, y) => x - y)))}),
           the loss figures the attrition rates are derived from, and the
           ${fm$(cfg.benchmark.lostMemberValue)} lost-member benchmark.</td></tr>
-      <tr><td>The Jan–Sep 2026 P&amp;L</td>
+      <tr data-row="about-where-numbers-come-from-row-pnl"><td>The Jan–Sep 2026 P&amp;L</td>
         <td>Calibration of the per-member revenue streams, and the reconciliation
           on ${T('revpermember')}. <b>No figure from it is published in this
           tool's source.</b> It lives in the <code>mgm_pnl_actuals</code> table,
           readable by administrators only — see the permissions card below.</td></tr>
-      <tr><td><code>busDevGallonsConfig.js</code></td>
+      <tr data-row="about-where-numbers-come-from-row-gallons-config"><td><code>busDevGallonsConfig.js</code></td>
         <td>The per-profile gallon baselines, read live; this tool never writes
           them back. ${baselines.length
             ? `The engine table spans <b>${fmt(baselines[0].v)}</b>
@@ -4049,7 +4162,7 @@ MGM.renderers.about = function (D) {
                <b>${fmt(used[0])}</b> to <b>${fmt(used[used.length - 1])}</b>
                gal/mo — because no group here maps to the largest profiles.`
             : ''}</td></tr>
-      <tr><td><code>crm_leads</code> (live)</td>
+      <tr data-row="about-where-numbers-come-from-row-crm-leads"><td><code>crm_leads</code> (live)</td>
         <td>The sales pipeline on ${T('pipeline')}, the per-owner open-lead counts
           on ${T('staffing')}, and the inbound gallons on ${T('gallons')}. This
           read <b>requires a signed-in session</b>; without one those figures show
@@ -4081,41 +4194,41 @@ MGM.renderers.about = function (D) {
     <table>
       <tr><th>Tab</th><th data-col="about-walkthrough-col-what-it-does">What it does</th></tr>
 
-      <tr><td><b>${T('starting')}</b></td><td>The verified base: locations by
+      <tr data-row="about-walkthrough-row-starting"><td><b>${T('starting')}</b></td><td>The verified base: locations by
         group, the billing aggregates, and the model's own date and horizon
         settings. Change a group count and you move the opening balance of the
         whole projection <i>and</i> that group's share of network gallons. The PTP
         row deliberately holds the entire <code>Group=PTP</code> set, so the Truck
         Stop row excludes PTP truck stops and the two never double-count.</td></tr>
 
-      <tr><td><b>${T('additions')}</b></td><td>How many locations join each month,
+      <tr data-row="about-walkthrough-row-additions"><td><b>${T('additions')}</b></td><td>How many locations join each month,
         and the roll-forward that follows. The <b>basis selector here is the only
         place the sales pipeline becomes a driver</b> — until you switch it,
         ${T('pipeline')} is reference data and nothing more. The <b>New</b> column
         is modeled adds only: the opening count on ${T('starting')} already contains
         this year's signings to date, so they are not counted twice.</td></tr>
 
-      <tr><td><b>${T('losses')}</b></td><td>The <b>Steady annual attrition</b>
+      <tr data-row="about-walkthrough-row-losses"><td><b>${T('losses')}</b></td><td>The <b>Steady annual attrition</b>
         field is the single rate the projection runs on
         (${pct1(st.attrition.steady)} as shipped), plus any structural losses you
         enter per projection year — those are added <i>on top of</i> steady loss,
         never instead of it. The historical decomposition below is a cross-check,
         not an input.</td></tr>
 
-      <tr><td><b>${T('pipeline')}</b></td><td>Live <code>crm_leads</code>, counted
+      <tr data-row="about-walkthrough-row-pipeline"><td><b>${T('pipeline')}</b></td><td>Live <code>crm_leads</code>, counted
         in <b>locations</b> rather than leads, because one lead can carry many. The
         stage-weight ladder is editable and is an <i>assumption</i>, not a
         measurement; the tab shows the derived actual win rate beside it whenever a
         session is available. It reaches the projection only via
         ${T('additions')}.</td></tr>
 
-      <tr><td><b>${T('participation')}</b></td><td>Owns the three participation
+      <tr data-row="about-walkthrough-row-participation"><td><b>${T('participation')}</b></td><td>Owns the three participation
         percentages, which ${T('revpermember')} then consumes — one source, two
         views. Rewards participation drives the <i>program fee</i> only; breakage
         from expired points is a flat per-member line that deliberately does not
         scale with it.</td></tr>
 
-      <tr><td><b>${T('gallons')}</b></td><td>Network gallon production from the Bus
+      <tr data-row="about-walkthrough-row-gallons"><td><b>${T('gallons')}</b></td><td>Network gallon production from the Bus
         Dev engine's baselines — <b>${G.mapped === 0
           ? 'not computed, because no group is currently mapped to a profile'
           : fmt(G.existing) + ' gal/mo today, ' + fmt(G.perMember) + ' per location'}</b>.
@@ -4130,7 +4243,7 @@ MGM.renderers.about = function (D) {
         Region variance is shown for reference and is <b>not</b> applied to these
         aggregates.</td></tr>
 
-      <tr><td><b>${T('revpermember')}</b></td><td>Seven net per-member streams,
+      <tr data-row="about-walkthrough-row-revpermember"><td><b>${T('revpermember')}</b></td><td>Seven net per-member streams,
         totalling <b>${fm$(D.rpm.derived.total)}</b> per member per year as
         shipped; the reconciliation against the P&amp;L (administrators only); and
         the ${fm$(st.benchmark.lostMemberValue)} benchmark as a cross-check. These
@@ -4138,34 +4251,34 @@ MGM.renderers.about = function (D) {
         the large majority of the P&amp;L's Total Income, is excluded because it is
         not revenue to Roady's.</td></tr>
 
-      <tr><td><b>${T('cost')}</b></td><td>Acquisition and service economics, all
+      <tr data-row="about-walkthrough-row-cost"><td><b>${T('cost')}</b></td><td>Acquisition and service economics, all
         shipped as an explicit <b>zero</b> — nothing here is guessed. Entering real
         costs is what switches the valuation's EBITDA lens from a margin assumption
         to a computed figure, so this tab changes <i>which</i> EBITDA the valuation
         uses, not merely its size. LTV reuses the same attrition rate as ${T('losses')}
         rather than a second churn assumption.</td></tr>
 
-      <tr><td><b>${T('staffing')}</b></td><td>Whether the modeled add rate is
+      <tr data-row="about-walkthrough-row-staffing"><td><b>${T('staffing')}</b></td><td>Whether the modeled add rate is
         achievable at the modeled headcount. Per-rep capacity is unset by default,
         so no gap is computed — a gap against zero capacity would mean nothing. A
         rep's name must match the CRM owner name <i>exactly</i> to pair up with
         their open leads; names that do not match are listed separately rather
         than silently dropped.</td></tr>
 
-      <tr><td><b>${T('cashflow')}</b></td><td>The cash bridge and the valuation.
+      <tr data-row="about-walkthrough-row-cashflow"><td><b>${T('cashflow')}</b></td><td>The cash bridge and the valuation.
         Read the two EBITDA figures here as different things — see judgement call
         4 below, which is the thing most often misread in this tool. Add-backs are
         entered explicitly so a reader can see an adjustment rather than find it
         baked into a margin.</td></tr>
 
-      <tr><td><b>${T('historical')}</b></td><td>The source series: annual signups
+      <tr data-row="about-walkthrough-row-historical"><td><b>${T('historical')}</b></td><td>The source series: annual signups
         and losses, the derived attrition cross-check, the monthly grid, and a live
         reconciliation of the two. Editing history moves this tab's derived table
         and the decomposition on ${T('losses')} <b>immediately — and does not move the
         rate the model runs on.</b> See the limitations below; this one catches
         people.</td></tr>
 
-      <tr><td><b>${T('report')}</b></td><td>The letterhead packet: editable
+      <tr data-row="about-walkthrough-row-report"><td><b>${T('report')}</b></td><td>The letterhead packet: editable
         company, title, author, contact and disclosure, three free-text narrative
         blocks, and every figure assembled with its caveats attached.
         <b>Print / PDF</b> prints the report alone, not the tab you were on.
@@ -4175,7 +4288,7 @@ MGM.renderers.about = function (D) {
         CSV is administrators only;
         import replaces the whole model and so is admin-only.</td></tr>
 
-      <tr><td><b>${T('about')}</b></td><td>This tab. Needs no sign-in and no live
+      <tr data-row="about-walkthrough-row-about"><td><b>${T('about')}</b></td><td>This tab. Needs no sign-in and no live
         data.</td></tr>
     </table>
     <p class="note">Every tab except ${T('report')} carries a <b>Notes &amp;
@@ -4187,20 +4300,20 @@ MGM.renderers.about = function (D) {
     <p>The read side is not uniform, and assuming it is will mislead you.</p>
     <table>
       <tr><th>Action</th><th data-col="about-who-can-edit-col-who">Who</th></tr>
-      <tr><td>Viewing every tab, chart and table</td>
+      <tr data-row="about-who-can-edit-row-viewing"><td>Viewing every tab, chart and table</td>
         <td><b>Anyone with the link</b>, signed in or not.</td></tr>
-      <tr><td>Printing, CSV export, JSON export</td>
+      <tr data-row="about-who-can-edit-row-exporting"><td>Printing, CSV export, JSON export</td>
         <td><b>Anyone with the link.</b></td></tr>
-      <tr><td>Editing any number or any label</td>
+      <tr data-row="about-who-can-edit-row-editing"><td>Editing any number or any label</td>
         <td><b>Administrators only</b>, enforced <i>in the database</i> — the write
           policies call <code>mgm_is_admin()</code>. A non-admin who flips a flag
           in the browser console still cannot write a shared row.</td></tr>
-      <tr><td>Reading saved scenarios</td><td>Any <b>signed-in</b> user.</td></tr>
-      <tr><td>Saving or syncing a scenario</td><td><b>Administrators only.</b></td></tr>
-      <tr><td>Importing a model file</td>
+      <tr data-row="about-who-can-edit-row-reading-scenarios"><td>Reading saved scenarios</td><td>Any <b>signed-in</b> user.</td></tr>
+      <tr data-row="about-who-can-edit-row-saving-scenarios"><td>Saving or syncing a scenario</td><td><b>Administrators only.</b></td></tr>
+      <tr data-row="about-who-can-edit-row-importing"><td>Importing a model file</td>
         <td><b>Administrators only</b> — it replaces every value in this browser's
           copy of the model.</td></tr>
-      <tr><td>The P&amp;L reconciliation</td>
+      <tr data-row="about-who-can-edit-row-pnl-reconciliation"><td>The P&amp;L reconciliation</td>
         <td><b>Administrators only — on read as well as write.</b> The reason, in
           one sentence: this repository is public, so the anonymous database key is
           published along with it, which means "signed in" is not by itself a
@@ -5416,6 +5529,32 @@ MGM.decorateHiddenColumns = function () {
   });
 };
 
+// Row hide. Same mgm_ui_prefs row, same hiddenSections map, same sanitizer,
+// same MGM.hideSection/restoreSection, same restore panel as cards/tiles/
+// notes/columns -- but simpler than columns: a row IS one element (the
+// <tr>), so `display:none` on it is the whole mechanism, no position-based
+// cell lookup needed. The hide button is appended to the row's first cell
+// (its identity column), the row-level analogue of putting the column
+// button in the header.
+MGM.decorateHiddenRows = function () {
+  const panel = document.getElementById('panel-' + MGM.tab);
+  if (!panel) return;
+  panel.querySelectorAll('tr[data-row]').forEach(tr => {
+    const id = tr.getAttribute('data-row');
+    const hidden = MGM.isCardHidden(id);
+    tr.style.display = hidden ? 'none' : '';
+    if (!hidden && tr.cells.length && !tr.cells[0].querySelector('.mgm-row-hide-btn')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mgm-row-hide-btn mgm-editonly';
+      btn.title = 'Hide this row — admin only, can be restored';
+      btn.textContent = '⊘';
+      btn.onclick = function (e) { e.stopPropagation(); MGM.hideSection(id); };
+      tr.cells[0].appendChild(btn);
+    }
+  });
+};
+
 // ── "Restore hidden sections" — the one place a hide is undone ──────────
 // Deliberately global rather than a per-card inline unhide: a hidden card
 // is display:none, so there is nowhere ON a hidden card to put a control
@@ -5427,17 +5566,22 @@ MGM.toggleRestorePanel = function () {
   MGM.renderRestorePanel();
 };
 
-// Which of the four hide types an id names, derived from the id's own shape
+// Which of the five hide types an id names, derived from the id's own shape
 // -- never a second stored field, so there is nothing here that could
-// disagree with hiddenSections about what an id is.
+// disagree with hiddenSections about what an id is. `-row-` is checked
+// before `-col-` for no structural reason (the two markers cannot both
+// appear -- a row id's table-qualifier never contains the literal substring
+// "col", and vice versa), but order is written out for a reader, not relied
+// on to resolve an ambiguity that does not exist.
 MGM.hiddenSectionType = function (id) {
+  if (id.indexOf('-row-') >= 0) return 'row';
   if (id.indexOf('-col-') >= 0) return 'column';
   if (/-tile-/.test(id)) return 'tile';
   if (/-intro$/.test(id)) return 'note';
   return 'card';
 };
-const HIDDEN_TYPE_LABELS = { card: 'Cards', tile: 'Stat tiles', note: 'Intro text', column: 'Table columns' };
-const HIDDEN_TYPE_ORDER = ['card', 'tile', 'note', 'column'];
+const HIDDEN_TYPE_LABELS = { card: 'Cards', tile: 'Stat tiles', note: 'Intro text', column: 'Table columns', row: 'Table rows' };
+const HIDDEN_TYPE_ORDER = ['card', 'tile', 'note', 'column', 'row'];
 
 // Column-only: does this hidden column's table currently hold real data?
 // Permanent hide means a column hidden while every row reads "—" stays
@@ -5488,23 +5632,63 @@ MGM.staleHiddenColumns = function (columnIds) {
       for (let r = 1; r < table.rows.length; r++) {  // r=0 is the header row itself
         const cell = table.rows[r].cells[idx];
         if (!cell) continue;
-        // An input/select/textarea cell's .textContent is ALWAYS empty -- a
-        // form control is a void or leaf element with no text-node children,
-        // regardless of its value -- so a review caught this reading an
-        // input-backed column (roughly a fifth of the 106) as permanently
-        // "no data" no matter what was typed into it. Worse in the other
-        // direction too: MGM.editedMark appends an "edited" badge as a
-        // SIBLING inside the same <td>, so textContent on a TOUCHED-but-
-        // still-blank input cell read as non-empty and would have flagged
-        // stale on nothing but an edit history, never on the figure itself.
-        // Reading the control's live .value (the DOM property, which
-        // reflects the reader's own typing even before anything is saved,
-        // not the value ATTRIBUTE frozen at render time) sidesteps both: it
-        // is the actual figure, and it is never contaminated by sibling UI
-        // chrome the way textContent is.
-        const ctrl = cell.querySelector('input,select,textarea');
-        const t = ctrl ? String(ctrl.value).trim() : cell.textContent.trim();
-        if (t && t !== '—' && t !== '-') { stale.add(id); break; }
+        if (MGM.cellHasValue(cell)) { stale.add(id); break; }
+      }
+    });
+  });
+  return stale;
+};
+
+// Shared by staleHiddenColumns and staleHiddenRows: is there a real,
+// non-dash value in this cell?
+//
+// An input/select/textarea cell's .textContent is ALWAYS empty -- a form
+// control is a void or leaf element with no text-node children, regardless
+// of its value -- so reading textContent reported an input-backed cell as
+// permanently "no data" no matter what was typed into it. Worse in the
+// other direction too: MGM.editedMark appends an "edited" badge as a
+// SIBLING inside the same <td>, so textContent on a TOUCHED-but-still-blank
+// input cell read as non-empty and would have flagged stale on nothing but
+// an edit history, never on the figure itself. Reading the control's live
+// .value (the DOM property, which reflects the reader's own typing even
+// before anything is saved, not the value ATTRIBUTE frozen at render time)
+// sidesteps both: it is the actual figure, and it is never contaminated by
+// sibling UI chrome the way textContent is.
+MGM.cellHasValue = function (cell) {
+  const ctrl = cell.querySelector('input,select,textarea');
+  const t = ctrl ? String(ctrl.value).trim() : cell.textContent.trim();
+  return !!(t && t !== '—' && t !== '-');
+};
+
+// Row-only: does this hidden row currently hold real data in any of its
+// OWN cells (excluding the first, its identity/label cell -- a label is
+// never "the data", and for several of these rows the label itself is a
+// free-text input, which would otherwise always read as having a value)?
+// Same permanent-hide tradeoff and same informational-only nudge as
+// columns; same active-tab safety rule as staleHiddenColumns (see its
+// comment) -- the currently-viewed tab is read from its own already-
+// rendered, already-bound DOM, never re-rendered here.
+MGM.staleHiddenRows = function (rowIds) {
+  const stale = new Set();
+  if (!rowIds.length) return stale;
+  const byTab = {};
+  rowIds.forEach(id => {
+    const tab = TAB_ORDER.filter(t => id.indexOf(t + '-') === 0)
+      .sort((a, b) => b.length - a.length)[0];
+    if (tab) (byTab[tab] = byTab[tab] || []).push(id);
+  });
+  const D = MGM.model();
+  Object.keys(byTab).forEach(tab => {
+    if (tab !== MGM.tab) {
+      const fn = MGM.renderers[tab];
+      if (!fn) return;
+      try { fn(D); } catch (e) { return; }
+    }
+    byTab[tab].forEach(id => {
+      const tr = document.querySelector('#panel-' + tab + ' tr[data-row="' + id + '"]');
+      if (!tr) return;
+      for (let c = 1; c < tr.cells.length; c++) {  // cell 0 is the identity/label cell
+        if (MGM.cellHasValue(tr.cells[c])) { stale.add(id); break; }
       }
     });
   });
@@ -5526,15 +5710,17 @@ MGM.renderRestorePanel = function () {
     return;
   }
 
-  const stale = MGM.staleHiddenColumns(hidden.filter(id => MGM.hiddenSectionType(id) === 'column'));
+  const staleCols = MGM.staleHiddenColumns(hidden.filter(id => MGM.hiddenSectionType(id) === 'column'));
+  const staleRows = MGM.staleHiddenRows(hidden.filter(id => MGM.hiddenSectionType(id) === 'row'));
+  const stale = new Set([...staleCols, ...staleRows]);
 
   // Grouped by the tab each id belongs to, derived from the id's own prefix
   // -- the longest TAB_ORDER entry it starts with, rather than splitting on
   // the first hyphen, so a future tab key containing a hyphen still groups
-  // correctly. Within a tab, grouped again by TYPE: at 211 possible ids a
-  // flat per-tab list is not legible, and the four types are different
-  // KINDS of thing (a whole card vs. one column in a table) even when they
-  // share a tab.
+  // correctly. Within a tab, grouped again by TYPE: at close to 300 possible
+  // ids a flat per-tab list is not legible, and the five types are different
+  // KINDS of thing (a whole card vs. one row or column within a table) even
+  // when they share a tab.
   const byTab = {};
   hidden.forEach(id => {
     const tab = TAB_ORDER.filter(t => id.indexOf(t + '-') === 0)
@@ -5553,7 +5739,8 @@ MGM.renderRestorePanel = function () {
       const items = byType[ty].map(id => `
         <li style="margin:4px 0">${esc(HIDDEN_SECTION_LABELS[id] || id)}
           ${stale.has(id) ? '<span class="note" style="color:var(--red-bright)">'
-            + '&#9888; this table now has real data in this column</span>' : ''}
+            + '&#9888; this table now has real data in this ' + (ty === 'row' ? 'row' : 'column')
+            + '</span>' : ''}
           <button class="btn" onclick="MGM.restoreSection('${id}')">Restore</button>
         </li>`).join('');
       return `<div style="margin-top:6px"><span class="note">${HIDDEN_TYPE_LABELS[ty]}</span>
@@ -5565,8 +5752,8 @@ MGM.renderRestorePanel = function () {
   host.innerHTML = `<div class="card mgm-editonly" style="margin:10px 20px">
     <h3>Restore hidden sections</h3>
     <p class="note">${hidden.length} item(s) hidden across the tool. Hidden means hidden for
-      every signed-in viewer, not just admins. A hidden column stays hidden even after real
-      data appears in it -- that nudge below is informational only, never automatic.</p>
+      every signed-in viewer, not just admins. A hidden column or row stays hidden even after
+      real data appears in it -- that nudge below is informational only, never automatic.</p>
     ${groups}
     <p style="margin-top:12px">
       <button class="btn" onclick="MGM.restoreAllSections()">Restore all</button>
