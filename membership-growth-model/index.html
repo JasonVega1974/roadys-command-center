@@ -5249,23 +5249,39 @@ MGM.cloudSave = async function (rec) {
  */
 
 // MGM._liveStateSeenAt is the concurrency token from the moment THIS
-// session last synced with the published truth -- at boot, at the last
-// explicit Pull, or after the last successful Publish. Deliberately NOT
-// re-read fresh immediately before every write: reading right before the
-// write would only catch a conflict in the few hundred milliseconds of the
-// write itself, silently missing the much more likely case of "Scott
-// published ten minutes ago and I have been editing locally since without
-// reloading" -- exactly the silent clobber this design exists to prevent.
-MGM._liveStateSeenAt = null;
+// DEVICE's local content last became identical to the published truth --
+// bootstrapping on a fresh device, an explicit Pull, or a successful
+// Publish. PERSISTED (not just in-memory): a review measured that an
+// in-memory-only token is wiped by every reload regardless, which forced
+// the admin branch below to silently re-stamp it from whatever is
+// currently live on EVERY ordinary boot -- including boots where local
+// content is deliberately left untouched. That re-stamp is what actually
+// broke the guarantee this token exists for: reload for any reason (a
+// refresh, a laptop sleep/wake, opening the tool the next morning) after
+// someone else published, and the next Publish would compare against the
+// just-re-stamped token, match, and silently overwrite their change with
+// no refusal and no warning -- the exact clobber this whole feature exists
+// to prevent, triggered by the most ordinary action rather than a literal
+// race. Persisting it, and writing it ONLY at a genuine sync point, closes
+// that: an ordinary reload with existing local content leaves the token
+// exactly as it was, so a later Publish still correctly detects anything
+// published since the content it is about to overwrite was last synced.
+const LIVE_SEEN_KEY = 'roadys_mgm_live_seen_at';
+MGM._liveStateSeenAt = localStorage.getItem(LIVE_SEEN_KEY) || null;
+MGM._setLiveStateSeenAt = function (token) {
+  MGM._liveStateSeenAt = token;
+  try { localStorage.setItem(LIVE_SEEN_KEY, token); } catch (e) {}
+};
 
 // Runs at boot for every signed-in viewer. A non-admin always resolves to
 // the published truth -- they cannot save local edits anyway (every write
 // is refused server-side), so there is no unsaved work of theirs to
-// protect. An admin's local edits are NEVER silently overwritten: the
-// token is captured either way (Publish needs it later), but the STATE
-// CONTENT only replaces MGM.state on a genuinely fresh device (no prior
-// localStorage for this tool at all) -- a normal reload resumes from
-// localStorage exactly as it always has.
+// protect, and every load IS a genuine sync point for them. An admin's
+// local edits are NEVER silently overwritten, and -- as of the fix above
+// -- the concurrency token is no longer silently re-armed on their behalf
+// either: it only advances on a REAL sync (the fresh-device bootstrap
+// below, an explicit Pull, or a successful Publish). A normal reload with
+// existing local content touches neither the state nor the token.
 MGM.loadLiveState = async function () {
   const sb = MGM.sb();
   if (!sb || !MGM.authEmail()) return;  // unsigned: defaults stand, same as every other cloud read
@@ -5273,29 +5289,41 @@ MGM.loadLiveState = async function () {
   const { data: row, error } = await sb.from('mgm_live_state')
     .select('state,updated_at').eq('id', 'v1').maybeSingle();
   if (error || !row) return;  // fail open: keep whatever state already loaded
+  // No residue check on this read path, unlike every write path below --
+  // deliberately. Residue can only reach this table through MGM.publishState,
+  // which always strips and verifies before writing, so the only way a
+  // residue-carrying row could exist here is a direct SQL-editor edit
+  // bypassing the client entirely, and nothing left in this build still
+  // reads a `.copy` field for display even if one arrived. Noted rather than
+  // silently assumed, per this project's standing rule that a leak-guard
+  // change gets the same scrutiny regardless of size.
 
   if (!MGM.canEdit()) {
     const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
     MGM.state = merged.state;
-    MGM._liveStateSeenAt = row.updated_at;
+    MGM._setLiveStateSeenAt(row.updated_at);
     return;
   }
 
-  MGM._liveStateSeenAt = row.updated_at;
   if (!localStorage.getItem(STORE_KEY)) {
     // Fresh device: nothing local to protect, so bootstrap from the
-    // published truth rather than the shipped defaults.
+    // published truth rather than the shipped defaults. A real sync point.
     const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
     MGM.state = merged.state;
     MGM.save();
+    MGM._setLiveStateSeenAt(row.updated_at);
   }
   // Else: this device's local state, already loaded earlier in boot, is
-  // left exactly as it was.
+  // left exactly as it was -- and so is MGM._liveStateSeenAt. This is NOT a
+  // sync point: the admin's content may be based on an older published
+  // version than `row`, so stamping the token here would make a later
+  // Publish compare against a state its own content was never reconciled
+  // with. See the fix comment above MGM._liveStateSeenAt's declaration.
 };
 
 // Explicit admin action: replace local edits with the latest published
 // state. The one place this feature discards local work, and only ever on
-// a confirmed, explicit click -- never automatically.
+// a confirmed, explicit click -- never automatically. A real sync point.
 MGM.pullLiveState = async function () {
   if (!MGM.requireAdmin('Pulling the published state')) return;
   if (!confirm('Replace your local edits with the latest published state? '
@@ -5310,7 +5338,7 @@ MGM.pullLiveState = async function () {
   }
   const merged = MM.mergeState(MM.defaultState(MGM_CONFIG), row.state || {});
   MGM.state = merged.state;
-  MGM._liveStateSeenAt = row.updated_at;
+  MGM._setLiveStateSeenAt(row.updated_at);
   MGM.save();
   MGM.refresh();
   alert('Pulled the latest published state.');
@@ -5326,9 +5354,15 @@ MGM.publishState = async function () {
   // strip ran upstream. This is a NEW, LARGER outbound surface than either
   // of those (the full model state, not one scenario or one export click),
   // so it gets the same scrutiny, not less.
+  //
+  // publishedBy is computed once and reused for both the check below and
+  // the write further down, so the two are the same value by construction,
+  // not merely equal by coincidence -- and the checked shape matches the
+  // sent shape exactly, field for field, rather than checking a subset of it.
   MGM.stripResidue(MGM.state);
   if (MGM.stripResidue.removed) MGM.save();
-  const verdict = MM.residueVerdict({ state: MGM.state });
+  const publishedBy = MGM.authEmail() || '';
+  const verdict = MM.residueVerdict({ state: MGM.state, published_by: publishedBy });
   if (verdict !== 'clean') {
     console.error('[MGM] REFUSED to publish: ' + verdict);
     alert(verdict === 'residue'
@@ -5340,9 +5374,11 @@ MGM.publishState = async function () {
     return;
   }
 
-  // No prior sync point this session (e.g. signed in after boot already
-  // ran without a session). There is no earlier baseline being silently
-  // skipped here -- whatever is live right now legitimately becomes one.
+  // Genuinely no prior sync point on this device (never bootstrapped,
+  // pulled, or published here) -- now rare rather than the common case,
+  // since the fix above stopped the token being silently re-armed on every
+  // ordinary reload. There is no earlier baseline being skipped here:
+  // whatever is live right now legitimately becomes the first one.
   if (MGM._liveStateSeenAt == null) {
     const { data: row, error: readErr } = await sb.from('mgm_live_state')
       .select('updated_at').eq('id', 'v1').maybeSingle();
@@ -5350,14 +5386,14 @@ MGM.publishState = async function () {
       alert('Could not reach the shared live state' + (readErr ? ': ' + readErr.message : '') + '.');
       return;
     }
-    MGM._liveStateSeenAt = row.updated_at;
+    MGM._setLiveStateSeenAt(row.updated_at);
   }
 
   if (!confirm('Publish the current state? Every signed-in viewer will see this '
     + 'the next time they load the page.')) return;
 
   const { data: upd, error } = await sb.from('mgm_live_state')
-    .update({ state: MGM.state, published_by: MGM.authEmail() || '' })
+    .update({ state: MGM.state, published_by: publishedBy })
     .eq('id', 'v1').eq('updated_at', MGM._liveStateSeenAt).select();
 
   if (error) {
@@ -5369,14 +5405,16 @@ MGM.publishState = async function () {
   if (!upd || !upd.length) {
     // Lost the race: someone else published since MGM._liveStateSeenAt was
     // captured. Refuse outright -- see the file header comment for why this
-    // does not attempt to merge.
+    // does not attempt to merge. _liveStateSeenAt is deliberately left
+    // untouched on this path (not advanced to the row's new state), so a
+    // bare retry keeps refusing until an explicit Pull actually reconciles.
     alert('Someone else published since you last loaded the shared state. '
       + 'Your changes were NOT sent, so nothing was lost or overwritten. '
       + 'Pull the latest published state, reapply your change on top of it, '
       + 'and publish again.');
     return;
   }
-  MGM._liveStateSeenAt = upd[0].updated_at;
+  MGM._setLiveStateSeenAt(upd[0].updated_at);  // a real sync point: my content IS the published state now
   alert('Published.');
 };
 
