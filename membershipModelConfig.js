@@ -114,7 +114,23 @@
       // the public config was stating three gated figures verbatim while the
       // gate protected the rest. Rounding to the nearest $25/member/yr leaves
       // a +/-12.5 band, which preserves magnitude and sign for the public
-      // model while making the exact figure unrecoverable.
+      // model.
+      //
+      // WHAT THE ROUNDING DOES AND DOES NOT COVER. It protects this file from
+      // here forward. It is not retroactive: the exact values were committed
+      // to this PUBLIC repository on 2026-10-28 and were readable in the
+      // canonical history until the history rewrite that removed them, and
+      // the per-stream pins in the test file at those commits allowed each one
+      // to be recovered to the integer by dividing by the pinned member count.
+      // Anyone who cloned the repository in that window retains them
+      // indefinitely, and GitHub keeps unreferenced objects reachable by SHA
+      // for a period after a force-push.
+      //
+      // So: protected at the tip, previously exposed, and not fully
+      // recoverable from that exposure. Stated this way on purpose -- an
+      // earlier version of this comment claimed the figures were
+      // "unrecoverable" and that they "stay auth-gated", which was true of the
+      // branch tip and false of the history.
       //
       // The precedent is duesPerLocBillable and the rewards fee: calibrated
       // from the P&L, deliberately non-exact, with the gap disclosed on the
