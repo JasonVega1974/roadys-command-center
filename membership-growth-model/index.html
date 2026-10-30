@@ -565,22 +565,24 @@ MGM.reconcilePtpDissolution = function (state) {
     }
   }
 
-  const bump = (key, by) => {
+  // Creates the group from the shipped defaults if the saved array doesn't
+  // have it at all, rather than silently dropping its share of the
+  // redistributed ptp count -- the same silent-loss class this function
+  // exists to close. Reachable for ts/ppo too, not just svc: a hand-edited
+  // import or a crafted live-state row can omit any group.
+  const bumpOrCreate = (key, by) => {
     const g = groups.find(x => x && x.key === key);
-    if (g) g.count = (Number(g.count) || 0) + by;
-    return g;
+    if (g) { g.count = (Number(g.count) || 0) + by; return; }
+    const shipped = (MGM_CONFIG.groups || []).find(x => x && x.key === key);
+    groups.push({ key, label: shipped ? shipped.label : key, count: by });
   };
   if (ptpTotal > 0) {
     const tsShare = Math.round(ptpTotal * 35 / 88);
     const ppoShare = Math.round(ptpTotal * 30 / 88);
     const svcShare = ptpTotal - tsShare - ppoShare; // remainder absorbs rounding
-    bump('ts', tsShare);
-    bump('ppo', ppoShare);
-    if (!bump('svc', svcShare)) {
-      const shipped = (MGM_CONFIG.groups || []).find(g => g.key === 'svc');
-      groups.push({ key: 'svc', label: shipped ? shipped.label : 'Service Centers',
-                     count: svcShare });
-    }
+    bumpOrCreate('ts', tsShare);
+    bumpOrCreate('ppo', ppoShare);
+    bumpOrCreate('svc', svcShare);
     changed = true;
   } else if (!hasSvc()) {
     // No `ptp` count to redistribute (e.g. a state already missing only
