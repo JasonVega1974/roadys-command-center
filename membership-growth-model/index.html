@@ -672,6 +672,24 @@ try {
       try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e4) {}
     }
 
+    // labels.notes.pnl never shipped as a real feature (three commits on
+    // this same branch briefly had a notes card on the P&L Actuals tab,
+    // caught and removed by review before merge, precisely because a notes
+    // textarea binds into MGM.state), but mergeState's retain-unknown
+    // behaviour would keep a stray value here indefinitely for anyone who
+    // saved state while that card existed. Explicitly removed, same
+    // reasoning as the copy-residue handling just above: read once, acted
+    // on, not left as permanent growing residue.
+    try {
+      if (MGM.state.labels && MGM.state.labels.notes
+          && MGM.state.labels.notes.pnl !== undefined) {
+        delete MGM.state.labels.notes.pnl;
+        try { console.warn('[MGM] dropped a stray labels.notes.pnl value from '
+              + 'a removed feature'); } catch (e5) {}
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(MGM.state)); } catch (e6) {}
+      }
+    } catch (e7) {}
+
     // 2026-10-30: gallons.groupProfile (one [profile,roadway] pair per group)
     // and gallons.groupBaselineOverride (one override per group) were
     // replaced by gallons.groupSplits (an array of {profile,roadway,
@@ -3729,23 +3747,33 @@ MGM.reportAssumptions = function (D) {
     // figure "entered by hand" just because it no longer equals the
     // UNEXCLUDED division.
     ['Dues', (() => {
-      const b = st.billing, derived = b.payingLocationsExclCStores
+      const b = st.billing;
+      const derived = b.payingLocationsExclCStores
         ? b.monthlyDuesTotalExclCStores / b.payingLocationsExclCStores : null;
       const matches = derived != null &&
         Math.abs(Number(b.duesPerLocBillableExclCStores) - derived) < 0.005;
+      // With zero exclusion computed (EXCEPTION #2), the excl-C-Stores and
+      // unexcluded fields are EXPECTED to be the same number -- but that
+      // expectation is itself a claim this sentence has to verify, not
+      // assume, or a hand-typed override entered while exclusion still sits
+      // at zero would get the same "currently the unexcluded average" prose
+      // as a real unmodified default. Checked against the plain billing
+      // pair, same discipline as `matches` above checks against the
+      // excl-C-Stores pair. Found by an independent review, one round after
+      // the zero-exclusion branch was added without this check.
+      const unexcludedDerived = b.payingLocations
+        ? b.monthlyDuesTotal / b.payingLocations : null;
+      const matchesUnexcluded = unexcludedDerived != null &&
+        Math.abs(Number(b.duesPerLocBillableExclCStores) - unexcludedDerived) < 0.005;
       return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillableExclCStores)} billable per paying location` +
         (b.cstoreExcludedCompanies ? ' excl. C-Stores' : '') + ' · ' +
         (rpm.duesRealization == null
           ? 'realization not derivable — no billable figure is entered'
           : `${pct1(rpm.duesRealization)} realization`) +
         (!b.cstoreExcludedCompanies
-          // Zero exclusion computed for this snapshot (see "2026-10-30
-          // EXCEPTION #2"): the excl-C-Stores and unexcluded figures are
-          // currently the SAME number, so neither the `matches` nor the
-          // `entered by hand` sentence below would say anything true --
-          // both compare the excl-C-Stores paying-location count against
-          // itself and claim a distinction that does not exist yet.
-          ? `. No C-Store exclusion has been computed for this billing snapshot yet (0 companies) -- this figure is currently the unexcluded ${fmt(b.payingLocations)}-paying-location average. See membershipModelConfig.js's "2026-10-30 EXCEPTION #2".`
+          ? (matchesUnexcluded
+              ? `. No C-Store exclusion has been computed for this billing snapshot yet (0 companies) -- this figure is currently the unexcluded ${fmt(b.payingLocations)}-paying-location average. See membershipModelConfig.js's "2026-10-30 EXCEPTION #2".`
+              : `. The billable figure was entered by hand -- with no C-Store exclusion computed for this snapshot (0 companies), it is not ${fm$(b.monthlyDuesTotal)} ÷ ${fmt(b.payingLocations)} paying locations either (${unexcludedDerived == null ? 'no paying-location count is entered' : fmCents(unexcludedDerived)}).`)
           : matches
           ? `. The billable figure is ${fm$(b.monthlyDuesTotalExclCStores)} of monthly dues divided by the ${fmt(b.payingLocationsExclCStores)} paying locations that are not pure C-Store companies, not by all ${fmt(b.payingLocations)} paying locations — C-Stores' legitimately low fee would otherwise drag down a rate meant to read as what a truck stop / PPO / etc. location bills.`
           : `. The billable figure was entered by hand and is not ${fm$(b.monthlyDuesTotalExclCStores)} ÷ ${fmt(b.payingLocationsExclCStores)} paying locations excl. C-Stores (${derived == null ? 'no paying-location count is entered' : fmCents(derived)}).`);
@@ -5419,18 +5447,35 @@ MGM.renderAuth = function () {
     if (eb) eb.textContent = '✎ Edit';
   }
 
+  // Losing admin must drop the gated P&L figures from memory outright, not
+  // just hide the tab that shows them. MGM.pnlActuals feeds the Revenue per
+  // Member Reconciliation card (index.html's revpermember renderer) with NO
+  // admin check of its own -- it relies entirely on loadPnlActuals never
+  // having set it for a non-admin in the first place. That is correct for
+  // the normal case, but an in-session admin LOSS leaves whatever was
+  // already loaded sitting in memory, rendering on a DIFFERENT tab than the
+  // one this function otherwise re-homes away from. Clearing it here,
+  // unconditionally on `!admin` rather than scoped to the pnl tab, closes
+  // that surface too. Found by the same independent review, one round
+  // after the first pass only cleared pnlDraft.
+  if (!admin) {
+    MGM.pnlActuals = null;
+    MGM.pnlDraft = null;
+  }
+
   // ...and must not leave them standing on an admin-only tab, with its panel
-  // still painted and its draft still in memory. Setting MGM.tab alone left
-  // the rail's active button pointing at a hidden tab and the gated form
-  // visible in the DOM until some UNRELATED render happened to repaint it --
-  // not a cross-user disclosure (same browser, same session), but a real
-  // gap between what this comment claimed and what actually ran. Found by
-  // an independent review.
+  // still painted. MGM.switchTab, not a bare MGM.tab assignment: switchTab
+  // is what actually toggles the .panel/.active classes that control
+  // display (CSS is `.panel{display:none}.panel.active{display:block}`,
+  // see switchTab's own loop) and re-runs refresh() to paint the new tab.
+  // A bare assignment left #panel-pnl marked `.active` -- now emptied, not
+  // hidden -- while #panel-starting stayed inactive: an empty content area
+  // under a rail highlighting "Starting", which is what the FIRST version
+  // of this fix produced. Found by the same review, one round later.
   if (!admin && ADMIN_ONLY_TABS.indexOf(MGM.tab) >= 0) {
-    MGM.tab = TAB_ORDER[0];
     const pnlPanel = document.getElementById('panel-pnl');
     if (pnlPanel) pnlPanel.innerHTML = '';
-    MGM.pnlDraft = null;
+    MGM.switchTab(TAB_ORDER[0]);
   }
 
   // Unconditional, every call -- this is the ONE place admin status
@@ -5632,10 +5677,14 @@ MGM.pnlSaveToCloud = async function () {
   // no warning at all. Refuse outright rather than hand-confirm: a dev
   // fixture has no legitimate reason to ever reach mgm_pnl_actuals.
   if (MGM.pnlReason === 'ok-local') {
+    // "Clear the form" does NOT work around this: MGM.pnlClearDraft blanks
+    // pnlDraft but leaves pnlReason at 'ok-local', so a cleared-and-retyped
+    // draft would still refuse here. The only ways out are removing the
+    // fixture file (then reloading) or working on a non-local host.
     return alert('This draft was pre-filled from the LOCAL DEV FIXTURE file, not from '
                + 'mgm_pnl_actuals. Saving would upsert that fixture data into the real '
-               + 'table by its id -- refused. Clear the form and type real figures '
-               + 'before saving, or remove the local fixture file.');
+               + 'table by its id -- refused. Remove the local fixture file and reload '
+               + 'to save a real period from this host.');
   }
   const d = MGM.pnlDraftInit();
   if (!String(d.id || '').trim()) {
@@ -5855,14 +5904,12 @@ MGM.PNL_RECAL_DRIVERS = [
 
 MGM.pnlRecalibrationProposal = function (D) {
   const streams = MGM.pnlActuals ? MGM.pnlActuals.streams : null;
-  // period_months defaults to 12 the same way the save form does -- a
-  // period with no months typed is assumed to be a full year, not treated
-  // as "undated" and silently divided by nothing. No member-count basis is
-  // passed: streams[k] is already $/member/yr (see the engine function's
-  // own comment), so there is no per-member division left to do here.
-  const months = (MGM.pnlActuals && MGM.pnlActuals.periodMonths != null)
-    ? MGM.pnlActuals.periodMonths : 12;
-  return MM.pnlRecalibrationProposal(streams, D.st.billing, months);
+  // No months argument: streams[k] is already $/member/yr, read verbatim,
+  // with no month-count or member-count adjustment of any kind -- see the
+  // engine function's own comment for the two earlier, both-wrong versions
+  // of this call that tried to rescale it. period_months is disclosure
+  // metadata shown elsewhere on this tab, not an input to this calculation.
+  return MM.pnlRecalibrationProposal(streams, D.st.billing);
 };
 
 // Clones D.st, patches every driver with a PROPOSED value into the clone,

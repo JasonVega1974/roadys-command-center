@@ -238,8 +238,8 @@ def read_billing(path, company_types):
     # IN the average rather than guess an allocation the data cannot support.
     cstore_excl_companies = cstore_excl_locations = 0
     cstore_excl_dues = 0.0
-    # Billing rows whose Company has NO entry at all in company_types --
-    # i.e. the location-list CSV has no active row for that company name.
+    # PAYING billing companies with NO entry at all in company_types -- i.e.
+    # the location-list CSV has no ACTIVE row for that company name.
     # company_types.get(name) returns None for these, which silently takes
     # the "not pure C-Store" branch below exactly as if the company really
     # were a mix of types -- identical outcome, opposite reason, and no
@@ -247,8 +247,13 @@ def read_billing(path, company_types):
     # between the two exports would produce this same silent non-exclusion,
     # which is precisely the under-exclusion risk "2026-10-30 EXCEPTION #2"
     # already accepts for the vintage gap -- it must not ALSO hide inside a
-    # name-join nobody is watching.
-    unmatched_billing_companies = []
+    # name-join nobody is watching. Restricted to PAYING companies (checked
+    # after `amount` below, not here) because a zero-bill company can never
+    # be excluded from this average regardless of its type, so an unmatched
+    # zero-bill name carries no under-exclusion risk and is pure noise. A
+    # set, not a list, so one company billing across multiple rows (if that
+    # ever occurs) is reported once.
+    unmatched_billing_companies = set()
     names = set()
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rdr = csv.DictReader(fh)
@@ -257,14 +262,14 @@ def read_billing(path, company_types):
             name = cell(row, cols, "Company")
             if name:
                 names.add(name)
-            if name and name not in company_types:
-                unmatched_billing_companies.append(name)
             companies += 1
             n = int(money(cell(row, cols, "Locations")))
             locations += n
             amount = money(cell(row, cols, "Dues"))
             dues += amount
             if amount > 0:
+                if name and name not in company_types:
+                    unmatched_billing_companies.add(name)
                 paying_locations += n
                 # Only a PAYING pure C-Store company is subtracted -- a
                 # zero-bill one already contributes nothing to
@@ -279,7 +284,7 @@ def read_billing(path, company_types):
     paying_locations_excl = paying_locations - cstore_excl_locations
     dues_excl = dues - cstore_excl_dues
     return {
-        "unmatchedBillingCompanies": unmatched_billing_companies,
+        "unmatchedBillingCompanies": sorted(unmatched_billing_companies),
         "companies": companies,
         "locations": locations,
         "monthlyDuesTotal": int(round(dues)),
@@ -623,10 +628,12 @@ def main():
           % (billing["duesPerLocBillable"], billing["duesPerLocBillableExclCStores"]))
     unmatched = billing["unmatchedBillingCompanies"]
     if unmatched:
-        print("\n!! %d billing compan%s with NO matching active row in the location-list "
-              "CSV (name mismatch -- case, punctuation, a closed location, or a genuine "
-              "gap) -- NOT excluded from the true-stop-only average even if actually a "
-              "pure C-Store, since there is no location-list evidence either way:"
+        print("\n!! %d PAYING billing compan%s with NO matching active row in the "
+              "location-list CSV (name mismatch -- case, punctuation, a closed "
+              "location, or a genuine gap) -- NOT excluded from the true-stop-only "
+              "average even if actually a pure C-Store, since there is no "
+              "location-list evidence either way (zero-bill companies are omitted "
+              "here; they can never be excluded regardless of type):"
               % (len(unmatched), "y" if len(unmatched) == 1 else "ies"))
         for name in unmatched:
             print("  %s" % name)

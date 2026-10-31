@@ -1303,19 +1303,33 @@ test('dues realization reads monthlyDuesTotalExclCStores, not monthlyDuesTotal',
     'field actually drives the denominator, this is not a stale read');
 });
 
-test('KNOWN LIMITATION tripwire: duesRealization pairs a C-Store-excluded denominator with an all-population numerator', () => {
-  // Deliberate tripwire, not a regression guard -- see revPerMember's own
-  // comment above modelledMembers. Pinned to the shipped config's CURRENT
-  // zero-exclusion state (membershipModelConfig.js's "2026-10-30 EXCEPTION
-  // #2"); the moment a real refresh makes cstoreExcludedCompanies non-zero,
-  // this assertion starts failing ON PURPOSE -- that failure is the signal
-  // to bring the population-mismatch decision back explicitly (exclude
-  // C-Store's own modelled members from modelledMembers, or accept the
-  // mixed-population metric deliberately), not a sign this test is stale.
-  assert.equal(MGM_CONFIG.billing.cstoreExcludedCompanies, 0,
-    'this fails on purpose once a real refresh excludes real C-Store companies -- ' +
-    'see the KNOWN LIMITATION comment in revPerMember (membershipModel.js) before ' +
-    'updating this pin, not after');
+test('dues realization fails closed to null once C-Store exclusion creates a population mismatch', () => {
+  // A direct behavioral test, not a tripwire pinned to the shipped config:
+  // a tripwire pinned to MGM_CONFIG.billing would stay green even though
+  // the live metric reads state.billing, which a hand-edit of the
+  // "excl. C-Stores" input fields or a mgm_live_state pull can diverge from
+  // the config without ever touching membershipModelConfig.js. This test
+  // constructs a state where cstoreExcludedCompanies is non-zero directly
+  // and asserts the real behavior: duesRealization must be null, not a
+  // confidently wrong percentage, because modelledMembers (every active
+  // location) and annualBilled (now C-Store-excluded) would otherwise
+  // describe two different populations. See revPerMember's own comment
+  // above modelledMembers for the full reasoning.
+  const base = MembershipModel.defaultState(MGM_CONFIG);
+  const M = MembershipModel.runModel(base);
+
+  const clean = JSON.parse(JSON.stringify(base));
+  clean.billing.cstoreExcludedCompanies = 0;
+  const rpmClean = MembershipModel.revPerMember(clean, M, null);
+  assert.ok(rpmClean.duesRealization !== null,
+    'with zero exclusion, realization is still computed -- no population mismatch exists yet');
+
+  const mismatched = JSON.parse(JSON.stringify(base));
+  mismatched.billing.cstoreExcludedCompanies = 9;
+  const rpmMismatched = MembershipModel.revPerMember(mismatched, M, null);
+  assert.equal(rpmMismatched.duesRealization, null,
+    'a non-zero cstoreExcludedCompanies must fail realization closed to null, ' +
+    'not report a percentage biased by the population mismatch');
 });
 
 test('GOLDEN: valuation under legacy settings reproduces the v1 exactly', () => {
@@ -3031,7 +3045,7 @@ test('pnlRecalibrationProposal RECOVERS the exact driver value that produced the
     rewardsBreakage: rpm.derived.rewardsBreakage,
     settlement: rpm.derived.settlement
   };
-  const p = MembershipModel.pnlRecalibrationProposal(streams, base.billing, 12);
+  const p = MembershipModel.pnlRecalibrationProposal(streams, base.billing);
   near(p.rewardsBlendedPM.exact, base.revenue.rewardsBlendedPM,
     'round-trip must recover the exact rewardsBlendedPM that produced derived.rewards');
   near(p.rewardsBreakagePerMember.exact, base.revenue.rewardsBreakagePerMember,
@@ -3040,28 +3054,29 @@ test('pnlRecalibrationProposal RECOVERS the exact driver value that produced the
     'round-trip must recover the exact settlementNetPerMember that produced derived.settlement');
 });
 
-test('pnlRecalibrationProposal: period length scales every driver by 12/months, consistently', () => {
-  // streams[k] is $/member/YEAR as entered; a period shorter than 12 months
-  // scales by 12/months to annualize it. Checked against the relationship
-  // itself, at TWO different period lengths, rather than one hardcoded
-  // number per driver -- months=12 alone can't distinguish "scales
-  // correctly" from "ignores months entirely", since 12/12 = 1 either way.
-  [12, 9].forEach(months => {
-    const p = MembershipModel.pnlRecalibrationProposal(
-      { rewards: 1800, rewardsBreakage: 60000, settlement: -18000 }, {}, months);
-    near(p.rewardsBlendedPM.exact, 1800 / months,
-      `months=${months}: monthly driver = annual stream / months (the extra /12 from annual-to-monthly cancels into this form)`);
-    near(p.rewardsBreakagePerMember.exact, 60000 * 12 / months,
-      `months=${months}: annual driver = stream * 12/months`);
-    near(p.settlementNetPerMember.exact, -18000 * 12 / months,
-      `months=${months}: annual driver = stream * 12/months`);
-  });
+test('pnlRecalibrationProposal does not accept a months argument at all -- streams are already annual, full stop', () => {
+  // A SECOND, independent regression on the exact bug class above: an
+  // earlier version removed the member-count division but kept a
+  // `12/months` rescale, on the theory that a partial-year figure needed
+  // re-annualizing. It did not -- streams[k] IS the annual rate already --
+  // and that rescale inflated every proposal by 12/months for any period
+  // shorter than a year. The round-trip test above didn't catch it because
+  // it only exercised a 12-month period, where 12/12 = 1 hides the extra
+  // factor completely. This test calls the SAME two-argument signature the
+  // real caller uses (MGM.pnlRecalibrationProposal in index.html passes no
+  // third argument) -- if a `months` parameter is ever reintroduced and
+  // used in the formula, this test's fixed expected values stop matching
+  // whatever that parameter would be read from, by construction.
+  const p = MembershipModel.pnlRecalibrationProposal(
+    { rewards: 1800, rewardsBreakage: 60000, settlement: -18000 }, {});
+  near(p.rewardsBlendedPM.exact, 150, 'rewards 1800/12 (annual stream -> monthly driver, no other scaling)');
+  near(p.rewardsBreakagePerMember.exact, 60000, 'breakage: annual stream passed through unchanged');
+  near(p.settlementNetPerMember.exact, -18000, 'settlement: annual stream passed through unchanged');
 });
 
 test('pnlRecalibrationProposal rounds each driver to its own equivalent-protection step', () => {
   const p = MembershipModel.pnlRecalibrationProposal(
-    { rewards: 1810, rewardsBreakage: 60310, settlement: -18130 }, {}, 12);
-  // months=12 -> 12/m=1, so annual = the stream value directly.
+    { rewards: 1810, rewardsBreakage: 60310, settlement: -18130 }, {});
   // rewards: 1810/12 = 150.8333... -> nearest $2 is 150.
   assert.equal(p.rewardsBlendedPM.proposed, 150);
   // breakage: 60310 -> nearest $25 is 60300.
@@ -3075,8 +3090,7 @@ test('pnlRecalibrationProposal rounds each driver to its own equivalent-protecti
 test('pnlRecalibrationProposal flags a proposal that lands too close to its own exact figure', () => {
   // Exact lands EXACTLY on a $25 multiple -- rounding moves it by zero,
   // which is the "provides no real protection" case this flag exists for.
-  const onBoundary = MembershipModel.pnlRecalibrationProposal(
-    { rewardsBreakage: 60000 }, {}, 12);
+  const onBoundary = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 60000 }, {});
   assert.equal(onBoundary.rewardsBreakagePerMember.exact, 60000);
   assert.equal(onBoundary.rewardsBreakagePerMember.proposed, 60000);
   assert.equal(onBoundary.rewardsBreakagePerMember.flagged, true,
@@ -3084,15 +3098,14 @@ test('pnlRecalibrationProposal flags a proposal that lands too close to its own 
 
   // Exact sits mid-step ($12.50 away from each neighbour) -- the maximum
   // possible protection for a $25 step, nowhere near the flag threshold.
-  const midStep = MembershipModel.pnlRecalibrationProposal(
-    { rewardsBreakage: 60012.5 }, {}, 12);
+  const midStep = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 60012.5 }, {});
   near(midStep.rewardsBreakagePerMember.exact, 60012.5, 'exact mid-step');
   assert.equal(midStep.rewardsBreakagePerMember.flagged, false,
     'rounding moved it by the maximum possible $12.50 -- not a collision risk');
 });
 
 test('pnlRecalibrationProposal: no loaded P&L period means no proposal, not a zero', () => {
-  const p = MembershipModel.pnlRecalibrationProposal(null, {}, 12);
+  const p = MembershipModel.pnlRecalibrationProposal(null, {});
   ['rewardsBlendedPM', 'rewardsBreakagePerMember', 'settlementNetPerMember'].forEach(k => {
     assert.equal(p[k].exact, null, k + '.exact must be null, not 0, with nothing loaded');
     assert.equal(p[k].proposed, null, k + '.proposed must be null, not 0');
@@ -3104,42 +3117,38 @@ test('pnlRecalibrationProposal: a stream explicitly reported as the real zero st
   // The P&L genuinely reporting $0 for a stream is a figure, not an absence
   // -- same "whitespace is an absence, a real zero is not" discipline as
   // rewardsRate above.
-  const p = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 0 }, {}, 12);
+  const p = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 0 }, {});
   assert.equal(p.rewardsBreakagePerMember.exact, 0);
   assert.equal(p.rewardsBreakagePerMember.proposed, 0);
 });
 
-test('pnlRecalibrationProposal: a non-finite stream value is treated as absent, not a real zero', () => {
+test('pnlRecalibrationProposal: a non-finite or whitespace-only stream value is treated as absent, not a real zero', () => {
   // n() silently coerces junk to 0 everywhere else in this file -- correct
   // for an already-validated numeric field, wrong here, where a corrupt
   // stored value must read as "nothing usable" rather than a confidently
   // proposed real zero (the same defect class usableRate/rewardsRate exist
-  // to prevent for the public driver fields).
-  const p = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 'not a number' }, {}, 12);
-  assert.equal(p.rewardsBreakagePerMember.exact, null, 'junk input must not silently become 0');
-  assert.equal(p.rewardsBreakagePerMember.proposed, null);
-});
+  // to prevent for the public driver fields). Number('  ') is ALSO 0, so a
+  // whitespace-only string needs the same explicit rejection as the
+  // non-numeric case, not just an empty-string check.
+  const junk = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 'not a number' }, {});
+  assert.equal(junk.rewardsBreakagePerMember.exact, null, 'junk input must not silently become 0');
+  assert.equal(junk.rewardsBreakagePerMember.proposed, null);
 
-test('pnlRecalibrationProposal: a non-positive months value falls back to 12, not a sign flip or a divide-by-zero', () => {
-  const twelve = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 60000 }, {}, 12);
-  const zero = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 60000 }, {}, 0);
-  const negative = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: 60000 }, {}, -6);
-  assert.equal(zero.rewardsBreakagePerMember.exact, twelve.rewardsBreakagePerMember.exact,
-    'months=0 must fall back to 12, not divide by zero');
-  assert.equal(negative.rewardsBreakagePerMember.exact, twelve.rewardsBreakagePerMember.exact,
-    'a negative months value must fall back to 12, not sign-flip the proposal');
+  const whitespace = MembershipModel.pnlRecalibrationProposal({ rewardsBreakage: '   ' }, {});
+  assert.equal(whitespace.rewardsBreakagePerMember.exact, null, 'whitespace-only input must not silently become 0');
+  assert.equal(whitespace.rewardsBreakagePerMember.proposed, null);
 });
 
 test('pnlRecalibrationProposal: duesPerLoc tracks billing.duesPerLocBillableExclCStores directly, with no rounding step and no collision flag', () => {
   // duesPerLoc is NOT P&L-sourced -- see the function's own comment -- so it
   // is never flagged, regardless of how closely it lands on a round number.
   const p = MembershipModel.pnlRecalibrationProposal(
-    null, { duesPerLocBillableExclCStores: 400.004 }, 12);
+    null, { duesPerLocBillableExclCStores: 400.004 });
   assert.equal(p.duesPerLoc.proposed, 400, 'rounds to the cent, same precision the field already has');
   assert.equal(p.duesPerLoc.exact, 400);
   assert.equal(p.duesPerLoc.flagged, false);
 
-  const missing = MembershipModel.pnlRecalibrationProposal(null, {}, 12);
+  const missing = MembershipModel.pnlRecalibrationProposal(null, {});
   assert.equal(missing.duesPerLoc.proposed, null, 'no billing figure -- no proposal, not a zero');
 
   // 0 is the refresh script's own "cannot compute" sentinel (paying
@@ -3147,7 +3156,7 @@ test('pnlRecalibrationProposal: duesPerLoc tracks billing.duesPerLocBillableExcl
   // never a real billable rate. Proposing $0.00 for the largest revenue
   // driver with no flag would be the worst possible fail-open.
   const sentinel = MembershipModel.pnlRecalibrationProposal(
-    null, { duesPerLocBillableExclCStores: 0 }, 12);
+    null, { duesPerLocBillableExclCStores: 0 });
   assert.equal(sentinel.duesPerLoc.proposed, null,
     '0 is the "cannot compute" sentinel, not a real $0.00 rate -- must not be proposed');
 });
@@ -3155,7 +3164,7 @@ test('pnlRecalibrationProposal: duesPerLoc tracks billing.duesPerLocBillableExcl
 test('pnlRecalibrationProposal: every path matches the field it would write on apply', () => {
   const p = MembershipModel.pnlRecalibrationProposal(
     { rewards: 1800, rewardsBreakage: 60000, settlement: -18000 },
-    { duesPerLocBillableExclCStores: 400 }, 12);
+    { duesPerLocBillableExclCStores: 400 });
   assert.equal(p.duesPerLoc.path, 'revenue.duesPerLoc');
   assert.equal(p.rewardsBlendedPM.path, 'revenue.rewardsBlendedPM');
   assert.equal(p.rewardsBreakagePerMember.path, 'revenue.rewardsBreakagePerMember');

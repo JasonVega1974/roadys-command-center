@@ -713,24 +713,30 @@
     // described slightly different populations and the metric was off by the
     // very kind of gap it exists to surface.
     //
-    // KNOWN LIMITATION, flagged not fixed (2026-10-30): modelledMembers is
-    // every active location, C-Stores included; annualBilled above now
-    // excludes them. So once a real refresh populates a non-zero
-    // cstoreExcludedCompanies, this ratio compares a full-population
-    // numerator against a C-Store-excluded denominator -- realization will
-    // read roughly 1/(1 - cstoreShare) too high, re-opening the exact "model
-    // claims more per location than was billed" gap the Oct 29 recalibration
-    // (3b7b979) was written to close. Excluding C-Store's own modelled
-    // member count from `modelledMembers` would fix it, but that is a
-    // growth-model population split nobody has asked for yet and is
-    // deliberately NOT done here -- see one-quantity-one-field and
-    // keep-changes-to-what-was-asked discipline elsewhere in this build.
-    // The test below is a deliberate tripwire: it is pinned to the CURRENT
-    // (zero-exclusion) state and will start failing the moment a real
-    // refresh changes that, which is the signal to bring this back as its
-    // own explicit decision rather than letting it drift silently past.
     var modelledMembers = (M && M.years && M.years.length)
       ? n(avgMembers(M.years[0])) : 0;
+
+    // POPULATION MISMATCH, failed closed rather than left to drift
+    // (2026-10-30): modelledMembers above is every active location,
+    // C-Stores included; annualBilled is now C-Store-excluded. Comparing
+    // them directly would read realization roughly 1/(1 - cstoreShare) too
+    // high the moment a real refresh makes cstoreExcludedCompanies
+    // non-zero -- re-opening the exact "model claims more per location than
+    // was billed" gap the Oct 29 recalibration (3b7b979) was written to
+    // close. Excluding C-Store's own modelled member count from
+    // modelledMembers would fix the metric properly, but that is a
+    // growth-model population split nobody has asked for yet (see
+    // one-quantity-one-field / keep-changes-to-what-was-asked discipline
+    // elsewhere in this build) -- so instead, this reads state.billing
+    // directly (not MGM_CONFIG, which a hand-edit or a live-state pull can
+    // diverge from) and refuses to compute a number it knows is biased,
+    // exactly as usableRate/valuation.lensCount/revPerMember's own `actual`
+    // already refuse elsewhere in this file: null, not a confidently wrong
+    // percentage. Every consumer already renders null as "not derivable" /
+    // an em dash, so this costs nothing where it doesn't apply (today,
+    // before cstoreExcludedCompanies is ever non-zero) and prevents a
+    // silently biased number where it does.
+    var cstorePopulationMismatch = n(billing.cstoreExcludedCompanies) > 0;
 
     return {
       derived: derived,
@@ -739,7 +745,7 @@
       benchmark: bench,
       varianceVsActual: actual === null ? null : derived.total - actual,
       varianceVsBenchmark: derived.total - bench,
-      duesRealization: (annualBilled && modelledMembers)
+      duesRealization: (annualBilled && modelledMembers && !cstorePopulationMismatch)
         ? 100 * (modelledMembers * n(rv.duesPerLoc) * months) / annualBilled
         : null
     };
@@ -844,43 +850,51 @@
   // no need to duplicate.
   //
   // `streams[k]` IS ALREADY $/member/YEAR -- not a raw period total needing
-  // a member-count division. Half A's own entry form says so directly
+  // a member-count division, and NOT a figure that needs re-annualizing for
+  // a partial period either. Half A's own entry form says so directly
   // ("Per-stream actuals, per member per year", "Actual $/member/yr"
   // column), and the Revenue per Member reconciliation table, the CSV
   // export and the variance-disclosure note all treat
-  // rpm.actualStreams[k]/rpm.derived[k] as that same unit with no further
-  // member-count division anywhere in this file. A FIRST VERSION of this
-  // function divided by an active-member count on top of that (modelled on
-  // the Oct 29 recalibration's "programme fee total / months / members",
-  // which derives a per-member rate from a RAW total off the workbook -- a
-  // different source, already in a different unit, than what Half A's form
-  // actually asks an admin to type). That double-divided the three
-  // P&L-sourced drivers down to effectively zero against the real active
-  // base. Caught by an independent review, not by this function's own
-  // original test suite, which asserted its own (wrong) formula's output
-  // rather than checking it against revPerMember's actual unit contract --
-  // see the round-trip test in membershipModel.test.js that replaced those
-  // assertions.
+  // rpm.actualStreams[k]/rpm.derived[k] as that EXACT same unit, verbatim,
+  // with no month-count or member-count adjustment anywhere in this file --
+  // derived.rewardsBreakage and derived.settlement are `n(rv...)` with no
+  // multiplier at all; derived.rewards is `rate * 12` (months is a LOCAL
+  // constant inside revPerMember, unrelated to any loaded P&L period's
+  // length). Confirmed by the round-trip test in membershipModel.test.js,
+  // which recovers each driver exactly for ANY months value once this
+  // rescale is removed, because months no longer participates at all.
+  //
+  // TWO EARLIER VERSIONS of this function got this wrong, both caught by
+  // review rather than by this function's own test suite at the time:
+  //   v1 divided by an active-member count on top of the stream value
+  //      (modelled on the Oct 29 recalibration's "programme fee total /
+  //      months / members", which derives a per-member rate from a RAW
+  //      total off the workbook -- a different source, already in a
+  //      different unit, than what Half A's form asks an admin to type).
+  //      That collapsed the three P&L-sourced drivers to near-zero.
+  //   v2 removed the member-count division but kept a `12/months` rescale,
+  //      on the theory that a partial-year period's figure needed
+  //      re-annualizing. It did not: the figure IS already the annual rate
+  //      (see above), so rescaling it by 12/months inflated every proposal
+  //      by that same factor for any period shorter than 12 months -- the
+  //      round-trip test did not catch it because it only exercised
+  //      months=12, where 12/12=1 hides the extra factor completely.
+  // `months` is therefore not a parameter of this function at all; it is
+  // disclosure metadata only (how much data backs the figure), read
+  // nowhere in this calculation.
   //
   // This function's real job, given that: convert a $/member/YEAR figure to
   // $/member/MONTH where the public driver is monthly (rewardsBlendedPM),
-  // re-scale for a period that is not a full 12 months (an admin who typed
-  // an annualized estimate derived from partial-year data), round with
-  // equivalent protection, and flag a near-boundary collision. `months` is
-  // the loaded period's period_months (NOT hardcoded 12 -- a 9-month figure
-  // an admin entered as "the annual rate implied by this partial period" is
-  // a different thing from one entered against a full year).
+  // round with equivalent protection, and flag a near-boundary collision.
   //
   // duesPerLoc does NOT derive from mgm_pnl_actuals at all -- it tracks
   // billing.duesPerLocBillableExclCStores, a billing-CSV figure that is
   // already public and already protected by the true-stop-only exclusion,
   // so it gets no additional rounding and no collision check: there is no
   // sensitive figure behind it to protect.
-  function pnlRecalibrationProposal(streams, billing, months) {
+  function pnlRecalibrationProposal(streams, billing) {
     streams = streams || null;
     billing = billing || {};
-    var m = n(months);
-    m = (isFinite(m) && m > 0) ? m : 12;
 
     // Rounds toward the nearest multiple of `step`, then flags when the
     // rounding moved the value by less than a tenth of its own step --
@@ -900,19 +914,21 @@
     }
 
     // `monthly`: rewardsBlendedPM's PUBLIC field is $/member/MONTH, so the
-    // already-annual stream figure divides by 12 once more than the two
-    // annual drivers do. Checked explicitly for finiteness BEFORE n()
-    // coerces it -- n() silently treats non-numeric junk as 0, which would
-    // turn a corrupt stored value into a confidently-proposed real zero
-    // instead of "nothing usable here", the exact defect class this model
-    // has fought everywhere else (see usableRate/rewardsRate above).
+    // already-annual stream figure divides by 12; the two annual drivers
+    // pass through unchanged. Checked explicitly for finiteness and
+    // non-whitespace BEFORE n() coerces it -- n() silently treats junk (and
+    // a whitespace-only string: Number('  ') is 0) as 0, which would turn a
+    // corrupt stored value into a confidently-proposed real zero instead of
+    // "nothing usable here", the exact defect class this model has fought
+    // everywhere else (see usableRate/rewardsRate above, and "whitespace is
+    // an absence" in membershipModel.test.js).
     var fromPnl = function (key, step, monthly) {
-      if (!streams || streams[key] === null || streams[key] === undefined || streams[key] === '') {
+      if (!streams || streams[key] === null || streams[key] === undefined
+          || String(streams[key]).trim() === '') {
         return { exact: null, proposed: null, flagged: false };
       }
-      var raw = Number(streams[key]);
-      if (!isFinite(raw)) return { exact: null, proposed: null, flagged: false };
-      var annual = raw * (12 / m);
+      var annual = Number(streams[key]);
+      if (!isFinite(annual)) return { exact: null, proposed: null, flagged: false };
       return round(monthly ? annual / 12 : annual, step);
     };
 
