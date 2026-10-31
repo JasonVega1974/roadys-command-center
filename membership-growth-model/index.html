@@ -3768,7 +3768,19 @@ MGM.reportAssumptions = function (D) {
       return `${fm$(rv.duesPerLoc)}/member/mo realized · ${fmCents(b.duesPerLocBillableExclCStores)} billable per paying location` +
         (b.cstoreExcludedCompanies ? ' excl. C-Stores' : '') + ' · ' +
         (rpm.duesRealization == null
-          ? 'realization not derivable — no billable figure is entered'
+          // Two different reasons collapse to the same null from
+          // revPerMember, and this sentence has to name the right one:
+          // the ORIGINAL reason (no billable figure entered at all) vs the
+          // population-mismatch fail-closed added alongside the fail-closed
+          // fix itself (billing.cstoreExcludedCompanies > 0 -- real figures
+          // entered, but modelledMembers and the excl-C-Stores denominator
+          // describe different populations). Saying "no billable figure is
+          // entered" in the second case would be false the moment a real
+          // refresh lands a non-zero exclusion -- found one round after
+          // the fail-closed fix shipped.
+          ? (b.cstoreExcludedCompanies
+              ? 'realization not derivable — C-Store exclusion is computed for the billing total but not yet for the active-member count, so the two sides would not describe the same population'
+              : 'realization not derivable — no billable figure is entered')
           : `${pct1(rpm.duesRealization)} realization`) +
         (!b.cstoreExcludedCompanies
           ? (matchesUnexcluded
@@ -5414,9 +5426,20 @@ MGM.loadAdminStatus = async function () {
 // writing the same element would race. Every state is named in WORDS: a bar
 // that implies a mode instead of stating it is how a user ends up misreading
 // their own permissions.
+// Tracks admin status ACROSS calls, so renderAuth can tell a genuine LOSS
+// (was true, now false) from "never was admin" -- the ordinary case on
+// every unsigned page load, including the local-dev P&L fixture, which is
+// deliberately loaded with NO admin check at all (see loadPnlActuals).
+// Starts undefined, not false: `undefined === true` is false, so the very
+// first renderAuth call of a session can never read as a loss, no matter
+// what admin status it finds.
+MGM._wasAdmin = undefined;
+
 MGM.renderAuth = function () {
   const email = MGM.authEmail();
   const admin = MGM.canEdit();
+  const lostAdmin = MGM._wasAdmin === true && !admin;
+  MGM._wasAdmin = admin;
 
   // The ONLY place body.mgm-admin is set or cleared. The CSS rule
   // `body:not(.mgm-admin) .mgm-editonly{display:none}` hides every edit
@@ -5447,20 +5470,35 @@ MGM.renderAuth = function () {
     if (eb) eb.textContent = '✎ Edit';
   }
 
-  // Losing admin must drop the gated P&L figures from memory outright, not
-  // just hide the tab that shows them. MGM.pnlActuals feeds the Revenue per
-  // Member Reconciliation card (index.html's revpermember renderer) with NO
-  // admin check of its own -- it relies entirely on loadPnlActuals never
-  // having set it for a non-admin in the first place. That is correct for
-  // the normal case, but an in-session admin LOSS leaves whatever was
-  // already loaded sitting in memory, rendering on a DIFFERENT tab than the
-  // one this function otherwise re-homes away from. Clearing it here,
-  // unconditionally on `!admin` rather than scoped to the pnl tab, closes
-  // that surface too. Found by the same independent review, one round
-  // after the first pass only cleared pnlDraft.
-  if (!admin) {
+  // A genuine admin LOSS (was true, now false -- see `lostAdmin` above)
+  // must drop every gated P&L figure from memory outright, not just hide
+  // the tab that shows them. Gated BEHIND the true-to-false transition,
+  // not unconditionally on `!admin`: an unconditional version wiped the
+  // local-dev fixture (loaded with NO admin check, by design) on every
+  // ordinary unsigned page load, before the first paint -- `lostAdmin` is
+  // false on that path because there was never a prior `true` to lose.
+  // Found by an independent review, one round after the unconditional
+  // version shipped.
+  //
+  // Mirrors loadPnlActuals' own clear (same four globals, same
+  // pnlReason-goes-with-the-data pairing) rather than a subset of it: an
+  // earlier version of this fix cleared pnlActuals/pnlDraft but left
+  // pnlReason at its stale 'ok'/'ok-local' value (so MGM.pnlWhy() printed
+  // a caption that no longer matched the data behind it) and left
+  // loadedMarginPct/loadedNetMarginPct/loadedMarginBasisDetail in place --
+  // the three globals from the SAME gated row that actually drive the
+  // EBITDA lens and the Valuation provenance note, the most consequential
+  // figures of the four. refresh() repaints whatever tab is active so a
+  // Revenue per Member or Valuation card already on screen reflects the
+  // clear immediately, not on some later unrelated render.
+  if (lostAdmin) {
     MGM.pnlActuals = null;
     MGM.pnlDraft = null;
+    MGM.loadedMarginPct = null;
+    MGM.loadedNetMarginPct = null;
+    MGM.loadedMarginBasisDetail = null;
+    MGM.pnlReason = (MGM.isAdmin === false && !MGM.adminError) ? 'not-admin' : 'anon';
+    MGM.refresh();
   }
 
   // ...and must not leave them standing on an admin-only tab, with its panel
@@ -5471,7 +5509,11 @@ MGM.renderAuth = function () {
   // A bare assignment left #panel-pnl marked `.active` -- now emptied, not
   // hidden -- while #panel-starting stayed inactive: an empty content area
   // under a rail highlighting "Starting", which is what the FIRST version
-  // of this fix produced. Found by the same review, one round later.
+  // of this fix produced. Found by the same review, one round later. Kept
+  // on the broader `!admin` check (not `lostAdmin`): a non-admin who is
+  // somehow standing on this tab at all -- e.g. ADMIN_ONLY_TABS changes
+  // under them, not just a session loss -- still needs re-homing even if
+  // they were never admin in this session to "lose".
   if (!admin && ADMIN_ONLY_TABS.indexOf(MGM.tab) >= 0) {
     const pnlPanel = document.getElementById('panel-pnl');
     if (pnlPanel) pnlPanel.innerHTML = '';
