@@ -28,7 +28,7 @@ import datetime as dt
 import os
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 
 # The sentinels and the em-dashes in the emitted comments are non-ASCII, and the
 # default Windows console codepage (cp1252) cannot encode them -- printing the
@@ -122,6 +122,9 @@ ALLOWED_KEYS = {
     "groups", "key", "label", "count",
     "billing", "companies", "locations", "monthlyDuesTotal",
     "duesPerLocBillable", "payingLocations", "zeroBillCompanies",
+    "duesPerLocBillableExclCStores", "payingLocationsExclCStores",
+    "monthlyDuesTotalExclCStores", "cstoreExcludedCompanies",
+    "cstoreExcludedLocations", "cstoreExcludedDues",
     "statusCounts", "onboarding", "offboarding",
 }
 
@@ -165,6 +168,14 @@ def classify(group, rtype):
 def read_locations(path):
     counts, status, ptp_tagged = Counter(), Counter(), Counter()
     dropped, unclassified, names = [], [], set()
+    # Company -> set of real Types among its ACTIVE locations, lowercased.
+    # This is what the C-Stores dues-average fix (read_billing) uses to tell
+    # a company whose billing line is unambiguously C-Store revenue (every
+    # active location is a C-Store) from one that blends C-Store with
+    # another type under one billing figure with no per-location split --
+    # the latter is never excluded, since excluding it would mean inventing
+    # an allocation the source data does not support.
+    company_types = defaultdict(set)
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rdr = csv.DictReader(fh)
         cols = resolve_columns(path, rdr.fieldnames, LOCATION_COLUMNS)
@@ -178,6 +189,8 @@ def read_locations(path):
                                 cell(row, cols, "Name"), st))
                 continue
             status[st] += 1
+            if st == "active":
+                company_types[company].add(cell(row, cols, "Type").strip().lower())
             # Counted AFTER the junk filter above, so these are real sites.
             # Worth stating because the arithmetic is a trap: the Oct 29 export
             # has 10 raw onboarding rows, 3 of them test/demo, leaving 7 -- and
@@ -205,16 +218,42 @@ def read_locations(path):
                                      cell(row, cols, "Type")))
                 continue
             counts[key] += 1
-    return counts, status, dropped, unclassified, names, ptp_tagged
+    return counts, status, dropped, unclassified, names, ptp_tagged, company_types
 
 
 def money(s):
     return float((s or "0").replace(",", "").replace("$", "").strip() or 0)
 
 
-def read_billing(path):
+def read_billing(path, company_types):
     companies = locations = paying_locations = zero_companies = 0
     dues = 0.0
+    # A PURE C-Store company -- every active location of its company_types
+    # set is "c-store" -- bills one figure that is unambiguously C-Store
+    # revenue, so it is cleanly removable from both halves of the average.
+    # A company that BLENDS C-Store with another type (Truck Stop, PPO, Fuel
+    # Stop) bills one dollar figure for the whole company with no
+    # per-location split in this source data -- the owner's explicit
+    # decision (2026-10-30) is to leave those locations and that dues figure
+    # IN the average rather than guess an allocation the data cannot support.
+    cstore_excl_companies = cstore_excl_locations = 0
+    cstore_excl_dues = 0.0
+    # PAYING billing companies with NO entry at all in company_types -- i.e.
+    # the location-list CSV has no ACTIVE row for that company name.
+    # company_types.get(name) returns None for these, which silently takes
+    # the "not pure C-Store" branch below exactly as if the company really
+    # were a mix of types -- identical outcome, opposite reason, and no
+    # signal either way that the join missed. A case/punctuation mismatch
+    # between the two exports would produce this same silent non-exclusion,
+    # which is precisely the under-exclusion risk "2026-10-30 EXCEPTION #2"
+    # already accepts for the vintage gap -- it must not ALSO hide inside a
+    # name-join nobody is watching. Restricted to PAYING companies (checked
+    # after `amount` below, not here) because a zero-bill company can never
+    # be excluded from this average regardless of its type, so an unmatched
+    # zero-bill name carries no under-exclusion risk and is pure noise. A
+    # set, not a list, so one company billing across multiple rows (if that
+    # ever occurs) is reported once.
+    unmatched_billing_companies = set()
     names = set()
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rdr = csv.DictReader(fh)
@@ -229,10 +268,23 @@ def read_billing(path):
             amount = money(cell(row, cols, "Dues"))
             dues += amount
             if amount > 0:
+                if name and name not in company_types:
+                    unmatched_billing_companies.add(name)
                 paying_locations += n
+                # Only a PAYING pure C-Store company is subtracted -- a
+                # zero-bill one already contributes nothing to
+                # paying_locations/dues, so subtracting it again would
+                # double-remove locations that were never in this total.
+                if company_types.get(name) == {"c-store"}:
+                    cstore_excl_companies += 1
+                    cstore_excl_locations += n
+                    cstore_excl_dues += amount
             else:
                 zero_companies += 1
+    paying_locations_excl = paying_locations - cstore_excl_locations
+    dues_excl = dues - cstore_excl_dues
     return {
+        "unmatchedBillingCompanies": sorted(unmatched_billing_companies),
         "companies": companies,
         "locations": locations,
         "monthlyDuesTotal": int(round(dues)),
@@ -245,6 +297,22 @@ def read_billing(path):
                                if paying_locations else 0.0),
         "payingLocations": paying_locations,
         "zeroBillCompanies": zero_companies,
+        # The true-stop-only pair: C-Stores' legitimately low $100-250
+        # membership fees drag down a per-location average that is meant to
+        # read as "what a truck stop / PPO / etc. location bills", so this
+        # pair excludes the unambiguous (pure C-Store) slice from both the
+        # numerator and the denominator. monthlyDuesTotal/companies/
+        # locations/payingLocations above are UNCHANGED -- C-Stores' own
+        # dues revenue still appears in full everywhere else (Starting
+        # Membership, overall company dues revenue); only this specific
+        # per-location comparison excludes it.
+        "duesPerLocBillableExclCStores": (round(dues_excl / paying_locations_excl, 2)
+                                          if paying_locations_excl else 0.0),
+        "payingLocationsExclCStores": paying_locations_excl,
+        "monthlyDuesTotalExclCStores": int(round(dues_excl)),
+        "cstoreExcludedCompanies": cstore_excl_companies,
+        "cstoreExcludedLocations": cstore_excl_locations,
+        "cstoreExcludedDues": int(round(cstore_excl_dues)),
     }, names
 
 
@@ -395,7 +463,28 @@ def build_block(args, counts, status, billing, dropped, carried,
                      "%s / %s bill $0.00"
                      % (plural(billing["zeroBillCompanies"], "company", "companies"),
                         plural(zero_locs, "location", "locations"))),
-        "      zeroBillCompanies: %d" % billing["zeroBillCompanies"],
+        "      zeroBillCompanies: %d," % billing["zeroBillCompanies"],
+        "",
+        "      // True-stop-only pair: a C-Store's legitimately low $100-250",
+        "      // membership fee drags down a per-location average meant to read",
+        "      // as \"what a truck stop / PPO / etc. location bills\". Excludes",
+        "      // only the %s whose billing line is unambiguously"
+        % plural(billing["cstoreExcludedCompanies"], "company", "companies"),
+        "      // C-Store revenue (%s, $%d/mo) -- a company blending"
+        % (plural(billing["cstoreExcludedLocations"], "location", "locations"),
+           billing["cstoreExcludedDues"]),
+        "      // C-Store with another type stays in both totals above, since this",
+        "      // source data carries no per-location split to exclude it by. See",
+        "      // membershipModel.js's duesRealization for where this pair is used.",
+        "      duesPerLocBillableExclCStores: %.2f,"
+        % billing["duesPerLocBillableExclCStores"],
+        "      payingLocationsExclCStores: %d,"
+        % billing["payingLocationsExclCStores"],
+        "      monthlyDuesTotalExclCStores: %d,"
+        % billing["monthlyDuesTotalExclCStores"],
+        "      cstoreExcludedCompanies: %d," % billing["cstoreExcludedCompanies"],
+        "      cstoreExcludedLocations: %d," % billing["cstoreExcludedLocations"],
+        "      cstoreExcludedDues: %d" % billing["cstoreExcludedDues"],
         "    },",
         "",
         "    statusCounts: { onboarding: %d, offboarding: %d },"
@@ -475,6 +564,12 @@ def privacy_guard(block, carried, names, args, counts, billing, status,
                         "%.2f" % billing["duesPerLocBillable"],
                         str(billing["payingLocations"]),
                         str(billing["zeroBillCompanies"]),
+                        str(billing["monthlyDuesTotalExclCStores"]),
+                        "%.2f" % billing["duesPerLocBillableExclCStores"],
+                        str(billing["payingLocationsExclCStores"]),
+                        str(billing["cstoreExcludedCompanies"]),
+                        str(billing["cstoreExcludedLocations"]),
+                        str(billing["cstoreExcludedDues"]),
                         str(status.get("onboarding", 0)),
                         str(status.get("offboarding", 0)),
                         str(asof_month), "3"}
@@ -504,9 +599,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    counts, status, dropped, unclassified, loc_names, ptp_tagged = \
+    counts, status, dropped, unclassified, loc_names, ptp_tagged, company_types = \
         read_locations(args.locations)
-    billing, bill_names = read_billing(args.billing)
+    billing, bill_names = read_billing(args.billing, company_types)
     names = loc_names | bill_names
     total = sum(counts.values())
 
@@ -524,6 +619,24 @@ def main():
         print("  %-28s %d  (also counted above under the unclassified-rows "
               "warning, if any -- excluded from Active locations)"
               % ("(unclassified)", ptp_tagged["(unclassified)"]))
+    print("C-Stores excluded from the true-stop-only dues average: %d companies, "
+          "%d locations, $%d/mo (pure C-Store billing lines only -- a company "
+          "blending C-Store with another type is left in, no split guessed)"
+          % (billing["cstoreExcludedCompanies"], billing["cstoreExcludedLocations"],
+             billing["cstoreExcludedDues"]))
+    print("  duesPerLocBillable          $%.2f  ->  $%.2f excl. C-Stores"
+          % (billing["duesPerLocBillable"], billing["duesPerLocBillableExclCStores"]))
+    unmatched = billing["unmatchedBillingCompanies"]
+    if unmatched:
+        print("\n!! %d PAYING billing compan%s with NO matching active row in the "
+              "location-list CSV (name mismatch -- case, punctuation, a closed "
+              "location, or a genuine gap) -- NOT excluded from the true-stop-only "
+              "average even if actually a pure C-Store, since there is no "
+              "location-list evidence either way (zero-bill companies are omitted "
+              "here; they can never be excluded regardless of type):"
+              % (len(unmatched), "y" if len(unmatched) == 1 else "ies"))
+        for name in unmatched:
+            print("  %s" % name)
     print("Onboarding: %d   Offboarding: %d"
           % (status.get("onboarding", 0), status.get("offboarding", 0)))
     print("Dropped %d non-location rows:" % len(dropped))
