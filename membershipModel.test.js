@@ -3,21 +3,24 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { MGM_CONFIG } = require('./membershipModelConfig.js');
 
-test('group counts sum to the 398 verified active base', () => {
-  // 397 -> 398 on 2026-10-30: PTP dissolved (it was never a real location
-  // type, just a sales-channel tag) and its 88 locations redistributed into
-  // the real groups they belong to -- see groups' comment in
-  // membershipModelConfig.js. Net +1 from the prior 397 figure because the
-  // investigation that sized the redistribution used a slightly newer
-  // location-list snapshot for PTP specifically than the 397 total's own
-  // source; see the same comment for the full reconciliation.
-  assert.equal(MGM_CONFIG.groups.reduce((a, g) => a + g.count, 0), 398);
+test('group counts sum to the 397 verified active base', () => {
+  // 398 -> 397 on 2026-10-30: a real refresh against the actual Oct 29
+  // location-list/billing pair (found in Downloads after PR #69 merged;
+  // the interim 398 figure came from hand-reconciling the PTP-dissolution
+  // investigation, which had used a slightly-newer Sept 21 snapshot for
+  // PTP specifically, against this same Oct 29 base -- see the "2026-10-30
+  // EXCEPTION" comments this refresh removed from membershipModelConfig.js
+  // for the full prior reconciliation). tools/refresh-membership-config.py's
+  // classify() already dissolves PTP by real Type with no special case, so
+  // this is the script's own fresh, self-consistent output superseding the
+  // interim hand-reconciliation, exactly as those comments anticipated.
+  assert.equal(MGM_CONFIG.groups.reduce((a, g) => a + g.count, 0), 397);
 });
 
 test('group split matches the verified location-list breakdown', () => {
   const byLabel = Object.fromEntries(MGM_CONFIG.groups.map(g => [g.label, g.count]));
   assert.deepEqual(byLabel, {
-    'Truck Stop': 187, 'Truck Stop-Service Center': 5, 'C-Stores': 21,
+    'Truck Stop': 186, 'Truck Stop-Service Center': 5, 'C-Stores': 21,
     'PPO': 128, "Roady's Lite": 5, 'Fuel Stops': 29, 'Service Centers': 23
   });
 });
@@ -53,24 +56,27 @@ test('duesPerLocBillable divides by paying locations, not all locations', () => 
     Math.round((b.monthlyDuesTotal / b.locations) * 100) / 100);
 });
 
-test('the true-stop-only (excl. C-Stores) billing pair ships at zero exclusion for this vintage', () => {
-  // "2026-10-30 EXCEPTION #2" in membershipModelConfig.js: these six fields
-  // are shipped equal to their unexcluded counterparts (zero companies/
-  // locations/dues excluded) because computing the real exclusion needs a
-  // location-list CSV matching THIS billing snapshot's own vintage (Oct 29),
-  // and only a Sept 21 pair is locally available -- mixing the two would
-  // subtract a Sept 21 C-Store slice from an Oct 29 total, which is a real
-  // number but not a real answer. This test is a deliberate tripwire: once a
-  // real refresh runs with one matching CSV pair, these fields diverge from
-  // their unexcluded counterparts and this assertion starts failing on
-  // purpose -- update it to the new real figures at that point, not before.
+test('the true-stop-only (excl. C-Stores) billing pair reflects the real exclusion, computed from one matching Oct 29 CSV pair', () => {
+  // The tripwire this test replaces ("2026-10-30 EXCEPTION #2") fired on
+  // purpose the moment this refresh ran against the real, matching Oct 29
+  // location-list/billing pair -- found in Downloads after PR #69 merged,
+  // the same vintage that produced this block's other billing figures.
+  // 9 companies bill unambiguously as pure C-Store (every active location
+  // at that company is a C-Store); their $2,125/mo and 9 locations are
+  // excluded from both halves of this pair, while the unexcluded fields
+  // beside them (monthlyDuesTotal, payingLocations, duesPerLocBillable)
+  // stay exactly as they were -- C-Stores' own dues revenue still appears
+  // in full everywhere else, only this specific average excludes it.
   const b = MGM_CONFIG.billing;
-  assert.equal(b.cstoreExcludedCompanies, 0);
-  assert.equal(b.cstoreExcludedLocations, 0);
-  assert.equal(b.cstoreExcludedDues, 0);
-  assert.equal(b.duesPerLocBillableExclCStores, b.duesPerLocBillable);
-  assert.equal(b.payingLocationsExclCStores, b.payingLocations);
-  assert.equal(b.monthlyDuesTotalExclCStores, b.monthlyDuesTotal);
+  assert.equal(b.cstoreExcludedCompanies, 9);
+  assert.equal(b.cstoreExcludedLocations, 9);
+  assert.equal(b.cstoreExcludedDues, 2125);
+  assert.equal(b.payingLocationsExclCStores, b.payingLocations - 9);
+  assert.equal(b.monthlyDuesTotalExclCStores, b.monthlyDuesTotal - 2125);
+  assert.equal(b.duesPerLocBillableExclCStores,
+    Math.round((b.monthlyDuesTotalExclCStores / b.payingLocationsExclCStores) * 100) / 100);
+  assert.notEqual(b.duesPerLocBillableExclCStores, b.duesPerLocBillable,
+    'the excl-C-Stores rate must now genuinely differ from the unexcluded one');
 });
 
 test('a zero prior count yields no rate, not Infinity', () => {
@@ -1083,15 +1089,18 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   // would pass even if a formula were wrong.
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const r = MembershipModel.revenueModel(st, MembershipModel.runModel(st))[0];
-  // Repinned 2026-10-30: the PTP dissolution corrected the active total from
-  // 397 to 398 (a data fix, not a formula change -- see groups' comment in
-  // membershipModelConfig.js), which moves every pin in this test by the
-  // same ~0.25% every member-scaled stream moves by. Repinned the same way
-  // the Oct 29 rounding repin documented below already was: full double
-  // precision from a run against the (unchanged) formulas, not hand-derived
+  // Repinned 2026-10-31: a real refresh against the actual Oct 29
+  // location-list/billing CSV pair (found in Downloads after PR #69
+  // merged) moved the active total from 398 to 397 -- the interim 398
+  // figure was a hand-reconciliation superseded by this script's own
+  // fresh, self-consistent output (see groups' comment in
+  // membershipModelConfig.js and the group-count test above). A data fix,
+  // not a formula change, same as the 397->398 repin this test went
+  // through once already. Repinned the same way: full double precision
+  // from a run against the (unchanged) formulas, not hand-derived
   // arithmetic -- the member count itself is the only input that moved.
-  near(r.members, 398.6913610763889, 'members');
-  near(r.streams.dues, 1723638.4398598871, 'dues');
+  near(r.members, 397.6994117395833, 'members');
+  near(r.streams.dues, 1719350.0048090362, 'dues');
 
   // DERIVED FROM THE DRIVER, not pasted from the engine. These four moved in
   // the Oct 29 rounding and I repinned them with the values the run printed --
@@ -1109,8 +1118,8 @@ test('GOLDEN: revenueModel reproduces hand-derived per-stream values for MGM_CON
   near(r.streams.duesAncillary, r.members * D.duesAncillaryPerMember, 'duesAncillary');
   near(r.streams.settlement, r.members * D.settlementNetPerMember, 'settlement');
   near(r.streams.fuelProgram, 0, 'fuelProgram — zero by design');
-  near(r.streams.vendor, 368390.81763458333, 'vendor');
-  near(r.streams.rewards, 66980.14866083334, 'rewards');
+  near(r.streams.vendor, 367474.25644737494, 'vendor');
+  near(r.streams.rewards, 66813.50117224999, 'rewards');
   near(r.streams.rewardsBreakage,
        r.members * D.rewardsBreakagePerMember, 'rewardsBreakage');
   // The sum of the seven, so a stream silently dropping out of the total is
@@ -1209,9 +1218,42 @@ test('revPerMember reports the variance against a loaded actual', () => {
     'an actual above the driver sum reads as a shortfall, not a surplus');
 });
 
-test('dues realization is reported from the billable vs realized rates', () => {
+test('dues realization is null today, because a real C-Store exclusion now creates the population mismatch', () => {
+  // 2026-10-31: the real Oct 29 refresh populated a genuine, non-zero
+  // cstoreExcludedCompanies (9) -- so the shipped config now hits the
+  // fail-closed path added in the review-fix rounds (see "POPULATION
+  // MISMATCH" in revPerMember). This is the CURRENT, correct behavior:
+  // the metric must not report a number it knows is biased. The band
+  // check history below (the real realization math, verified against a
+  // hand-spelled-out formula so it stays an independent check rather than
+  // a restatement of the implementation) is preserved against a
+  // SYNTHETIC zero-exclusion state, since the default state can no longer
+  // exercise that computation at all.
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const rpm = MembershipModel.revPerMember(st, MembershipModel.runModel(st), null);
+  assert.equal(rpm.duesRealization, null,
+    'the shipped config now has a real, non-zero cstoreExcludedCompanies -- ' +
+    'realization must fail closed, not report a biased percentage');
+});
+
+test('dues realization\'s real math (billable vs realized, not a tautology) still holds once the population mismatch is removed', () => {
+  // Preserves the original test's full history and intent, exercised
+  // against a synthetic state with the exclusion fully zeroed out --
+  // cstoreExcludedCompanies AND the two excl-C-Stores billing fields
+  // (duesRealization's formula reads monthlyDuesTotalExclCStores/
+  // payingLocationsExclCStores directly, not monthlyDuesTotal/
+  // payingLocations, so zeroing only the count leaves the gate open but
+  // the computation still C-Store-excluded) -- the only way to reach this
+  // computation at all now that the shipped default has a real, non-zero
+  // exclusion (see the fail-closed test above). Everything below this
+  // point is the ORIGINAL test, unmodified in method, just no longer
+  // reachable through MGM_CONFIG directly.
+  const st = JSON.parse(JSON.stringify(MembershipModel.defaultState(MGM_CONFIG)));
+  st.billing.cstoreExcludedCompanies = 0;
+  st.billing.monthlyDuesTotalExclCStores = st.billing.monthlyDuesTotal;
+  st.billing.payingLocationsExclCStores = st.billing.payingLocations;
+  const M = MembershipModel.runModel(st);
+  const rpm = MembershipModel.revPerMember(st, M, null);
   // 360.27 is 142305 / 395 PAYING locations, from the Oct 29 export. The
   // denominators are spelled out rather than read back off the config, so this
   // stays an independent check of the published figure rather than a
@@ -1228,12 +1270,11 @@ test('dues realization is reported from the billable vs realized rates', () => {
   //
   // Modelled annual dues over actual annual billing. Written out rather than
   // read back off the implementation, so this is a check and not a
-  // restatement:
-  // 398.691361 (not 397.691361): repinned 2026-10-30 for the same PTP-
-  // dissolution count correction (397 -> 398 active) as the revenueModel
-  // golden test above -- a data fix, not a formula change.
+  // restatement. 397.699412 repinned 2026-10-31 for the real Oct 29 refresh's
+  // 398 -> 397 active-count correction (a data fix, not a formula change --
+  // see the group-count test and the revenueModel golden test above).
   near(rpm.duesRealization,
-       100 * (398.691361 * 360.27 * 12) / (142305 * 12), 'realization %');
+       100 * (397.6994117395833 * 360.27 * 12) / (142305 * 12), 'realization %');
 
   // THE FLIP IS RESOLVED. This band previously sat above 100%, deliberately,
   // as a tripwire. The Oct 29 refresh took the billable rate from 382.47 to
@@ -1247,31 +1288,36 @@ test('dues realization is reported from the billable vs realized rates', () => {
   // is tight around 100 for that reason -- if either figure drifts from the
   // other again, this fails rather than drifting quietly past 100 a second
   // time.
-  // ~100.94%, and the OVERSHOOT IS THE POINT. duesPerLoc is dues over PAYING
-  // LOCATIONS (395) applied to MEMBERS (398.7) -- two different populations --
-  // so the model bills slightly more than the P&L did. About $16.0k/yr. That
-  // is a real, small mismatch worth seeing rather than a figure to tune away,
-  // and the band is tight enough to catch it drifting.
+  // ~100.9%, and the OVERSHOOT IS THE POINT. duesPerLoc is dues over PAYING
+  // LOCATIONS (395) applied to MEMBERS (397.7) -- two different populations --
+  // so the model bills slightly more than the P&L did. That is a real, small
+  // mismatch worth seeing rather than a figure to tune away, and the band is
+  // tight enough to catch it drifting.
   //
-  // Band repinned 2026-10-30 (100.6-100.8 -> 100.85-101.05) for the same PTP-
-  // dissolution member-count correction as the pin above: one more active
-  // location raises modeled dues against the same fixed actual billing
-  // total, so the overshoot grew from ~$11.7k to ~$16.0k/yr. The band's
+  // Band repinned 2026-10-31 for the real Oct 29 refresh's 398 -> 397
+  // active-count correction: one fewer active location lowers modeled dues
+  // against the same fixed actual billing total, so the overshoot shrank
+  // slightly from the prior ~100.85-101.05 pin, to ~100.68. The band's
   // WIDTH and PURPOSE are unchanged -- still tight enough to catch the
   // metric drifting back to self-referential (exactly 100.00) or drifting
   // further without anyone noticing.
-  assert.ok(rpm.duesRealization > 100.85 && rpm.duesRealization < 101.05,
-    `realization is modelled dues over ACTUAL billing, ~100.94%; a reading of `
+  assert.ok(rpm.duesRealization > 100.58 && rpm.duesRealization < 100.78,
+    `realization is modelled dues over ACTUAL billing, ~100.68%; a reading of `
     + `exactly 100.00 means the metric has gone self-referential again; `
     + `got ${rpm.duesRealization}`);
 });
 
 test('dues realization reads monthlyDuesTotalExclCStores, not monthlyDuesTotal', () => {
-  // The shipped config has these two fields equal (zero exclusion, pending
-  // the next real CSV refresh -- membershipModelConfig.js's "2026-10-30
-  // EXCEPTION #2"), so a test against the default state alone cannot tell
-  // which field the formula actually reads. This test makes them diverge.
+  // The shipped config now carries a real, non-zero cstoreExcludedCompanies
+  // (9, from the Oct 29 refresh), which fails the realization computation
+  // closed to null for every state below regardless of the two dues-total
+  // fields -- near(null, null) and near(null, 2*null) both pass trivially,
+  // which would make this test vacuous. cstoreExcludedCompanies is forced
+  // to 0 in every state below so the computation this test exists to pin
+  // actually runs (see the "population mismatch removed" test above for
+  // the same technique and its rationale).
   const base = MembershipModel.defaultState(MGM_CONFIG);
+  base.billing.cstoreExcludedCompanies = 0;
   const M = MembershipModel.runModel(base);
 
   // Positive control: a decoy monthlyDuesTotal must be IGNORED when
@@ -1286,6 +1332,9 @@ test('dues realization reads monthlyDuesTotalExclCStores, not monthlyDuesTotal',
   stB.billing.monthlyDuesTotalExclCStores = 142305;
   const rpmB = MembershipModel.revPerMember(stB, M, null);
 
+  assert.notEqual(rpmB.duesRealization, null,
+    'sanity: with cstoreExcludedCompanies forced to 0, realization must ' +
+    'actually compute rather than fail closed, or the controls below prove nothing');
   near(rpmA.duesRealization, rpmB.duesRealization,
     'two states with the same monthlyDuesTotalExclCStores but different ' +
     'monthlyDuesTotal (999999 vs 142305) must realize IDENTICALLY -- proves ' +
@@ -1459,8 +1508,8 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   // min/mean/max of two numbers. Neither assertion could fail. This version
   // pins independently-computed values AND flips which lens is larger, so a
   // min/max swap in the implementation is caught.
-  // All values in this test repinned 2026-10-30 for the PTP-dissolution
-  // member-count correction (397 -> 398 active, see groups' comment in
+  // All values in this test repinned 2026-10-31 for the real Oct 29 refresh's
+  // 398 -> 397 active-count correction (see groups' comment in
   // membershipModelConfig.js) the same way the revenueModel golden test
   // above was -- a data fix cascading through the 3-year projection into
   // final-year revenue and both valuation lenses, not a formula change.
@@ -1468,25 +1517,25 @@ test('low and high track which lens is actually lower, in both orderings', () =>
   const st = MembershipModel.defaultState(MGM_CONFIG);
   const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
   const last = R[R.length - 1];
-  near(last.total, 2507118.418176269, 'final-year revenue basis');
+  near(last.total, 2502570.06967995, 'final-year revenue basis');
 
   // Margin unset (the shipped default): the EBITDA lens is zero, so the
   // revenue lens is the high end.
   st.valuation.ebitdaMargin = 0;
   const a = MembershipModel.valuation(st, last);
-  near(a.rev, 6267796.045440673, 'revenue lens at 2.5x');
+  near(a.rev, 6256425.1741998745, 'revenue lens at 2.5x');
   near(a.ebitda, 0, 'EBITDA lens is zero at an unset margin');
   near(a.low, 0, 'low is the EBITDA lens here');
-  near(a.high, 6267796.045440673, 'high is the revenue lens here');
-  near(a.mid, 3133898.0227203364, 'midpoint');
+  near(a.high, 6256425.1741998745, 'high is the revenue lens here');
+  near(a.mid, 3128212.5870999373, 'midpoint');
 
   // An 80% margin inverts the ordering: the EBITDA lens is now on top.
   st.valuation.ebitdaMargin = 80;
   const b = MembershipModel.valuation(st, last);
-  near(b.ebitda, 10028473.672705077, 'EBITDA lens at 80% x 5');
-  near(b.low, 6267796.045440673, 'low is now the revenue lens');
-  near(b.high, 10028473.672705077, 'high is now the EBITDA lens');
-  near(b.mid, 8148134.859072875, 'midpoint follows the inversion');
+  near(b.ebitda, 10010280.2787198, 'EBITDA lens at 80% x 5');
+  near(b.low, 6256425.1741998745, 'low is now the revenue lens');
+  near(b.high, 10010280.2787198, 'high is now the EBITDA lens');
+  near(b.mid, 8133352.726459837, 'midpoint follows the inversion');
 });
 
 test('indicated is the single lens when only one has a basis, never half of it', () => {
@@ -1501,12 +1550,12 @@ test('indicated is the single lens when only one has a basis, never half of it',
   const R = MembershipModel.revenueModel(st, MembershipModel.runModel(st));
   const last = R[R.length - 1];
 
-  // Repinned 2026-10-30, same PTP-dissolution member-count correction as the
+  // Repinned 2026-10-31, same real-refresh member-count correction as the
   // test above.
   const defaults = MembershipModel.valuation(st, last);
   assert.equal(defaults.lensCount, 1, 'only the revenue lens has a basis');
-  near(defaults.indicated, 6267796.045440673, 'indicated is the whole revenue lens');
-  near(defaults.mid, 3133898.0227203364, 'mid still reports the two-method midpoint');
+  near(defaults.indicated, 6256425.1741998745, 'indicated is the whole revenue lens');
+  near(defaults.mid, 3128212.5870999373, 'mid still reports the two-method midpoint');
   assert.notEqual(defaults.indicated, defaults.mid,
     'the headline figure must not be half of the only live lens');
 
@@ -1711,7 +1760,7 @@ test('gallon production multiplies split locations by mapped baselines, summed p
   near(g.existing, expected, 'existing network gal/mo');
   assert.equal(g.inbound, p.gallons);
   near(g.total, expected + p.gallons, 'total');
-  near(g.perMember, expected / 398, 'per existing member');
+  near(g.perMember, expected / 397, 'per existing member');
 });
 
 test('a per-row baseline override changes only that row', () => {
@@ -1970,21 +2019,21 @@ test('the valuation panel consumes the computed EBITDA, not the margin assumptio
   // independent verification left standing over figures that no longer
   // support it. Restate all three whenever the data refreshes.
   //
-  // Repinned again 2026-10-30 for the PTP-dissolution member-count
-  // correction (397 -> 398 active, membershipModelConfig.js's groups
-  // comment) -- a data fix, not a formula change; basis moved, the cost
-  // terms (the test's own fixed inputs) did not.
+  // Repinned again 2026-10-31 for the real Oct 29 refresh's 398 -> 397
+  // active-count correction (membershipModelConfig.js's groups comment) --
+  // a data fix, not a formula change; basis moved, the cost terms (the
+  // test's own fixed inputs) did not.
   //
-  //   basis    = 2,507,118.418176   (final-year revenue, pinned above)
-  //   margin   = basis x 25% = 626,779.604544
-  //   computed = basis - 170,255.773495 cost-to-serve
+  //   basis    = 2,502,570.069680   (final-year revenue, pinned above)
+  //   margin   = basis x 25% = 625,642.517420
+  //   computed = basis - 169,946.899935 cost-to-serve
   //                    - 240,000.000000 sales spend
-  //            = 2,096,862.644681
+  //            = 2,092,623.169745
   //
   // Both cost terms are the test's OWN inputs ($400/member/yr over the
   // modelled base, and $20,000/mo x 12), not figures read out of the engine.
-  near(viaMargin.ebitdaBase, 626779.604544, 'margin lens: 25% of final-year revenue');
-  near(viaComputed.ebitdaBase, 2096862.644681, 'computed lens: revenue less real costs');
+  near(viaMargin.ebitdaBase, 625642.5174199875, 'margin lens: 25% of final-year revenue');
+  near(viaComputed.ebitdaBase, 2092623.1697451458, 'computed lens: revenue less real costs');
 
   // DIRECTION IS DELIBERATELY NOT ASSERTED. With these modest cost inputs
   // ($20k/mo spend, $400/member/yr) the computed EBITDA lands ~3.3x ABOVE a 25%
@@ -2031,7 +2080,7 @@ test('adding a group flows through every dependent layer', () => {
   const st = MembershipModel.defaultState(MGM_CONFIG);
   st.groups.push({ key: 'newgrp', label: 'New Group', count: 25 });
   const M = MembershipModel.runModel(st);
-  assert.equal(M.startTotal, 423, 'roll-forward sees it');  // 398 (2026-10-30 PTP-dissolution base) + 25
+  assert.equal(M.startTotal, 422, 'roll-forward sees it');  // 397 (2026-10-29 real refresh base) + 25
   const R = MembershipModel.revenueModel(st, M);
   assert.ok(R[0].streams.dues > 0, 'revenue sees it');
 });
